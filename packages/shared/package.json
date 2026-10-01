@@ -1,0 +1,13 @@
+{
+  "name": "@ssh-server/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "前后端共用的类型与协议",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  }
+}
