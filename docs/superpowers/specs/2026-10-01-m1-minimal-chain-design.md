@@ -167,9 +167,12 @@ type Workspace = {
 - 两栏：左侧工作区与会话列表（含新建工作区表单、新会话按钮）；中间对话区。右侧面板在 M2 加入。
 - 顶栏：应用名、当前工作区、WebSocket 连接状态。
 - 对话区：streamdown 渲染文本；工具卡片默认折叠，`remote_exec` 显示命令与退出码；权限卡片；错误横幅；输入框 Enter 发送、Shift+Enter 换行，运行中变为"停止"。
-- 纯函数 `reduceChat(items, event)` 把事件转成界面条目，实时和历史共用。
-- 视觉：Tailwind 4 `@theme` 定义 ui-layout 第 0 节的颜色，fontsource 字体，lucide 图标。
-- 推迟：可调分栏、命令面板、Base UI、虚拟列表、diff、终端（按需在后续里程碑引入）。
+- 纯函数 `reduceChat(items, event)` 把事件转成界面条目，实时和历史共用；对话状态放在 zustand（`chat-store.ts`），只接收当前界面这一轮的事件。
+- 现成库：接口数据用 `@tanstack/react-query`（加载、错误、创建工作区后刷新列表、每轮结束后刷新会话列表）；WebSocket 用 `partysocket` 重连（1 秒起、翻倍、上限 15 秒，发送缓冲为 0，断线时不重发对话）；对话区贴底滚动与"回到底部"用 `use-stick-to-bottom`。选用记录见 `docs/guides/dev-environment.md` 1.2。
+- 断线时若本轮正在运行：结束运行状态并提示"本轮输出可能不完整"，重新打开会话可从历史中查看完整内容（后端轮次继续运行）。
+- 模型输入框：留空表示跟随本地配置；收到 `session` 事件后显示实际模型。
+- 视觉：Tailwind 4 `@theme` 定义 ui-layout 第 0 节的颜色，另加 `destructive-foreground`（`#FCA5A5`，卡片上的错误文字，对 card 约 5.6:1；`destructive` 本身只用于图标和边框）；fontsource 字体，lucide 图标。
+- 推迟：可调分栏、命令面板、Base UI、虚拟列表、diff、终端、代码高亮（streamdown 的代码插件），按需在后续里程碑引入。
 
 ## 12. 错误处理
 

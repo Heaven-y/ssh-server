@@ -32,7 +32,8 @@
 | border | `#475569` | 装饰性分隔线（面板、卡片之间） |
 | border-strong | `#6B7A90` | 输入框、按钮等可交互组件的边框（对背景 4.09:1、对卡片 3.59:1） |
 | accent | `#22C55E` | 运行中、成功、主要操作 |
-| destructive | `#EF4444` | 删除、失败 |
+| destructive | `#EF4444` | 删除、失败（图标与边框；在卡片上作文字时对比度不足 4.5:1） |
+| destructive-foreground | `#FCA5A5` | 卡片、背景上的错误文字（对卡片约 5.6:1） |
 
 - 字体：正文 IBM Plex Sans，代码 / 终端 / 路径 JetBrains Mono；通过 fontsource 本地打包，不从 Google Fonts 加载。
 - 图标：Lucide（SVG），不用 emoji 当图标。

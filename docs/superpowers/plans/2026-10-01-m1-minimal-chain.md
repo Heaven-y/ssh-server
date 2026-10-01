@@ -406,11 +406,12 @@ export function registerWsRoutes(app: FastifyInstance, deps: { turns: TurnManage
 ### Task 10: 前端（M1）
 
 **Files:**
-- Create: `apps/web/index.html`、`vite.config.ts`、`vitest.config.ts`、`src/main.tsx`、`src/styles.css`、`src/app/App.tsx`、`src/app/TopBar.tsx`
+- Create: `apps/web/index.html`、`vite.config.ts`、`vitest.config.ts`、`src/main.tsx`、`src/styles.css`、`src/app/App.tsx`、`src/app/TopBar.tsx`、`src/ui/styles.ts`（共用按钮、输入框样式）
 - Create: `src/features/workspaces/WorkspaceSidebar.tsx`、`WorkspaceForm.tsx`、`SessionList.tsx`
 - Create: `src/features/chat/chat-reducer.ts`、`chat-store.ts`、`ChatView.tsx`、`MessageItem.tsx`、`ToolCard.tsx`、`PermissionCard.tsx`、`Composer.tsx`
-- Create: `src/lib/api.ts`、`src/lib/ws.ts`
+- Create: `src/lib/api.ts`、`src/lib/ws.ts`、`src/lib/query-client.ts`
 - Test: `src/features/chat/chat-reducer.test.ts`
+- 依赖（复用成熟库，见 `docs/guides/dev-environment.md` 1.2）：`@tanstack/react-query`、`partysocket`、`use-stick-to-bottom`
 
 **Interfaces:**
 - Consumes: 任务 2 `AgentEvent`、`ClientMessage`、`ServerMessage`、`Workspace`；任务 6–9 的 REST 与 `/ws`。
@@ -428,21 +429,21 @@ export function reduceChat(items: ChatItem[], e: AgentEvent): ChatItem[]; // 纯
 export function resolvePermission(items: ChatItem[], requestId: string, allow: boolean): ChatItem[];
 ```
 
-- [ ] **Step 1: 写失败测试**（`chat-reducer.test.ts`，web 的 vitest 用 node 环境）
+- [x] **Step 1: 写失败测试**（`chat-reducer.test.ts`，web 的 vitest 用 node 环境）
   - 连续两个 `text` → 一个 assistant 条目，文本拼接，`streaming: true`。
   - `text` → `tool_call` → `text` → 两个 assistant 条目，中间一个 tool 条目。
   - `tool_call{id:'t1'}` → `tool_result{id:'t1', output:'ok'}` → tool 条目 `status: 'done'`、`output: 'ok'`；`isError: true` 时保留。
   - `permission_request{requestId:'p1'}` → permission 条目；`resolvePermission(items,'p1',true)` → `resolved: 'allow'`。
   - `turn_end` → 所有 assistant 条目 `streaming: false`；`error` → error 条目；`user_message` → user 条目。
   - 入参数组在调用后保持不变。
-- [ ] **Step 2: 运行确认失败。**
-- [ ] **Step 3: 实现**
+- [x] **Step 2: 运行确认失败。**
+- [x] **Step 3: 实现**
   - `vite.config.ts`：react、tailwind 插件；`server.host '127.0.0.1'`、`port 5173`、`proxy` 把 `/api`、`/auth`、`/ws`（`ws: true`）转发到 `http://127.0.0.1:4317`。
   - `styles.css`：`@import "tailwindcss"`；`@theme` 定义 ui-layout 第 0 节的颜色变量（含 `border-strong`）与字体；引入 fontsource。
-  - `ws.ts`：断线后按 1、2、4、8、15 秒（上限 15 秒）重连；状态 `connecting | open | closed`。
+  - `ws.ts`：用 `partysocket` 重连（1、2、4、8 秒……上限 15 秒）；状态 `connecting | open | closed`。
   - 界面按设计文档第 11 节；所有图标按钮有 `aria-label`；消息区 `aria-live="polite"`；工作区表单错误显示在对应字段下方。
-- [ ] **Step 4: 运行确认通过** `npm test`、`npm run typecheck`、`npm run build -w @ssh-server/web`；`npm run dev` 后用浏览器打开打印的访问地址，页面显示工作区列表，控制台无报错。
-- [ ] **Step 5: 提交** `feat(web): 实现工作区与对话界面（M1）`
+- [x] **Step 4: 运行确认通过** `npm test`、`npm run typecheck`（已加入 web）、`npm run build -w @ssh-server/web`；`npm run dev` 后用浏览器打开打印的访问地址，页面显示工作区列表，控制台无报错。（内置浏览器不可用，改用 playwright-core + 本机 Edge，见开发环境文档 4.6）
+- [x] **Step 5: 提交** `feat(web): 实现工作区与对话界面（M1）`
 
 ---
 

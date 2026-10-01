@@ -1,0 +1,49 @@
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import 'tailwindcss';
+@import 'streamdown/styles.css';
+
+/* streamdown 组件里的类名需要被 Tailwind 扫描到（路径相对本文件，指向仓库根目录的 node_modules） */
+@source '../../../node_modules/streamdown/dist/*.js';
+
+/* 视觉规范见 docs/product/ui-layout.md 第 0 节；destructive-foreground 用于卡片上的错误文字（对 card 约 5.6:1） */
+@theme {
+  --color-background: #0f172a;
+  --color-card: #1b2336;
+  --color-muted: #272f42;
+  --color-muted-foreground: #94a3b8;
+  --color-foreground: #f8fafc;
+  --color-border: #475569;
+  --color-border-strong: #6b7a90;
+  --color-accent: #22c55e;
+  --color-accent-foreground: #052e16;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #fca5a5;
+
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-accent;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

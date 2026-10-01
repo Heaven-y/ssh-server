@@ -124,3 +124,12 @@ skills-lock.json              # 记录每个 skill 的来源和内容哈希
 ### 4.6 webapp-testing 依赖未安装
 
 - webapp-testing 需要 Python 版 Playwright（`pip install playwright` 并安装浏览器），开始写端到端测试时再安装，并在本文档补充步骤。
+- M1 前端验收暂用会话临时目录中的 `playwright-core` 驱动本机 Edge（`executablePath` 指向 `msedge.exe`，不下载浏览器、不进仓库）。PI-Desktop 内置浏览器面板不可用时用这种方式。
+
+### 4.7 Bash 工具结束时会结束后台进程
+
+- 在一次命令里用 `Start-Process` 启动的后端和 Vite，会在该命令返回后被结束。需要先启动服务再验收时，把启动、验收、`Stop-Process` 写在同一条命令里（用 `try/finally` 保证关闭）。
+
+### 4.8 前端打包体积
+
+- `vite build` 提示主包约 890 kB（gzip 约 270 kB，主要来自 streamdown 的 Markdown 解析）。本机使用影响很小，暂不拆包；后续引入代码高亮等再评估按需加载。
