@@ -3,8 +3,14 @@ import { mkdir, readFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createSessionRegistry } from './chat/registry';
+import { TurnManager } from './chat/turn-manager';
 import { loadConfig } from './config';
 import { buildApp } from './http/app';
+import { registerInternalRoutes } from './http/internal.routes';
+import { registerSessionRoutes } from './http/sessions.routes';
+import { registerWsRoutes } from './http/ws.routes';
+import { createSshPool } from './ssh/pool';
 import { listHosts, parseSshConfig } from './ssh/ssh-config';
 import { createWorkspaceStore } from './workspaces/store';
 
@@ -21,8 +27,10 @@ async function listSshHosts() {
   return listHosts(parseSshConfig(text, home));
 }
 
+const hostForUrl = (host: string) => (host === '::1' ? '[::1]' : '127.0.0.1');
+
 function accessUrl(host: string, port: number, token: string, devOrigin?: string): string {
-  const base = devOrigin ?? `http://${host === '::1' ? '[::1]' : '127.0.0.1'}:${port}`;
+  const base = devOrigin ?? `http://${hostForUrl(host)}:${port}`;
   return `${base}/auth?token=${encodeURIComponent(token)}`;
 }
 
@@ -35,6 +43,14 @@ async function main(): Promise<void> {
     dirExists,
     knownHosts: async () => (await listSshHosts()).map((h) => h.alias),
   });
+  const pool = createSshPool();
+  const registry = createSessionRegistry();
+  let port = config.port;
+  const turns = new TurnManager({
+    getWorkspace: (id) => store.get(id),
+    registry,
+    internalUrl: () => `http://${hostForUrl(config.host)}:${port}`,
+  });
 
   const app = await buildApp({
     token: config.token,
@@ -43,15 +59,21 @@ async function main(): Promise<void> {
     store,
     listSshHosts,
     webDir: WEB_DIST,
+    routes: (a) => {
+      registerInternalRoutes(a, { registry, getWorkspace: (id) => store.get(id), pool });
+      registerSessionRoutes(a, { store });
+      registerWsRoutes(a, { turns });
+    },
   });
 
   await app.listen({ host: config.host, port: config.port });
   const addr = app.server.address();
-  const port = addr && typeof addr === 'object' ? addr.port : config.port;
+  port = addr && typeof addr === 'object' ? addr.port : config.port;
   console.log(`ssh-server 已启动，只监听 ${config.host}:${port}`);
   console.log(`访问地址：${accessUrl(config.host, port, config.token, config.devOrigin)}`);
 
   const shutdown = () => {
+    pool.dispose();
     app.close().finally(() => process.exit(0));
   };
   process.once('SIGINT', shutdown);
