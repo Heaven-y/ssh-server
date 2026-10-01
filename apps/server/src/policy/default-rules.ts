@@ -86,8 +86,7 @@ export const DEFAULT_RULES: Rule[] = [
   {
     id: 'dd-device',
     reason: '禁止用 dd 写入设备文件',
-    match: ([p, ...args]) =>
-      base(p!) === 'dd' && args.some((a) => a.startsWith('of=/dev/') && a !== 'of=/dev/null'),
+    match: ([p, ...args]) => base(p!) === 'dd' && args.some((a) => a.startsWith('of=/dev/') && a !== 'of=/dev/null'),
   },
   {
     id: 'power',

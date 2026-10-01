@@ -29,7 +29,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   registerSecurity(app, { token: deps.token, port: deps.port, devOrigin: deps.devOrigin });
   registerAuthRoute(app, deps.token);
-  registerWorkspaceRoutes(app, { store: deps.store, listSshHosts: deps.listSshHosts });
+  registerWorkspaceRoutes(app, { store: deps.store, listSshHosts: () => deps.listSshHosts() });
   await deps.routes?.(app);
 
   if (deps.webDir && existsSync(deps.webDir)) {

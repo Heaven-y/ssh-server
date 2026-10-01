@@ -13,7 +13,10 @@ if (!alias) {
 
 const pool = createSshPool();
 try {
-  const r = await pool.exec(alias, buildRemoteCommand('~', 'hostname', 30), { localTimeoutMs: 60_000, outputCap: OUTPUT_CAP_BYTES });
+  const r = await pool.exec(alias, buildRemoteCommand('~', 'hostname', 30), {
+    localTimeoutMs: 60_000,
+    outputCap: OUTPUT_CAP_BYTES,
+  });
   const name = r.stdout.trim();
   const digest = createHash('sha256').update(name).digest('hex').slice(0, 8);
   console.log(`退出码：${r.exitCode}，耗时 ${r.durationMs} ms，主机名长度 ${name.length}，sha256 前缀 ${digest}`);

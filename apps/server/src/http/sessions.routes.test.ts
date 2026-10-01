@@ -16,8 +16,22 @@ function setup() {
   const api: SessionsApi = {
     list: vi.fn(async () => [{ sessionId: 's1', summary: '调参', lastModified: 100, fileSize: 9 }]),
     messages: vi.fn(async () => [
-      { type: 'user', uuid: 'u1', session_id: 's1', message: { role: 'user', content: '你好' }, parent_tool_use_id: null, parent_agent_id: null },
-      { type: 'assistant', uuid: 'a1', session_id: 's1', message: { id: 'm1', content: [{ type: 'text', text: '在' }] }, parent_tool_use_id: null, parent_agent_id: null },
+      {
+        type: 'user',
+        uuid: 'u1',
+        session_id: 's1',
+        message: { role: 'user', content: '你好' },
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        session_id: 's1',
+        message: { id: 'm1', content: [{ type: 'text', text: '在' }] },
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+      },
     ]),
   };
   const app = Fastify();

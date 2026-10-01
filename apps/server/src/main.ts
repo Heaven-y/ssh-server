@@ -17,7 +17,10 @@ import { createWorkspaceStore } from './workspaces/store';
 const WEB_DIST = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
 async function dirExists(p: string): Promise<boolean> {
-  return stat(p).then((s) => s.isDirectory(), () => false);
+  return stat(p).then(
+    (s) => s.isDirectory(),
+    () => false,
+  );
 }
 
 /** 每次调用都重新读取 ~/.ssh/config，用户修改后无需重启 */
@@ -74,7 +77,7 @@ async function main(): Promise<void> {
 
   const shutdown = () => {
     pool.dispose();
-    app.close().finally(() => process.exit(0));
+    void app.close().finally(() => process.exit(0));
   };
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);

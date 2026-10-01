@@ -51,32 +51,41 @@ export function registerSecurity(app: FastifyInstance, opts: SecurityOptions): v
     return set;
   };
 
+  const isLoopbackHost = (host: string | undefined) => {
+    const hostname = hostnameOf(host);
+    return !!hostname && (LOOPBACK_HOSTNAMES.has(hostname) || hostname === devHostname);
+  };
+
+  /** 修改类请求与 WebSocket 必须带允许的 Origin；/internal 只给本机 MCP 子进程调用，由路由自己校验会话令牌 */
+  const originRejected = (req: FastifyRequest, path: string) => {
+    if (path.startsWith('/internal/')) return false;
+    const isUpgrade = req.headers.upgrade?.toLowerCase() === 'websocket';
+    const isRead = req.method === 'GET' || req.method === 'HEAD';
+    if (!isUpgrade && isRead) return false;
+    const origin = req.headers.origin;
+    return !origin || !allowedOrigins().has(origin);
+  };
+
+  /** /api 与 /ws 需要有效的登录 Cookie */
+  const loginRejected = (req: FastifyRequest, path: string) => {
+    if (!path.startsWith('/api/') && path !== '/ws') return false;
+    const value = readCookie(req.headers.cookie, SESSION_COOKIE);
+    return !value || !safeEqual(value, opts.token);
+  };
+
   app.addHook('onRequest', async (req, reply) => {
     // 1. Host 必须是本机地址：挡住 DNS 重绑定
-    const hostname = hostnameOf(req.headers.host);
-    if (!hostname || !(LOOPBACK_HOSTNAMES.has(hostname) || hostname === devHostname)) {
+    if (!isLoopbackHost(req.headers.host)) {
       return reply.code(403).send({ message: '拒绝访问：Host 不是本机地址' });
     }
-
     const path = pathOf(req);
-    const isInternal = path.startsWith('/internal/');
-    const isUpgrade = req.headers.upgrade?.toLowerCase() === 'websocket';
-
-    // 2. 修改类请求与 WebSocket 必须来自本工具的页面：挡住其他网页借浏览器发请求
-    //    /internal 只给本机的 MCP 子进程调用，不带 Origin，由路由自己校验会话令牌
-    if (!isInternal && (isUpgrade || (req.method !== 'GET' && req.method !== 'HEAD'))) {
-      const origin = req.headers.origin;
-      if (!origin || !allowedOrigins().has(origin)) {
-        return reply.code(403).send({ message: '拒绝访问：请求来源不被允许' });
-      }
+    // 2. 挡住其他网页借浏览器发请求
+    if (originRejected(req, path)) {
+      return reply.code(403).send({ message: '拒绝访问：请求来源不被允许' });
     }
-
-    // 3. /api 与 /ws 需要登录 Cookie
-    if (path.startsWith('/api/') || path === '/ws') {
-      const value = readCookie(req.headers.cookie, SESSION_COOKIE);
-      if (!value || !safeEqual(value, opts.token)) {
-        return reply.code(401).send({ message: '未登录：请使用启动时打印的访问地址打开页面' });
-      }
+    // 3. 登录检查
+    if (loginRejected(req, path)) {
+      return reply.code(401).send({ message: '未登录：请使用启动时打印的访问地址打开页面' });
     }
     return undefined;
   });

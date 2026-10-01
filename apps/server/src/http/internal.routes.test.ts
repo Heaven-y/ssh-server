@@ -6,7 +6,14 @@ import type { ExecResult } from '../ssh/exec';
 import { registerInternalRoutes } from './internal.routes';
 
 const ws: Workspace = { id: 'w1', name: 'demo', localDir: 'D:/w', sshHost: 'my-server', remoteDir: '~/projects/demo' };
-const okResult: ExecResult = { stdout: 'h1\n', stderr: '', exitCode: 0, timedOut: false, truncated: false, durationMs: 3 };
+const okResult: ExecResult = {
+  stdout: 'h1\n',
+  stderr: '',
+  exitCode: 0,
+  timedOut: false,
+  truncated: false,
+  durationMs: 3,
+};
 
 const apps: FastifyInstance[] = [];
 afterEach(async () => {

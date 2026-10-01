@@ -23,8 +23,7 @@ const UNSUPPORTED = new Map([
   ['certificatefile', 'CertificateFile'],
 ]);
 
-const isSection = (l: Line): l is Extract<Line, { config: unknown }> =>
-  l.type === LineType.DIRECTIVE && 'config' in l;
+const isSection = (l: Line): l is Extract<Line, { config: unknown }> => l.type === LineType.DIRECTIVE && 'config' in l;
 
 /** Host 行的模式列表（库对带引号的值已去掉引号） */
 function hostPatterns(l: Line): string[] {

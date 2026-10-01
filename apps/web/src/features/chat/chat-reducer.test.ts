@@ -29,7 +29,15 @@ describe('reduceChat', () => {
       { type: 'tool_result', id: 't1', output: 'ok', isError: true },
     ]);
     expect(items).toEqual([
-      { kind: 'tool', id: 't1', name: 'mcp__ssh-server__remote_exec', input: { command: 'ls' }, output: 'ok', isError: true, status: 'done' },
+      {
+        kind: 'tool',
+        id: 't1',
+        name: 'mcp__ssh-server__remote_exec',
+        input: { command: 'ls' },
+        output: 'ok',
+        isError: true,
+        status: 'done',
+      },
     ]);
   });
 

@@ -28,4 +28,5 @@
 - [x] Task 1–9：workspaces 骨架、共享协议、命令黑名单、ssh config 与 known_hosts、远程执行与连接池、工作区存储、访问控制、远程工具 MCP、Claude 适配器与对话 WebSocket
 - [x] Task 10：前端（工作区、会话、对话界面）；`npm test`、`npm run typecheck`、`npm run build -w @ssh-server/web` 通过，浏览器冒烟检查通过（登录、空状态、表单校验、连接状态、控制台无错误）
 - [x] 复用成熟库：规范写入 [guides/dev-environment.md](guides/dev-environment.md) 1.1、1.2；`ssh-config.ts` 改用 `ssh-config` 库；前端使用 react-query、partysocket、use-stick-to-bottom
+- [x] 工程检查：`npm run check`（类型、ESLint 与复杂度、Prettier、jscpd 重复率、Vitest 覆盖率）与 GitHub Actions；超标的 7 个函数已拆分，补测试后行覆盖 92%（见 [guides/dev-environment.md](guides/dev-environment.md) 1.3）
 - [ ] Task 11：真实服务器验收（`npm run e2e:m1`、浏览器端到端）与文档收尾——需要用户提供可用的 SSH Host

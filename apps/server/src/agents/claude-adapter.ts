@@ -8,7 +8,10 @@ import { isInsideDir } from './edit-scope';
 import { buildInstructions } from './instructions';
 
 /** SDK query 中用到的部分，便于测试注入 */
-export type QueryFn = (params: { prompt: string; options: Options }) => AsyncIterable<unknown> & { interrupt(): Promise<unknown> };
+export type QueryFn = (params: {
+  prompt: string;
+  options: Options;
+}) => AsyncIterable<unknown> & { interrupt(): Promise<unknown> };
 
 export type PermissionAnswer = { allow: boolean; message?: string };
 
@@ -93,7 +96,12 @@ export function runClaudeTurn(input: ClaudeTurnInput): TurnHandle {
     settingSources: ['user', 'project', 'local'],
     systemPrompt: { type: 'preset', preset: 'claude_code', append: buildInstructions(workspace) },
     mcpServers: {
-      [MCP_SERVER_NAME]: { type: 'stdio', command: remoteTools.command, args: remoteTools.args, env: childEnv(input.mcpEnv) },
+      [MCP_SERVER_NAME]: {
+        type: 'stdio',
+        command: remoteTools.command,
+        args: remoteTools.args,
+        env: childEnv(input.mcpEnv),
+      },
     },
     allowedTools: ALLOWED_TOOLS,
     canUseTool,
@@ -103,7 +111,7 @@ export function runClaudeTurn(input: ClaudeTurnInput): TurnHandle {
     ...(input.model ? { model: input.model } : {}),
   } as unknown as Options;
 
-  const queryFn = input.queryFn ?? (sdkQuery as unknown as QueryFn);
+  const queryFn = input.queryFn ?? (sdkQuery as QueryFn);
   const q = queryFn({ prompt: input.text, options });
   let finished = false;
 

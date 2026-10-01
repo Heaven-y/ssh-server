@@ -15,7 +15,12 @@ function Banner() {
     <div role="alert" className="flex items-start gap-2 border-b border-destructive bg-card px-4 py-2 text-sm">
       <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
       <span className="flex-1 text-destructive-foreground">{banner}</span>
-      <button type="button" aria-label="关闭提示" className="text-muted-foreground hover:text-foreground" onClick={dismiss}>
+      <button
+        type="button"
+        aria-label="关闭提示"
+        className="text-muted-foreground hover:text-foreground"
+        onClick={dismiss}
+      >
         <X aria-hidden className="size-4" />
       </button>
     </div>
@@ -66,7 +71,9 @@ function Messages() {
 
   if (loading) return <p className="m-auto text-sm text-muted-foreground">正在加载会话…</p>;
   if (items.length === 0)
-    return <p className="m-auto text-sm text-muted-foreground">发送一条消息开始新会话。Agent 会在服务器目录中执行命令。</p>;
+    return (
+      <p className="m-auto text-sm text-muted-foreground">发送一条消息开始新会话。Agent 会在服务器目录中执行命令。</p>
+    );
 
   return (
     <StickToBottom className="relative min-h-0 flex-1" resize="smooth" initial="instant">

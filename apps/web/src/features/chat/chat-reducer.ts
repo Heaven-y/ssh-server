@@ -5,8 +5,23 @@ export type ChatItem =
   | { kind: 'user'; id: string; text: string }
   | { kind: 'assistant'; id: string; text: string; streaming: boolean }
   | { kind: 'reasoning'; id: string; text: string }
-  | { kind: 'tool'; id: string; name: string; input: unknown; output?: string; isError?: boolean; status: 'running' | 'done' }
-  | { kind: 'permission'; id: string; toolName: string; input: unknown; description?: string; resolved?: 'allow' | 'deny' }
+  | {
+      kind: 'tool';
+      id: string;
+      name: string;
+      input: unknown;
+      output?: string;
+      isError?: boolean;
+      status: 'running' | 'done';
+    }
+  | {
+      kind: 'permission';
+      id: string;
+      toolName: string;
+      input: unknown;
+      description?: string;
+      resolved?: 'allow' | 'deny';
+    }
   | { kind: 'error'; id: string; message: string };
 
 /** 条目只会追加，用位置生成 id 即可保证唯一且稳定（用作 React key） */

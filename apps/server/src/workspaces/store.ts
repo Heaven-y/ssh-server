@@ -51,7 +51,9 @@ export function createWorkspaceStore(deps: WorkspaceStoreDeps): WorkspaceStore {
     try {
       const data: unknown = JSON.parse(text);
       if (!Array.isArray(data)) throw new Error('不是数组');
-      return data.filter((w): w is Workspace => typeof w === 'object' && w !== null && typeof w.id === 'string');
+      return data.filter(
+        (w): w is Workspace => typeof w === 'object' && w !== null && typeof (w as { id?: unknown }).id === 'string',
+      );
     } catch {
       // 文件损坏：备份后从空列表开始
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -97,7 +99,7 @@ export function createWorkspaceStore(deps: WorkspaceStoreDeps): WorkspaceStore {
         const list = await load();
         const idx = list.findIndex((w) => w.id === id);
         if (idx === -1) return undefined;
-        const { id: _keep, ...current } = list[idx]!;
+        const { id: _id, ...current } = list[idx]!;
         const next: Workspace = { ...(await validate({ ...current, ...patch })), id };
         list[idx] = next;
         await save(list);

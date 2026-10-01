@@ -40,6 +40,27 @@
 | Markdown 流式渲染 | `streamdown` | 处理未闭合的 Markdown |
 | 前端全局状态 | `zustand` | — |
 | 图标、字体 | `lucide-react`、fontsource | — |
+| 代码检查与复杂度 | ESLint、typescript-eslint、`eslint-plugin-sonarjs`（LGPL，仅开发时使用） | 见 1.3 |
+| 格式 | Prettier | — |
+| 重复率 | jscpd | — |
+| 覆盖率 | `@vitest/coverage-v8` | 与 Vitest 同版本 |
+
+### 1.3 质量检查
+
+提交前执行 `npm run check`，CI（`.github/workflows/check.yml`，Windows 与 Linux）运行同一命令。它依次执行：
+
+| 步骤 | 命令 | 门槛 |
+|---|---|---|
+| 类型检查 | `npm run typecheck` | shared、server、web、scripts 全部通过 |
+| 代码检查 | `npm run lint` | 0 error。圈复杂度 ≤ 10（`complexity`），认知复杂度 ≤ 15（`sonarjs/cognitive-complexity`），嵌套深度 ≤ 4，参数 ≤ 4 |
+| 格式 | `npm run format:check` | Prettier 无差异；修复用 `npm run format`。Markdown 不自动排版 |
+| 重复率 | `npm run dup` | ≤ 3%（50 个 token 以上算重复，不统计测试文件） |
+| 测试与覆盖率 | `npm run coverage` | 全局行 / 语句 / 函数 ≥ 85%，分支 ≥ 75%；`policy/` 与 `http/security.ts` 行 ≥ 95%；`packages/shared` ≥ 90% |
+
+- 覆盖率不统计：进程入口（`main.ts`）、需要真实 SSH 的 `ssh/pool.ts`、界面组件（`.tsx`，M1 由浏览器冒烟检查覆盖，组件测试在 M6 引入）、`lib/ws.ts`（逻辑由 partysocket 提供，状态处理在 `chat-store.test.ts` 中测试）。排除项写在根目录 `vitest.config.ts`，新增排除要写明原因。
+- 超过门槛时先拆分函数、补测试；确实需要例外时用行内 `// eslint-disable-next-line <规则> -- 原因`，不放宽全局门槛。
+- 报告输出到 `coverage/`（已忽略），打开 `coverage/index.html` 查看未覆盖的行。
+- 当前结果（2026-10-01）：226 个测试，行覆盖 92.2%，分支 82.3%，重复 0%。
 
 ## 2. 项目 skill
 
@@ -138,3 +159,8 @@ skills-lock.json              # 记录每个 skill 的来源和内容哈希
 ### 4.8 前端打包体积
 
 - `vite build` 提示主包约 890 kB（gzip 约 270 kB，主要来自 streamdown 的 Markdown 解析）。本机使用影响很小，暂不拆包；后续引入代码高亮等再评估按需加载。
+
+### 4.9 jscpd 只报告精确重复
+
+- jscpd 按 token 序列匹配：整段复制会被发现（自检：复制 `shell.ts` 后报 23% 重复并失败），但改了类名或几行代码的"近似重复"不一定能发现。它只是底线检查，代码评审时仍要留意相似逻辑。
+- 在 PowerShell 中 `npx jscpd` 会把 "Using config" 提示写到 stderr，不影响退出码；以 `$LASTEXITCODE` 判断结果。

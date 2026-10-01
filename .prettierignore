@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+package-lock.json
+.agents/
+.claude/
+.pi/
+# 文档不自动排版：中文表格、示例代码块的手工格式要保留
+*.md

@@ -12,7 +12,11 @@ export function PermissionCard({ item }: { item: PermissionItem }) {
   const name = shortToolName(item.toolName);
 
   return (
-    <div role="group" aria-label={`权限请求：${name}`} className="rounded-md border border-border-strong bg-card p-3 text-sm">
+    <div
+      role="group"
+      aria-label={`权限请求：${name}`}
+      className="rounded-md border border-border-strong bg-card p-3 text-sm"
+    >
       <div className="flex items-center gap-2 font-medium">
         <ShieldAlert aria-hidden className="size-4 text-accent" />
         需要确认：{name}

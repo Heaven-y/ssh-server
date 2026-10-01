@@ -59,7 +59,8 @@ export class TurnManager {
   private async start(socket: Socket, msg: Extract<ClientMessage, { type: 'chat.send' }>): Promise<void> {
     const ws = await this.deps.getWorkspace(msg.workspaceId);
     if (!ws) return this.send(socket, { type: 'error', message: '工作区不存在' });
-    if (msg.sessionId && this.sessions.has(msg.sessionId)) return this.send(socket, { type: 'error', message: '该会话正在运行' });
+    if (msg.sessionId && this.sessions.has(msg.sessionId))
+      return this.send(socket, { type: 'error', message: '该会话正在运行' });
 
     const turn: Turn = { id: randomUUID(), socket, sessionId: msg.sessionId };
     this.turns.set(turn.id, turn);

@@ -49,7 +49,8 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
   }
 
   async function loadKey(host: SshHostConfig): Promise<Buffer> {
-    const candidates = host.identityFiles.length > 0 ? host.identityFiles : DEFAULT_KEYS.map((k) => path.join(sshDir, k));
+    const candidates =
+      host.identityFiles.length > 0 ? host.identityFiles : DEFAULT_KEYS.map((k) => path.join(sshDir, k));
     for (const file of candidates) {
       try {
         return await readFile(file);
@@ -64,7 +65,9 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
     const host = await loadHost(alias);
     const [privateKey, knownHosts] = await Promise.all([
       loadKey(host),
-      readFile(path.join(sshDir, 'known_hosts')).then((b) => b.toString('utf8')).catch(() => ''),
+      readFile(path.join(sshDir, 'known_hosts'))
+        .then((b) => b.toString('utf8'))
+        .catch(() => ''),
     ]);
 
     const client = new ssh2.Client();
@@ -77,7 +80,9 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
     const pending = new Promise<Ssh2Client>((resolve, reject) => {
       client.once('ready', () => resolve(client));
       client.once('error', (e: Error) => {
-        reject(new Error(check && check !== 'match' ? hostKeyError(alias, check) : `SSH 连接 ${alias} 失败：${e.message}`));
+        reject(
+          new Error(check && check !== 'match' ? hostKeyError(alias, check) : `SSH 连接 ${alias} 失败：${e.message}`),
+        );
       });
       // 只协商 known_hosts 中已登记的密钥类型（与 OpenSSH 一致），否则服务器可能出示未登记的类型而被判为未知
       const preferred = hostKeyAlgorithms(knownHostKeyTypes(knownHosts, host.hostname, host.port));
@@ -116,7 +121,7 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
       const client = await getClient(alias);
       const open = (c: string) =>
         new Promise<ChannelLike>((resolve, reject) => {
-          client.exec(c, (err: Error | undefined, ch: ClientChannel) => (err ? reject(err) : resolve(ch as unknown as ChannelLike)));
+          client.exec(c, (err: Error | undefined, ch: ClientChannel) => (err ? reject(err) : resolve(ch)));
         });
       return runExec(open, cmd, opts);
     },

@@ -48,7 +48,9 @@ describe('createWorkspaceStore', () => {
   });
 
   it('相对路径的本地文件夹报错', async () => {
-    await expect(make().create({ ...input(), localDir: 'relative/dir' })).rejects.toBeInstanceOf(WorkspaceValidationError);
+    await expect(make().create({ ...input(), localDir: 'relative/dir' })).rejects.toBeInstanceOf(
+      WorkspaceValidationError,
+    );
   });
 
   it('SSH Host 不在 ~/.ssh/config 中时报 sshHost 字段错误', async () => {

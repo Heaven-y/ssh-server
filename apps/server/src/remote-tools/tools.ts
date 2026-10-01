@@ -39,7 +39,8 @@ export function createRemoteToolsServer(opts: RemoteToolsOptions): McpServer {
         body: JSON.stringify(body),
       });
       const data = (await res.json()) as BackendReply & { message?: string };
-      if (!res.ok) return { content: [{ type: 'text', text: `后端返回 ${res.status}：${data.message ?? ''}` }], isError: true };
+      if (!res.ok)
+        return { content: [{ type: 'text', text: `后端返回 ${res.status}：${data.message ?? ''}` }], isError: true };
       return toToolResult(data);
     } catch (e) {
       return { content: [{ type: 'text', text: `无法连接本地后端：${(e as Error).message}` }], isError: true };

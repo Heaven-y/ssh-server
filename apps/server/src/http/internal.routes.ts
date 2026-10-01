@@ -62,7 +62,10 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
     const body = ExecBody.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ message: '参数不合法：需要 command' });
 
-    const decision = checkCommand(body.data.command, { remoteRoot: ws.remoteDir, disabledRules: ws.policy?.disabledRules });
+    const decision = checkCommand(body.data.command, {
+      remoteRoot: ws.remoteDir,
+      disabledRules: ws.policy?.disabledRules,
+    });
     if (!decision.allowed) return { denied: { ruleId: decision.ruleId, reason: decision.reason } };
 
     const timeoutSec = Math.min(body.data.timeoutSec ?? EXEC_DEFAULT_TIMEOUT_SEC, EXEC_MAX_TIMEOUT_SEC);

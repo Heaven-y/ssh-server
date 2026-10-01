@@ -35,6 +35,19 @@ describe('checkCommand 拒绝危险命令', () => {
     ['rm ~/.ssh/authorized_keys', 'authorized-keys'],
     [':(){ :|:& };:', 'fork-bomb'],
     ['crontab -r', 'crontab-remove'],
+    // 包装命令带选项、带值时仍能找到真正执行的程序
+    ['nice -n 10 sudo ls', 'privilege'],
+    ['timeout -s KILL 30 sudo ls', 'privilege'],
+    ['timeout 5 rm -rf /', 'rm-dangerous'],
+    ['env -i PATH=/bin sudo ls', 'privilege'],
+    ['/usr/bin/nohup /usr/bin/sudo ls', 'privilege'],
+    ['nohup nice -n 5 sudo ls', 'privilege'],
+    // 续行、换行、嵌套与 eval
+    ['rm -rf \\\n/', 'rm-dangerous'],
+    ['echo ok\nsudo ls', 'privilege'],
+    ['eval sudo ls', 'privilege'],
+    ['bash -c "bash -c \\"sudo ls\\""', 'privilege'],
+    ['echo `sudo whoami`', 'privilege'],
   ];
 
   it.each(cases)('%s → %s', (command, ruleId) => {

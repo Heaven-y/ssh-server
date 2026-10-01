@@ -3,7 +3,13 @@ import { buildInstructions } from './instructions';
 
 describe('buildInstructions', () => {
   it('包含服务器、目录、远程工具用法和"尚未同步"的提醒', () => {
-    const text = buildInstructions({ id: 'w1', name: 'demo', localDir: 'D:/w', sshHost: 'my-server', remoteDir: '~/projects/demo' });
+    const text = buildInstructions({
+      id: 'w1',
+      name: 'demo',
+      localDir: 'D:/w',
+      sshHost: 'my-server',
+      remoteDir: '~/projects/demo',
+    });
     expect(text).toContain('my-server');
     expect(text).toContain('~/projects/demo');
     expect(text).toContain('remote_exec');

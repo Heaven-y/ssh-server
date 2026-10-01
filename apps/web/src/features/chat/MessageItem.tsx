@@ -33,7 +33,10 @@ export const MessageItem = memo(function MessageItem({ item }: { item: ChatItem 
       return <PermissionCard item={item} />;
     case 'error':
       return (
-        <div role="alert" className="flex items-start gap-2 rounded-md border border-destructive bg-card px-3 py-2 text-sm">
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-md border border-destructive bg-card px-3 py-2 text-sm"
+        >
           <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
           <span className="text-destructive-foreground">{item.message}</span>
         </div>

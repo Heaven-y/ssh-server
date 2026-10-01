@@ -16,12 +16,19 @@ function validate(values: Record<Field, string>): Errors {
   const errors: Errors = {};
   for (const issue of r.error.issues) {
     const field = issue.path[0] as Field;
-    errors[field] ??= field === 'name' ? '请填写名称（不超过 100 字）' : issue.message.startsWith('Too small') ? '必填' : issue.message;
+    errors[field] ??=
+      field === 'name' ? '请填写名称（不超过 100 字）' : issue.message.startsWith('Too small') ? '必填' : issue.message;
   }
   return errors;
 }
 
-function FormField(props: { id: string; label: string; error?: string; hint?: string; children: (a: { describedBy?: string }) => ReactNode }) {
+function FormField(props: {
+  id: string;
+  label: string;
+  error?: string;
+  hint?: string;
+  children: (a: { describedBy?: string }) => ReactNode;
+}) {
   const errId = `${props.id}-err`;
   const hintId = `${props.id}-hint`;
   const describedBy = [props.error && errId, props.hint && hintId].filter(Boolean).join(' ') || undefined;
@@ -87,24 +94,45 @@ export function WorkspaceForm({ onCreated, onCancel }: { onCreated(ws: Workspace
   });
 
   return (
-    <form noValidate onSubmit={submit} aria-label="新建工作区" className="flex flex-col gap-3 rounded-md border border-border p-3">
+    <form
+      noValidate
+      onSubmit={submit}
+      aria-label="新建工作区"
+      className="flex flex-col gap-3 rounded-md border border-border p-3"
+    >
       <FormField id={`${id}-name`} label="名称" error={errors.name}>
         {({ describedBy }) => <input {...field('name')} aria-describedby={describedBy} autoComplete="off" />}
       </FormField>
 
-      <FormField id={`${id}-localDir`} label="本地文件夹" error={errors.localDir} hint="已存在的绝对路径，如 E:\projects\demo">
-        {({ describedBy }) => <input {...field('localDir')} aria-describedby={describedBy} className={`${inputClass} font-mono`} spellCheck={false} />}
+      <FormField
+        id={`${id}-localDir`}
+        label="本地文件夹"
+        error={errors.localDir}
+        hint="已存在的绝对路径，如 E:\projects\demo"
+      >
+        {({ describedBy }) => (
+          <input
+            {...field('localDir')}
+            aria-describedby={describedBy}
+            className={`${inputClass} font-mono`}
+            spellCheck={false}
+          />
+        )}
       </FormField>
 
       <FormField
         id={`${id}-sshHost`}
         label="服务器（~/.ssh/config 中的 Host）"
         error={errors.sshHost ?? (hosts.isError ? hosts.error.message : undefined)}
-        hint={selected?.unsupported.length ? `该 Host 使用了暂不支持的选项：${selected.unsupported.join('、')}` : undefined}
+        hint={
+          selected?.unsupported.length ? `该 Host 使用了暂不支持的选项：${selected.unsupported.join('、')}` : undefined
+        }
       >
         {({ describedBy }) => (
           <select {...field('sshHost')} aria-describedby={describedBy} disabled={hosts.isPending}>
-            <option value="">{hosts.isPending ? '正在读取…' : hosts.data?.length ? '请选择' : '没有可用的 Host'}</option>
+            <option value="">
+              {hosts.isPending ? '正在读取…' : hosts.data?.length ? '请选择' : '没有可用的 Host'}
+            </option>
             {hosts.data?.map((h) => (
               <option key={h.alias} value={h.alias}>
                 {h.alias}
@@ -115,7 +143,14 @@ export function WorkspaceForm({ onCreated, onCancel }: { onCreated(ws: Workspace
       </FormField>
 
       <FormField id={`${id}-remoteDir`} label="服务器目录" error={errors.remoteDir} hint="以 / 或 ~ 开头">
-        {({ describedBy }) => <input {...field('remoteDir')} aria-describedby={describedBy} className={`${inputClass} font-mono`} spellCheck={false} />}
+        {({ describedBy }) => (
+          <input
+            {...field('remoteDir')}
+            aria-describedby={describedBy}
+            className={`${inputClass} font-mono`}
+            spellCheck={false}
+          />
+        )}
       </FormField>
 
       {errors.form && (

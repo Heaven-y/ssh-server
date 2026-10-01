@@ -44,6 +44,10 @@
 - rclone（同步用，开发到对应阶段时说明安装方式）
 - `~/.ssh/config` 中已配置好服务器，且可以用密钥免密登录
 
+## 开发检查
+
+提交前运行 `npm run check`：类型检查、ESLint（含圈复杂度）、Prettier、重复率、测试与覆盖率。门槛见 [docs/guides/dev-environment.md](docs/guides/dev-environment.md) 1.3。
+
 ## 安全说明
 
 - 后端只监听 `127.0.0.1`，并校验访问令牌和请求来源，不要把端口暴露到局域网或公网。

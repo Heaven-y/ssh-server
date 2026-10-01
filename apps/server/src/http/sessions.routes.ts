@@ -27,12 +27,15 @@ export function registerSessionRoutes(app: FastifyInstance, deps: { store: Works
     return sessions.map((s) => ({ sessionId: s.sessionId, summary: s.summary, lastModified: s.lastModified }));
   });
 
-  app.get<{ Params: { id: string; sessionId: string } }>('/api/workspaces/:id/sessions/:sessionId/events', async (req, reply) => {
-    if (!SESSION_ID.test(req.params.sessionId)) return reply.code(400).send({ message: '会话 id 不合法' });
-    const ws = await deps.store.get(req.params.id);
-    if (!ws) return reply.code(404).send({ message: '工作区不存在' });
-    const mapper = new ClaudeEventMapper();
-    const messages = await api.messages(req.params.sessionId, ws.localDir);
-    return messages.flatMap((m) => mapper.mapHistory(m));
-  });
+  app.get<{ Params: { id: string; sessionId: string } }>(
+    '/api/workspaces/:id/sessions/:sessionId/events',
+    async (req, reply) => {
+      if (!SESSION_ID.test(req.params.sessionId)) return reply.code(400).send({ message: '会话 id 不合法' });
+      const ws = await deps.store.get(req.params.id);
+      if (!ws) return reply.code(404).send({ message: '工作区不存在' });
+      const mapper = new ClaudeEventMapper();
+      const messages = await api.messages(req.params.sessionId, ws.localDir);
+      return messages.flatMap((m) => mapper.mapHistory(m));
+    },
+  );
 }

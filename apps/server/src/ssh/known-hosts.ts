@@ -25,7 +25,12 @@ function hostName(host: string, port: number): string {
 }
 
 function wildcardMatch(pattern: string, name: string): boolean {
-  const re = new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`);
+  const re = new RegExp(
+    `^${pattern
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*')
+      .replace(/\?/g, '.')}$`,
+  );
   return re.test(name);
 }
 

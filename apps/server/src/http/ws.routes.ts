@@ -5,6 +5,12 @@ import type { Socket, TurnManager } from '../chat/turn-manager';
 
 const WS_OPEN = 1;
 
+/** ws 的消息可能是 Buffer、ArrayBuffer 或分片数组 */
+function rawText(data: Buffer | ArrayBuffer | Buffer[]): string {
+  if (Array.isArray(data)) return Buffer.concat(data).toString('utf8');
+  return Buffer.from(data as ArrayBuffer).toString('utf8');
+}
+
 export function registerWsRoutes(app: FastifyInstance, deps: { turns: TurnManager }): void {
   app.get('/ws', { websocket: true }, (ws) => {
     const socket: Socket = {
@@ -15,7 +21,7 @@ export function registerWsRoutes(app: FastifyInstance, deps: { turns: TurnManage
     ws.on('message', (data) => {
       let parsed: unknown;
       try {
-        parsed = JSON.parse(String(data));
+        parsed = JSON.parse(rawText(data));
       } catch {
         socket.send({ type: 'error', message: '消息不是合法的 JSON' });
         return;

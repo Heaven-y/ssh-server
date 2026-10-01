@@ -20,7 +20,7 @@ describe('buildRemoteCommand', () => {
   });
 
   it('目录为 ~ 时直接进入家目录', () => {
-    expect(buildRemoteCommand('~', 'pwd', 60)).toBe("cd \"$HOME\" && exec timeout 60 bash -lc 'pwd'");
+    expect(buildRemoteCommand('~', 'pwd', 60)).toBe('cd "$HOME" && exec timeout 60 bash -lc \'pwd\'');
   });
 
   it('命令中的换行原样交给 bash', () => {
@@ -36,7 +36,7 @@ describe('buildRemoteCommand', () => {
 describe('buildPeekCommand', () => {
   it('head 在服务器目录下读取相对路径', () => {
     const cmd = buildPeekCommand('~/p', 'logs/a.txt', 'head', 50);
-    expect(cmd.startsWith("cd \"$HOME\"/'p' && ")).toBe(true);
+    expect(cmd.startsWith('cd "$HOME"/\'p\' && ')).toBe(true);
     expect(cmd).toContain("head -n 50 -- 'logs/a.txt'");
   });
 

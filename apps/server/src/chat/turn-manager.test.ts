@@ -38,7 +38,13 @@ function setup() {
   return { registry, fake, turns };
 }
 
-const send = (extra: Record<string, unknown> = {}) => ({ type: 'chat.send' as const, workspaceId: 'w1', text: 'hi', clientTurnId: 'c1', ...extra });
+const send = (extra: Record<string, unknown> = {}) => ({
+  type: 'chat.send' as const,
+  workspaceId: 'w1',
+  text: 'hi',
+  clientTurnId: 'c1',
+  ...extra,
+});
 
 describe('TurnManager', () => {
   it('turn.started → agent.event → turn.finished', async () => {
@@ -105,7 +111,11 @@ describe('TurnManager', () => {
     const { fake, turns } = setup();
     const { socket } = fakeSocket();
     await turns.handle(socket, send());
-    const pending = fake.turns[0]!.input.requestPermission({ requestId: 'p1', toolName: 'Bash', input: { command: 'ls' } });
+    const pending = fake.turns[0]!.input.requestPermission({
+      requestId: 'p1',
+      toolName: 'Bash',
+      input: { command: 'ls' },
+    });
     await turns.handle(socket, { type: 'permission.respond', requestId: 'p1', allow: false, message: '不允许' });
     expect(await pending).toEqual({ allow: false, message: '不允许' });
   });

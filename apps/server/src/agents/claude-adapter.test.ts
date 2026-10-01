@@ -2,16 +2,26 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, Workspace } from '@ssh-server/shared';
 import { PERMISSION_TIMEOUT_MS, runClaudeTurn, type QueryFn } from './claude-adapter';
 
-const ws: Workspace = { id: 'w1', name: 'demo', localDir: 'E:\\work\\demo', sshHost: 'my-server', remoteDir: '~/projects/demo' };
+const ws: Workspace = {
+  id: 'w1',
+  name: 'demo',
+  localDir: 'E:\\work\\demo',
+  sshHost: 'my-server',
+  remoteDir: '~/projects/demo',
+};
 const mcpEnv = { SSH_SERVER_INTERNAL_URL: 'http://127.0.0.1:1', SSH_SERVER_SESSION_TOKEN: 'tok' };
 
-type CanUseTool = (name: string, input: Record<string, unknown>, o: { signal: AbortSignal }) => Promise<{ behavior: string; message?: string }>;
+type CanUseTool = (
+  name: string,
+  input: Record<string, unknown>,
+  o: { signal: AbortSignal },
+) => Promise<{ behavior: string; message?: string }>;
 
 function fakeQuery(messages: unknown[] = [], fail?: Error) {
   const state: { options?: Record<string, unknown>; prompt?: unknown; interrupted: boolean } = { interrupted: false };
   const queryFn: QueryFn = ({ prompt, options }) => {
     state.prompt = prompt;
-    state.options = options as Record<string, unknown>;
+    state.options = options;
     async function* gen() {
       for (const m of messages) yield m;
       if (fail) throw fail;
@@ -59,7 +69,14 @@ describe('runClaudeTurn：调用参数', () => {
     expect(mcp.env.SSH_SERVER_INTERNAL_URL).toBe('http://127.0.0.1:1');
     expect(mcp.env.SSH_SERVER_SESSION_TOKEN).toBe('tok');
     expect(mcp.env.PATH ?? mcp.env.Path).toBeTruthy();
-    expect(o.allowedTools).toEqual(['mcp__ssh-server__remote_exec', 'mcp__ssh-server__remote_peek', 'Read', 'Glob', 'Grep', 'TodoWrite']);
+    expect(o.allowedTools).toEqual([
+      'mcp__ssh-server__remote_exec',
+      'mcp__ssh-server__remote_peek',
+      'Read',
+      'Glob',
+      'Grep',
+      'TodoWrite',
+    ]);
     expect(o.includePartialMessages).toBe(true);
     expect('model' in o).toBe(false);
     expect('env' in o).toBe(false);
@@ -76,7 +93,14 @@ describe('runClaudeTurn：调用参数', () => {
 describe('runClaudeTurn：事件', () => {
   it('转发映射后的事件', async () => {
     const fake = fakeQuery([
-      { type: 'system', subtype: 'init', session_id: 's1', model: 'm', cwd: 'E:\\work\\demo', parent_tool_use_id: null },
+      {
+        type: 'system',
+        subtype: 'init',
+        session_id: 's1',
+        model: 'm',
+        cwd: 'E:\\work\\demo',
+        parent_tool_use_id: null,
+      },
       { type: 'result', subtype: 'success', is_error: false, duration_ms: 5, total_cost_usd: 0.01, session_id: 's1' },
     ]);
     const { handle, events } = run(fake);

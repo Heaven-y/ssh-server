@@ -54,7 +54,11 @@ const body: WorkspaceInput = { name: 'demo', localDir: 'D:/w', sshHost: 'my-serv
 describe('访问控制', () => {
   it('Host 不是本机地址时 403', async () => {
     const app = await make();
-    const r = await app.inject({ method: 'GET', url: '/api/workspaces', headers: { host: 'evil.com', cookie: COOKIE } });
+    const r = await app.inject({
+      method: 'GET',
+      url: '/api/workspaces',
+      headers: { host: 'evil.com', cookie: COOKIE },
+    });
     expect(r.statusCode).toBe(403);
   });
 
@@ -107,7 +111,11 @@ describe('访问控制', () => {
     const app = await make();
     const r = await app.inject({ method: 'GET', url: '/internal/ping', headers: { host: HOST, cookie: COOKIE } });
     expect(r.statusCode).toBe(401);
-    const ok = await app.inject({ method: 'GET', url: '/internal/ping', headers: { host: HOST, authorization: 'Bearer internal' } });
+    const ok = await app.inject({
+      method: 'GET',
+      url: '/internal/ping',
+      headers: { host: HOST, authorization: 'Bearer internal' },
+    });
     expect(ok.statusCode).toBe(200);
   });
 });

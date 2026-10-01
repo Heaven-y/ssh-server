@@ -74,7 +74,8 @@ export const useChat = create<ChatState>()((set, get) => ({
       const session = events.find((e) => e.type === 'session');
       set({ items, loadingHistory: false, actualModel: session?.model });
     } catch (e) {
-      if (get().sessionId === sessionId) set({ loadingHistory: false, banner: `加载会话失败：${(e as Error).message}` });
+      if (get().sessionId === sessionId)
+        set({ loadingHistory: false, banner: `加载会话失败：${(e as Error).message}` });
     }
   },
 
@@ -120,37 +121,56 @@ export const useChat = create<ChatState>()((set, get) => ({
   dismissBanner: () => set({ banner: undefined }),
 }));
 
+type Msg<T extends ServerMessage['type']> = Extract<ServerMessage, { type: T }>;
+
+function onTurnStarted(msg: Msg<'turn.started'>): void {
+  if (msg.clientTurnId !== useChat.getState().pendingClientTurnId) return;
+  useChat.setState({ turnId: msg.turnId, pendingClientTurnId: undefined });
+}
+
+function onAgentEvent(msg: Msg<'agent.event'>): void {
+  const s = useChat.getState();
+  if (msg.turnId !== s.turnId) return;
+  const e = msg.event;
+  useChat.setState({
+    items: reduceChat(s.items, e),
+    ...(e.type === 'session' ? { sessionId: e.sessionId, actualModel: e.model } : {}),
+  });
+}
+
+function onTurnFinished(msg: Msg<'turn.finished'>): void {
+  const s = useChat.getState();
+  if (msg.turnId !== s.turnId) return;
+  useChat.setState({
+    running: false,
+    turnId: undefined,
+    items: reduceChat(s.items, { type: 'turn_end', isError: false }),
+  });
+  if (s.workspaceId) void queryClient.invalidateQueries({ queryKey: queryKeys.sessions(s.workspaceId) });
+}
+
+/** 不带 turnId 的错误发生在轮次开始之前（如会话正在运行），此时结束等待状态 */
+function onError(msg: Msg<'error'>): void {
+  const s = useChat.getState();
+  if (msg.turnId) {
+    if (msg.turnId === s.turnId) useChat.setState({ banner: msg.message });
+    return;
+  }
+  if (s.pendingClientTurnId === undefined) return;
+  useChat.setState({ banner: msg.message, running: false, pendingClientTurnId: undefined });
+}
+
 /** 处理后端消息：只接收当前界面这一轮的事件 */
 function handleServerMessage(msg: ServerMessage): void {
-  const s = useChat.getState();
   switch (msg.type) {
     case 'turn.started':
-      if (msg.clientTurnId === s.pendingClientTurnId) useChat.setState({ turnId: msg.turnId, pendingClientTurnId: undefined });
-      return;
-    case 'agent.event': {
-      if (msg.turnId !== s.turnId) return;
-      const e = msg.event;
-      useChat.setState({
-        items: reduceChat(s.items, e),
-        ...(e.type === 'session' ? { sessionId: e.sessionId, actualModel: e.model } : {}),
-      });
-      return;
-    }
+      return onTurnStarted(msg);
+    case 'agent.event':
+      return onAgentEvent(msg);
     case 'turn.finished':
-      if (msg.turnId !== s.turnId) return;
-      useChat.setState({ running: false, turnId: undefined, items: reduceChat(s.items, { type: 'turn_end', isError: false }) });
-      if (s.workspaceId) void queryClient.invalidateQueries({ queryKey: queryKeys.sessions(s.workspaceId) });
-      return;
-    case 'error': {
-      // 不带 turnId 的错误发生在轮次开始之前（如会话正在运行），此时结束等待状态
-      const mine = msg.turnId ? msg.turnId === s.turnId : s.pendingClientTurnId !== undefined;
-      if (!mine) return;
-      useChat.setState({
-        banner: msg.message,
-        ...(msg.turnId ? {} : { running: false, pendingClientTurnId: undefined }),
-      });
-      return;
-    }
+      return onTurnFinished(msg);
+    case 'error':
+      return onError(msg);
   }
 }
 
@@ -168,9 +188,11 @@ function handleStatus(status: ConnectionStatus): void {
   useChat.setState({ connection: status });
 }
 
-/** 应用启动时调用一次 */
-export function startChatConnection(): void {
-  socket ??= connectChat({ onMessage: handleServerMessage, onStatus: handleStatus });
+type Connect = typeof connectChat;
+
+/** 应用启动时调用一次；测试可传入假的连接函数 */
+export function startChatConnection(connect: Connect = connectChat): void {
+  socket ??= connect({ onMessage: handleServerMessage, onStatus: handleStatus });
 }
 
 export const reconnectChat = () => socket?.reconnect();

@@ -4,11 +4,19 @@ import { api, queryKeys } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
 import { useChat } from '../chat/chat-store';
 
-const timeFormat = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+const timeFormat = new Intl.DateTimeFormat('zh-CN', {
+  month: 'numeric',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
 
 /** 当前工作区的 Claude 会话（直接读取 Claude Code 本地保存的会话） */
 export function SessionList({ workspaceId }: { workspaceId: string }) {
-  const sessions = useQuery({ queryKey: queryKeys.sessions(workspaceId), queryFn: () => api.listSessions(workspaceId) });
+  const sessions = useQuery({
+    queryKey: queryKeys.sessions(workspaceId),
+    queryFn: () => api.listSessions(workspaceId),
+  });
   const currentId = useChat((s) => s.sessionId);
   const running = useChat((s) => s.running);
   const openSession = useChat((s) => s.openSession);

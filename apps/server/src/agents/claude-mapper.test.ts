@@ -9,14 +9,26 @@ const assistant = (id: string, content: unknown[], parent: string | null = null)
   parent_tool_use_id: parent,
   session_id: 's1',
 });
-const user = (content: unknown) => ({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: 's1' });
+const user = (content: unknown) => ({
+  type: 'user',
+  message: { role: 'user', content },
+  parent_tool_use_id: null,
+  session_id: 's1',
+});
 
 describe('ClaudeEventMapper.map', () => {
   it('init → session', () => {
     const m = new ClaudeEventMapper();
-    expect(m.map({ type: 'system', subtype: 'init', session_id: 's1', model: 'claude-x', cwd: 'E:\\w', parent_tool_use_id: null })).toEqual([
-      { type: 'session', sessionId: 's1', model: 'claude-x', cwd: 'E:\\w' },
-    ]);
+    expect(
+      m.map({
+        type: 'system',
+        subtype: 'init',
+        session_id: 's1',
+        model: 'claude-x',
+        cwd: 'E:\\w',
+        parent_tool_use_id: null,
+      }),
+    ).toEqual([{ type: 'session', sessionId: 's1', model: 'claude-x', cwd: 'E:\\w' }]);
   });
 
   it('text_delta → text，thinking_delta → reasoning', () => {
@@ -27,8 +39,12 @@ describe('ClaudeEventMapper.map', () => {
 
   it('assistant 中的 tool_use → tool_call', () => {
     const m = new ClaudeEventMapper();
-    const evs = m.map(assistant('m1', [{ type: 'tool_use', id: 't1', name: 'mcp__ssh-server__remote_exec', input: { command: 'ls' } }]));
-    expect(evs).toEqual([{ type: 'tool_call', id: 't1', name: 'mcp__ssh-server__remote_exec', input: { command: 'ls' } }]);
+    const evs = m.map(
+      assistant('m1', [{ type: 'tool_use', id: 't1', name: 'mcp__ssh-server__remote_exec', input: { command: 'ls' } }]),
+    );
+    expect(evs).toEqual([
+      { type: 'tool_call', id: 't1', name: 'mcp__ssh-server__remote_exec', input: { command: 'ls' } },
+    ]);
   });
 
   it('该消息没有收到 text_delta 时，输出 assistant 中的全文', () => {
@@ -46,7 +62,11 @@ describe('ClaudeEventMapper.map', () => {
 
   it('user 中的 tool_result → tool_result，保留 is_error', () => {
     const m = new ClaudeEventMapper();
-    const evs = m.map(user([{ type: 'tool_result', tool_use_id: 't1', content: [{ type: 'text', text: '退出码：0' }], is_error: true }]));
+    const evs = m.map(
+      user([
+        { type: 'tool_result', tool_use_id: 't1', content: [{ type: 'text', text: '退出码：0' }], is_error: true },
+      ]),
+    );
     expect(evs).toEqual([{ type: 'tool_result', id: 't1', output: '退出码：0', isError: true }]);
   });
 
@@ -59,10 +79,18 @@ describe('ClaudeEventMapper.map', () => {
 
   it('result → turn_end', () => {
     const m = new ClaudeEventMapper();
-    expect(m.map({ type: 'result', subtype: 'success', is_error: false, duration_ms: 1200, total_cost_usd: 0.02 })).toEqual([
-      { type: 'turn_end', isError: false, durationMs: 1200, costUsd: 0.02 },
-    ]);
-    expect(m.map({ type: 'result', subtype: 'error_during_execution', is_error: true, duration_ms: 5, total_cost_usd: 0 })[0]).toMatchObject({
+    expect(
+      m.map({ type: 'result', subtype: 'success', is_error: false, duration_ms: 1200, total_cost_usd: 0.02 }),
+    ).toEqual([{ type: 'turn_end', isError: false, durationMs: 1200, costUsd: 0.02 }]);
+    expect(
+      m.map({
+        type: 'result',
+        subtype: 'error_during_execution',
+        is_error: true,
+        duration_ms: 5,
+        total_cost_usd: 0,
+      })[0],
+    ).toMatchObject({
       isError: true,
     });
   });
@@ -77,24 +105,36 @@ describe('ClaudeEventMapper.map', () => {
 describe('ClaudeEventMapper.mapHistory', () => {
   it('用户文本 → user_message（字符串或 text 块）', () => {
     const m = new ClaudeEventMapper();
-    expect(m.mapHistory({ type: 'user', message: { role: 'user', content: '帮我看看' }, parent_tool_use_id: null })).toEqual([
-      { type: 'user_message', text: '帮我看看' },
-    ]);
-    expect(m.mapHistory({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: '第二句' }] }, parent_tool_use_id: null })).toEqual([
-      { type: 'user_message', text: '第二句' },
-    ]);
+    expect(
+      m.mapHistory({ type: 'user', message: { role: 'user', content: '帮我看看' }, parent_tool_use_id: null }),
+    ).toEqual([{ type: 'user_message', text: '帮我看看' }]);
+    expect(
+      m.mapHistory({
+        type: 'user',
+        message: { role: 'user', content: [{ type: 'text', text: '第二句' }] },
+        parent_tool_use_id: null,
+      }),
+    ).toEqual([{ type: 'user_message', text: '第二句' }]);
   });
 
   it('只有 tool_result 的用户消息不产生 user_message', () => {
     const m = new ClaudeEventMapper();
-    const evs = m.mapHistory({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] }, parent_tool_use_id: null });
+    const evs = m.mapHistory({
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] },
+      parent_tool_use_id: null,
+    });
     expect(evs).toEqual([{ type: 'tool_result', id: 't1', output: 'ok', isError: false }]);
   });
 
   it('助手文本总是输出', () => {
     const m = new ClaudeEventMapper();
-    expect(m.mapHistory({ type: 'assistant', message: { id: 'm1', content: [{ type: 'text', text: '答' }] }, parent_tool_use_id: null })).toEqual([
-      { type: 'text', delta: '答' },
-    ]);
+    expect(
+      m.mapHistory({
+        type: 'assistant',
+        message: { id: 'm1', content: [{ type: 'text', text: '答' }] },
+        parent_tool_use_id: null,
+      }),
+    ).toEqual([{ type: 'text', delta: '答' }]);
   });
 });

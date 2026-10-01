@@ -48,7 +48,11 @@ class TailBuffer {
 }
 
 /** open 负责打开通道（发出 exec 请求）；超时从调用时开始计算 */
-export function runExec(open: (cmd: string) => Promise<ChannelLike>, cmd: string, opts: ExecOptions): Promise<ExecResult> {
+export function runExec(
+  open: (cmd: string) => Promise<ChannelLike>,
+  cmd: string,
+  opts: ExecOptions,
+): Promise<ExecResult> {
   const started = Date.now();
   const stdout = new TailBuffer(opts.outputCap);
   const stderr = new TailBuffer(opts.outputCap);
