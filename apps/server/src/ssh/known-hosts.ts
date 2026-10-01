@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 export type HostKeyCheck = 'match' | 'unknown' | 'mismatch' | 'revoked';
 
-type Entry = { marker?: string; hosts: string[]; key: Buffer };
+type Entry = { marker?: string; hosts: string[]; type: string; key: Buffer };
 
 function parseEntries(text: string): Entry[] {
   const out: Entry[] = [];
@@ -12,9 +12,9 @@ function parseEntries(text: string): Entry[] {
     if (line === '' || line.startsWith('#')) continue;
     const parts = line.split(/\s+/);
     const marker = parts[0]!.startsWith('@') ? parts.shift() : undefined;
-    const [hosts, , keyB64] = parts;
-    if (!hosts || !keyB64) continue;
-    out.push({ marker, hosts: hosts.split(','), key: Buffer.from(keyB64, 'base64') });
+    const [hosts, type, keyB64] = parts;
+    if (!hosts || !type || !keyB64) continue;
+    out.push({ marker, hosts: hosts.split(','), type, key: Buffer.from(keyB64, 'base64') });
   }
   return out;
 }
@@ -45,15 +45,60 @@ function entryMatchesHost(e: Entry, name: string): boolean {
   return e.hosts.some((p) => !p.startsWith('!') && hostMatches(p, name));
 }
 
+function entriesFor(text: string, host: string, port: number): Entry[] {
+  const name = hostName(host, port);
+  return parseEntries(text).filter((e) => entryMatchesHost(e, name));
+}
+
+/** 从 SSH 线格式公钥中读出类型（开头是 4 字节长度 + 类型名） */
+function keyType(key: Buffer): string | undefined {
+  if (key.length < 4) return undefined;
+  const len = key.readUInt32BE(0);
+  return len > 0 && 4 + len <= key.length ? key.subarray(4, 4 + len).toString('latin1') : undefined;
+}
+
 const sameKey = (a: Buffer, b: Buffer) => a.length === b.length && timingSafeEqual(a, b);
 
-/** key 是服务器发来的公钥（SSH 线格式，与 known_hosts 中 base64 解码后的内容一致） */
+/**
+ * 与 OpenSSH 一致：只和同类型的记录比较。
+ * key 是服务器发来的公钥（SSH 线格式，与 known_hosts 中 base64 解码后的内容一致）。
+ */
 export function verifyHostKey(knownHostsText: string, host: string, port: number, key: Buffer): HostKeyCheck {
-  const name = hostName(host, port);
-  const entries = parseEntries(knownHostsText).filter((e) => entryMatchesHost(e, name));
+  const type = keyType(key);
+  const entries = entriesFor(knownHostsText, host, port).filter((e) => e.type === type);
 
   if (entries.some((e) => e.marker === '@revoked' && sameKey(e.key, key))) return 'revoked';
   const plain = entries.filter((e) => e.marker === undefined);
   if (plain.some((e) => sameKey(e.key, key))) return 'match';
   return plain.length > 0 ? 'mismatch' : 'unknown';
+}
+
+/** 该主机在 known_hosts 中已登记的密钥类型（按出现顺序，去重，不含 @ 标记的条目） */
+export function knownHostKeyTypes(knownHostsText: string, host: string, port: number): string[] {
+  const types = entriesFor(knownHostsText, host, port)
+    .filter((e) => e.marker === undefined)
+    .map((e) => e.type);
+  return [...new Set(types)];
+}
+
+/** ssh2 支持的主机密钥算法（不在其中的类型传给 ssh2 会直接报错） */
+const SSH2_HOST_KEY_ALGORITHMS = new Set([
+  'ssh-ed25519',
+  'ecdsa-sha2-nistp256',
+  'ecdsa-sha2-nistp384',
+  'ecdsa-sha2-nistp521',
+  'rsa-sha2-512',
+  'rsa-sha2-256',
+  'ssh-rsa',
+  'ssh-dss',
+]);
+
+/**
+ * 把已登记的密钥类型转换为协商用的主机密钥算法列表。
+ * 与 OpenSSH 一致：主机已在 known_hosts 中登记时只协商登记过的类型，
+ * 否则服务器可能出示一种未登记的密钥，导致校验失败。
+ */
+export function hostKeyAlgorithms(types: string[]): string[] {
+  const algos = types.flatMap((t) => (t === 'ssh-rsa' ? ['rsa-sha2-512', 'rsa-sha2-256', 'ssh-rsa'] : [t]));
+  return [...new Set(algos)].filter((a) => SSH2_HOST_KEY_ALGORITHMS.has(a));
 }
