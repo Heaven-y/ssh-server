@@ -36,8 +36,12 @@
 | SSH | `ssh2` | 读取 `~/.ssh/config`，长连接，支持交互 shell |
 | 同步 | rclone（外部可执行文件） | `rclone bisync` 走 SFTP |
 | 版本记录 | 本机 git（外部命令） | |
-| 前端 | React + Vite + Tailwind CSS | |
-| 终端 | xterm.js | |
+| 前端 | React 19 + Vite + Tailwind CSS 4 | |
+| 前端组件 | Base UI（无样式组件）、react-resizable-panels（分栏）、cmdk（命令面板）、lucide-react（图标）、sonner（提示） | 选型参考 t3code、vibe-kanban 等项目，见 ui-layout 第 0 节 |
+| 消息渲染 | streamdown（流式 Markdown）+ shiki（代码高亮）、@pierre/diffs（diff）、@tanstack/react-virtual（长列表） | |
+| 前端状态 | zustand | 数据经 WebSocket 推送，不另引入请求缓存库 |
+| 终端 | @xterm/xterm + @xterm/addon-fit | |
+| 字体 | @fontsource/ibm-plex-sans、@fontsource/jetbrains-mono | 本地打包，不访问外部字体服务 |
 | 存储 | JSON 文件 | 只存工作区配置，不存对话 |
 
 依赖版本在开始实现时固定，并与本机 codex CLI 版本对齐。
