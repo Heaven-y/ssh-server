@@ -18,6 +18,23 @@
 - 依赖固定到具体版本。
 - 调用 Python 脚本用 `python`，不用 `python3`（原因见 4.3）。
 - 涉及认证、命令执行、文件删除的改动，说明验证了什么、没验证什么。
+- 优先复用成熟的库和组件，不全部手写。选用标准：近一年内有发布、许可兼容（MIT / Apache-2.0 / BSD 等，不用 AGPL）、有类型定义、版本固定；不为几行代码就能完成的功能引入大依赖。黑名单、访问控制等安全边界逻辑，库的行为必须先用现有测试验证，不满足时保留手写并在 1.2 记录原因。新增或替换依赖时同步更新 1.2。
+
+### 1.2 依赖选用记录
+
+| 功能 | 选择 | 理由 |
+|---|---|---|
+| `~/.ssh/config` 解析与 Host 匹配 | `ssh-config`（MIT） | 按 OpenSSH 规则处理引号、`Key=value`、通配符、`!` 取反和先出现优先；本项目只额外去掉 `Match` 块并标记不支持的选项 |
+| 命令黑名单分词（`policy/shell.ts`） | 手写 | `shell-quote` 把换行当作空白而不是命令分隔，`echo x` 换行后接 `sudo ...` 会被当成一条命令，绕过黑名单 |
+| known_hosts 校验（`ssh/known-hosts.ts`） | 手写 | ssh2 不提供 known_hosts 解析；逻辑约 100 行，含哈希条目与 `@revoked`，已有测试覆盖 |
+| 远程命令拼装、工作区存储、访问控制 | 手写 | 项目特有逻辑，代码量小 |
+| SSH 连接、HTTP、WebSocket、MCP、Agent | ssh2、Fastify、@fastify/websocket、@modelcontextprotocol/sdk、Claude Agent SDK | — |
+| 前端接口数据（加载、错误、刷新） | `@tanstack/react-query` | 替代手写的 loading / error 状态与刷新逻辑 |
+| 前端 WebSocket 断线重连 | `partysocket` | 自带退避重连与发送缓冲 |
+| 对话区贴底滚动 | `use-stick-to-bottom` | 流式输出时贴底、用户上翻时停止，提供"回到底部"状态 |
+| Markdown 流式渲染 | `streamdown` | 处理未闭合的 Markdown |
+| 前端全局状态 | `zustand` | — |
+| 图标、字体 | `lucide-react`、fontsource | — |
 
 ## 2. 项目 skill
 

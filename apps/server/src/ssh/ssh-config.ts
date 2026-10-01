@@ -1,5 +1,6 @@
-// 解析 ~/.ssh/config：只支持本工具需要的子集，其余选项记为不支持
+// 读取 ~/.ssh/config：解析与匹配交给 ssh-config 库，这里只做本工具需要的取值与不支持选项提示
 import path from 'node:path';
+import SSHConfig, { LineType, type Line } from 'ssh-config';
 import type { SshHostInfo } from '@ssh-server/shared';
 
 export type SshHostConfig = {
@@ -12,12 +13,9 @@ export type SshHostConfig = {
   unsupported: string[];
 };
 
-type Option = { key: string; value: string };
-type Block = { patterns: string[]; options: Option[]; skip: boolean };
-export type ParsedSshConfig = { blocks: Block[]; homeDir: string; globalUnsupported: string[] };
+export type ParsedSshConfig = { config: SSHConfig; homeDir: string };
 
-const SUPPORTED = new Set(['hostname', 'port', 'user', 'identityfile']);
-/** 影响连接方式、但本工具没有实现的选项 */
+/** 影响连接方式、但本工具没有实现的选项（键为小写） */
 const UNSUPPORTED = new Map([
   ['proxyjump', 'ProxyJump'],
   ['proxycommand', 'ProxyCommand'],
@@ -25,70 +23,30 @@ const UNSUPPORTED = new Map([
   ['certificatefile', 'CertificateFile'],
 ]);
 
-/** 按空白拆分，支持双引号包裹含空格的值 */
-function splitWords(s: string): string[] {
-  const out: string[] = [];
-  const re = /"([^"]*)"|(\S+)/g;
-  for (const m of s.matchAll(re)) out.push(m[1] ?? m[2] ?? '');
-  return out;
+const isSection = (l: Line): l is Extract<Line, { config: unknown }> =>
+  l.type === LineType.DIRECTIVE && 'config' in l;
+
+/** Host 行的模式列表（库对带引号的值已去掉引号） */
+function hostPatterns(l: Line): string[] {
+  if (!isSection(l) || l.param.toLowerCase() !== 'host') return [];
+  return (Array.isArray(l.value) ? l.value.map((v) => v.val) : [l.value]).filter(Boolean);
 }
 
-/** 解析一行为 关键字 + 值，支持 `Key value` 与 `Key=value` */
-function parseLine(line: string): { key: string; rest: string } | undefined {
-  const trimmed = line.trim();
-  if (trimmed === '' || trimmed.startsWith('#')) return undefined;
-  const m = /^(\S+?)(?:\s*=\s*|\s+)(.*)$/.exec(trimmed);
-  if (!m) return { key: trimmed.toLowerCase(), rest: '' };
-  return { key: m[1]!.toLowerCase(), rest: m[2]!.trim() };
-}
-
+/**
+ * 解析配置。Match 块依赖运行时条件（本工具不评估），整体去掉，
+ * 避免库按条件把其中的选项合并进结果。
+ */
 export function parseSshConfig(text: string, homeDir: string): ParsedSshConfig {
-  const blocks: Block[] = [];
-  const globalUnsupported: string[] = [];
-  // Host 之前的选项对所有主机生效
-  let current: Block = { patterns: ['*'], options: [], skip: false };
-  blocks.push(current);
-
-  for (const raw of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
-    const parsed = parseLine(raw);
-    if (!parsed) continue;
-    const { key, rest } = parsed;
-    if (key === 'host') {
-      current = { patterns: splitWords(rest), options: [], skip: false };
-      blocks.push(current);
-    } else if (key === 'match') {
-      current = { patterns: [], options: [], skip: true };
-      blocks.push(current);
-    } else if (key === 'include') {
-      globalUnsupported.push('Include');
-    } else if (!current.skip) {
-      const value = splitWords(rest).join(' ');
-      current.options.push({ key, value });
-    }
+  const config = SSHConfig.parse(text.replace(/^\uFEFF/, ''));
+  for (let i = config.length - 1; i >= 0; i--) {
+    const line = config[i]!;
+    if (isSection(line) && line.param.toLowerCase() === 'match') config.splice(i, 1);
   }
-  return { blocks, homeDir, globalUnsupported };
+  return { config, homeDir };
 }
 
 const hasWildcard = (p: string) => /[*?]/.test(p);
-
-function patternMatches(pattern: string, alias: string): boolean {
-  const re = new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`);
-  return re.test(alias);
-}
-
-/** OpenSSH 规则：! 开头的模式命中则整个块不匹配 */
-function blockMatches(block: Block, alias: string): boolean {
-  if (block.skip) return false;
-  let matched = false;
-  for (const p of block.patterns) {
-    if (p.startsWith('!')) {
-      if (patternMatches(p.slice(1), alias)) return false;
-    } else if (patternMatches(p, alias)) {
-      matched = true;
-    }
-  }
-  return matched;
-}
+const isExplicit = (p: string) => !p.startsWith('!') && !hasWildcard(p);
 
 function expandHome(p: string, homeDir: string): string {
   if (p === '~') return homeDir;
@@ -96,50 +54,35 @@ function expandHome(p: string, homeDir: string): string {
   return p.replace(/%d/g, homeDir);
 }
 
-/** 解析某个别名的连接参数；没有任何非通配符 Host 匹配时返回 undefined */
+const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+const all = (v: string | string[] | undefined) => (v === undefined ? [] : Array.isArray(v) ? v : [v]);
+
+/** 配置中显式写出的别名（不含通配符与取反），按出现顺序去重 */
+const explicitAliases = (cfg: ParsedSshConfig) => [...new Set(cfg.config.flatMap(hostPatterns).filter(isExplicit))];
+
+/** 解析某个别名的连接参数；别名没有被任何 Host 行显式写出时返回 undefined */
 export function resolveHost(cfg: ParsedSshConfig, alias: string): SshHostConfig | undefined {
-  const explicit = cfg.blocks.some(
-    (b) => blockMatches(b, alias) && b.patterns.some((p) => !p.startsWith('!') && !hasWildcard(p)),
-  );
-  if (!explicit) return undefined;
+  if (!explicitAliases(cfg).includes(alias)) return undefined;
 
-  const values = new Map<string, string>();
-  const identityFiles: string[] = [];
-  const unsupported = new Set(cfg.globalUnsupported);
+  // 库按 OpenSSH 规则匹配（含通配符、! 取反）并让先出现的值优先；键名保留原文大小写
+  const computed = Object.fromEntries(
+    Object.entries(cfg.config.compute(alias)).map(([k, v]) => [k.toLowerCase(), v]),
+  ) as Record<string, string | string[] | undefined>;
 
-  for (const block of cfg.blocks) {
-    if (!blockMatches(block, alias)) continue;
-    for (const { key, value } of block.options) {
-      if (key === 'identityfile') {
-        identityFiles.push(expandHome(value, cfg.homeDir));
-      } else if (SUPPORTED.has(key)) {
-        if (!values.has(key)) values.set(key, value); // 先出现的值优先
-      } else if (UNSUPPORTED.has(key)) {
-        unsupported.add(UNSUPPORTED.get(key)!);
-      }
-    }
-  }
-
-  const port = Number(values.get('port') ?? 22);
+  const port = Number(first(computed.port) ?? 22);
   return {
     alias,
-    hostname: values.get('hostname') ?? alias,
+    hostname: first(computed.hostname) ?? alias,
     port: Number.isInteger(port) && port > 0 ? port : 22,
-    user: values.get('user'),
-    identityFiles,
-    unsupported: [...unsupported],
+    user: first(computed.user),
+    identityFiles: all(computed.identityfile).map((f) => expandHome(f, cfg.homeDir)),
+    unsupported: [...UNSUPPORTED].filter(([k]) => computed[k] !== undefined).map(([, name]) => name),
   };
 }
 
 /** 列出可选的 Host（不含通配符模式） */
 export function listHosts(cfg: ParsedSshConfig): SshHostInfo[] {
-  const aliases: string[] = [];
-  for (const b of cfg.blocks) {
-    if (b.skip) continue;
-    for (const p of b.patterns) {
-      if (!p.startsWith('!') && !hasWildcard(p) && !aliases.includes(p)) aliases.push(p);
-    }
-  }
+  const aliases = explicitAliases(cfg);
   return aliases.flatMap((alias) => {
     const h = resolveHost(cfg, alias);
     return h ? [{ alias, hostname: h.hostname, user: h.user, port: h.port, unsupported: h.unsupported }] : [];

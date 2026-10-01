@@ -43,6 +43,23 @@ describe('parseSshConfig / resolveHost', () => {
   it('只被通配符匹配的别名视为未配置', () => {
     expect(resolveHost(parseSshConfig('Host *\n  User u\n', HOME), 'nope')).toBeUndefined();
   });
+
+  it('Host * 写在前面时显式别名仍能解析，且先出现的值优先', () => {
+    const cfg = parseSshConfig(['Host *', '  User fallback', 'Host a', '  User later', '  Port 2200'].join('\n'), HOME);
+    expect(resolveHost(cfg, 'a')).toMatchObject({ user: 'fallback', port: 2200 });
+  });
+
+  it('! 取反的模式使整个块不匹配', () => {
+    const cfg = parseSshConfig(['Host a', '  HostName a.example', 'Host * !a', '  Port 2222'].join('\n'), HOME);
+    expect(resolveHost(cfg, 'a')?.port).toBe(22);
+  });
+
+  it('多个 IdentityFile 按顺序全部保留；全局 Include 记为不支持', () => {
+    const text = ['Include other.conf', 'Host a', '  IdentityFile ~/.ssh/k1', '  IdentityFile ~/.ssh/k2'].join('\n');
+    const h = resolveHost(parseSshConfig(text, HOME), 'a');
+    expect(h?.identityFiles).toEqual([path.join(HOME, '.ssh', 'k1'), path.join(HOME, '.ssh', 'k2')]);
+    expect(h?.unsupported).toContain('Include');
+  });
 });
 
 describe('listHosts', () => {

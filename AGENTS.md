@@ -7,6 +7,7 @@
 - skill 内出现的 `${CLAUDE_PLUGIN_ROOT}/.claude/skills/<名称>/...` 一律改用 `.agents/skills/<名称>/...`（仓库根目录相对路径），不要依赖该变量。
 - 文件使用 UTF-8、LF 换行；`.ps1` 例外，使用带 BOM 的 UTF-8。
 - 仓库公开：不写入真实服务器地址、端口、用户名、密钥，示例用 `my-server`、`~/projects/demo`。
+- 有成熟的库或组件就直接使用，不全部手写；选用标准与记录见 `docs/guides/dev-environment.md` 1.1、1.2。
 - 未经用户明确要求不提交、不推送。
 
 ## 文档
