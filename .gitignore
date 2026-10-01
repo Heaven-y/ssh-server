@@ -1,0 +1,28 @@
+# 依赖与构建产物
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# 本地 Agent skill（由 scripts/dev/install-skills.ps1 安装，不提交）
+.agents/skills/
+.claude/skills/
+skills-lock.json
+
+# Claude Code 本地设置
+.claude/settings.local.json
+
+# 环境变量与本地数据
+.env
+.env.*
+!.env.example
+data/
+*.log
+
+# 编辑器与系统文件
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
