@@ -12,7 +12,7 @@
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p packages/shared/tsconfig.json",
+    "typecheck": "tsc -p packages/shared/tsconfig.json && tsc -p apps/server/tsconfig.json",
     "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev -w @ssh-server/server\" \"npm run dev -w @ssh-server/web\"",
     "start": "npm run build -w @ssh-server/web && npm run start -w @ssh-server/server",
     "e2e:m1": "node --import tsx scripts/dev/e2e-m1.ts"
