@@ -1,4 +1,4 @@
-import { LoaderCircle, RefreshCw, Server, Settings2, Wifi, WifiOff } from 'lucide-react';
+import { FileCode2, LoaderCircle, RefreshCw, Server, Settings2, Wifi, WifiOff } from 'lucide-react';
 import type { Workspace } from '@ssh-server/shared';
 import { reconnectChat, useChat } from '../features/chat/chat-store';
 import { buttonClass } from '../ui/styles';
@@ -10,7 +10,17 @@ const STATUS = {
 } as const;
 
 /** 顶栏：应用名、当前工作区、WebSocket 连接状态（图标 + 文字，不只靠颜色） */
-export function TopBar({ workspace, onOpenSettings }: { workspace?: Workspace; onOpenSettings(): void }) {
+export function TopBar({
+  workspace,
+  onOpenSettings,
+  onOpenFiles,
+  filesOpen,
+}: {
+  workspace?: Workspace;
+  onOpenSettings(): void;
+  onOpenFiles(): void;
+  filesOpen: boolean;
+}) {
   const connection = useChat((s) => s.connection);
   const st = STATUS[connection];
   const Icon = st.icon;
@@ -31,6 +41,16 @@ export function TopBar({ workspace, onOpenSettings }: { workspace?: Workspace; o
         </span>
       )}
       <div className="ml-auto flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          className={buttonClass('ghost')}
+          disabled={!workspace}
+          aria-expanded={filesOpen}
+          onClick={onOpenFiles}
+        >
+          <FileCode2 aria-hidden className="size-4" />
+          文件
+        </button>
         <button type="button" className={buttonClass('ghost')} onClick={onOpenSettings}>
           <Settings2 aria-hidden className="size-4" />
           设置

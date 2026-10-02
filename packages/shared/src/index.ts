@@ -11,3 +11,5 @@ export type { SshAuthMode, SshHostInfo, Workspace, WorkspaceInput } from './work
 export { SyncSettingsSchema, DEFAULT_EXCLUDED_EXTENSIONS } from './sync';
 export type { SyncSettings, SyncConflict, SyncStatus } from './sync';
 export type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from './settings';
+export { MAX_EDITABLE_FILE_BYTES } from './files';
+export type { WorkspaceDirectory, WorkspaceFileEntry, WorkspaceFile, WorkspaceFileInput } from './files';

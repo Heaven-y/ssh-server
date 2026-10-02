@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect, useState } from 'react';
+import type { Workspace } from '@ssh-server/shared';
 import { ChatView } from '../features/chat/ChatView';
 import { lastWorkspaceId, useChat } from '../features/chat/chat-store';
 import { SyncPanel } from '../features/sync/SyncPanel';
@@ -9,10 +10,12 @@ import { api, queryKeys } from '../lib/api';
 import { TopBar } from './TopBar';
 
 const SettingsDialog = lazy(() => import('../features/settings/SettingsDialog'));
+const FilesPanel = lazy(() => import('../features/files/FilesPanel'));
 
-/** 两栏布局：工作区与会话在左侧，连接状态面板与对话区在右侧。 */
+/** 对话保持主区，文件面板按需打开；窄窗口以覆盖层承载编辑。 */
 export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [filesWorkspace, setFilesWorkspace] = useState<Workspace>();
   const workspaces = useQuery({ queryKey: queryKeys.workspaces, queryFn: api.listWorkspaces });
   const workspaceId = useChat((s) => s.workspaceId);
   const selectWorkspace = useChat((s) => s.selectWorkspace);
@@ -28,7 +31,12 @@ export function App() {
 
   return (
     <div className="flex h-full min-w-[960px] flex-col">
-      <TopBar workspace={current} onOpenSettings={() => setSettingsOpen(true)} />
+      <TopBar
+        workspace={current}
+        onOpenSettings={() => setSettingsOpen(true)}
+        filesOpen={!!filesWorkspace}
+        onOpenFiles={() => setFilesWorkspace((opened) => opened ?? current)}
+      />
       {settingsOpen && (
         <Suspense
           fallback={
@@ -61,6 +69,17 @@ export function App() {
             </div>
           )}
         </main>
+        {filesWorkspace && (
+          <Suspense
+            fallback={
+              <p role="status" className="p-4 text-sm">
+                正在打开文件…
+              </p>
+            }
+          >
+            <FilesPanel workspace={filesWorkspace} onClose={() => setFilesWorkspace(undefined)} />
+          </Suspense>
+        )}
       </div>
     </div>
   );

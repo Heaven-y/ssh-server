@@ -11,6 +11,8 @@ import { registerInternalRoutes } from './http/internal.routes';
 import { registerSessionRoutes } from './http/sessions.routes';
 import { registerSshRoutes } from './http/ssh.routes';
 import { registerAgentConfigRoutes } from './http/agent-config.routes';
+import { registerFileRoutes } from './http/files.routes';
+import { createWorkspaceFilesService } from './files/service';
 import { registerSyncRoutes } from './http/sync.routes';
 import { registerWsRoutes } from './http/ws.routes';
 import { createSshPool } from './ssh/pool';
@@ -79,6 +81,7 @@ async function main(): Promise<void> {
       registerSessionRoutes(a, { store });
       registerSshRoutes(a, { pool });
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
+      registerFileRoutes(a, { store, files: createWorkspaceFilesService(), sync });
       registerSyncRoutes(a, { store, sync });
       registerWsRoutes(a, { turns });
     },

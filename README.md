@@ -32,10 +32,10 @@
 - Python 统计、绘图和结果处理默认在服务器已有环境执行，返回必要摘要或小文件；本地后端负责协调，不需要因项目使用 Python 而更换后端。
 - 本地编辑后自动同步，执行前同步失败则暂停运行；不要求手动 git 提交或服务器拉取。编辑器“保存文件”和 git“保存版本”分别处理。
 - 训练结果由用户手动发消息要求查看，Agent 再读取远程结果；不自动检测完成、不自动续跑分析。资源面板独立刷新，不依赖 `nvitop`。
-- 终端视觉与交互参考 Pebrel，手动编辑使用成熟轻量组件；具体编辑器组件仍待选定。
+- 终端视觉与交互参考 Pebrel，手动编辑复用 CodeMirror，支持常用脚本与配置文件。
 - 对话、终端、资源刷新与同步通过异步 I/O 协调；同一会话单轮运行，同一工作区同步串行。当前沿用 Node.js 本地启动，独立 `.exe` 打包或 Go 迁移未加入交付范围。
 
-当前已接入 Claude 对话、SSH 认证、rclone 双向同步、过滤、删除确认、冲突保留和执行前后同步。修复后的真实六项传输与五项网页同步验收通过；额外模型交互继续验证。Codex、配置编辑、版本记录、网页编辑器、终端及资源面板见路线图。
+当前已接入 Claude 对话、SSH 认证、rclone 双向同步、原生配置编辑和网页文件编辑。删除确认、冲突保留与执行前后同步已实现；Codex 网页对话、版本历史、终端及资源面板仍在路线图中。
 
 ## 文档
 
@@ -59,7 +59,7 @@
 
 ## 开发检查
 
-提交前运行 `npm run check`：类型检查、ESLint（含圈复杂度）、Prettier、重复率、测试与覆盖率。门槛见 [docs/guides/dev-environment.md](docs/guides/dev-environment.md) 1.3。
+提交前按影响范围验证类型、ESLint（含圈复杂度）、格式及相关测试；`npm run check` 提供完整检查入口，适用于无可靠基准或全局改动。门槛见 [docs/guides/dev-environment.md](docs/guides/dev-environment.md) 1.3。
 
 ## 安全说明
 
@@ -69,4 +69,4 @@
 
 ## 状态
 
-开发中：M1 已有真实 Claude → MCP → SSH 验收脚本，M2 认证同步基础已完成。测试已移至各包独立的 `tests/` 目录；加密保存密码已贯通网页与 SSH。此前真实传输 6 项与网页同步 5 项通过，本轮验证见[验收记录](docs/guides/m2-acceptance.md)。原生配置编辑已实现，验收边界见[配置验收记录](docs/guides/agent-config-acceptance.md)；项目文件编辑、Codex 对话、终端和资源面板仍待实施，见[路线图](docs/roadmap.md)。
+开发中：M1 已有真实 Claude → MCP → SSH 验收脚本，M2 认证同步基础已完成。测试已移至各包独立的 `tests/` 目录；加密保存密码已贯通网页与 SSH。此前真实传输 6 项与网页同步 5 项通过，见[验收记录](docs/guides/m2-acceptance.md)。原生配置编辑已实现，更新 GLM 配置后的 Codex 原生调用通过，见[配置验收记录](docs/guides/agent-config-acceptance.md)。网页文件编辑与保存后同步的受控验收已通过，见[文件验收记录](docs/guides/workspace-files-acceptance.md)；版本历史、Codex 网页对话、终端和资源面板仍待实施，见[路线图](docs/roadmap.md)。

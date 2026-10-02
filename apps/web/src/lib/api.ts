@@ -4,6 +4,9 @@ import type {
   NativeConfigAgent,
   NativeConfigDocument,
   NativeConfigInput,
+  WorkspaceDirectory,
+  WorkspaceFile,
+  WorkspaceFileInput,
   SshAuthMode,
   SshHostInfo,
   SyncSettings,
@@ -49,10 +52,24 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 const syncUrl = (id: string) => `/api/workspaces/${encodeURIComponent(id)}/sync`;
+const fileUrl = (id: string, suffix: string, relative: string) =>
+  `/api/workspaces/${encodeURIComponent(id)}/${suffix}?path=${encodeURIComponent(relative)}`;
 const postSync = (id: string, suffix = '', body: unknown = {}) =>
   request<SyncStatus>(syncUrl(id) + suffix, { method: 'POST', body: JSON.stringify(body) });
 
 export const api = {
+  listFiles: (id: string, relative = '', signal?: AbortSignal) =>
+    request<WorkspaceDirectory>(fileUrl(id, 'files', relative), { signal, cache: 'no-store' }),
+  readFile: (id: string, relative: string, signal?: AbortSignal) =>
+    request<WorkspaceFile>(fileUrl(id, 'file', relative), { signal, cache: 'no-store' }),
+  fileRevision: (id: string, relative: string, signal?: AbortSignal) =>
+    request<{ revision: string }>(fileUrl(id, 'file/revision', relative), { signal, cache: 'no-store' }),
+  saveFile: (id: string, input: WorkspaceFileInput) =>
+    request<WorkspaceFile>(`/api/workspaces/${encodeURIComponent(id)}/file`, {
+      method: 'PUT',
+      cache: 'no-store',
+      body: JSON.stringify(input),
+    }),
   /** 原生配置内容只能由显式打开的编辑区持有，不接入查询缓存或持久存储。 */
   readAgentConfig: (agent: NativeConfigAgent, signal?: AbortSignal) =>
     request<NativeConfigDocument>(`/api/agent-config/${agent}`, { signal, cache: 'no-store' }),

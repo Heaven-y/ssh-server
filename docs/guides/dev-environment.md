@@ -43,7 +43,7 @@
 | 对话区贴底滚动 | `use-stick-to-bottom` | 流式输出时贴底、用户上翻时停止，提供"回到底部"状态 |
 | Markdown 流式渲染 | `streamdown` | 处理未闭合的 Markdown |
 | 原生配置语法校验 | `smol-toml` 1.9.0（BSD-3-Clause）与原生 JSON 解析 | 校验语法后保存原文，保留未知字段、注释和格式，不自行实现 TOML |
-| 轻量编辑组件 | `@uiw/react-codemirror` 4.25.12、CodeMirror 6 JSON / TOML 语言扩展（MIT） | 按需加载，支持高亮与搜索；先用于原生配置编辑，后续文件编辑复用 |
+| 轻量编辑组件 | `@uiw/react-codemirror` 4.25.12、CodeMirror 6 JSON / TOML / 脚本语言扩展、`@codemirror/lang-markdown` 6.5.2（MIT） | 按需加载，原生配置与项目文件共用；支持 Python、JS/TS、Shell、YAML、Markdown 高亮及搜索 |
 | 前端全局状态 | `zustand` | — |
 | 图标、字体 | `lucide-react`、fontsource | — |
 | 代码检查与复杂度 | ESLint、typescript-eslint、`eslint-plugin-sonarjs`（LGPL，仅开发时使用） | 见 1.3 |
