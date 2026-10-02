@@ -98,4 +98,15 @@ describe('独立的加密 SSH 密码存储', () => {
     await writeFile(path.join(directory, filename(identity)), '{private-content');
     await expect(store.load(identity)).rejects.toMatchObject({ code: 'credential_storage_failed' });
   });
+  it('原子替换期间认证失效时回滚原保存项，不遗留迟到的新密码', async () => {
+    const { store, directory } = await fixture();
+    await store.save(identity, 'previous-secret');
+    const file = path.join(directory, filename(identity));
+    const before = await readFile(file, 'utf8');
+    await expect(
+      store.save(identity, 'late-secret', async () => (await readFile(file, 'utf8')) === before),
+    ).rejects.toMatchObject({ code: 'credential_operation_cancelled' });
+    expect(await store.load(identity)).toBe('previous-secret');
+    expect(await readdir(directory)).toEqual([filename(identity)]);
+  });
 });

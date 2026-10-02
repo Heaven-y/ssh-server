@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { ChatView } from '../features/chat/ChatView';
 import { lastWorkspaceId, useChat } from '../features/chat/chat-store';
 import { SyncPanel } from '../features/sync/SyncPanel';
-import { SshConnectionPanel } from '../features/workspaces/SshConnectionPanel';
+import { SshConnectionPanel } from '../features/ssh/SshConnectionPanel';
 import { WorkspaceSidebar } from '../features/workspaces/WorkspaceSidebar';
 import { api, queryKeys } from '../lib/api';
 import { TopBar } from './TopBar';

@@ -1,7 +1,9 @@
-// SSH 连接池：按解析后的目标与认证周期复用；密码留在内存 resolver 中。
+// SSH 连接、保存凭据与同步共用认证代次；主动断开后只能显式连接恢复。
 import type { Client, ClientChannel } from 'ssh2';
+import type { SshAuthMode } from '@ssh-server/shared';
 import { connectSshClient } from './client';
 import {
+  connectionIdentity,
   createConnectionResolver,
   SshConnectionError,
   targetAlias,
@@ -10,32 +12,58 @@ import {
   type ResolvedConnection,
   type SshTarget,
 } from './connection';
+import { CredentialStorageError } from './credential-storage-error';
 import { runExec, type ChannelLike, type ExecOptions, type ExecResult } from './exec';
+import type { PasswordStore } from './password-store';
+import { buildRemoteCommand } from './remote-command';
 
+export type CredentialStatus = { saved: boolean; savingAvailable: boolean; paused: boolean };
+export type ConnectInput = {
+  sshHost: string;
+  authMode: SshAuthMode;
+  remoteDir: string;
+  password?: string;
+  savePassword?: boolean;
+};
 export type SshPool = {
   exec(target: SshTarget, cmd: string, opts: ExecOptions): Promise<ExecResult>;
   resolveConnection(target: SshTarget): Promise<ResolvedConnection>;
+  connect(input: ConnectInput): Promise<CredentialStatus & { connected: true; authMode: SshAuthMode }>;
+  credentialStatus(alias: string): Promise<CredentialStatus>;
+  clearSavedPassword(alias: string): Promise<CredentialStatus>;
+  invalidateCredentials(alias: string, expectedGeneration?: number): Promise<void>;
   setPassword(alias: string, password: string): Promise<void>;
   generation(alias: string): number;
   onCredentialsChanged(alias: string, notify: () => void): () => void;
   disconnect(alias: string, expectedGeneration?: number): void;
   dispose(): void;
 };
-export type SshPoolDeps = ConnectionDeps & { resolver?: ConnectionResolver };
+export type SshPoolDeps = ConnectionDeps & { resolver?: ConnectionResolver; passwordStore?: PasswordStore };
 type Cached = { alias: string; key: string; pending: Promise<Client> };
+type CredentialAttempt = { generation: number; order: number };
+type CredentialChange = { order: number; owner?: string; generation?: number };
+const cancelled = () => new SshConnectionError('connection_cancelled', '连接认证周期已结束，请重新连接');
 const endClient = (pending: Promise<Client>) => {
   void pending.then((client) => client.end()).catch(() => undefined);
 };
 
 export function createSshPool(deps: SshPoolDeps = {}): SshPool {
   const resolver = deps.resolver ?? createConnectionResolver(deps);
+  const store = deps.passwordStore;
   const clients = new Map<string, Cached>();
   const epochs = new Map<string, number>();
   const listeners = new Map<string, Set<() => void>>();
+  const identities = new Map<string, string>();
+  const credentialChanges = new Map<string, CredentialChange>();
+  const invalidated = new Set<string>();
+  const paused = new Set<string>();
+  const resolving = new Map<string, Promise<ResolvedConnection>>();
   const epoch = (alias: string) => epochs.get(alias) ?? 0;
   let disposed = false;
+  let credentialOrder = 0;
 
   function closeAlias(alias: string): void {
+    finishCredentialChange(identities.get(alias), alias, epoch(alias));
     epochs.set(alias, epoch(alias) + 1);
     for (const notify of listeners.get(alias) ?? []) notify();
     for (const [slot, cached] of clients) {
@@ -44,13 +72,113 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
       endClient(cached.pending);
     }
   }
-
+  function assertCurrent(alias: string, generation: number): void {
+    if (disposed || epoch(alias) !== generation) throw cancelled();
+  }
+  function assertActive(alias: string): void {
+    if (disposed) throw cancelled();
+    if (paused.has(alias)) throw new SshConnectionError('connection_paused', '连接已主动断开，请点击连接后继续');
+  }
+  function beginCredentialChange(identity: string, alias: string, attempt: CredentialAttempt): void {
+    if ((credentialChanges.get(identity)?.order ?? 0) > attempt.order) throw cancelled();
+    credentialChanges.set(identity, { order: attempt.order, owner: alias, generation: attempt.generation });
+    // 一个实际目标的密码替换会终止其他别名的旧认证及传输。
+    for (const [other, current] of identities) {
+      if (current !== identity || other === alias) continue;
+      resolver.clear(other);
+      closeAlias(other);
+    }
+  }
+  function finishCredentialChange(identity: string | undefined, alias: string, generation: number): void {
+    if (identity === undefined) return;
+    const change = credentialChanges.get(identity);
+    if (change?.owner === alias && change.generation === generation)
+      credentialChanges.set(identity, { order: change.order });
+  }
+  function assertCredentialReadable(identity: string, alias: string, generation: number): void {
+    const change = credentialChanges.get(identity);
+    if (change?.owner !== undefined && (change.owner !== alias || change.generation !== generation)) throw cancelled();
+  }
+  function disconnect(alias: string, expectedGeneration?: number): void {
+    if (expectedGeneration !== undefined && expectedGeneration !== epoch(alias)) return;
+    paused.add(alias);
+    resolver.clear(alias);
+    closeAlias(alias);
+  }
+  async function assertIdentity(alias: string, identity: string, generation: number): Promise<void> {
+    const current = await resolver.identity(alias);
+    assertCurrent(alias, generation);
+    if (current !== identity) {
+      disconnect(alias, generation);
+      throw cancelled();
+    }
+  }
+  async function credentialStatus(alias: string): Promise<CredentialStatus> {
+    const generation = epoch(alias);
+    const identity = await resolver.identity(alias);
+    // 失效只阻止认证复用；删除失败时仍显示磁盘保存项，让用户能够重试清除。
+    const saved = (await store?.has(identity)) === true;
+    if (generation !== epoch(alias)) throw cancelled();
+    return { saved, savingAvailable: store?.available === true, paused: paused.has(alias) };
+  }
+  async function invalidateIdentity(identity: string): Promise<void> {
+    credentialChanges.set(identity, { order: ++credentialOrder });
+    invalidated.add(identity);
+    for (const [alias, current] of identities) {
+      if (current !== identity) continue;
+      resolver.clear(alias);
+      closeAlias(alias);
+    }
+    await store?.forget(identity);
+  }
+  async function invalidateCredentials(alias: string, expectedGeneration?: number): Promise<void> {
+    if (expectedGeneration !== undefined && expectedGeneration !== epoch(alias)) return;
+    const identity = identities.get(alias);
+    if (identity !== undefined) await invalidateIdentity(identity);
+    else disconnect(alias, expectedGeneration);
+  }
+  async function resolveCurrent(target: SshTarget, generation: number): Promise<ResolvedConnection> {
+    const alias = targetAlias(target);
+    const identity = await resolver.identity(alias);
+    assertCurrent(alias, generation);
+    assertCredentialReadable(identity, alias, generation);
+    const previous = identities.get(alias);
+    if (previous !== undefined && previous !== identity) {
+      disconnect(alias, generation);
+      throw cancelled();
+    }
+    identities.set(alias, identity);
+    const config = await resolver.resolve(target, async (resolvedIdentity) => {
+      if (resolvedIdentity !== identity) throw cancelled();
+      const password = invalidated.has(identity) ? undefined : await store?.load(identity);
+      assertCurrent(alias, generation);
+      return password;
+    });
+    await assertIdentity(alias, identity, generation);
+    if (connectionIdentity(config) !== identity) throw cancelled();
+    return config;
+  }
+  async function resolveConnection(target: SshTarget): Promise<ResolvedConnection> {
+    const alias = targetAlias(target);
+    assertActive(alias);
+    const generation = epoch(alias);
+    const slot = JSON.stringify([target, generation]);
+    const existing = resolving.get(slot);
+    if (existing) return existing;
+    const pending = resolveCurrent(target, generation);
+    resolving.set(slot, pending);
+    void pending
+      .finally(() => {
+        if (resolving.get(slot) === pending) resolving.delete(slot);
+      })
+      .catch(() => undefined);
+    return pending;
+  }
   async function getClient(target: SshTarget): Promise<Client> {
     const alias = targetAlias(target);
     const generation = epoch(alias);
-    const config = await resolver.resolve(target);
-    if (disposed || epoch(alias) !== generation)
-      throw new SshConnectionError('connection_cancelled', '连接认证周期已结束，请重新连接');
+    const config = await resolveConnection(target);
+    assertCurrent(alias, generation);
     const slot = JSON.stringify([alias, config.authMode]);
     const cached = clients.get(slot);
     if (cached?.key === config.cacheKey) return cached.pending;
@@ -58,12 +186,15 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
       clients.delete(slot);
       endClient(cached.pending);
     }
-    const isCurrent = () => !disposed && epoch(alias) === generation && clients.get(slot)?.key === config.cacheKey;
+    const isCurrent = () => !disposed && epoch(alias) === generation && clients.get(slot)?.pending === pending;
     const pending = connectSshClient(config, {
       isCurrent,
-      authenticationFailed: () => {
-        resolver.clear(alias);
-        closeAlias(alias);
+      authenticationFailed: async () => {
+        if (config.authMode === 'password') await invalidateCredentials(alias, generation);
+        else {
+          resolver.clear(alias);
+          closeAlias(alias);
+        }
       },
     });
     clients.set(slot, { alias, key: config.cacheKey, pending });
@@ -75,7 +206,85 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
     }, remove);
     return pending;
   }
-
+  async function exec(target: SshTarget, cmd: string, opts: ExecOptions): Promise<ExecResult> {
+    const alias = targetAlias(target);
+    const generation = epoch(alias);
+    const client = await getClient(target);
+    assertCurrent(alias, generation);
+    const open = (command: string) =>
+      new Promise<ChannelLike>((resolve, reject) => {
+        client.exec(command, (error: Error | undefined, channel: ClientChannel) =>
+          error ? reject(error) : resolve(channel),
+        );
+      });
+    return runExec(open, cmd, opts);
+  }
+  async function savePreference(
+    input: ConnectInput,
+    config: ResolvedConnection,
+    attempt: CredentialAttempt,
+  ): Promise<void> {
+    if (input.authMode !== 'password' || input.savePassword === undefined) return;
+    const identity = connectionIdentity(config);
+    if (input.savePassword) {
+      beginCredentialChange(identity, input.sshHost, attempt);
+      if (!store?.available)
+        throw new CredentialStorageError(
+          'password_storage_unavailable',
+          '当前平台不支持系统加密保存，仍可使用临时密码',
+        );
+      await store.save(identity, config.password!, async () => {
+        if (disposed || epoch(input.sshHost) !== attempt.generation) return false;
+        const current = await resolver.identity(input.sshHost);
+        return !disposed && epoch(input.sshHost) === attempt.generation && current === identity;
+      });
+      assertCurrent(input.sshHost, attempt.generation);
+      invalidated.delete(identity);
+    } else await store?.forget(identity);
+  }
+  async function connect(input: ConnectInput): Promise<CredentialStatus & { connected: true; authMode: SshAuthMode }> {
+    if (disposed) throw cancelled();
+    const alias = input.sshHost;
+    closeAlias(alias);
+    paused.delete(alias);
+    if (input.password !== undefined) resolver.clear(alias);
+    const generation = epoch(alias);
+    const attempt = { generation, order: ++credentialOrder };
+    let identity: string | undefined;
+    try {
+      identity = await resolver.identity(alias);
+      assertCurrent(alias, generation);
+      identities.set(alias, identity);
+      if (input.password !== undefined) {
+        beginCredentialChange(identity, alias, attempt);
+        await resolver.setPassword(alias, input.password, identity);
+      }
+      assertCurrent(alias, generation);
+      const target = { alias, authMode: input.authMode };
+      const config = await resolveConnection(target);
+      const result = await exec(
+        target,
+        buildRemoteCommand(input.remoteDir, 'test -d . && test -r . && test -x .', 20),
+        { localTimeoutMs: 30_000, outputCap: 1000 },
+      );
+      await assertIdentity(alias, identity, generation);
+      if (result.exitCode !== 0 || result.timedOut)
+        throw new SshConnectionError('remote_directory_unavailable', '服务器目录不存在、无法进入或连接测试超时');
+      await savePreference(input, config, attempt);
+      await assertIdentity(alias, identity, generation);
+      const status = await credentialStatus(alias);
+      assertCurrent(alias, generation);
+      return { connected: true, authMode: input.authMode, ...status };
+    } catch (error) {
+      if (epoch(alias) === generation) {
+        resolver.clear(alias);
+        closeAlias(alias);
+      }
+      throw error;
+    } finally {
+      finishCredentialChange(identity, alias, generation);
+    }
+  }
   return {
     generation: epoch,
     onCredentialsChanged(alias, notify) {
@@ -87,34 +296,46 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
         if (!callbacks.size) listeners.delete(alias);
       };
     },
-    resolveConnection: (target) => resolver.resolve(target),
+    resolveConnection,
+    connect,
+    exec,
+    credentialStatus,
+    invalidateCredentials,
+    disconnect,
+    async clearSavedPassword(alias) {
+      disconnect(alias);
+      const generation = epoch(alias);
+      const identity = await resolver.identity(alias);
+      assertCurrent(alias, generation);
+      identities.set(alias, identity);
+      await invalidateIdentity(identity);
+      return credentialStatus(alias);
+    },
     async setPassword(alias, password) {
+      if (disposed) throw cancelled();
       closeAlias(alias);
-      await resolver.setPassword(alias, password);
-      closeAlias(alias);
-    },
-    disconnect(alias, expectedGeneration) {
-      if (expectedGeneration !== undefined && expectedGeneration !== epoch(alias)) return;
-      resolver.clear(alias);
-      closeAlias(alias);
-    },
-    async exec(target, cmd, opts) {
-      const client = await getClient(target);
-      const open = (command: string) =>
-        new Promise<ChannelLike>((resolve, reject) => {
-          client.exec(command, (error: Error | undefined, channel: ClientChannel) =>
-            error ? reject(error) : resolve(channel),
-          );
-        });
-      return runExec(open, cmd, opts);
+      paused.delete(alias);
+      const generation = epoch(alias);
+      const attempt = { generation, order: ++credentialOrder };
+      const identity = await resolver.identity(alias);
+      assertCurrent(alias, generation);
+      identities.set(alias, identity);
+      beginCredentialChange(identity, alias, attempt);
+      try {
+        await resolver.setPassword(alias, password, identity);
+        assertCurrent(alias, generation);
+      } finally {
+        finishCredentialChange(identity, alias, generation);
+      }
     },
     dispose() {
       disposed = true;
       resolver.clearAll();
-      for (const alias of listeners.keys()) closeAlias(alias);
+      for (const alias of new Set([...epochs.keys(), ...listeners.keys()])) closeAlias(alias);
       listeners.clear();
       for (const cached of clients.values()) endClient(cached.pending);
       clients.clear();
+      resolving.clear();
     },
   };
 }

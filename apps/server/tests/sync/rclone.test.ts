@@ -61,6 +61,7 @@ async function setup(version = 'rclone v1.75.1\n') {
       truncated: false,
       durationMs: 1,
     })),
+    invalidateCredentials: vi.fn(async () => undefined),
     disconnect: vi.fn(),
     generation: vi.fn(() => 1),
     onCredentialsChanged: vi.fn((_alias: string, notify: () => void) => {
@@ -108,7 +109,7 @@ describe('rclone 隔离 SFTP 驱动', () => {
     context.close();
   });
   it('内联私钥使用官方要求的转义换行，只放环境中', async () => {
-    const { driver, calls, pool } = await setup();
+    const { driver, calls, pool, run } = await setup();
     const privateKey = Buffer.from(
       '-----BEGIN OPENSSH PRIVATE KEY-----\r\nfixture-key\r\n-----END OPENSSH PRIVATE KEY-----\r\n',
     );
@@ -121,6 +122,10 @@ describe('rclone 隔离 SFTP 驱动', () => {
     );
     expect(transfer.options.env).not.toHaveProperty('RCLONE_CONFIG_WORKSPACE_PASS');
     expect(transfer.args.join(' ')).not.toContain('fixture-key');
+    run.mockResolvedValueOnce(output('', 1, 'authentication failed'));
+    await expect(context.bisync({ resync: false, allowAllDeletes: false })).rejects.toThrow('rclone');
+    expect(pool.disconnect).toHaveBeenCalledWith('my-server', 1);
+    expect(pool.invalidateCredentials).not.toHaveBeenCalled();
     context.close();
   });
   it('版本不一致时停止，不执行 SSH 或传输', async () => {
@@ -150,11 +155,15 @@ describe('rclone 隔离 SFTP 驱动', () => {
   });
 
   it('越界路径不传递给 rclone，原始 stderr 不回显', async () => {
-    const { driver, run } = await setup();
+    const { driver, run, pool } = await setup();
     const context = await driver.open(ws, SyncSettingsSchema.parse({}));
     await expect(context.restore('../outside')).rejects.toMatchObject({ code: 'unsafe_path' });
     run.mockResolvedValueOnce(output('', 1, 'private-config-secret'));
     await expect(context.bisync({ resync: false, allowAllDeletes: false })).rejects.toThrow('rclone');
+    expect(pool.invalidateCredentials).not.toHaveBeenCalled();
+    run.mockResolvedValueOnce(output('', 1, 'authentication failed'));
+    await expect(context.bisync({ resync: false, allowAllDeletes: false })).rejects.toThrow('rclone');
+    expect(pool.invalidateCredentials).toHaveBeenCalledWith('my-server', 1);
     context.close();
   });
   it('活动传输在断开后取消，迟到结果不能报告成功或清除新凭据', async () => {
@@ -169,7 +178,7 @@ describe('rclone 隔离 SFTP 驱动', () => {
     await expect(context.bisync({ resync: false, allowAllDeletes: false })).rejects.toMatchObject({
       code: 'credentials_changed',
     });
-    expect(pool.disconnect).not.toHaveBeenCalled();
+    expect(pool.invalidateCredentials).not.toHaveBeenCalled();
     context.close();
     expect(invalidations.size).toBe(0);
   });

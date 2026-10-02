@@ -10,7 +10,9 @@ import {
 } from '@ssh-server/shared';
 import { api, ApiError, queryKeys } from '../../lib/api';
 import { buttonClass, inputClass } from '../../ui/styles';
-import { SshConnectionFeedback, SshPasswordField, sshTargetErrors, useSshConnection } from './SshConnectionPanel';
+import { SshConnectionFeedback } from '../ssh/SshConnectionPanel';
+import { SshPasswordField } from '../ssh/SshPasswordField';
+import { sshTargetErrors, useSshConnection } from '../ssh/use-ssh-connection';
 
 type Field = 'name' | 'localDir' | 'sshHost' | 'remoteDir';
 type Values = Record<Field, string> & { authMode: SshAuthMode };
@@ -169,7 +171,7 @@ function AuthenticationField({
 }
 
 function isTestDisabled(values: Values, connection: ReturnType<typeof useSshConnection>, creating: boolean) {
-  const needsPassword = values.authMode === 'password' && !connection.hasPassword;
+  const needsPassword = values.authMode === 'password' && !connection.hasPassword && !connection.saved;
   return creating || connection.busy || !values.sshHost || needsPassword;
 }
 
@@ -286,7 +288,7 @@ export function WorkspaceForm({ onCreated, onCancel }: { onCreated(ws: Workspace
         </FormField>
         <AuthenticationField id={id} value={values.authMode} onChange={setAuthMode} />
         {values.authMode === 'password' ? (
-          <SshPasswordField inputRef={connection.passwordRef} onChange={connection.passwordChanged} disabled={busy} />
+          <SshPasswordField connection={connection} disabled={busy} />
         ) : (
           <p className="text-xs leading-5 text-muted-foreground">
             使用本机已有私钥；可先测试认证与目录，再创建工作区。

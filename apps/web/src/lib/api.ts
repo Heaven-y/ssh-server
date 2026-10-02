@@ -13,8 +13,12 @@ export type SessionSummary = { sessionId: string; summary: string; lastModified:
 
 export type SshConnectionTarget = { sshHost: string; remoteDir: string; authMode: SshAuthMode };
 export type SshConnectInput = Omit<SshConnectionTarget, 'authMode'> &
-  ({ authMode: 'key'; password?: never } | { authMode: 'password'; password?: string });
-export type SshConnectResult = { connected: true; authMode: SshAuthMode };
+  (
+    | { authMode: 'key'; password?: never; savePassword?: never }
+    | { authMode: 'password'; password?: string; savePassword?: boolean }
+  );
+export type SshCredentialStatus = { saved: boolean; savingAvailable: boolean; paused: boolean };
+export type SshConnectResult = { connected: true; authMode: SshAuthMode } & SshCredentialStatus;
 
 /** 接口错误；field 用于工作区字段校验，code 用于 SSH 错误分类 */
 export class ApiError extends Error {
@@ -72,7 +76,19 @@ export const api = {
         authMode: input.authMode,
         remoteDir: input.remoteDir,
         password: input.authMode === 'password' ? input.password : undefined,
+        savePassword: input.authMode === 'password' ? input.savePassword : undefined,
       }),
+    }),
+  sshCredentials: (sshHost: string, signal?: AbortSignal) =>
+    request<SshCredentialStatus>(`/api/ssh/credentials?sshHost=${encodeURIComponent(sshHost)}`, {
+      signal,
+      cache: 'no-store',
+    }),
+  clearSavedSshPassword: (sshHost: string, signal?: AbortSignal) =>
+    request<SshCredentialStatus>('/api/ssh/credentials', {
+      method: 'PUT',
+      signal,
+      body: JSON.stringify({ sshHost, savePassword: false }),
     }),
   disconnectSsh: (sshHost: string, signal?: AbortSignal) =>
     request<void>('/api/ssh/disconnect', { method: 'POST', signal, body: JSON.stringify({ sshHost }) }),
@@ -94,6 +110,7 @@ export const api = {
 export const queryKeys = {
   workspaces: ['workspaces'] as const,
   sshHosts: ['ssh-hosts'] as const,
+  sshCredentials: (sshHost: string) => ['ssh-credentials', sshHost] as const,
   sessions: (workspaceId: string) => ['sessions', workspaceId] as const,
   sync: (workspaceId: string) => ['sync', workspaceId] as const,
 };

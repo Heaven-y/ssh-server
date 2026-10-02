@@ -11,7 +11,8 @@ afterEach(async () => {
 });
 
 async function fixture() {
-  const key = ssh2.utils.generateKeyPairSync('ed25519');
+  // ECDSA 避开 ssh2 的 Ed25519 生成器裁剪公钥前导零问题。
+  const key = ssh2.utils.generateKeyPairSync('ecdsa', { bits: 256 });
   const peers = new Set<Connection>();
   const methods: string[] = [];
   const commands: string[] = [];
@@ -74,7 +75,7 @@ describe('SSH 密码与主机密钥真实握手', () => {
     expect(methods).not.toContain('publickey');
     expect(commands).toEqual(['fixture-command', 'fixture-command']);
     pool.disconnect('my-server');
-    await expect(exec()).rejects.toMatchObject({ code: 'credentials_required' });
+    await expect(exec()).rejects.toMatchObject({ code: 'connection_paused' });
   });
 
   it('密码错误明确报告认证失败并清除密码', async () => {
@@ -87,7 +88,7 @@ describe('SSH 密码与主机密钥真实握手', () => {
 
   it.each(['unknown', 'mismatch', 'revoked'] as const)('密码认证仍拒绝 %s 主机密钥', async (kind) => {
     const { pool, exec, files, knownFile, key, port, commands, methods } = await fixture();
-    const other = ssh2.utils.generateKeyPairSync('ed25519');
+    const other = ssh2.utils.generateKeyPairSync('ecdsa', { bits: 256 });
     const text =
       kind === 'unknown'
         ? ''
@@ -111,7 +112,7 @@ describe('SSH 密码与主机密钥真实握手', () => {
     expect(changed).not.toHaveBeenCalled();
     pool.disconnect('my-server', generation);
     expect(changed).toHaveBeenCalledTimes(1);
-    await expect(exec()).rejects.toMatchObject({ code: 'credentials_required' });
+    await expect(exec()).rejects.toMatchObject({ code: 'connection_paused' });
     unsubscribe();
   });
 });

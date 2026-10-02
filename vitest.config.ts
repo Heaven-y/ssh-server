@@ -23,6 +23,8 @@ export default defineConfig({
         'apps/web/src/ui/styles.ts',
         // 界面组件：M1 由浏览器冒烟检查覆盖，组件测试在 M6 引入
         'apps/web/src/**/*.tsx',
+        // 从 SSH 组件抽出的交互 Hook：沿用该组件的浏览器验收范围，组件测试在 M6 接入。
+        'apps/web/src/features/ssh/use-ssh-connection.ts',
         // 浏览器 WebSocket 封装，逻辑交给 partysocket；状态处理在 chat-store 中测试
         'apps/web/src/lib/ws.ts',
       ],

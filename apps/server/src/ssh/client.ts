@@ -22,9 +22,10 @@ function connectionError(check: HostKeyCheck | undefined, error: Error & { level
 
 export function connectSshClient(
   config: ResolvedConnection,
-  hooks: { isCurrent(): boolean; authenticationFailed(): void },
+  hooks: { isCurrent(): boolean; authenticationFailed(): void | Promise<void> },
 ): Promise<Client> {
   const client = new ssh2.Client();
+  let failurePending = false;
   let check: HostKeyCheck | undefined;
   const preferred = hostKeyAlgorithms(knownHostKeyTypes(config.knownHosts, config.hostname, config.port));
   return new Promise((resolve, reject) => {
@@ -37,10 +38,15 @@ export function connectSshClient(
     // ready 后的网络错误也必须有监听者，防止未处理的 EventEmitter error 结束后端。
     client.on('error', (error: Error & { level?: string }) => {
       const failure = connectionError(check, error);
-      if (failure.code === 'authentication_failed' && hooks.isCurrent()) hooks.authenticationFailed();
-      reject(failure);
+      if (failure.code === 'authentication_failed' && hooks.isCurrent()) {
+        failurePending = true;
+        void Promise.resolve(hooks.authenticationFailed()).then(() => reject(failure), reject);
+      } else reject(failure);
+      client.end();
     });
-    client.once('close', () => reject(new SshConnectionError('connection_failed', 'SSH 连接已关闭')));
+    client.once('close', () => {
+      if (!failurePending) reject(new SshConnectionError('connection_failed', 'SSH 连接已关闭'));
+    });
     try {
       client.connect({
         host: config.hostname,

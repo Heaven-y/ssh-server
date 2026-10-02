@@ -1,6 +1,9 @@
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError } from '../../src/lib/api';
 
+const localDir = path.join(os.tmpdir(), 'ssh-server-fixture', 'demo');
 const respond = (status: number, body?: unknown) =>
   vi.stubGlobal(
     'fetch',
@@ -12,7 +15,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('api', () => {
   it('成功时返回 JSON；POST 带 content-type', async () => {
     respond(201, { id: 'w1' });
-    await expect(api.createWorkspace({ name: 'n', localDir: 'E:\\x', sshHost: 'h', remoteDir: '~' })).resolves.toEqual({
+    await expect(api.createWorkspace({ name: 'n', localDir, sshHost: 'h', remoteDir: '~' })).resolves.toEqual({
       id: 'w1',
     });
     const [url, init] = vi.mocked(fetch).mock.calls[0]!;
@@ -40,6 +43,40 @@ describe('api', () => {
     expect(vi.mocked(fetch).mock.calls[0]![0]).toBe('/api/workspaces/w%2F1/sessions/s%201/events');
   });
 
+  it('密码和保存偏好仅发送到认证接口，取消保存只发送目标', async () => {
+    respond(200, { connected: true, authMode: 'password', saved: true, savingAvailable: true, paused: false });
+    await api.connectSsh({
+      sshHost: 'my-server',
+      remoteDir: '~/projects/demo',
+      authMode: 'password',
+      password: 'fixture-secret',
+      savePassword: true,
+    });
+    expect(vi.mocked(fetch).mock.calls[0]).toEqual([
+      '/api/ssh/connect',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          sshHost: 'my-server',
+          authMode: 'password',
+          remoteDir: '~/projects/demo',
+          password: 'fixture-secret',
+          savePassword: true,
+        }),
+      }),
+    ]);
+    await api.clearSavedSshPassword('my-server');
+    expect(vi.mocked(fetch).mock.calls[1]).toEqual([
+      '/api/ssh/credentials',
+      expect.objectContaining({ method: 'PUT', body: '{"sshHost":"my-server","savePassword":false}' }),
+    ]);
+    await api.sshCredentials('my/server');
+    expect(vi.mocked(fetch).mock.calls[2]).toEqual([
+      '/api/ssh/credentials?sshHost=my%2Fserver',
+      expect.objectContaining({ cache: 'no-store' }),
+    ]);
+  });
+
   it('同步决策只走对应工作区接口，创建不附带密码', async () => {
     respond(200, { phase: 'ready' });
     await api.initializeSync('w/1');
@@ -54,15 +91,17 @@ describe('api', () => {
     ]);
     const input = {
       name: 'n',
-      localDir: 'E:\\x',
+      localDir,
       sshHost: 'h',
       remoteDir: '~',
       password: 'never-save',
+      savePassword: true,
       sync: { maxFileBytes: 100, excludedExtensions: [] },
     };
     await api.createWorkspace(input);
     const body = vi.mocked(fetch).mock.calls[2]![1]!.body as string;
     expect(body).not.toContain('never-save');
+    expect(JSON.parse(body)).not.toHaveProperty('savePassword');
     expect(JSON.parse(body)).toMatchObject({ sync: input.sync });
   });
 });

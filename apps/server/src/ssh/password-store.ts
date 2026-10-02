@@ -25,6 +25,19 @@ async function ordinaryFile(file: string): Promise<boolean> {
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 32_768) throw storageFailure();
   return true;
 }
+async function writeRecord(file: string, data: Buffer, beforeCommit?: () => Promise<void>): Promise<void> {
+  const temporary = `${file}.tmp-${randomUUID()}`;
+  try {
+    await writeFile(temporary, JSON.stringify({ version: 1, protected: data.toString('base64') }) + '\n', {
+      flag: 'wx',
+      mode: 0o600,
+    });
+    await beforeCommit?.();
+    await rename(temporary, file);
+  } finally {
+    await rm(temporary, { force: true });
+  }
+}
 export function createPasswordStore(deps: Deps) {
   const protector = deps.protector ?? createWindowsProtector();
   const directory = path.join(deps.configDir, 'credentials');
@@ -83,16 +96,18 @@ export function createPasswordStore(deps: Deps) {
         }
       });
     },
-    save(identity: string, password: string, stillCurrent: () => boolean = () => true) {
+    save(identity: string, password: string, stillCurrent: () => boolean | Promise<boolean> = () => true) {
       const { key, file, entropy } = target(identity);
       const expected = revision(key) + 1;
       revisions.set(key, expected);
-      const assertCurrent = () => {
-        if (expected !== revision(key) || !stillCurrent()) throw storageCancelled();
+      const assertCurrent = async () => {
+        if (expected !== revision(key)) throw storageCancelled();
+        const current = await stillCurrent();
+        if (expected !== revision(key) || !current) throw storageCancelled();
       };
       return transaction(key, async () => {
         await ensureDirectory();
-        assertCurrent();
+        await assertCurrent();
         if (!password.length || password.length > 4096 || /[\r\n\0]/.test(password)) throw storageFailure();
         const plaintext = Buffer.from(password, 'utf8');
         let protectedData: Buffer;
@@ -101,19 +116,16 @@ export function createPasswordStore(deps: Deps) {
         } finally {
           plaintext.fill(0);
         }
-        assertCurrent();
-        await ordinaryFile(file);
-        const temporary = `${file}.tmp-${randomUUID()}`;
+        await assertCurrent();
+        const previous = await record(file);
+        await writeRecord(file, protectedData, assertCurrent);
         try {
-          await writeFile(
-            temporary,
-            JSON.stringify({ version: 1, protected: protectedData.toString('base64') }) + '\n',
-            { flag: 'wx', mode: 0o600 },
-          );
-          assertCurrent();
-          await rename(temporary, file);
-        } finally {
-          await rm(temporary, { force: true });
+          // rename 也是异步操作；提交过程中失效时，在同一队列内恢复原密文。
+          await assertCurrent();
+        } catch (error) {
+          if (previous) await writeRecord(file, previous);
+          else await rm(file, { force: true });
+          throw error;
         }
       });
     },

@@ -28,7 +28,10 @@ export type RcloneContext = {
   close(): void;
 };
 export type SyncDriver = { open(ws: Workspace, settings: SyncSettings): Promise<RcloneContext> };
-type Pool = Pick<SshPool, 'exec' | 'resolveConnection' | 'disconnect' | 'generation' | 'onCredentialsChanged'>;
+type Pool = Pick<
+  SshPool,
+  'exec' | 'resolveConnection' | 'disconnect' | 'invalidateCredentials' | 'generation' | 'onCredentialsChanged'
+>;
 type Deps = { configDir: string; pool: Pool; run?: ProcessRunner; executable?: string };
 const ListSchema = z.array(
   z.object({ Path: z.string(), Size: z.number().int().nonnegative(), ModTime: z.string(), IsDir: z.boolean() }),
@@ -182,8 +185,10 @@ export function createRcloneDriver(deps: Deps): SyncDriver {
       });
       await assertCurrent();
       if (result.exitCode !== 0) {
-        if (/unable to authenticate|authentication failed/i.test(result.stderr.toString()))
-          deps.pool.disconnect(ws.sshHost, generation);
+        if (/unable to authenticate|authentication failed/i.test(result.stderr.toString())) {
+          if (config.authMode === 'password') await deps.pool.invalidateCredentials(ws.sshHost, generation);
+          else deps.pool.disconnect(ws.sshHost, generation);
+        }
         throw new SyncError('rclone_failed', 'rclone 同步失败，请检查认证、网络、目录与本地同步状态；执行已暂停');
       }
       return result.stdout;

@@ -35,7 +35,9 @@ function ModelInput() {
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">
       {actual && <span className="font-mono">实际模型：{actual}</span>}
-      <label htmlFor={id}>模型</label>
+      <label htmlFor={id} className="shrink-0 whitespace-nowrap">
+        模型
+      </label>
       <input
         id={id}
         value={model}

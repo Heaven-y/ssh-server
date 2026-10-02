@@ -13,6 +13,7 @@ import { registerSshRoutes } from './http/ssh.routes';
 import { registerSyncRoutes } from './http/sync.routes';
 import { registerWsRoutes } from './http/ws.routes';
 import { createSshPool } from './ssh/pool';
+import { createPasswordStore } from './ssh/password-store';
 import { listHosts, parseSshConfig } from './ssh/ssh-config';
 import { createWorkspaceStore } from './workspaces/store';
 import { createRcloneDriver } from './sync/rclone';
@@ -50,7 +51,7 @@ async function main(): Promise<void> {
     dirExists,
     knownHosts: async () => (await listSshHosts()).map((h) => h.alias),
   });
-  const pool = createSshPool();
+  const pool = createSshPool({ passwordStore: createPasswordStore({ configDir: config.configDir }) });
   const sync = createSyncManager({
     configDir: config.configDir,
     driver: createRcloneDriver({ configDir: config.configDir, pool }),

@@ -39,15 +39,19 @@ export function Composer() {
         onKeyDown={onKeyDown}
         rows={2}
         placeholder={connected ? '输入消息，Enter 发送，Shift+Enter 换行' : '等待连接…'}
-        className={`${inputClass} max-h-60 min-h-12 resize-none [field-sizing:content]`}
+        className={`${inputClass} min-w-0 flex-1 max-h-60 min-h-12 resize-none [field-sizing:content]`}
       />
       {running ? (
-        <button type="button" className={buttonClass('danger')} onClick={interrupt}>
+        <button type="button" className={`${buttonClass('danger')} shrink-0 whitespace-nowrap`} onClick={interrupt}>
           <Square aria-hidden className="size-4" />
           停止
         </button>
       ) : (
-        <button type="submit" className={buttonClass('primary')} disabled={!connected || !text.trim()}>
+        <button
+          type="submit"
+          className={`${buttonClass('primary')} shrink-0 whitespace-nowrap`}
+          disabled={!connected || !text.trim()}
+        >
           <SendHorizontal aria-hidden className="size-4" />
           发送
         </button>
