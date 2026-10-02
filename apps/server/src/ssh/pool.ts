@@ -1,132 +1,119 @@
-// SSH 连接池：每个 Host 别名一条长连接，读取本机 ~/.ssh/config、私钥与 known_hosts
-import { readFile as fsReadFile } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import ssh2 from 'ssh2';
-import type { Client as Ssh2Client, ClientChannel, ServerHostKeyAlgorithm } from 'ssh2';
+// SSH 连接池：按解析后的目标与认证周期复用；密码留在内存 resolver 中。
+import type { Client, ClientChannel } from 'ssh2';
+import { connectSshClient } from './client';
+import {
+  createConnectionResolver,
+  SshConnectionError,
+  targetAlias,
+  type ConnectionDeps,
+  type ConnectionResolver,
+  type ResolvedConnection,
+  type SshTarget,
+} from './connection';
 import { runExec, type ChannelLike, type ExecOptions, type ExecResult } from './exec';
-import { hostKeyAlgorithms, knownHostKeyTypes, verifyHostKey, type HostKeyCheck } from './known-hosts';
-import { parseSshConfig, resolveHost, type SshHostConfig } from './ssh-config';
 
 export type SshPool = {
-  exec(alias: string, cmd: string, opts: ExecOptions): Promise<ExecResult>;
+  exec(target: SshTarget, cmd: string, opts: ExecOptions): Promise<ExecResult>;
+  resolveConnection(target: SshTarget): Promise<ResolvedConnection>;
+  setPassword(alias: string, password: string): Promise<void>;
+  generation(alias: string): number;
+  onCredentialsChanged(alias: string, notify: () => void): () => void;
+  disconnect(alias: string, expectedGeneration?: number): void;
   dispose(): void;
 };
-
-export type SshPoolDeps = {
-  homeDir?: string;
-  readFile?: (p: string) => Promise<Buffer>;
+export type SshPoolDeps = ConnectionDeps & { resolver?: ConnectionResolver };
+type Cached = { alias: string; key: string; pending: Promise<Client> };
+const endClient = (pending: Promise<Client>) => {
+  void pending.then((client) => client.end()).catch(() => undefined);
 };
 
-const DEFAULT_KEYS = ['id_ed25519', 'id_ecdsa', 'id_rsa'];
-const READY_TIMEOUT_MS = 20_000;
-const KEEPALIVE_MS = 15_000;
-
-function hostKeyError(alias: string, check: HostKeyCheck): string {
-  switch (check) {
-    case 'unknown':
-      return `known_hosts 中没有 ${alias} 的主机密钥，请先在终端执行一次 ssh ${alias} 并确认指纹`;
-    case 'mismatch':
-      return `${alias} 的主机密钥与 known_hosts 中的记录不一致，可能存在中间人攻击，已拒绝连接`;
-    case 'revoked':
-      return `${alias} 的主机密钥已在 known_hosts 中标记为吊销，已拒绝连接`;
-    default:
-      return `${alias} 的主机密钥校验失败`;
-  }
-}
-
 export function createSshPool(deps: SshPoolDeps = {}): SshPool {
-  const homeDir = deps.homeDir ?? os.homedir();
-  const readFile = deps.readFile ?? ((p: string) => fsReadFile(p));
-  const sshDir = path.join(homeDir, '.ssh');
-  const clients = new Map<string, Promise<Ssh2Client>>();
+  const resolver = deps.resolver ?? createConnectionResolver(deps);
+  const clients = new Map<string, Cached>();
+  const epochs = new Map<string, number>();
+  const listeners = new Map<string, Set<() => void>>();
+  const epoch = (alias: string) => epochs.get(alias) ?? 0;
+  let disposed = false;
 
-  async function loadHost(alias: string): Promise<SshHostConfig> {
-    const text = (await readFile(path.join(sshDir, 'config')).catch(() => Buffer.alloc(0))).toString('utf8');
-    const host = resolveHost(parseSshConfig(text, homeDir), alias);
-    if (!host) throw new Error(`~/.ssh/config 中没有 Host ${alias}`);
-    return host;
-  }
-
-  async function loadKey(host: SshHostConfig): Promise<Buffer> {
-    const candidates =
-      host.identityFiles.length > 0 ? host.identityFiles : DEFAULT_KEYS.map((k) => path.join(sshDir, k));
-    for (const file of candidates) {
-      try {
-        return await readFile(file);
-      } catch {
-        // 尝试下一个
-      }
+  function closeAlias(alias: string): void {
+    epochs.set(alias, epoch(alias) + 1);
+    for (const notify of listeners.get(alias) ?? []) notify();
+    for (const [slot, cached] of clients) {
+      if (cached.alias !== alias) continue;
+      clients.delete(slot);
+      endClient(cached.pending);
     }
-    throw new Error(`找不到 ${host.alias} 可用的私钥（已尝试：${candidates.join('、')}）`);
   }
 
-  async function connect(alias: string): Promise<Ssh2Client> {
-    const host = await loadHost(alias);
-    const [privateKey, knownHosts] = await Promise.all([
-      loadKey(host),
-      readFile(path.join(sshDir, 'known_hosts'))
-        .then((b) => b.toString('utf8'))
-        .catch(() => ''),
-    ]);
-
-    const client = new ssh2.Client();
-    let check: HostKeyCheck | undefined;
-    client.once('close', () => {
-      // 断开后从池中移除，下次使用时重连
-      if (clients.get(alias) === pending) clients.delete(alias);
+  async function getClient(target: SshTarget): Promise<Client> {
+    const alias = targetAlias(target);
+    const generation = epoch(alias);
+    const config = await resolver.resolve(target);
+    if (disposed || epoch(alias) !== generation)
+      throw new SshConnectionError('connection_cancelled', '连接认证周期已结束，请重新连接');
+    const slot = JSON.stringify([alias, config.authMode]);
+    const cached = clients.get(slot);
+    if (cached?.key === config.cacheKey) return cached.pending;
+    if (cached) {
+      clients.delete(slot);
+      endClient(cached.pending);
+    }
+    const isCurrent = () => !disposed && epoch(alias) === generation && clients.get(slot)?.key === config.cacheKey;
+    const pending = connectSshClient(config, {
+      isCurrent,
+      authenticationFailed: () => {
+        resolver.clear(alias);
+        closeAlias(alias);
+      },
     });
-
-    const pending = new Promise<Ssh2Client>((resolve, reject) => {
-      client.once('ready', () => resolve(client));
-      client.once('error', (e: Error) => {
-        reject(
-          new Error(check && check !== 'match' ? hostKeyError(alias, check) : `SSH 连接 ${alias} 失败：${e.message}`),
-        );
-      });
-      // 只协商 known_hosts 中已登记的密钥类型（与 OpenSSH 一致），否则服务器可能出示未登记的类型而被判为未知
-      const preferred = hostKeyAlgorithms(knownHostKeyTypes(knownHosts, host.hostname, host.port));
-      client.connect({
-        host: host.hostname,
-        port: host.port,
-        username: host.user ?? os.userInfo().username,
-        privateKey,
-        readyTimeout: READY_TIMEOUT_MS,
-        keepaliveInterval: KEEPALIVE_MS,
-        // 必须传完整数组：ssh2 的 prepend 会跳过默认列表中已有的算法，无法调整顺序
-        ...(preferred.length > 0 ? { algorithms: { serverHostKey: preferred as ServerHostKeyAlgorithm[] } } : {}),
-        hostVerifier: (key: Buffer) => {
-          check = verifyHostKey(knownHosts, host.hostname, host.port, key);
-          return check === 'match';
-        },
-      });
-    });
+    clients.set(slot, { alias, key: config.cacheKey, pending });
+    const remove = () => {
+      if (clients.get(slot)?.pending === pending) clients.delete(slot);
+    };
+    void pending.then((client) => {
+      client.once('close', remove);
+    }, remove);
     return pending;
   }
 
-  function getClient(alias: string): Promise<Ssh2Client> {
-    let p = clients.get(alias);
-    if (!p) {
-      p = connect(alias);
-      clients.set(alias, p);
-      p.catch(() => {
-        if (clients.get(alias) === p) clients.delete(alias);
-      });
-    }
-    return p;
-  }
-
   return {
-    async exec(alias, cmd, opts) {
-      const client = await getClient(alias);
-      const open = (c: string) =>
+    generation: epoch,
+    onCredentialsChanged(alias, notify) {
+      const callbacks = listeners.get(alias) ?? new Set<() => void>();
+      listeners.set(alias, callbacks);
+      callbacks.add(notify);
+      return () => {
+        callbacks.delete(notify);
+        if (!callbacks.size) listeners.delete(alias);
+      };
+    },
+    resolveConnection: (target) => resolver.resolve(target),
+    async setPassword(alias, password) {
+      closeAlias(alias);
+      await resolver.setPassword(alias, password);
+      closeAlias(alias);
+    },
+    disconnect(alias, expectedGeneration) {
+      if (expectedGeneration !== undefined && expectedGeneration !== epoch(alias)) return;
+      resolver.clear(alias);
+      closeAlias(alias);
+    },
+    async exec(target, cmd, opts) {
+      const client = await getClient(target);
+      const open = (command: string) =>
         new Promise<ChannelLike>((resolve, reject) => {
-          client.exec(c, (err: Error | undefined, ch: ClientChannel) => (err ? reject(err) : resolve(ch)));
+          client.exec(command, (error: Error | undefined, channel: ClientChannel) =>
+            error ? reject(error) : resolve(channel),
+          );
         });
       return runExec(open, cmd, opts);
     },
     dispose() {
-      for (const p of clients.values()) p.then((c) => c.end()).catch(() => undefined);
+      disposed = true;
+      resolver.clearAll();
+      for (const alias of listeners.keys()) closeAlias(alias);
+      listeners.clear();
+      for (const cached of clients.values()) endClient(cached.pending);
       clients.clear();
     },
   };

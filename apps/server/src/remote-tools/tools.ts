@@ -1,18 +1,24 @@
 // 远程工具 MCP 服务：工具调用转发到后端内部接口，由后端统一做黑名单、SSH 与日志
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import type { SyncStatus } from '@ssh-server/shared';
 import type { ExecResult } from '../ssh/exec';
 
 type Denied = { ruleId: string; reason: string };
-type BackendReply = ExecResult | { denied: Denied } | { error: string };
+type BackendReply =
+  (ExecResult & { sync?: SyncStatus }) | { sync: SyncStatus } | { denied: Denied } | { error: string };
 type ToolText = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
 
-export function formatExecResult(r: ExecResult): string {
+export function formatExecResult(r: ExecResult & { sync?: SyncStatus }): string {
   const lines = [`退出码：${r.exitCode ?? '无'}（耗时 ${r.durationMs} ms）`];
   if (r.timedOut) lines.push('注意：命令已超时，已被终止。长时间任务请用 nohup 或 Slurm 提交。');
   if (r.truncated) lines.push('注意：输出过长，已截断，只保留末尾部分。');
   lines.push('--- stdout ---', r.stdout || '（空）');
   if (r.stderr) lines.push('--- stderr ---', r.stderr);
+  if (r.sync) {
+    lines.push(formatSync(r.sync));
+    if (r.sync.phase !== 'ready') lines.push('命令已经执行；请先处理同步状态，避免重复运行该命令。');
+  }
   return lines.join('\n');
 }
 
@@ -20,10 +26,24 @@ export function formatDenied(d: Denied): string {
   return `命令被拒绝：${d.reason}（规则 ${d.ruleId}）`;
 }
 
+function formatSync(status: SyncStatus): string {
+  const lines = [`同步状态：${status.phase}`];
+  if (status.message) lines.push(status.message);
+  if (status.deletions.length) lines.push(`待确认删除：${status.deletions.join('、')}；请在网页确认或恢复。`);
+  if (status.conflicts.length)
+    lines.push(`保留冲突：${status.conflicts.map((file) => file.path).join('、')}；请处理后在网页确认。`);
+  return lines.join('\n');
+}
+
 function toToolResult(reply: BackendReply): ToolText {
   if ('denied' in reply) return { content: [{ type: 'text', text: formatDenied(reply.denied) }], isError: true };
   if ('error' in reply) return { content: [{ type: 'text', text: `执行失败：${reply.error}` }], isError: true };
-  return { content: [{ type: 'text', text: formatExecResult(reply) }], isError: reply.exitCode !== 0 };
+  if (!('stdout' in reply))
+    return { content: [{ type: 'text', text: formatSync(reply.sync) }], isError: reply.sync.phase !== 'ready' };
+  return {
+    content: [{ type: 'text', text: formatExecResult(reply) }],
+    isError: reply.exitCode !== 0 || (reply.sync !== undefined && reply.sync.phase !== 'ready'),
+  };
 }
 
 export type RemoteToolsOptions = { internalUrl: string; token: string; fetch?: typeof fetch };
@@ -78,6 +98,16 @@ export function createRemoteToolsServer(opts: RemoteToolsOptions): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async ({ path, action, lines }) => call('/internal/remote-peek', { path, action, lines }),
+  );
+
+  server.registerTool(
+    'sync_now',
+    {
+      description: '立即双向同步代码与小文件，返回同步、删除确认和冲突状态；不会执行项目代码或分析结果。',
+      inputSchema: {},
+      annotations: { destructiveHint: true, openWorldHint: true },
+    },
+    async () => call('/internal/sync', {}),
   );
 
   return server;

@@ -37,6 +37,7 @@ const EDIT_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit']);
 const ALLOWED_TOOLS = [
   `mcp__${MCP_SERVER_NAME}__remote_exec`,
   `mcp__${MCP_SERVER_NAME}__remote_peek`,
+  `mcp__${MCP_SERVER_NAME}__sync_now`,
   'Read',
   'Glob',
   'Grep',

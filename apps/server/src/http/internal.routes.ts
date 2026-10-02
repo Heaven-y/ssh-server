@@ -5,6 +5,7 @@ import type { Workspace } from '@ssh-server/shared';
 import type { SessionRegistry } from '../chat/registry';
 import { checkCommand } from '../policy/policy';
 import type { SshPool } from '../ssh/pool';
+import { workspaceTarget } from '../ssh/connection';
 import {
   buildPeekCommand,
   buildRemoteCommand,
@@ -13,11 +14,15 @@ import {
   EXEC_MAX_TIMEOUT_SEC,
   OUTPUT_CAP_BYTES,
 } from '../ssh/remote-command';
+import type { SyncManager } from '../sync/manager';
+import { SyncError } from '../sync/errors';
+import { SshConnectionError } from '../ssh/connection';
 
 export type InternalRoutesDeps = {
   registry: SessionRegistry;
   getWorkspace(id: string): Promise<Workspace | undefined>;
   pool: Pick<SshPool, 'exec'>;
+  sync: Pick<SyncManager, 'execute' | 'sync'>;
 };
 
 const ExecBody = z.object({
@@ -50,7 +55,7 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
   /** SSH 层的错误作为结果返回，让 Agent 看到原因 */
   async function run(ws: Workspace, cmd: string, localTimeoutMs: number) {
     try {
-      return await deps.pool.exec(ws.sshHost, cmd, { localTimeoutMs, outputCap: OUTPUT_CAP_BYTES });
+      return await deps.pool.exec(workspaceTarget(ws), cmd, { localTimeoutMs, outputCap: OUTPUT_CAP_BYTES });
     } catch (e) {
       return { error: (e as Error).message };
     }
@@ -70,7 +75,16 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
 
     const timeoutSec = Math.min(body.data.timeoutSec ?? EXEC_DEFAULT_TIMEOUT_SEC, EXEC_MAX_TIMEOUT_SEC);
     const cmd = buildRemoteCommand(ws.remoteDir, body.data.command, timeoutSec);
-    return run(ws, cmd, (timeoutSec + EXEC_GRACE_SEC) * 1000);
+    try {
+      return await deps.sync.execute(ws, () => run(ws, cmd, (timeoutSec + EXEC_GRACE_SEC) * 1000));
+    } catch (error) {
+      return {
+        error:
+          error instanceof SyncError || error instanceof SshConnectionError
+            ? error.message
+            : '同步未就绪，远程命令未执行',
+      };
+    }
   });
 
   app.post('/internal/remote-peek', async (req, reply) => {
@@ -80,5 +94,11 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
     if (!body.success) return reply.code(400).send({ message: '参数不合法：path、action 必填，lines 为 1 到 200' });
     const cmd = buildPeekCommand(ws.remoteDir, body.data.path, body.data.action, body.data.lines);
     return run(ws, cmd, PEEK_LOCAL_TIMEOUT_MS);
+  });
+
+  app.post('/internal/sync', async (req, reply) => {
+    const ws = await workspaceOf(req, reply);
+    if (!ws) return reply;
+    return { sync: await deps.sync.sync(ws) };
   });
 }

@@ -100,7 +100,10 @@ export function runExec(
         ch.on('exit', (code: number | null) => {
           exitCode = typeof code === 'number' ? code : null;
         });
-        ch.on('close', finish);
+        ch.on('close', (code?: number) => {
+          if (typeof code === 'number') exitCode = code;
+          finish();
+        });
         ch.on('error', (e: Error) => fail(e));
       },
       (e: Error) => fail(e),

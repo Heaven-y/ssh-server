@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildInstructions } from './instructions';
 
 describe('buildInstructions', () => {
-  it('包含服务器、目录、远程工具用法和"尚未同步"的提醒', () => {
+  it('包含服务器、目录、同步门禁和用户手动分析的约定', () => {
     const text = buildInstructions({
       id: 'w1',
       name: 'demo',
@@ -14,6 +14,10 @@ describe('buildInstructions', () => {
     expect(text).toContain('~/projects/demo');
     expect(text).toContain('remote_exec');
     expect(text).toContain('remote_peek');
-    expect(text).toContain('尚未实现同步');
+    expect(text).toContain('执行前');
+    expect(text).toContain('sync_now');
+    expect(text).toContain('用户');
+    expect(text).toContain('已有的 Python');
+    expect(text).not.toContain('尚未实现同步');
   });
 });

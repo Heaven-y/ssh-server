@@ -1,8 +1,11 @@
 import Fastify, { type FastifyInstance } from 'fastify';
-import { afterEach, describe, expect, it } from 'vitest';
-import type { Workspace } from '@ssh-server/shared';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SyncSettingsSchema, type SyncStatus, type Workspace } from '@ssh-server/shared';
 import { createSessionRegistry } from '../chat/registry';
 import type { ExecResult } from '../ssh/exec';
+import type { SshTarget } from '../ssh/connection';
+import { SyncError } from '../sync/errors';
+import type { SyncManager } from '../sync/manager';
 import { registerInternalRoutes } from './internal.routes';
 
 const ws: Workspace = { id: 'w1', name: 'demo', localDir: 'D:/w', sshHost: 'my-server', remoteDir: '~/projects/demo' };
@@ -20,15 +23,27 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((a) => a.close()));
 });
 
-function setup(opts: { workspace?: Workspace; fail?: boolean } = {}) {
-  const calls: Array<{ alias: string; cmd: string; localTimeoutMs: number }> = [];
+function setup(opts: { workspace?: Workspace; fail?: boolean; syncFail?: boolean; postFail?: boolean } = {}) {
+  const calls: Array<{ alias: SshTarget; cmd: string; localTimeoutMs: number }> = [];
   const registry = createSessionRegistry();
   const token = registry.register('w1');
   const app = Fastify();
   apps.push(app);
+  const status: SyncStatus = {
+    phase: opts.postFail ? 'error' : 'ready',
+    deletions: [],
+    conflicts: [],
+    settings: SyncSettingsSchema.parse({}),
+  };
+  const execute: SyncManager['execute'] = async (_ws, command) => {
+    if (opts.syncFail) throw new SyncError('sync_blocked', '同步未就绪，命令未执行');
+    return { ...(await command()), sync: status };
+  };
+  const sync = { execute: vi.fn(execute) as SyncManager['execute'], sync: vi.fn(async () => status) };
   registerInternalRoutes(app, {
     registry,
     getWorkspace: async (id) => (id === 'w1' ? (opts.workspace ?? ws) : undefined),
+    sync,
     pool: {
       exec: async (alias, cmd, o) => {
         calls.push({ alias, cmd, localTimeoutMs: o.localTimeoutMs });
@@ -40,7 +55,7 @@ function setup(opts: { workspace?: Workspace; fail?: boolean } = {}) {
   /** auth 为 null 表示不带 Authorization 头 */
   const post = (url: string, payload: unknown, auth: string | null = `Bearer ${token}`) =>
     app.inject({ method: 'POST', url, payload: payload as object, headers: auth ? { authorization: auth } : {} });
-  return { calls, post };
+  return { calls, post, sync };
 }
 
 describe('POST /internal/remote-exec', () => {
@@ -51,11 +66,12 @@ describe('POST /internal/remote-exec', () => {
   });
 
   it('命中黑名单时拒绝，且不调用 SSH', async () => {
-    const { post, calls } = setup();
+    const { post, calls, sync } = setup();
     const r = await post('/internal/remote-exec', { command: 'sudo ls' });
     expect(r.statusCode).toBe(200);
     expect(r.json()).toMatchObject({ denied: { ruleId: 'privilege' } });
     expect(calls).toHaveLength(0);
+    expect(sync.execute).not.toHaveBeenCalled();
   });
 
   it('正常命令在服务器目录下执行，默认超时 600 秒加 30 秒宽限', async () => {
@@ -66,6 +82,12 @@ describe('POST /internal/remote-exec', () => {
     expect(calls[0]!.cmd.startsWith('cd ')).toBe(true);
     expect(calls[0]!.cmd).toContain("bash -lc 'hostname'");
     expect(calls[0]!.localTimeoutMs).toBe((600 + 30) * 1000);
+  });
+
+  it('密码工作区向执行层传递认证方式', async () => {
+    const { post, calls } = setup({ workspace: { ...ws, authMode: 'password' } });
+    await post('/internal/remote-exec', { command: 'hostname' });
+    expect(calls[0]!.alias).toEqual({ alias: 'my-server', authMode: 'password' });
   });
 
   it('超时上限为 3600 秒', async () => {
@@ -85,6 +107,27 @@ describe('POST /internal/remote-exec', () => {
     const { post } = setup({ fail: true });
     const r = await post('/internal/remote-exec', { command: 'ls' });
     expect(r.json()).toMatchObject({ error: expect.stringContaining('SSH 连接') });
+  });
+
+  it('前同步失败不调用 SSH，后同步失败保留输出和退出码', async () => {
+    const blocked = setup({ syncFail: true });
+    expect((await blocked.post('/internal/remote-exec', { command: 'hostname' })).json()).toMatchObject({
+      error: expect.stringContaining('命令未执行'),
+    });
+    expect(blocked.calls).toHaveLength(0);
+    const completed = setup({ postFail: true });
+    expect((await completed.post('/internal/remote-exec', { command: 'hostname' })).json()).toMatchObject({
+      stdout: 'h1\n',
+      exitCode: 0,
+      sync: { phase: 'error' },
+    });
+  });
+
+  it('手动同步同样需要内部会话令牌', async () => {
+    const { post, sync } = setup();
+    expect((await post('/internal/sync', {}, null)).statusCode).toBe(401);
+    expect((await post('/internal/sync', {})).json()).toMatchObject({ sync: { phase: 'ready' } });
+    expect(sync.sync).toHaveBeenCalledTimes(1);
   });
 
   it('缺少 command 时 400', async () => {

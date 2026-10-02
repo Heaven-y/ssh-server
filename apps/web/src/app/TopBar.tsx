@@ -4,9 +4,9 @@ import { reconnectChat, useChat } from '../features/chat/chat-store';
 import { buttonClass } from '../ui/styles';
 
 const STATUS = {
-  open: { label: '已连接', icon: Wifi, cls: 'text-accent' },
-  connecting: { label: '连接中', icon: LoaderCircle, cls: 'text-muted-foreground' },
-  closed: { label: '已断开', icon: WifiOff, cls: 'text-destructive-foreground' },
+  open: { label: '网页已连接', icon: Wifi, cls: 'text-accent' },
+  connecting: { label: '网页连接中', icon: LoaderCircle, cls: 'text-muted-foreground' },
+  closed: { label: '网页已断开', icon: WifiOff, cls: 'text-destructive-foreground' },
 } as const;
 
 /** 顶栏：应用名、当前工作区、WebSocket 连接状态（图标 + 文字，不只靠颜色） */
@@ -30,15 +30,24 @@ export function TopBar({ workspace }: { workspace?: Workspace }) {
           </span>
         </span>
       )}
-      <div className="ml-auto flex items-center gap-2">
-        <span role="status" className={`flex items-center gap-1.5 text-sm ${st.cls}`}>
-          <Icon aria-hidden className={`size-4 ${connection === 'connecting' ? 'animate-spin' : ''}`} />
+      <div className="ml-auto flex shrink-0 items-center gap-2">
+        <span
+          role="status"
+          title="网页 WebSocket 连接状态；SSH 认证请查看工作区的 SSH 连接面板"
+          className={`flex items-center gap-1.5 whitespace-nowrap text-sm ${st.cls}`}
+        >
+          <Icon aria-hidden className={`size-4 ${connection === 'connecting' ? 'motion-safe:animate-pulse' : ''}`} />
           {st.label}
         </span>
         {connection !== 'open' && (
-          <button type="button" className={buttonClass('ghost')} onClick={reconnectChat}>
+          <button
+            type="button"
+            className={buttonClass('ghost')}
+            aria-label="重新连接网页 WebSocket"
+            onClick={reconnectChat}
+          >
             <RefreshCw aria-hidden className="size-4" />
-            重新连接
+            重连网页
           </button>
         )}
       </div>

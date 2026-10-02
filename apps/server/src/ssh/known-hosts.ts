@@ -5,6 +5,11 @@ export type HostKeyCheck = 'match' | 'unknown' | 'mismatch' | 'revoked';
 
 type Entry = { marker?: string; hosts: string[]; type: string; key: Buffer };
 
+function validBase64(value: string): boolean {
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return false;
+  return Buffer.from(value, 'base64').toString('base64').replace(/=+$/, '') === value.replace(/=+$/, '');
+}
+
 function parseEntries(text: string): Entry[] {
   const out: Entry[] = [];
   for (const raw of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
@@ -14,6 +19,7 @@ function parseEntries(text: string): Entry[] {
     const marker = parts[0]!.startsWith('@') ? parts.shift() : undefined;
     const [hosts, type, keyB64] = parts;
     if (!hosts || !type || !keyB64) continue;
+    if (!validBase64(keyB64)) continue;
     out.push({ marker, hosts: hosts.split(','), type, key: Buffer.from(keyB64, 'base64') });
   }
   return out;
@@ -60,6 +66,16 @@ function keyType(key: Buffer): string | undefined {
   if (key.length < 4) return undefined;
   const len = key.readUInt32BE(0);
   return len > 0 && 4 + len <= key.length ? key.subarray(4, 4 + len).toString('latin1') : undefined;
+}
+
+/** 从已有信任记录筛出该目标；不读取或信任远端新密钥，也不修改用户 known_hosts。 */
+export function knownHostsForTarget(text: string, host: string, port: number): string {
+  const name = hostName(host, port);
+  return entriesFor(text, host, port)
+    .filter((entry) => entry.marker === undefined || entry.marker === '@revoked')
+    .filter((entry) => keyType(entry.key) === entry.type)
+    .map((entry) => `${entry.marker ? `${entry.marker} ` : ''}${name} ${entry.type} ${entry.key.toString('base64')}\n`)
+    .join('');
 }
 
 const sameKey = (a: Buffer, b: Buffer) => a.length === b.length && timingSafeEqual(a, b);

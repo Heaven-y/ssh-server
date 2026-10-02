@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { AgentEvent, ClientMessage, ServerMessage, Workspace } from '@ssh-server/shared';
 import { runClaudeTurn, type ClaudeTurnInput, type PermissionAnswer, type TurnHandle } from '../agents/claude-adapter';
 import type { SessionRegistry } from './registry';
+import type { SyncManager } from '../sync/manager';
 
 export type Socket = { send(msg: ServerMessage): void; isOpen(): boolean };
 
@@ -12,6 +13,7 @@ export type TurnManagerDeps = {
   /** 后端内部接口地址（实际监听端口） */
   internalUrl(): string;
   runTurn?: (input: ClaudeTurnInput) => TurnHandle;
+  sync: Pick<SyncManager, 'sync'>;
 };
 
 type Turn = { id: string; socket: Socket; handle?: TurnHandle; sessionId?: string };
@@ -89,11 +91,22 @@ export class TurnManager {
 
     void turn.handle.done
       .catch((e: unknown) => this.send(socket, { type: 'error', turnId: turn.id, message: (e as Error).message }))
-      .then(() => this.finish(turn, token));
+      .then(() => this.finish(turn, token, ws));
   }
 
-  private finish(turn: Turn, token: string): void {
+  private async finish(turn: Turn, token: string, ws: Workspace): Promise<void> {
     this.deps.registry.unregister(token);
+    try {
+      const status = await this.deps.sync.sync(ws);
+      if (status.phase !== 'ready')
+        this.send(turn.socket, {
+          type: 'error',
+          turnId: turn.id,
+          message: status.message ?? '同步尚未就绪，请在同步面板处理后继续',
+        });
+    } catch {
+      this.send(turn.socket, { type: 'error', turnId: turn.id, message: '本轮结束后同步失败，请检查同步面板' });
+    }
     this.turns.delete(turn.id);
     if (turn.sessionId && this.sessions.get(turn.sessionId) === turn.id) this.sessions.delete(turn.sessionId);
     for (const [id, p] of this.pending) {

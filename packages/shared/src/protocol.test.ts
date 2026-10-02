@@ -50,4 +50,15 @@ describe('WorkspaceInputSchema', () => {
     const r = WorkspaceInputSchema.safeParse({ ...base, policy: { disabledRules: ['privilege'] } });
     expect(r.success).toBe(true);
   });
+
+  it('保存认证方式，但移除传入工作区的密码字段', () => {
+    const parsed = WorkspaceInputSchema.parse({ ...base, authMode: 'password', password: 'test-secret' });
+    expect(parsed).toMatchObject({ authMode: 'password' });
+    expect(parsed).not.toHaveProperty('password');
+  });
+
+  it('拒绝未知认证方式，旧工作区仍可解析', () => {
+    expect(WorkspaceInputSchema.safeParse({ ...base, authMode: 'automatic' }).success).toBe(false);
+    expect(WorkspaceInputSchema.safeParse(base).success).toBe(true);
+  });
 });

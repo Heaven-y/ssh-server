@@ -39,4 +39,30 @@ describe('api', () => {
     await api.sessionEvents('w/1', 's 1');
     expect(vi.mocked(fetch).mock.calls[0]![0]).toBe('/api/workspaces/w%2F1/sessions/s%201/events');
   });
+
+  it('同步决策只走对应工作区接口，创建不附带密码', async () => {
+    respond(200, { phase: 'ready' });
+    await api.initializeSync('w/1');
+    expect(vi.mocked(fetch).mock.calls[0]).toEqual([
+      '/api/workspaces/w%2F1/sync/initialize',
+      expect.objectContaining({ method: 'POST', body: '{"confirmed":true}' }),
+    ]);
+    await api.decideSyncDeletions('w/1', 'reject');
+    expect(vi.mocked(fetch).mock.calls[1]).toEqual([
+      '/api/workspaces/w%2F1/sync/deletions',
+      expect.objectContaining({ body: '{"decision":"reject"}' }),
+    ]);
+    const input = {
+      name: 'n',
+      localDir: 'E:\\x',
+      sshHost: 'h',
+      remoteDir: '~',
+      password: 'never-save',
+      sync: { maxFileBytes: 100, excludedExtensions: [] },
+    };
+    await api.createWorkspace(input);
+    const body = vi.mocked(fetch).mock.calls[2]![1]!.body as string;
+    expect(body).not.toContain('never-save');
+    expect(JSON.parse(body)).toMatchObject({ sync: input.sync });
+  });
 });

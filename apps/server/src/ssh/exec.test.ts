@@ -40,6 +40,21 @@ describe('runExec', () => {
     expect(r).toMatchObject({ stdout: 'out', stderr: 'err', exitCode: 2, timedOut: false, truncated: false });
   });
 
+  it('短命令的 exit 先于通道交付时，从 close 补取真实退出码', async () => {
+    const ch = fakeChannel();
+    const p = runExec(
+      async () => {
+        ch.emit('exit', 7);
+        return ch as unknown as ChannelLike;
+      },
+      'cmd',
+      { localTimeoutMs: 1000, outputCap: 100 },
+    );
+    await Promise.resolve();
+    ch.emit('close', 7);
+    expect(await p).toMatchObject({ exitCode: 7, timedOut: false });
+  });
+
   it('本地超时后关闭通道并标记超时', async () => {
     vi.useFakeTimers();
     const ch = fakeChannel();

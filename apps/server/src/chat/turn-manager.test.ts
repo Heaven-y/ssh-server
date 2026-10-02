@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentEvent, ServerMessage, Workspace } from '@ssh-server/shared';
+import { SyncSettingsSchema, type AgentEvent, type ServerMessage, type Workspace } from '@ssh-server/shared';
 import type { ClaudeTurnInput } from '../agents/claude-adapter';
 import { createSessionRegistry } from './registry';
 import { TurnManager, type Socket } from './turn-manager';
@@ -29,13 +29,22 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 function setup() {
   const registry = createSessionRegistry();
   const fake = fakeRunTurn();
+  const sync = {
+    sync: vi.fn(async () => ({
+      phase: 'ready' as const,
+      deletions: [],
+      conflicts: [],
+      settings: SyncSettingsSchema.parse({}),
+    })),
+  };
   const turns = new TurnManager({
     getWorkspace: async (id) => (id === 'w1' ? ws : undefined),
     registry,
     internalUrl: () => 'http://127.0.0.1:1',
     runTurn: fake.runTurn,
+    sync,
   });
-  return { registry, fake, turns };
+  return { registry, fake, turns, sync };
 }
 
 const send = (extra: Record<string, unknown> = {}) => ({
@@ -130,5 +139,15 @@ describe('TurnManager', () => {
     fake.turns[0]!.finish();
     await flush();
     expect(sent.length).toBe(before);
+  });
+  it('轮次结束后同步，并保持仅一轮 Agent 调用', async () => {
+    const { fake, turns, sync } = setup();
+    const { socket, sent } = fakeSocket();
+    await turns.handle(socket, send());
+    fake.turns[0]!.finish();
+    await flush();
+    expect(sync.sync).toHaveBeenCalledWith(ws);
+    expect(fake.turns).toHaveLength(1);
+    expect(sent.at(-1)?.type).toBe('turn.finished');
   });
 });

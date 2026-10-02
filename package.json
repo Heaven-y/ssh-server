@@ -21,7 +21,8 @@
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run dup && npm run coverage",
     "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev -w @ssh-server/server\" \"npm run dev -w @ssh-server/web\"",
     "start": "npm run build -w @ssh-server/web && npm run start -w @ssh-server/server",
-    "e2e:m1": "node --import tsx scripts/dev/e2e-m1.ts"
+    "e2e:m1": "node --import tsx scripts/dev/e2e-m1.ts",
+    "e2e:m2": "node --import tsx scripts/dev/e2e-m2.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

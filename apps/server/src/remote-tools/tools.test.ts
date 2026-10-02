@@ -1,6 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { describe, expect, it, vi } from 'vitest';
+import { SyncSettingsSchema } from '@ssh-server/shared';
 import { createRemoteToolsServer, formatDenied, formatExecResult } from './tools';
 
 const base = { stdout: '', stderr: '', exitCode: 0, timedOut: false, truncated: false, durationMs: 12 };
@@ -93,5 +94,25 @@ describe('createRemoteToolsServer', () => {
     const [url, init] = r.fetch.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('http://127.0.0.1:1/internal/remote-peek');
     expect(JSON.parse(init.body as string)).toEqual({ path: 'a.log', action: 'tail', lines: 5 });
+  });
+  it('sync_now 返回同步状态，后同步失败保留真实命令结果', async () => {
+    const sync = {
+      phase: 'error',
+      message: '同步连接失败',
+      deletions: [],
+      conflicts: [],
+      settings: SyncSettingsSchema.parse({}),
+    };
+    const manual = await callTool('sync_now', {}, json({ sync }));
+    expect(manual.isError).toBe(true);
+    expect(manual.text).toContain('同步连接失败');
+    const completed = await callTool(
+      'remote_exec',
+      { command: 'hostname' },
+      json({ ...base, stdout: 'actual output', sync }),
+    );
+    expect(completed.text).toContain('退出码：0');
+    expect(completed.text).toContain('actual output');
+    expect(completed.text).toContain('同步连接失败');
   });
 });

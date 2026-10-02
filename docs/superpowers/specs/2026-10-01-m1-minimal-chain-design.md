@@ -4,7 +4,7 @@
 - 对应：`docs/roadmap.md` M1；验收 A1、A11（`docs/product/requirements.md` 第 6 节）
 - 前提：本文保留 M1 的阶段设计。2026-10-02 更新后的完整产品范围以 [需求](../../product/requirements.md)、[架构](../../engineering/architecture.md)、[设计决策](../../engineering/decisions.md) 和 [路线图](../../roadmap.md) 为准。
 
-状态注记（2026-10-02）：M1 Task 1–10 已实现，Task 11 未完成；`scripts/dev/e2e-m1.ts` 尚不存在，真实模型 / SSH 链路未验收。本轮确认了账号密码、轻量编辑、原生 skills / 命令、上下文状态、Pebrel 终端参考和资源面板，分别进入 M2–M5，不能将下文的 M1 限定当作最终产品限制。结果检查只由用户手动发消息触发，不加入自动任务完成检测。
+状态注记（2026-10-02）：M1 Task 1–10 已实现；`scripts/dev/e2e-m1.ts` 已创建，真实 Claude → MCP → SSH 与原生历史可见性通过，浏览器工具卡、黑名单、续接、审批及中断继续验收。账号密码、同步、轻量编辑、原生 skills / 命令、上下文状态、Pebrel 终端参考和资源面板按 M2–M5 实施，不能将下文的 M1 限定当作最终产品限制。结果检查只由用户手动发消息触发。
 
 技术方向注记（2026-10-02）：继续 Node.js + TypeScript + Fastify 本地后端，负责 Agent、SSH、子进程和流式消息的异步协调。Python 统计 / 绘图默认在服务器已有环境执行；新脚本同步后执行属于 M2 工作流。完整并发约定为单会话单轮、同工作区同步串行，终端与资源刷新独立，见最新架构；独立 `.exe` / 安装器与 Go 迁移未加入交付范围，不扩展 M1。
 
@@ -190,7 +190,7 @@ type Workspace = {
 |---|---|
 | 单元 | 黑名单（每条规则 + 不应误拦的命令）、ssh config、known_hosts、远程命令拼装、exec 截断与超时、工作区存储、访问控制、事件映射、编辑范围、`reduceChat` |
 | 集成 | 内部接口（拒绝时不调用 SSH）、MCP stdio 冒烟（假后端）、WebSocket 来源校验 |
-| 验收 | 待创建的 `scripts/dev/e2e-m1.ts`：真实服务器上让 Claude 执行 `hostname` 并与直接 SSH 结果比对；浏览器中完成同一操作。当前尚未执行这项验收 |
+| 验收 | `scripts/dev/e2e-m1.ts` 已实现并通过真实 Claude/SSH hostname 比对与原生历史可见性；浏览器端同一链路及交互继续验收，结果见路线图 |
 
 验收时服务器上只执行只读命令。
 

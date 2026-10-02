@@ -9,10 +9,14 @@ import { loadConfig } from './config';
 import { buildApp } from './http/app';
 import { registerInternalRoutes } from './http/internal.routes';
 import { registerSessionRoutes } from './http/sessions.routes';
+import { registerSshRoutes } from './http/ssh.routes';
+import { registerSyncRoutes } from './http/sync.routes';
 import { registerWsRoutes } from './http/ws.routes';
 import { createSshPool } from './ssh/pool';
 import { listHosts, parseSshConfig } from './ssh/ssh-config';
 import { createWorkspaceStore } from './workspaces/store';
+import { createRcloneDriver } from './sync/rclone';
+import { createSyncManager } from './sync/manager';
 
 const WEB_DIST = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
@@ -47,12 +51,17 @@ async function main(): Promise<void> {
     knownHosts: async () => (await listSshHosts()).map((h) => h.alias),
   });
   const pool = createSshPool();
+  const sync = createSyncManager({
+    configDir: config.configDir,
+    driver: createRcloneDriver({ configDir: config.configDir, pool }),
+  });
   const registry = createSessionRegistry();
   let port = config.port;
   const turns = new TurnManager({
     getWorkspace: (id) => store.get(id),
     registry,
     internalUrl: () => `http://${hostForUrl(config.host)}:${port}`,
+    sync,
   });
 
   const app = await buildApp({
@@ -63,8 +72,10 @@ async function main(): Promise<void> {
     listSshHosts,
     webDir: WEB_DIST,
     routes: (a) => {
-      registerInternalRoutes(a, { registry, getWorkspace: (id) => store.get(id), pool });
+      registerInternalRoutes(a, { registry, getWorkspace: (id) => store.get(id), pool, sync });
       registerSessionRoutes(a, { store });
+      registerSshRoutes(a, { pool });
+      registerSyncRoutes(a, { store, sync });
       registerWsRoutes(a, { turns });
     },
   });
@@ -76,6 +87,7 @@ async function main(): Promise<void> {
   console.log(`访问地址：${accessUrl(config.host, port, config.token, config.devOrigin)}`);
 
   const shutdown = () => {
+    sync.dispose();
     pool.dispose();
     void app.close().finally(() => process.exit(0));
   };

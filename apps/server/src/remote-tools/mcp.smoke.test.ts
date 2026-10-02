@@ -30,6 +30,10 @@ describe('remote-tools MCP 子进程', () => {
       req.on('end', () => {
         seen.push({ url: req.url, auth: req.headers.authorization, body });
         res.setHeader('content-type', 'application/json');
+        if (req.url === '/internal/sync') {
+          res.end(JSON.stringify({ sync: { phase: 'ready', deletions: [], conflicts: [] } }));
+          return;
+        }
         const cmd = (JSON.parse(body) as { command?: string }).command ?? '';
         res.end(
           JSON.stringify(
@@ -54,7 +58,7 @@ describe('remote-tools MCP 子进程', () => {
     );
 
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
-    expect(names).toEqual(['remote_exec', 'remote_peek']);
+    expect(names).toEqual(['remote_exec', 'remote_peek', 'sync_now']);
 
     const ok = (await client.callTool({ name: 'remote_exec', arguments: { command: 'hostname' } })) as {
       content: Array<{ type: string; text: string }>;
@@ -70,5 +74,9 @@ describe('remote-tools MCP 子进程', () => {
     };
     expect(denied.isError).toBe(true);
     expect(denied.content[0]!.text).toContain('命令被拒绝');
+    const synced = await client.callTool({ name: 'sync_now', arguments: {} });
+    expect(synced.isError).toBeFalsy();
+    expect(JSON.stringify(synced.content)).toContain('同步');
+    expect(seen[2]).toMatchObject({ url: '/internal/sync', auth: 'Bearer tok-1', body: '{}' });
   }, 30_000);
 });

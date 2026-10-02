@@ -72,6 +72,7 @@ describe('runClaudeTurn：调用参数', () => {
     expect(o.allowedTools).toEqual([
       'mcp__ssh-server__remote_exec',
       'mcp__ssh-server__remote_peek',
+      'mcp__ssh-server__sync_now',
       'Read',
       'Glob',
       'Grep',

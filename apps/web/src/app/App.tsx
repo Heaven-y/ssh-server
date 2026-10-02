@@ -2,11 +2,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { ChatView } from '../features/chat/ChatView';
 import { lastWorkspaceId, useChat } from '../features/chat/chat-store';
+import { SyncPanel } from '../features/sync/SyncPanel';
+import { SshConnectionPanel } from '../features/workspaces/SshConnectionPanel';
 import { WorkspaceSidebar } from '../features/workspaces/WorkspaceSidebar';
 import { api, queryKeys } from '../lib/api';
 import { TopBar } from './TopBar';
 
-/** 两栏布局（M1）：左侧工作区与会话，右侧对话区；右侧面板在 M2 加入 */
+/** 两栏布局：工作区与会话在左侧，连接状态面板与对话区在右侧。 */
 export function App() {
   const workspaces = useQuery({ queryKey: queryKeys.workspaces, queryFn: api.listWorkspaces });
   const workspaceId = useChat((s) => s.workspaceId);
@@ -28,7 +30,14 @@ export function App() {
         <WorkspaceSidebar workspaces={workspaces} currentId={current?.id} />
         <main className="flex min-w-0 flex-1 flex-col">
           {current ? (
-            <ChatView workspace={current} />
+            <>
+              <SshConnectionPanel
+                key={JSON.stringify([current.id, current.sshHost, current.authMode ?? 'key', current.remoteDir])}
+                workspace={current}
+              />
+              <SyncPanel key={current.id} workspace={current} />
+              <ChatView workspace={current} />
+            </>
           ) : (
             <div className="m-auto max-w-sm text-center text-sm text-muted-foreground">
               {workspaces.isPending ? '正在加载工作区…' : '在左侧新建或选择一个工作区后开始对话。'}

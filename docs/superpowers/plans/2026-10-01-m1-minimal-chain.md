@@ -2,7 +2,7 @@
 
 > 实施此计划时使用项目的 `subagent-driven-development` 或 `executing-plans` 技能。本文保留 M1 的原步骤供追溯，当前状态以以下注记和路线图为准。
 
-**状态（2026-10-02）：** Task 1–10 的功能代码已实现，Task 11 尚未完成，`scripts/dev/e2e-m1.ts` 未创建，真实模型 / SSH 链路未验收。原步骤中的勾选不是本轮重新执行测试或提交的证明；后续新增功能以 [需求](../../product/requirements.md)、[设计决策](../../engineering/decisions.md) 和 [路线图](../../roadmap.md) 为准。
+**状态（2026-10-02）：** Task 1–10 的功能代码已实现，`scripts/dev/e2e-m1.ts` 已创建并通过真实 Claude → MCP → SSH hostname 与原生历史验收；Task 11 的浏览器交互和记录继续收尾。后续新增功能以[需求](../../product/requirements.md)、[设计决策](../../engineering/decisions.md)和[路线图](../../roadmap.md)为准。
 
 **范围更新：** 密码认证与同步在 M2，轻量编辑与版本记录在 M3，Codex / 固定 Agent / skills / 命令 / 上下文状态在 M4，完整向导 / Pebrel 终端参考 / 资源面板在 M5。本计划仅覆盖 M1；不增加任务完成自动检测，训练结果由用户手动要求查看。
 
@@ -456,20 +456,20 @@ export function resolvePermission(items: ChatItem[], requestId: string, allow: b
 
 ### Task 11: M1 验收与文档
 
-2026-10-02 状态：本任务仍未完成。必须先补下列脚本，再执行真实模型 / SSH 和浏览器验收；直接 SSH 冒烟、已有单元测试和文档更新均不能代替它。
+2026-10-02 状态：真实模型 / SSH 脚本已通过，浏览器交互和文档收尾继续推进；直接 SSH 冒烟或单元测试不替代网页验收。
 
 **Files:**
 - Create: `scripts/dev/e2e-m1.ts`
 - Modify: `docs/roadmap.md`、`docs/engineering/architecture.md`（第 8 节）、`docs/guides/dev-environment.md`、`README.md`
 
-- [ ] **Step 1: 写验收脚本** `e2e-m1.ts --host <Host> --remote-dir <目录>`：
+- [x] **Step 1: 写验收脚本** `e2e-m1.ts --host <Host> --remote-dir <目录>`：
   - 以临时 configDir、随机端口（`SSH_SERVER_PORT=0`）、指定令牌启动 `main.ts` 子进程，从输出读取访问地址；`/auth` 取得 Cookie。
   - 在临时目录下建本地文件夹，`POST /api/workspaces` 创建工作区。
   - WebSocket 发送 `chat.send`：`请使用 remote_exec 工具执行 hostname，并原样告诉我输出。`；收集事件直到 `turn.finished`（超时 180 秒）。
   - 断言：存在 `tool_call` 且 `name` 以 `remote_exec` 结尾；对应 `tool_result` 含 `createSshPool().exec(host, 'hostname')` 的输出（去首尾空白）；`session.model` 非空。
   - 打印 `PASS` / `FAIL`、首个事件耗时、总耗时；结束时关闭子进程、删除临时目录。
-- [ ] **Step 2: 运行验收** `npm run e2e:m1 -- --host <真实 Host> --remote-dir "~"` → `PASS`；记录耗时与模型名。
+- [x] **Step 2: 运行验收**：使用显式指定的专用目录通过真实 Claude → MCP → SSH 与原生历史比对；耗时和模型身份只写私有报告。
 - [ ] **Step 3: 浏览器验收**（webapp-testing 或内置浏览器）：`npm start` 后打开访问地址，在界面中创建工作区，发送同一句话，确认出现 `remote_exec` 卡片且结果为服务器主机名；再发送 `请用 remote_exec 执行 sudo whoami`，确认卡片显示 `命令被拒绝`（规则 privilege）。截图保存到会话临时目录，不进仓库。
 - [ ] **Step 4: 更新文档**：真实验收通过后将路线图 M1 标记完成并写验收记录；架构文档第 8 节写入 V1（本地配置是否生效）、V2（会话列表与历史）、V10（访问控制）的结论；开发环境文档补充运行用法和新发现的问题；README 更新当前实现范围。保留 2026-10-02 已确认的 M2–M5 需求，不把待实现能力标为完成。
 - [ ] **Step 5: 验证** `npm test`、`npm run typecheck`；文档链接与敏感信息检查（同首次提交时的检查）。
-- [ ] **Step 6: 用户明确要求时提交 / 推送**：提交信息 `docs: 记录 M1 验收结果并更新文档`；推送另按用户明确指令执行，不因本计划出现 `git push` 就自动推送。
+- [ ] **Step 6: 阶段提交**：用户已明确要求在完成阶段时提交，认证/同步与验收记录一同提交；不推送。
