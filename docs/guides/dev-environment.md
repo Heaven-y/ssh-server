@@ -53,7 +53,7 @@
 
 ### 1.3 质量检查
 
-提交前执行 `npm run check`，CI（`.github/workflows/check.yml`，Windows 与 Linux）运行同一命令。它依次执行：
+按变更影响范围执行相关检查；跨包测试布局或全局配置变更统一执行完整检查，后续只复验受影响部分。`npm run check` 提供完整门禁，CI（`.github/workflows/check.yml`，Windows 与 Linux）运行同一命令。它依次执行：
 
 | 步骤 | 命令 | 门槛 |
 |---|---|---|
@@ -67,6 +67,8 @@
 - 超过门槛时先拆分函数、补测试；确实需要例外时用行内 `// eslint-disable-next-line <规则> -- 原因`，不放宽全局门槛。
 - 报告输出到 `coverage/`（已忽略），打开 `coverage/index.html` 查看未覆盖的行。
 - 当前结果（2026-10-02）：`npm.cmd run check` 全部通过，39 个测试文件、334 项测试，包含独立加密存储核心的 8 项测试；覆盖率与重复率门槛均满足。新增改动按影响范围增量验证。
+
+测试放各包独立的 `tests/`，与 `src/` 的模块路径对应；新增测试只覆盖核心行为和实际回归，复用现有路径，避免重复断言。需要绝对路径的本机 fixture 用 `path.resolve` / 临时目录生成，不写死开发机路径；协议和安全边界的路径字面量保留其测试意义。执行相关测试示例：`npm test -- apps/server/tests/ssh apps/server/tests/http/ssh.routes.test.ts`。目录总览见 [架构第 3 节](../engineering/architecture.md#3-仓库结构)。
 
 ### 1.4 当前接入状态与后续验证
 

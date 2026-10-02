@@ -35,7 +35,7 @@ export default tseslint.config(
 
   // 前端：浏览器环境 + React Hooks 规则
   {
-    files: ['apps/web/src/**/*.{ts,tsx}'],
+    files: ['apps/web/{src,tests}/**/*.{ts,tsx}'],
     languageOptions: { globals: { ...globals.browser } },
     plugins: { 'react-hooks': reactHooks },
     rules: {
@@ -47,7 +47,7 @@ export default tseslint.config(
 
   // 测试：允许为构造场景使用 any、非空断言与较长的用例
   {
-    files: ['**/*.test.ts', '**/*.test.tsx'],
+    files: ['apps/*/tests/**/*.{ts,tsx}', 'packages/*/tests/**/*.{ts,tsx}'],
     rules: {
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
@@ -63,7 +63,7 @@ export default tseslint.config(
 
   // 配置文件不在任何 tsconfig 中，不做类型检查
   {
-    files: ['*.config.{js,ts}', 'apps/*/*.config.ts'],
+    files: ['*.config.{js,ts}', 'apps/*/*.config.ts', 'packages/*/*.config.ts'],
     extends: [tseslint.configs.disableTypeChecked],
   },
 

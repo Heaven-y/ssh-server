@@ -78,47 +78,36 @@ Python 分析默认通过 SSH 在服务器已有解释器或项目环境内执�
 ```text
 ssh-server/
 ├─ apps/
-│  ├─ server/                  # 本地后端（Node + Fastify）
-│  │  └─ src/
-│  │     ├─ main.ts            # 启动入口：监听 127.0.0.1、生成访问令牌
-│  │     ├─ http/              # 路由、令牌与来源校验
-│  │     ├─ agents/            # Claude / Codex 适配器，统一事件格式
-│  │     ├─ remote-tools/      # stdio MCP 服务（单独入口，由 Agent 启动）
-│  │     ├─ ssh/               # ssh config 解析、连接池、exec、shell、目录浏览
-│  │     ├─ sync/              # rclone 调用、过滤规则、删除检查
-│  │     ├─ files/              # 本地文件列表、读取与保存、修改冲突检查
-│  │     ├─ metrics/            # SSH 指标采样、按目标复用、资源状态推送
-│  │     ├─ vcs/               # git 状态、保存、历史、恢复
-│  │     ├─ sessions/          # 会话列表、删除、归档
-│  │     ├─ policy/            # 命令黑名单
-│  │     └─ workspaces/        # 工作区配置读写
-│  └─ web/                     # 前端（React + Vite）
-│     └─ src/
-│        ├─ app/               # 外壳、路由、全局状态
-│        ├─ features/          # chat、workspaces、sync、files、metrics、terminal、history、settings
-│        ├─ components/        # 通用界面组件
-│        └─ lib/               # 接口客户端、工具函数
-├─ packages/
-│  └─ shared/                  # 前后端共用类型与数据结构（AgentEvent、接口参数）
-├─ tests/
-│  └─ e2e/                     # 端到端测试（Playwright）
-├─ scripts/
-│  └─ dev/                     # 开发辅助脚本
+│  ├─ server/
+│  │  ├─ src/                 # main/config 与 http、agents、chat、ssh、sync、policy、workspaces、remote-tools
+│  │  └─ tests/               # 按 src 模块镜像排列的后端测试
+│  └─ web/
+│     ├─ src/
+│     │  ├─ app/              # 页面外壳与顶栏
+│     │  ├─ features/         # chat、workspaces、sync
+│     │  ├─ ui/               # 通用控件样式
+│     │  └─ lib/              # 接口客户端、查询与 WebSocket
+│     └─ tests/               # lib 与 features 下对应测试
+├─ packages/shared/
+│  ├─ src/                    # 共享协议、工作区、同步及事件类型
+│  └─ tests/                  # 共享协议的核心测试
+├─ scripts/dev/               # 真实链路验收与开发辅助脚本
 └─ docs/
-   ├─ product/                 # 做什么：需求、界面布局
-   ├─ engineering/             # 怎么做：架构与设计决策
-   ├─ guides/                  # 怎么用：开发环境
-   ├─ superpowers/             # brainstorming / writing-plans 产出的 specs、plans
-   └─ roadmap.md               # 里程碑与进度
+   ├─ product/                # 需求、界面布局
+   ├─ engineering/            # 架构与设计决策
+   ├─ guides/                 # 开发环境与验收记录
+   ├─ superpowers/            # specs、plans
+   └─ roadmap.md              # 里程碑与进度
 ```
 
 约定：
 
-- 后端、前端都按功能划分模块，不按"控制器 / 服务 / 数据"分层；模块之间只通过模块入口文件引用。
-- 单元测试与源码放在一起（`*.test.ts`），端到端测试放在 `tests/e2e/`。
-- `remote-tools` 与后端共用内部接口约定，放在 server 内部，不单独成包。
-- 根目录只放仓库入口文档、Agent 规则、工作区与编辑器配置。
-- 目录在实际用到时再创建，不建空目录占位。
+- 前后端按功能划分模块，通用部分才放 `lib` / `ui`；不额外建立控制器、服务、仓储层或为每个文件包装入口。
+- 单元和模块集成测试统一放所属包的 `tests/`，路径镜像 `src/`，保留 `*.test.ts` 命名。测试夹具与辅助函数放同一测试模块内；确实共用时才提取到 `tests/helpers/`。
+- Vitest 只发现各包 `tests/` 下的用例；TypeScript 同时检查 `src/` 与 `tests/`，覆盖率仅统计生产源码，重复率排除测试目录。
+- 真实 Agent / SSH 验收继续使用 `scripts/dev/e2e-*.ts`。以后引入 Playwright 端到端测试时再建立 `tests/e2e/`，当前不建空目录。
+- `remote-tools` 是后端内部的独立进程入口，不单独拆包。
+- 根目录只放仓库入口文档和工具需要的根配置；文件、版本、终端、资源模块在实施相应里程碑时再创建。
 
 ## 4. 本地数据存放
 

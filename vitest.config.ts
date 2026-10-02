@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 
-// 每个 workspace 包是一个独立的测试项目，测试文件与源码放在一起（*.test.ts）
+// 每个 workspace 包是一个独立的测试项目，测试集中放在各包的 tests 目录
 // 覆盖率只能在根配置统一设置；门槛按包和目录分别给出，说明见 docs/guides/dev-environment.md 1.3
 export default defineConfig({
   test: {
