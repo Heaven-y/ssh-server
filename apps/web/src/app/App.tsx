@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { ChatView } from '../features/chat/ChatView';
 import { lastWorkspaceId, useChat } from '../features/chat/chat-store';
 import { SyncPanel } from '../features/sync/SyncPanel';
@@ -8,8 +8,11 @@ import { WorkspaceSidebar } from '../features/workspaces/WorkspaceSidebar';
 import { api, queryKeys } from '../lib/api';
 import { TopBar } from './TopBar';
 
+const SettingsDialog = lazy(() => import('../features/settings/SettingsDialog'));
+
 /** 两栏布局：工作区与会话在左侧，连接状态面板与对话区在右侧。 */
 export function App() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const workspaces = useQuery({ queryKey: queryKeys.workspaces, queryFn: api.listWorkspaces });
   const workspaceId = useChat((s) => s.workspaceId);
   const selectWorkspace = useChat((s) => s.selectWorkspace);
@@ -25,7 +28,21 @@ export function App() {
 
   return (
     <div className="flex h-full min-w-[960px] flex-col">
-      <TopBar workspace={current} />
+      <TopBar workspace={current} onOpenSettings={() => setSettingsOpen(true)} />
+      {settingsOpen && (
+        <Suspense
+          fallback={
+            <p
+              role="status"
+              className="absolute right-4 top-14 z-50 rounded-md border border-border bg-card p-3 text-sm"
+            >
+              正在打开设置…
+            </p>
+          }
+        >
+          <SettingsDialog onClose={() => setSettingsOpen(false)} />
+        </Suspense>
+      )}
       <div className="flex min-h-0 flex-1">
         <WorkspaceSidebar workspaces={workspaces} currentId={current?.id} />
         <main className="flex min-w-0 flex-1 flex-col">

@@ -42,6 +42,8 @@
 | 前端 WebSocket 断线重连 | `partysocket` | 自带退避重连与发送缓冲 |
 | 对话区贴底滚动 | `use-stick-to-bottom` | 流式输出时贴底、用户上翻时停止，提供"回到底部"状态 |
 | Markdown 流式渲染 | `streamdown` | 处理未闭合的 Markdown |
+| 原生配置语法校验 | `smol-toml` 1.9.0（BSD-3-Clause）与原生 JSON 解析 | 校验语法后保存原文，保留未知字段、注释和格式，不自行实现 TOML |
+| 轻量编辑组件 | `@uiw/react-codemirror` 4.25.12、CodeMirror 6 JSON / TOML 语言扩展（MIT） | 按需加载，支持高亮与搜索；先用于原生配置编辑，后续文件编辑复用 |
 | 前端全局状态 | `zustand` | — |
 | 图标、字体 | `lucide-react`、fontsource | — |
 | 代码检查与复杂度 | ESLint、typescript-eslint、`eslint-plugin-sonarjs`（LGPL，仅开发时使用） | 见 1.3 |
@@ -49,7 +51,7 @@
 | 重复率 | jscpd | — |
 | 覆盖率 | `@vitest/coverage-v8` | 与 Vitest 同版本 |
 
-待引入能力不作为已安装依赖记录：终端已选 xterm.js；轻量编辑器尚未最终选型，Monaco / CodeMirror 的 React 集成为候选。具体引入时固定版本、评估许可与按需加载，并更新本表。Pebrel 仅参考界面和交互，不引入其 GPL 实现。
+待引入能力不作为已安装依赖记录：终端已选 xterm.js，正式接入时固定版本并验证许可与按需加载。Pebrel 仅参考界面和交互，不引入其 GPL 实现。
 
 ### 1.3 质量检查
 

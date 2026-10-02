@@ -10,3 +10,4 @@ export { SshAuthModeSchema, WorkspaceInputSchema } from './workspace';
 export type { SshAuthMode, SshHostInfo, Workspace, WorkspaceInput } from './workspace';
 export { SyncSettingsSchema, DEFAULT_EXCLUDED_EXTENSIONS } from './sync';
 export type { SyncSettings, SyncConflict, SyncStatus } from './sync';
+export type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from './settings';

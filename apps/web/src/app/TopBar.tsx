@@ -1,4 +1,4 @@
-import { LoaderCircle, RefreshCw, Server, Wifi, WifiOff } from 'lucide-react';
+import { LoaderCircle, RefreshCw, Server, Settings2, Wifi, WifiOff } from 'lucide-react';
 import type { Workspace } from '@ssh-server/shared';
 import { reconnectChat, useChat } from '../features/chat/chat-store';
 import { buttonClass } from '../ui/styles';
@@ -10,7 +10,7 @@ const STATUS = {
 } as const;
 
 /** 顶栏：应用名、当前工作区、WebSocket 连接状态（图标 + 文字，不只靠颜色） */
-export function TopBar({ workspace }: { workspace?: Workspace }) {
+export function TopBar({ workspace, onOpenSettings }: { workspace?: Workspace; onOpenSettings(): void }) {
   const connection = useChat((s) => s.connection);
   const st = STATUS[connection];
   const Icon = st.icon;
@@ -31,6 +31,10 @@ export function TopBar({ workspace }: { workspace?: Workspace }) {
         </span>
       )}
       <div className="ml-auto flex shrink-0 items-center gap-2">
+        <button type="button" className={buttonClass('ghost')} onClick={onOpenSettings}>
+          <Settings2 aria-hidden className="size-4" />
+          设置
+        </button>
         <span
           role="status"
           title="网页 WebSocket 连接状态；SSH 认证请查看工作区的 SSH 连接面板"

@@ -39,3 +39,13 @@ Claude 每轮使用新的官方 query，重新读取 user/project/local 来源�
 4. Codex 验收只复制调用时提供的替代配置到隔离 home；原始配置和替代文件保持不变。临时模型配置不进入仓库或共享报告。完成必要检查后提交配置功能。
 
 本设计不包含 cc-switch 的多服务商配置集、账户切换、使用量监控或自动更新，也不跳过后续 Codex 原生会话、skills、上下文与审批的 M4 实施。
+
+## 2026-10-03 配置编辑实施约定
+
+- 仅编辑 `CLAUDE_CONFIG_DIR/settings.json` 与 `CODEX_HOME/config.toml`，未设置环境变量时分别回落到用户目录下的 `.claude`、`.codex`；暂不提供认证文件和任意路径入口。
+- 每份配置最多 256 KiB；JSON 根须为对象，TOML 用 smol-toml 解析。读写保留原文，错误只包含固定分类与说明，HTTP 解析错误也不能回显输入片段。
+- 使用原生 dialog 与按需加载的 CodeMirror 6，Tab 保持浏览器焦点导航。保存、重新读取、切换和关闭各自反馈状态，未保存内容离开前确认。
+- 保存时复查版本摘要和文件身份，在同目录写临时文件后原子替换；同一文件的应用内写入串行。外部程序在最后核查与 rename 之间的极短窗口不具备跨进程事务锁，不能据此承诺绝对比较并交换。
+- 本阶段完成编辑器和原生文件存储；Codex 的持续 app-server 适配器仍待 M4，界面明确该边界。后续接入时按实际运行时配置重启/恢复规则实现下一轮生效。
+
+官方资料已实际读取：[配置基础](https://learn.chatgpt.com/docs/config-file/config-basic)、[配置位置与 CODEX_HOME](https://learn.chatgpt.com/docs/config-file/config-advanced)、[App Server](https://learn.chatgpt.com/docs/app-server)。本机协议以安装的 CLI 生成结果为准，不把新版文档字段直接假定为本机可用。

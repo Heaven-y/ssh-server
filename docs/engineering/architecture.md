@@ -1,6 +1,6 @@
 # 架构
 
-更新日期：2026-10-02。本文是目标架构，当前仅实现 M1 的主要链路，完成状态见 [路线图](../roadmap.md)。已确认的取舍集中在 [设计决策](decisions.md)，本轮新增功能不能视为已经实现。
+更新日期：2026-10-03。本文是目标架构，当前仅实现 M1 的主要链路，完成状态见 [路线图](../roadmap.md)。已确认的取舍集中在 [设计决策](decisions.md)，本轮新增功能不能视为已经实现。
 
 ## 1. 总览
 
@@ -79,13 +79,13 @@ Python 分析默认通过 SSH 在服务器已有解释器或项目环境内执�
 ssh-server/
 ├─ apps/
 │  ├─ server/
-│  │  ├─ src/                 # main/config 与 http、agents、chat、ssh、sync、policy、workspaces、remote-tools
+│  │  ├─ src/                 # main/config 与 http、agents、chat、ssh、sync、settings、policy、workspaces、remote-tools
 │  │  └─ tests/               # 按 src 模块镜像排列的后端测试
 │  └─ web/
 │     ├─ src/
 │     │  ├─ app/              # 页面外壳与顶栏
-│     │  ├─ features/         # chat、workspaces、ssh、sync
-│     │  ├─ ui/               # 通用控件样式
+│     │  ├─ features/         # chat、workspaces、ssh、sync、settings
+│     │  ├─ ui/               # 通用控件样式、CodeMirror 编辑组件
 │     │  └─ lib/              # 接口客户端、查询与 WebSocket
 │     └─ tests/               # lib 与 features 下对应测试
 ├─ packages/shared/
@@ -328,4 +328,4 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 | V16 | 对话流、SSH PTY、资源采样及同步同时运行时的消息响应；同一会话禁止重叠轮次、同一工作区同步不重叠，超时 / 输出限制不影响其他活动 |
 | V17 | 使用服务器已有 Python / 项目环境执行用户要求的统计、绘图和结果处理；分析脚本先同步，必要小文件按需返回，不整份下载大数据或自动触发分析 |
 
-2026-10-02 状态核对：私钥与内存密码认证、rclone 小文件双向同步、稳定本地镜像、删除确认、冲突保留、执行前后及轮次结束同步已接入；断开或凭据替换取消传输，过期请求不会清除新凭据。真实 Claude → MCP → SSH hostname 与原生历史验收已通过，修复后的传输及网页验收记录见路线图。Windows 当前用户加密保存已接入，网页复用保存项、取消保存和主动断开暂停均已贯通；本轮凭据验收见验收记录。Codex、配置编辑、网页编辑器、终端和资源面板仍在后续实施范围；skills / 命令选择及压缩状态展示未接入。
+2026-10-02 状态核对：私钥与内存密码认证、rclone 小文件双向同步、稳定本地镜像、删除确认、冲突保留、执行前后及轮次结束同步已接入；断开或凭据替换取消传输，过期请求不会清除新凭据。真实 Claude → MCP → SSH hostname 与原生历史验收已通过，修复后的传输及网页验收记录见路线图。Windows 当前用户加密保存已接入，网页复用保存项、取消保存和主动断开暂停均已贯通；本轮凭据验收见验收记录。原生配置编辑已实现，Codex 对话、项目文件编辑、终端和资源面板仍在后续实施范围；skills / 命令选择及压缩状态展示未接入。

@@ -1,6 +1,9 @@
 // REST 接口封装：Cookie 由 /auth 设置，同源请求自动携带
 import type {
   AgentEvent,
+  NativeConfigAgent,
+  NativeConfigDocument,
+  NativeConfigInput,
   SshAuthMode,
   SshHostInfo,
   SyncSettings,
@@ -50,6 +53,16 @@ const postSync = (id: string, suffix = '', body: unknown = {}) =>
   request<SyncStatus>(syncUrl(id) + suffix, { method: 'POST', body: JSON.stringify(body) });
 
 export const api = {
+  /** 原生配置内容只能由显式打开的编辑区持有，不接入查询缓存或持久存储。 */
+  readAgentConfig: (agent: NativeConfigAgent, signal?: AbortSignal) =>
+    request<NativeConfigDocument>(`/api/agent-config/${agent}`, { signal, cache: 'no-store' }),
+  saveAgentConfig: (agent: NativeConfigAgent, input: NativeConfigInput, signal?: AbortSignal) =>
+    request<NativeConfigDocument>(`/api/agent-config/${agent}`, {
+      method: 'PUT',
+      signal,
+      cache: 'no-store',
+      body: JSON.stringify({ content: input.content, revision: input.revision }),
+    }),
   listWorkspaces: () => request<Workspace[]>('/api/workspaces'),
   createWorkspace: (input: WorkspaceInput) =>
     request<Workspace>('/api/workspaces', {

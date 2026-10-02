@@ -10,6 +10,7 @@ import { buildApp } from './http/app';
 import { registerInternalRoutes } from './http/internal.routes';
 import { registerSessionRoutes } from './http/sessions.routes';
 import { registerSshRoutes } from './http/ssh.routes';
+import { registerAgentConfigRoutes } from './http/agent-config.routes';
 import { registerSyncRoutes } from './http/sync.routes';
 import { registerWsRoutes } from './http/ws.routes';
 import { createSshPool } from './ssh/pool';
@@ -18,6 +19,7 @@ import { listHosts, parseSshConfig } from './ssh/ssh-config';
 import { createWorkspaceStore } from './workspaces/store';
 import { createRcloneDriver } from './sync/rclone';
 import { createSyncManager } from './sync/manager';
+import { createNativeConfigService } from './settings/native-config';
 
 const WEB_DIST = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
@@ -76,6 +78,7 @@ async function main(): Promise<void> {
       registerInternalRoutes(a, { registry, getWorkspace: (id) => store.get(id), pool, sync });
       registerSessionRoutes(a, { store });
       registerSshRoutes(a, { pool });
+      registerAgentConfigRoutes(a, { service: createNativeConfigService() });
       registerSyncRoutes(a, { store, sync });
       registerWsRoutes(a, { turns });
     },
