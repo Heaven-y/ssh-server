@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { PlugZap, RefreshCw } from 'lucide-react';
-import { useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   WorkspaceInputSchema,
   type SshAuthMode,
@@ -53,8 +53,8 @@ function FormField(props: {
   const hintId = `${props.id}-hint`;
   const describedBy = [props.error && errId, props.hint && hintId].filter(Boolean).join(' ') || undefined;
   return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <label htmlFor={props.id} className="text-xs font-medium text-muted-foreground">
+    <div className="flex min-w-0 flex-col gap-2">
+      <label htmlFor={props.id} className="text-sm font-medium">
         {props.label}
       </label>
       {props.children({ describedBy })}
@@ -148,12 +148,12 @@ function AuthenticationField({
   onChange(value: SshAuthMode): void;
 }) {
   return (
-    <fieldset className="flex min-w-0 flex-col gap-2">
-      <legend className="mb-2 text-xs font-medium text-muted-foreground">SSH 认证方式</legend>
+    <fieldset className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+      <legend className="mb-3 text-sm font-medium">SSH 认证方式</legend>
       {AUTH_MODES.map(({ mode, label }) => (
         <label
           key={mode}
-          className={`flex min-h-9 items-center gap-2 rounded-md border border-border-strong px-3 py-2 text-sm hover:bg-muted ${value === mode ? 'bg-muted' : ''}`}
+          className={`flex min-h-11 items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors hover:bg-muted ${value === mode ? 'border-accent/60 bg-accent/10' : 'border-border-strong'}`}
         >
           <input
             type="radio"
@@ -176,11 +176,26 @@ function isTestDisabled(values: Values, connection: ReturnType<typeof useSshConn
 }
 
 /** 工作区配置不含密码；密码工作区须先完成同一目标的连接验证。 */
-export function WorkspaceForm({ onCreated, onCancel }: { onCreated(ws: Workspace): void; onCancel(): void }) {
+export function WorkspaceForm({
+  onCreated,
+  onCancel,
+  onBusyChange,
+}: {
+  onCreated(ws: Workspace): void;
+  onCancel(): void;
+  onBusyChange?(busy: boolean): void;
+}) {
   const id = useId();
   const qc = useQueryClient();
   const [values, setValues] = useState(EMPTY);
   const [errors, setErrors] = useState<Errors>({});
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const hosts = useQuery({ queryKey: queryKeys.sshHosts, queryFn: api.listSshHosts });
   const target = { sshHost: values.sshHost, remoteDir: values.remoteDir, authMode: values.authMode };
   const connection = useSshConnection(target);
@@ -188,11 +203,13 @@ export function WorkspaceForm({ onCreated, onCancel }: { onCreated(ws: Workspace
   const create = useMutation({
     mutationFn: (input: WorkspaceInput) => api.createWorkspace(input),
     onSuccess: async (workspace) => {
-      connection.clearPassword();
+      if (mounted.current) connection.clearPassword();
       await qc.invalidateQueries({ queryKey: queryKeys.workspaces });
-      onCreated(workspace);
+      // 表单已销毁时只刷新列表，不让迟到创建结果切换当前工作区。
+      if (mounted.current) onCreated(workspace);
     },
     onError: (error) => {
+      if (!mounted.current) return;
       connection.clearPassword();
       if (error instanceof ApiError && error.status === 409) connection.reset();
       const field = error instanceof ApiError ? (error.field as Field | undefined) : undefined;
@@ -203,6 +220,10 @@ export function WorkspaceForm({ onCreated, onCancel }: { onCreated(ws: Workspace
   });
   const busy = create.isPending || connection.busy;
   const needsVerification = values.authMode === 'password' && !connection.verified;
+  useEffect(() => {
+    // 连接测试可取消；只有工作区正在提交创建时阻止模态关闭。
+    onBusyChange?.(create.isPending);
+  }, [create.isPending, onBusyChange]);
 
   const set = (field: Field) => (value: string) => {
     if (field === 'sshHost' || field === 'remoteDir') connection.reset();
@@ -230,6 +251,7 @@ export function WorkspaceForm({ onCreated, onCancel }: { onCreated(ws: Workspace
     if (Object.keys(found).length === 0) create.mutate({ ...values, name: values.name.trim() });
   };
   const cancel = () => {
+    if (create.isPending) return;
     connection.reset();
     onCancel();
   };
@@ -242,17 +264,14 @@ export function WorkspaceForm({ onCreated, onCancel }: { onCreated(ws: Workspace
   });
 
   return (
-    <form
-      noValidate
-      onSubmit={submit}
-      aria-label="新建工作区"
-      aria-busy={busy}
-      className="flex min-w-0 flex-col gap-3 rounded-md border border-border p-3"
-    >
-      <fieldset disabled={busy} className="flex min-w-0 flex-col gap-3 disabled:opacity-70">
+    <form noValidate onSubmit={submit} aria-label="新建工作区" aria-busy={busy} className="flex min-w-0 flex-col gap-5">
+      <p className="text-sm leading-6 text-muted-foreground">为项目关联本地副本与 SSH 服务器目录。</p>
+      <fieldset disabled={busy} className="flex min-w-0 flex-col gap-5 disabled:opacity-70">
         <legend className="sr-only">工作区配置</legend>
-        <FormField id={`${id}-name`} label="名称" error={errors.name}>
-          {({ describedBy }) => <input {...field('name')} aria-describedby={describedBy} autoComplete="off" />}
+        <FormField id={`${id}-name`} label="工作区名称" error={errors.name}>
+          {({ describedBy }) => (
+            <input {...field('name')} aria-describedby={describedBy} autoComplete="off" autoFocus />
+          )}
         </FormField>
         <FormField
           id={`${id}-localDir`}
@@ -269,23 +288,25 @@ export function WorkspaceForm({ onCreated, onCancel }: { onCreated(ws: Workspace
             />
           )}
         </FormField>
-        <SshHostPicker
-          id={`${id}-sshHost`}
-          hosts={hosts}
-          value={values.sshHost}
-          error={errors.sshHost}
-          onChange={set('sshHost')}
-        />
-        <FormField id={`${id}-remoteDir`} label="服务器目录" error={errors.remoteDir} hint="以 / 或 ~ 开头">
-          {({ describedBy }) => (
-            <input
-              {...field('remoteDir')}
-              aria-describedby={describedBy}
-              className={`${inputClass} font-mono`}
-              spellCheck={false}
-            />
-          )}
-        </FormField>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <SshHostPicker
+            id={`${id}-sshHost`}
+            hosts={hosts}
+            value={values.sshHost}
+            error={errors.sshHost}
+            onChange={set('sshHost')}
+          />
+          <FormField id={`${id}-remoteDir`} label="服务器目录" error={errors.remoteDir} hint="以 / 或 ~ 开头">
+            {({ describedBy }) => (
+              <input
+                {...field('remoteDir')}
+                aria-describedby={describedBy}
+                className={`${inputClass} font-mono`}
+                spellCheck={false}
+              />
+            )}
+          </FormField>
+        </div>
         <AuthenticationField id={id} value={values.authMode} onChange={setAuthMode} />
         {values.authMode === 'password' ? (
           <SshPasswordField connection={connection} disabled={busy} />
@@ -297,7 +318,7 @@ export function WorkspaceForm({ onCreated, onCancel }: { onCreated(ws: Workspace
       </fieldset>
       <button
         type="button"
-        className={`${buttonClass('outline')} active:bg-muted`}
+        className={`${buttonClass('outline')} self-start active:bg-muted`}
         onClick={testConnection}
         disabled={isTestDisabled(values, connection, create.isPending)}
       >
@@ -306,16 +327,14 @@ export function WorkspaceForm({ onCreated, onCancel }: { onCreated(ws: Workspace
       </button>
       <SshConnectionFeedback connection={connection} />
       {needsVerification && (
-        <p className="text-xs leading-5 text-muted-foreground">
-          密码认证须先验证成功，才能创建。目标改变后需要重新测试。
-        </p>
+        <p className="text-xs leading-5 text-warning">密码认证须先验证成功，才能创建。目标改变后需要重新测试。</p>
       )}
       {errors.form && (
         <p role="alert" className="text-xs leading-5 text-destructive-foreground">
           {errors.form}
         </p>
       )}
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex flex-wrap justify-end gap-2 border-t border-border/70 pt-4">
         <button
           type="button"
           className={`${buttonClass('ghost')} active:bg-muted`}
@@ -329,7 +348,7 @@ export function WorkspaceForm({ onCreated, onCancel }: { onCreated(ws: Workspace
           className={`${buttonClass('primary')} active:bg-accent/80`}
           disabled={busy || needsVerification}
         >
-          {create.isPending ? '创建中…' : '创建'}
+          {create.isPending ? '创建中…' : '创建工作区'}
         </button>
       </div>
     </form>

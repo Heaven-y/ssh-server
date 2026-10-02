@@ -10,11 +10,13 @@ export const MessageItem = memo(function MessageItem({ item }: { item: ChatItem 
   switch (item.kind) {
     case 'user':
       return (
-        <div className="ml-auto max-w-[80%] rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-wrap">{item.text}</div>
+        <div className="ml-auto max-w-[88%] rounded-xl bg-muted/70 px-4 py-3 text-[15px] leading-7 whitespace-pre-wrap break-words">
+          {item.text}
+        </div>
       );
     case 'assistant':
       return (
-        <div className="text-sm leading-relaxed">
+        <div className="min-w-0 text-[15px] leading-7 break-words [&_li]:leading-7 [&_p]:leading-7 [&_pre]:text-[13px] [&_pre]:leading-6">
           <Streamdown mode={item.streaming ? 'streaming' : 'static'} isAnimating={item.streaming}>
             {item.text}
           </Streamdown>
@@ -22,9 +24,9 @@ export const MessageItem = memo(function MessageItem({ item }: { item: ChatItem 
       );
     case 'reasoning':
       return (
-        <details className="text-sm text-muted-foreground">
-          <summary className="cursor-pointer select-none">思考过程</summary>
-          <p className="mt-1 border-l-2 border-border pl-3 whitespace-pre-wrap">{item.text}</p>
+        <details className="min-w-0 text-sm text-muted-foreground">
+          <summary className="w-fit cursor-pointer rounded-md py-1 select-none hover:text-foreground">思考过程</summary>
+          <p className="mt-2 border-l border-border pl-4 leading-7 whitespace-pre-wrap break-words">{item.text}</p>
         </details>
       );
     case 'tool':
@@ -33,12 +35,9 @@ export const MessageItem = memo(function MessageItem({ item }: { item: ChatItem 
       return <PermissionCard item={item} />;
     case 'error':
       return (
-        <div
-          role="alert"
-          className="flex items-start gap-2 rounded-md border border-destructive bg-card px-3 py-2 text-sm"
-        >
+        <div role="alert" className="flex items-start gap-3 rounded-lg bg-destructive/10 px-4 py-3 text-sm leading-6">
           <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
-          <span className="text-destructive-foreground">{item.message}</span>
+          <span className="min-w-0 break-words text-destructive-foreground">{item.message}</span>
         </div>
       );
   }

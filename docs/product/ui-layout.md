@@ -6,6 +6,8 @@
 
 ### 0.1 参考项目（2026-10 调研）
 
+2026-10-03 已重新核对 T3 Code、CloudCLI 和 Vibe Kanban 的实际界面、Star 与维护状态；具体取舍见 [界面参考与改版方向](ui-reference-review.md)。当前已完成中性深色、紧凑状态摘要、按需详情和对话层级改版，范围见 [界面验收](../guides/workspace-ui-acceptance.md)。
+
 只借鉴交互和布局思路，不复制代码；AGPL 项目（CloudCLI、opcode）仅作对照。
 
 | 项目 | 规模 / 许可 | 借鉴点 |
@@ -23,24 +25,25 @@ Pebrel 的 README 与许可已核对，截图的实际视觉核对尚未完成�
 
 ### 0.2 视觉方向
 
-由 ui-ux-pro-max 检索得出（查询 "developer tool dashboard dark"，密度 8、动效 2），只采用其中适合工具类应用的部分：
+采用 UI UX Pro Max 中适合桌面工具的 Minimalism & Swiss Style 规则，结合实际产品截图，避免套用营销页结构：
 
 - 风格：极简（Minimalism & Swiss）——高对比、网格对齐、少装饰；信息密度高（间距 8–32px）。
-- 颜色（暗色初始值，实现时用语义变量）。已校验：文字对背景、卡片的对比度均 ≥ 4.5:1；`border` 只有约 2.1–2.4:1，只能用于装饰性分隔，可交互组件的边框改用 `border-strong`（≥ 3:1）：
+- 颜色（已实现为语义变量）。正文、辅助文字和状态色对 background/card/muted 的最小对比度分别为 12.45、5.89、7.50 以上；可交互边界 `border-strong` 最小 3.33:1，普通 `border` 仅用于装饰性分隔：
 
 | 语义 | 值 | 用途 |
 |---|---|---|
-| background | `#0F172A` | 页面背景 |
-| card | `#1B2336` | 卡片、面板 |
-| muted / muted-foreground | `#272F42` / `#94A3B8` | 次要背景与文字 |
-| foreground | `#F8FAFC` | 主要文字 |
-| border | `#475569` | 装饰性分隔线（面板、卡片之间） |
-| border-strong | `#6B7A90` | 输入框、按钮等可交互组件的边框（对背景 4.09:1、对卡片 3.59:1） |
-| accent | `#22C55E` | 运行中、成功、主要操作 |
-| destructive | `#EF4444` | 删除、失败（图标与边框；在卡片上作文字时对比度不足 4.5:1） |
-| destructive-foreground | `#FCA5A5` | 卡片、背景上的错误文字（对卡片约 5.6:1） |
+| background | `#101114` | 页面背景 |
+| card | `#18191E` | 卡片、面板 |
+| muted / muted-foreground | `#282A32` / `#A2A6B3` | 次要背景与文字 |
+| foreground | `#EEEFF3` | 主要文字 |
+| border | `#30323B` | 装饰性分隔线 |
+| border-strong | `#747A89` | 输入框、按钮等可交互边界 |
+| accent / accent-foreground | `#9CB5FF` / `#152044` | 主操作与焦点；按钮文字对比度 7.92:1 |
+| success / warning | `#81CBA4` / `#F0C77F` | 成功 / 待确认，不与主要操作混用 |
+| destructive | `#E66F7A` | 危险操作与错误边界 |
+| destructive-foreground | `#FFB0B8` | 错误文字 |
 
-- 字体：正文 IBM Plex Sans，代码 / 终端 / 路径 JetBrains Mono；通过 fontsource 本地打包，不从 Google Fonts 加载。
+- 字体：正文 IBM Plex Sans，中文明确回退到系统中文字体；代码 / 终端 / 路径 JetBrains Mono。字体通过 fontsource 本地打包，不从 Google Fonts 加载。对话正文 15px，行高 28px。
 - 图标：Lucide（SVG），不用 emoji 当图标。
 - 动效：只用细微过渡（150–250ms），遵守 `prefers-reduced-motion`。
 
@@ -74,6 +77,8 @@ Pebrel 的 README 与许可已核对，截图的实际视觉核对尚未完成�
 - 右侧标签较多时可滚动，不压缩对话区；终端可展开为底部宽区域，编辑器可扩大显示空间。资源概览显示的数值仅为布局示例。
 
 ## 2. 顶栏
+
+当前实现：顶部为工作区、文件、设置与本机服务状态；对话上方单行显示 SSH 和同步摘要，点击打开详情。失败、断开、状态不可用和待确认保持可见；关闭详情不卸载同步调度。新建工作区使用模态表单，测试连接期间可以取消，提交创建期间禁止关闭。
 
 | 元素 | 说明 |
 |---|---|

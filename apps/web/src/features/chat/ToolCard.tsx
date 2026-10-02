@@ -1,4 +1,4 @@
-import { CircleCheck, CircleX, LoaderCircle, Terminal, Wrench } from 'lucide-react';
+import { ChevronRight, CircleCheck, CircleX, LoaderCircle, Terminal, Wrench } from 'lucide-react';
 import type { ChatItem } from './chat-reducer';
 
 type ToolItem = Extract<ChatItem, { kind: 'tool' }>;
@@ -36,7 +36,7 @@ function StatusLabel({ item }: { item: ToolItem }) {
       失败
     </span>
   ) : (
-    <span className="flex items-center gap-1 text-accent">
+    <span className="flex items-center gap-1 text-success">
       <CircleCheck aria-hidden className="size-3.5" />
       完成
     </span>
@@ -52,24 +52,42 @@ export function ToolCard({ item }: { item: ToolItem }) {
   const Icon = isExec ? Terminal : Wrench;
 
   return (
-    <details className="group rounded-md border border-border bg-card text-sm">
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 marker:hidden">
+    <details className="group min-w-0 rounded-lg text-sm open:bg-card">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 rounded-lg px-3 py-2.5 marker:hidden hover:bg-muted/50">
         <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-        <span className="font-medium">{name}</span>
-        {arg && <code className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">{arg}</code>}
-        {summary && <span className="shrink-0 text-xs text-muted-foreground">{summary}</span>}
-        <span className="ml-auto shrink-0 text-xs">
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="min-w-0 max-w-full break-words font-medium">{name}</span>
+            {arg && (
+              <code title={arg} className="min-w-0 max-w-full truncate font-mono text-xs text-muted-foreground">
+                {arg}
+              </code>
+            )}
+          </span>
+          {summary && <span className="mt-0.5 block text-xs text-muted-foreground">{summary}</span>}
+        </span>
+        <span className="shrink-0 text-xs">
           <StatusLabel item={item} />
         </span>
+        <ChevronRight
+          aria-hidden
+          className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+        />
       </summary>
-      <div className="flex flex-col gap-2 border-t border-border px-3 py-2">
-        <pre className="max-h-48 overflow-auto font-mono text-xs whitespace-pre-wrap text-muted-foreground">
-          {JSON.stringify(item.input, null, 2)}
-        </pre>
-        {item.output !== undefined && (
-          <pre className="max-h-96 overflow-auto rounded bg-background p-2 font-mono text-xs whitespace-pre-wrap">
-            {item.output || '（无输出）'}
+      <div className="mx-3 mb-3 flex min-w-0 flex-col gap-3 border-l border-border py-1 pl-4">
+        <div className="min-w-0">
+          <p className="mb-1.5 text-xs text-muted-foreground">输入</p>
+          <pre className="max-h-48 overflow-auto font-mono text-xs leading-6 whitespace-pre-wrap break-words text-muted-foreground">
+            {JSON.stringify(item.input, null, 2)}
           </pre>
+        </div>
+        {item.output !== undefined && (
+          <div className="min-w-0">
+            <p className="mb-1.5 text-xs text-muted-foreground">输出</p>
+            <pre className="max-h-96 overflow-auto rounded-md bg-background p-3 font-mono text-xs leading-6 whitespace-pre-wrap break-words">
+              {item.output || '（无输出）'}
+            </pre>
+          </div>
         )}
       </div>
     </details>

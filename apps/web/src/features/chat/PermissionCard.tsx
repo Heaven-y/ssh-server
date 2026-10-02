@@ -15,20 +15,27 @@ export function PermissionCard({ item }: { item: PermissionItem }) {
     <div
       role="group"
       aria-label={`权限请求：${name}`}
-      className="rounded-md border border-border-strong bg-card p-3 text-sm"
+      className={`min-w-0 rounded-r-lg border-l-2 bg-card/70 px-4 py-3 text-sm ${item.resolved ? 'border-border' : 'border-warning'}`}
     >
       <div className="flex items-center gap-2 font-medium">
-        <ShieldAlert aria-hidden className="size-4 text-accent" />
-        需要确认：{name}
+        <ShieldAlert
+          aria-hidden
+          className={`size-4 shrink-0 ${item.resolved ? 'text-muted-foreground' : 'text-warning'}`}
+        />
+        <span className="min-w-0 break-words">
+          {item.resolved ? '权限请求' : '需要确认'}：{name}
+        </span>
       </div>
-      {item.description && <p className="mt-1 text-muted-foreground">{item.description}</p>}
-      <pre className="mt-2 max-h-40 overflow-auto rounded bg-background p-2 font-mono text-xs whitespace-pre-wrap">
+      {item.description && <p className="mt-2 leading-6 break-words text-muted-foreground">{item.description}</p>}
+      <pre className="mt-3 max-h-40 overflow-auto rounded-md bg-background p-3 font-mono text-xs leading-6 whitespace-pre-wrap break-words">
         {JSON.stringify(item.input, null, 2)}
       </pre>
       {item.resolved ? (
-        <p className="mt-2 text-muted-foreground">{item.resolved === 'allow' ? '已批准' : '已拒绝'}</p>
+        <p className={`mt-3 text-xs ${item.resolved === 'allow' ? 'text-success' : 'text-muted-foreground'}`}>
+          {item.resolved === 'allow' ? '已批准' : '已拒绝'}
+        </p>
       ) : (
-        <div className="mt-2 flex gap-2">
+        <div className="mt-3 flex flex-wrap justify-end gap-2">
           <button type="button" className={buttonClass('primary')} onClick={() => respond(item.id, true)}>
             批准
           </button>

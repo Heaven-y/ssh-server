@@ -1,16 +1,8 @@
-import {
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  CircleAlert,
-  KeyRound,
-  LoaderCircle,
-  PlugZap,
-  Unplug,
-} from 'lucide-react';
-import { useId, useState, type FormEvent } from 'react';
+import { CheckCircle2, CircleAlert, Server, LoaderCircle, PlugZap, Unplug } from 'lucide-react';
+import { useState, type FormEvent } from 'react';
 import type { SshAuthMode, Workspace } from '@ssh-server/shared';
 import { buttonClass } from '../../ui/styles';
+import { DetailDialog } from '../../ui/DetailDialog';
 import { useSshConnection } from './use-ssh-connection';
 import { SshPasswordField } from './SshPasswordField';
 
@@ -19,7 +11,7 @@ type Connection = ReturnType<typeof useSshConnection>;
 const PHASES = {
   idle: { label: '本页尚未验证 SSH 连接', icon: PlugZap, cls: 'text-muted-foreground' },
   connecting: { label: '正在验证 SSH 认证与目录…', icon: LoaderCircle, cls: 'text-muted-foreground' },
-  verified: { label: 'SSH 认证与目录验证成功', icon: CheckCircle2, cls: 'text-accent' },
+  verified: { label: 'SSH 认证与目录验证成功', icon: CheckCircle2, cls: 'text-success' },
   error: { label: 'SSH 操作失败', icon: CircleAlert, cls: 'text-destructive-foreground' },
   disconnecting: { label: '正在断开 SSH 连接…', icon: LoaderCircle, cls: 'text-muted-foreground' },
   disconnected: { label: 'SSH 已断开，自动连接已暂停', icon: Unplug, cls: 'text-muted-foreground' },
@@ -78,78 +70,81 @@ function SshConnectionDetails({ workspace, connection }: { workspace: Workspace;
   );
 }
 
-/** 当前工作区的内联入口；这里只显示本页操作结果，不把网页连接视为 SSH 已连接。 */
+const BRIEF = {
+  idle: '待验证',
+  connecting: '连接中',
+  verified: '已验证',
+  error: '连接失败',
+  disconnecting: '断开中',
+  disconnected: '已断开',
+  updating: '更新中',
+} as const;
+
+/** 摘要始终挂载；详情按需展开，不把本机网页连接状态当作 SSH 状态。 */
 export function SshConnectionPanel({ workspace }: { workspace: Workspace }) {
   const authMode = workspace.authMode ?? 'key';
   const connection = useSshConnection({ sshHost: workspace.sshHost, remoteDir: workspace.remoteDir, authMode });
   const [expanded, setExpanded] = useState(false);
-  const id = useId();
-  const start = () => {
-    if (authMode === 'key' || connection.saved) {
-      void connection.connect();
-    } else {
-      setExpanded(true);
-      connection.focusPassword();
-    }
-  };
-  const toggle = () => {
+  const close = () => {
     connection.clearPassword();
-    setExpanded((value) => !value);
+    setExpanded(false);
   };
-  const ToggleIcon = expanded ? ChevronUp : ChevronDown;
-
+  const status = PHASES[connection.phase];
+  const unavailable = connection.phase === 'idle' && Boolean(connection.message);
   return (
-    <section aria-labelledby={`${id}-heading`} className="shrink-0 border-b border-border bg-card px-4 py-3">
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-start gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h2 id={`${id}-heading`} className="flex items-center gap-2 text-sm font-medium">
-              <KeyRound aria-hidden className="size-4" />
-              SSH 连接
-            </h2>
-            <span className="text-xs text-muted-foreground">{authMode === 'key' ? '已有私钥' : '账号密码'}</span>
-            <span className="min-w-0 font-mono text-xs text-muted-foreground wrap-anywhere">{workspace.sshHost}</span>
-          </div>
-          <SshConnectionFeedback connection={connection} />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className={`${buttonClass('outline')} active:bg-muted`}
-            onClick={start}
-            disabled={connection.busy}
-          >
-            <PlugZap aria-hidden className="size-4" />
-            {actionLabel(authMode, connection.verified, connection.saved)}
-          </button>
-          <button
-            type="button"
-            className={`${buttonClass('danger')} active:bg-destructive/15`}
-            disabled={connection.busy || connection.phase === 'disconnected'}
-            onClick={() => void connection.disconnect()}
-          >
-            <Unplug aria-hidden className="size-4" />
-            断开 SSH
-          </button>
-          <button
-            type="button"
-            className={`${buttonClass('ghost')} active:bg-muted`}
-            aria-label={expanded ? '收起 SSH 连接详情' : '展开 SSH 连接详情'}
-            aria-expanded={expanded}
-            aria-controls={`${id}-details`}
-            disabled={connection.busy}
-            onClick={toggle}
-          >
-            <ToggleIcon aria-hidden className="size-4" />
-            {expanded ? '收起' : '详情'}
-          </button>
-        </div>
-      </div>
+    <>
+      <button
+        type="button"
+        className={`${buttonClass('ghost')} max-w-[min(320px,40vw)] px-2`}
+        aria-label="SSH 连接详情"
+        aria-expanded={expanded}
+        title={connection.message ?? status.label}
+        onClick={() => setExpanded(true)}
+      >
+        <Server aria-hidden className="size-3.5 shrink-0" />
+        <span className="truncate text-xs">{workspace.sshHost}</span>
+        <span className={`shrink-0 text-xs ${unavailable ? 'text-warning' : status.cls}`}>
+          · {unavailable ? '状态不可用' : BRIEF[connection.phase]}
+        </span>
+      </button>
       {expanded && (
-        <div id={`${id}-details`} className="mt-3 flex min-w-0 flex-col gap-3 border-t border-border pt-3">
-          <SshConnectionDetails workspace={workspace} connection={connection} />
-        </div>
+        <DetailDialog title="SSH 连接" busy={connection.busy} onClose={close}>
+          <div className="flex flex-col gap-5">
+            <div>
+              <p className="mb-2 text-sm font-medium">
+                {workspace.sshHost}
+                <span className="ml-2 font-normal text-muted-foreground">
+                  {authMode === 'key' ? '已有私钥' : '账号密码'}
+                </span>
+              </p>
+              <SshConnectionFeedback connection={connection} />
+            </div>
+            <SshConnectionDetails workspace={workspace} connection={connection} />
+            <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
+              <button
+                type="button"
+                className={buttonClass('danger')}
+                disabled={connection.busy || connection.phase === 'disconnected'}
+                onClick={() => void connection.disconnect()}
+              >
+                <Unplug aria-hidden className="size-4" />
+                断开 SSH
+              </button>
+              {authMode === 'key' && (
+                <button
+                  type="button"
+                  className={buttonClass('primary')}
+                  disabled={connection.busy}
+                  onClick={() => void connection.connect()}
+                >
+                  <PlugZap aria-hidden className="size-4" />
+                  {actionLabel(authMode, connection.verified, connection.saved)}
+                </button>
+              )}
+            </div>
+          </div>
+        </DetailDialog>
       )}
-    </section>
+    </>
   );
 }

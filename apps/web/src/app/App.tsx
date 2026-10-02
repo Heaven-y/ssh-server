@@ -56,11 +56,16 @@ export function App() {
         <main className="flex min-w-0 flex-1 flex-col">
           {current ? (
             <>
-              <SshConnectionPanel
-                key={JSON.stringify([current.id, current.sshHost, current.authMode ?? 'key', current.remoteDir])}
-                workspace={current}
-              />
-              <SyncPanel key={current.id} workspace={current} />
+              <div
+                aria-label="工作区状态"
+                className="flex min-h-11 shrink-0 flex-wrap items-center gap-1 border-b border-border/60 px-4"
+              >
+                <SshConnectionPanel
+                  key={JSON.stringify([current.id, current.sshHost, current.authMode ?? 'key', current.remoteDir])}
+                  workspace={current}
+                />
+                <SyncPanel key={current.id} workspace={current} />
+              </div>
               <ChatView workspace={current} />
             </>
           ) : (

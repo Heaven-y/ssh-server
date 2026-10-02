@@ -2,6 +2,7 @@ import { useId, useState } from 'react';
 import { AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import type { SyncStatus, Workspace } from '@ssh-server/shared';
 import { buttonClass } from '../../ui/styles';
+import { DetailDialog } from '../../ui/DetailDialog';
 import { SyncSettingsForm } from './SyncSettingsForm';
 import { useWorkspaceSync, type SyncAction } from './use-workspace-sync';
 
@@ -109,48 +110,108 @@ function StatusSummary({ status, busy }: { status: SyncStatus; busy: boolean }) 
     </div>
   );
 }
-export function SyncPanel({ workspace }: { workspace: Workspace }) {
-  const { query, status, busy, error, perform } = useWorkspaceSync(workspace.id);
+const BRIEF: Record<SyncStatus['phase'], string> = {
+  uninitialized: '尚未同步',
+  syncing: '正在同步',
+  ready: '同步就绪',
+  confirmation_required: '同步待确认',
+  conflicts: '文件冲突',
+  error: '同步失败',
+};
+function summaryLabel(status: SyncStatus | undefined, busy: boolean, error?: string) {
+  if (busy) return '正在同步';
+  if (error) return '同步异常';
+  if (!status) return '读取同步状态';
+  if (status.reason === 'deletions') return '删除待确认';
+  if (status.phase === 'ready' && status.lastSuccessAt)
+    return `已同步 ${new Date(status.lastSuccessAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`;
+  return BRIEF[status.phase];
+}
+
+type SyncController = ReturnType<typeof useWorkspaceSync>;
+function syncTone(status: SyncStatus | undefined, attention: boolean) {
+  if (attention) return 'text-warning';
+  return status?.phase === 'ready' ? 'text-success' : 'text-muted-foreground';
+}
+function presentation({ query, status, busy, error }: SyncController) {
+  const errorMessage = error?.message ?? query.error?.message;
+  const attention =
+    !!errorMessage || (!!status && ['confirmation_required', 'conflicts', 'error'].includes(status.phase));
+  return {
+    attention,
+    tone: syncTone(status, attention),
+    title: errorMessage ?? status?.message ?? '查看同步状态与操作',
+    label: summaryLabel(status, busy, errorMessage),
+  };
+}
+function SyncDetails({ controller }: { controller: SyncController }) {
+  const { query, status, busy, error, perform } = controller;
+  const errorMessage = error?.message ?? query.error?.message;
   const act = (action: SyncAction) => {
     void perform(action);
   };
-  const errorMessage = error?.message ?? query.error?.message;
-  if (!status)
-    return (
-      <section aria-label="文件同步" className="shrink-0 border-b border-border bg-card px-4 py-3 text-xs">
-        {errorMessage ? <p role="alert">{errorMessage}</p> : '正在读取同步状态…'}
-        {query.isError && (
-          <button
-            className={`${buttonClass('outline')} mt-2`}
-            onClick={() => {
-              void query.refetch();
-            }}
-          >
-            重新读取
-          </button>
-        )}
-      </section>
-    );
   return (
-    <section
-      aria-label="文件同步"
-      className="max-h-[45vh] shrink-0 overflow-y-auto border-b border-border bg-card px-4 py-3"
-    >
-      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-        <StatusSummary status={status} busy={busy} />
-        <button className={buttonClass('outline')} disabled={busy} onClick={() => act('sync')}>
-          <RefreshCw className={`size-4 ${busy ? 'motion-safe:animate-spin' : ''}`} aria-hidden />
-          立即同步
-        </button>
-      </div>
-      {status.message && <p className="mt-2 text-xs leading-5 wrap-anywhere">{status.message}</p>}
+    <>
+      {status ? (
+        <>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <StatusSummary status={status} busy={busy} />
+            <button className={buttonClass('primary')} disabled={busy} onClick={() => act('sync')}>
+              <RefreshCw aria-hidden className={`size-4 ${busy ? 'motion-safe:animate-spin' : ''}`} />
+              立即同步
+            </button>
+          </div>
+          {status.message && <p className="mt-4 text-sm leading-6 wrap-anywhere">{status.message}</p>}
+          <Decisions status={status} busy={busy} act={act} />
+          <SyncSettingsForm key={JSON.stringify(status.settings)} settings={status.settings} busy={busy} save={act} />
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">正在读取同步状态…</p>
+      )}
       {errorMessage && (
-        <p role="alert" className="mt-2 text-xs text-destructive-foreground">
+        <p role="alert" className="mt-4 text-sm text-destructive-foreground">
           {errorMessage}
         </p>
       )}
-      <Decisions status={status} busy={busy} act={act} />
-      <SyncSettingsForm key={JSON.stringify(status.settings)} settings={status.settings} busy={busy} save={act} />
-    </section>
+      {query.isError && (
+        <button
+          className={`${buttonClass('outline')} mt-3`}
+          onClick={() => {
+            void query.refetch();
+          }}
+        >
+          重新读取
+        </button>
+      )}
+    </>
+  );
+}
+
+/** 只隐藏详情内容，调度 Hook 始终挂载，防止收起面板后停止自动同步。 */
+export function SyncPanel({ workspace }: { workspace: Workspace }) {
+  const controller = useWorkspaceSync(workspace.id);
+  const [expanded, setExpanded] = useState(false);
+  const summary = presentation(controller);
+  const Icon = summary.attention ? AlertCircle : RefreshCw;
+  return (
+    <>
+      <button
+        type="button"
+        className={`${buttonClass('ghost')} ${summary.tone} px-2`}
+        aria-label="文件同步详情"
+        aria-expanded={expanded}
+        aria-haspopup="dialog"
+        title={summary.title}
+        onClick={() => setExpanded(true)}
+      >
+        <Icon aria-hidden className={`size-3.5 ${controller.busy ? 'motion-safe:animate-spin' : ''}`} />
+        <span className="text-xs">{summary.label}</span>
+      </button>
+      {expanded && (
+        <DetailDialog title="文件同步" busy={controller.busy} onClose={() => setExpanded(false)}>
+          <SyncDetails controller={controller} />
+        </DetailDialog>
+      )}
+    </>
   );
 }

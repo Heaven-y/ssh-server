@@ -14,6 +14,8 @@
 
 技术方向已确认：本地后端继续 Node.js + TypeScript + Fastify，异步协调 Agent、SSH、子进程、同步和网页状态；Python 分析默认在服务器已有环境执行。独立 `.exe` / 安装器、Go 迁移与外部工具打包只属于比较话题，不增加相应里程碑。并发与远端分析验证分别见架构 V16、V17。
 
+用户新增界面优化优先项：已核对 UI UX Pro Max 与三个开源项目，以 T3 Code 的简洁对话工作区为主完成中性深色改版。SSH/同步收为状态摘要，详情与新建表单按需展开，导航、对话、输入和审批层级统一；24 项前端测试及受控浏览器回归通过，见 [界面验收](guides/workspace-ui-acceptance.md) 和 [参考依据](product/ui-reference-review.md)。
+
 ## M0 待办
 
 - [x] 项目 skill 安装与验证（见 [开发环境](guides/dev-environment.md)）

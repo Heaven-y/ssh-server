@@ -21,29 +21,36 @@ export function SessionList({ workspaceId }: { workspaceId: string }) {
   const running = useChat((s) => s.running);
   const openSession = useChat((s) => s.openSession);
   const newSession = useChat((s) => s.newSession);
-  const list = [...(sessions.data ?? [])].sort((a, b) => b.lastModified - a.lastModified);
+  const list = sessions.data?.toSorted((a, b) => b.lastModified - a.lastModified) ?? [];
 
   return (
-    <section aria-labelledby="session-heading" className="flex flex-col gap-1">
-      <div className="flex items-center justify-between">
+    <section aria-labelledby="session-heading" className="flex min-h-0 flex-1 flex-col border-t border-border/70">
+      <div className="flex min-h-14 shrink-0 items-center justify-between gap-2 px-4 py-2">
         <h2 id="session-heading" className="text-xs font-semibold text-muted-foreground">
           会话
         </h2>
-        <button type="button" className={buttonClass('ghost')} onClick={newSession}>
+        <button type="button" className={`${buttonClass('ghost')} px-2`} onClick={newSession}>
           <Plus aria-hidden className="size-4" />
           新会话
         </button>
       </div>
 
-      {sessions.isPending && <p className="text-sm text-muted-foreground">正在加载会话…</p>}
+      {sessions.isPending && <p className="px-5 py-3 text-sm text-muted-foreground">正在加载会话…</p>}
       {sessions.isError && (
-        <p role="alert" className="text-sm text-destructive-foreground">
+        <p
+          role="alert"
+          className="mx-4 rounded-lg bg-destructive/10 px-3 py-2 text-sm leading-6 text-destructive-foreground"
+        >
           {sessions.error.message}
         </p>
       )}
-      {sessions.isSuccess && list.length === 0 && <p className="text-sm text-muted-foreground">还没有会话。</p>}
+      {sessions.isSuccess && list.length === 0 && (
+        <p className="px-5 py-3 text-sm leading-6 text-muted-foreground">
+          从一条消息开始。这里会保留当前工作区的会话。
+        </p>
+      )}
 
-      <ul className="flex flex-col gap-0.5">
+      <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4 pt-1">
         {list.map((s) => {
           const current = s.sessionId === currentId;
           return (
@@ -51,17 +58,23 @@ export function SessionList({ workspaceId }: { workspaceId: string }) {
               <button
                 type="button"
                 aria-current={current ? 'true' : undefined}
+                title={s.summary || '无标题会话'}
                 onClick={() => void openSession(s.sessionId)}
-                className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted aria-[current]:bg-muted"
+                className="group flex min-h-16 w-full items-start gap-2.5 rounded-lg border-l-2 border-transparent px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground aria-[current]:border-accent aria-[current]:bg-muted aria-[current]:text-foreground"
               >
                 {current && running ? (
-                  <LoaderCircle aria-label="运行中" className="mt-0.5 size-4 shrink-0 animate-spin text-accent" />
+                  <LoaderCircle aria-hidden className="mt-0.5 size-4 shrink-0 animate-spin text-accent" />
                 ) : (
-                  <MessageSquare aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <MessageSquare aria-hidden className="mt-0.5 size-4 shrink-0 group-aria-[current]:text-accent" />
                 )}
                 <span className="min-w-0 flex-1">
-                  <span className="line-clamp-2">{s.summary || '（无标题）'}</span>
-                  <span className="text-xs text-muted-foreground">{timeFormat.format(s.lastModified)}</span>
+                  <span className="line-clamp-2 leading-5 group-aria-[current]:font-medium">
+                    {s.summary || '无标题会话'}
+                  </span>
+                  <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                    <time dateTime={new Date(s.lastModified).toISOString()}>{timeFormat.format(s.lastModified)}</time>
+                    {current && running && <span className="text-accent">运行中</span>}
+                  </span>
                 </span>
               </button>
             </li>

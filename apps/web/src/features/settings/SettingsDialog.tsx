@@ -233,7 +233,7 @@ function ConfigFeedback({
       {message && (
         <p
           role={phase === 'error' ? 'alert' : 'status'}
-          className={`flex items-start gap-2 text-sm ${phase === 'error' ? 'text-destructive-foreground' : 'text-accent'}`}
+          className={`flex items-start gap-2 text-sm ${phase === 'error' ? 'text-destructive-foreground' : 'text-success'}`}
         >
           {phase === 'error' ? (
             <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
