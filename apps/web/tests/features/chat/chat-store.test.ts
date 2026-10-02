@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentKind, ClientMessage, ServerMessage, SessionHistory } from '@ssh-server/shared';
+import type { AgentKind, ClientMessage, ServerMessage, SessionActionInput, SessionHistory } from '@ssh-server/shared';
 import type { ConnectionStatus } from '../../../src/lib/ws';
 
 // node 环境没有 localStorage，用内存实现
@@ -9,7 +9,8 @@ vi.stubGlobal('localStorage', {
   setItem: (k: string, v: string) => void storage.set(k, v),
 });
 
-const { useChat, startChatConnection, lastWorkspaceId } = await import('../../../src/features/chat/chat-store');
+const { useChat, startChatConnection, lastWorkspaceId, sessionActionKey } =
+  await import('../../../src/features/chat/chat-store');
 const { api, queryKeys } = await import('../../../src/lib/api');
 const { queryClient } = await import('../../../src/lib/query-client');
 afterEach(() => {
@@ -43,8 +44,95 @@ beforeEach(() => {
     connection: 'open',
     modelOverrides: { claude: '', codex: '' },
     reasoningEffort: '',
+    sessionOperations: {},
   });
   useChat.getState().selectWorkspace('w1');
+});
+
+describe('原生会话管理状态', () => {
+  const session = { agent: 'codex', sessionId: 'same-id' } as const;
+  const key = sessionActionKey('w1', session);
+  const removeActions = [{ action: 'delete', confirmed: true }, { action: 'archive' }] satisfies SessionActionInput[];
+
+  beforeEach(() => {
+    useChat.setState({ ...session, items: [{ kind: 'user', id: 'message-current', text: '当前对话' }] });
+    vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
+  });
+
+  it('处理中拒绝同目标重复操作和发送，名称保存成功后保留对话', async () => {
+    const response = deferred<void>();
+    const action = vi.spyOn(api, 'sessionAction').mockReturnValue(response.promise);
+    const request = useChat.getState().manageSession('w1', session, { action: 'rename', title: '新名称' });
+    expect(useChat.getState().sessionOperations[key]).toEqual({ action: 'rename', pending: true });
+    await expect(useChat.getState().manageSession('w1', session, { action: 'delete', confirmed: true })).resolves.toBe(
+      false,
+    );
+    expect(useChat.getState().send('等待名称保存')).toBe(false);
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(sent).toHaveLength(0);
+
+    response.resolve();
+    await expect(request).resolves.toBe(true);
+    expect(useChat.getState()).toMatchObject({ ...session, items: [{ kind: 'user', text: '当前对话' }] });
+    expect(useChat.getState().sessionOperations[key]).toBeUndefined();
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.sessions('w1', 'codex') });
+    expect(useChat.getState().send('继续')).toBe(true);
+  });
+
+  it('运行中不发管理请求；后端失败保留会话和错误并解除处理中状态', async () => {
+    const action = vi.spyOn(api, 'sessionAction').mockRejectedValue(new Error('原生操作失败'));
+    useChat.setState({ running: true });
+    await expect(useChat.getState().manageSession('w1', session, { action: 'archive' })).resolves.toBe(false);
+    expect(action).not.toHaveBeenCalled();
+    useChat.setState({ running: false });
+    await expect(useChat.getState().manageSession('w1', session, { action: 'archive' })).resolves.toBe(false);
+    expect(useChat.getState()).toMatchObject({ ...session, items: [{ kind: 'user', text: '当前对话' }] });
+    expect(useChat.getState().sessionOperations[key]).toEqual({
+      action: 'archive',
+      pending: false,
+      error: '原生操作失败',
+    });
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+    expect(useChat.getState().send('失败后继续')).toBe(true);
+  });
+
+  it.each(removeActions)('$action 成功时清空仍匹配的当前对话并刷新来源列表', async (input) => {
+    vi.spyOn(api, 'sessionAction').mockResolvedValue(undefined);
+    await expect(useChat.getState().manageSession('w1', session, input)).resolves.toBe(true);
+    expect(useChat.getState()).toMatchObject({ workspaceId: 'w1', agent: 'codex', sessionId: undefined, items: [] });
+    expect(useChat.getState().sessionOperations[key]).toBeUndefined();
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.sessions('w1', 'codex') });
+  });
+
+  it.each([
+    { dimension: '工作区', workspaceId: 'w2', agent: 'codex', sessionId: 'same-id', input: removeActions[0]! },
+    { dimension: 'Agent', workspaceId: 'w1', agent: 'claude', sessionId: 'same-id', input: removeActions[1]! },
+    { dimension: '会话 ID', workspaceId: 'w1', agent: 'codex', sessionId: 'new-id', input: removeActions[0]! },
+  ] as const)(
+    '跨 $dimension 切换后保留原请求，迟到成功不清空新对话',
+    async ({ workspaceId, agent, sessionId, input }) => {
+      const response = deferred<void>();
+      vi.spyOn(api, 'sessionAction').mockReturnValue(response.promise);
+      const request = useChat.getState().manageSession('w1', session, input);
+      useChat.getState().selectWorkspace(workspaceId);
+      useChat.getState().newSession(agent);
+      useChat.setState({ sessionId });
+      expect(useChat.getState().sessionOperations[key]?.pending).toBe(true);
+      expect(useChat.getState().send('新目标可以发送')).toBe(true);
+
+      response.resolve();
+      await expect(request).resolves.toBe(true);
+      expect(useChat.getState()).toMatchObject({
+        workspaceId,
+        agent,
+        sessionId,
+        running: true,
+        items: [{ kind: 'user', text: '新目标可以发送' }],
+      });
+      expect(useChat.getState().sessionOperations[key]).toBeUndefined();
+      expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.sessions('w1', 'codex') });
+    },
+  );
 });
 
 /** 发送一条消息并让后端确认开始，返回 turnId */

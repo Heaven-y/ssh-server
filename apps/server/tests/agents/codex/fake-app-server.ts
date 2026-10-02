@@ -26,8 +26,9 @@ const thread = (id = threadId, cwd = process.cwd()) => ({
   preview: '原生会话',
   createdAt: 1,
   updatedAt: 10,
-  source: 'appServer',
+  source: mode === 'subagent-session' ? { subAgent: 'review' } : 'appServer',
   parentThreadId: null,
+  status: { type: mode === 'active-session' ? 'active' : 'notLoaded' },
   turns: [],
 });
 const end = (status = 'completed') =>
@@ -43,7 +44,10 @@ const end = (status = 'completed') =>
   });
 const readThread = (message: Message) => {
   const id = String(message.params?.threadId);
-  const result = thread(id, id === 'foreign' ? path.dirname(process.cwd()) : process.cwd());
+  const result = thread(
+    mode === 'wrong-session-id' ? 'another-thread' : id,
+    id === 'foreign' ? path.dirname(process.cwd()) : process.cwd(),
+  );
   const turns = [
     {
       id: 'old-turn',
@@ -124,6 +128,14 @@ function echo(message: Message): void {
   process.stdout.write(bytes.subarray(0, split));
   setTimeout(() => process.stdout.write(bytes.subarray(split)), 5);
 }
+function mutation(message: Message): void {
+  const complete = () => {
+    if (logFile) appendFileSync(logFile, `${JSON.stringify({ fixtureCompleted: message.method })}\n`);
+    reply(message, {});
+  };
+  if (mode === 'delayed-mutation') setTimeout(complete, 150);
+  else complete();
+}
 const handlers: Record<string, (message: Message) => void> = {
   initialize: (message) => reply(message, { userAgent: 'fixture' }),
   initialized: () => {},
@@ -133,6 +145,10 @@ const handlers: Record<string, (message: Message) => void> = {
     reply(message, { thread: thread(String(message.params?.threadId)), model: 'native-model' }),
   'thread/read': readThread,
   'thread/list': listThreads,
+  'thread/name/set': mutation,
+  'thread/delete': mutation,
+  'thread/archive': mutation,
+  'thread/unarchive': mutation,
   'turn/start': start,
   'turn/interrupt': (message) => {
     if (mode !== 'ignore-interrupt') {

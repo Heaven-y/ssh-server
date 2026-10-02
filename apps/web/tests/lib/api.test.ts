@@ -62,6 +62,31 @@ describe('api', () => {
     expect(queryKeys.sessions('w/1')).not.toEqual(queryKeys.sessions('w/1', 'codex'));
   });
 
+  it('归档查询独立缓存，管理 POST 保留确认且不绑定取消信号', async () => {
+    respond(200, []);
+    await api.listSessions('w/1');
+    await api.listSessions('w/1', 'codex', true);
+    expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual([
+      '/api/workspaces/w%2F1/sessions?agent=claude',
+      '/api/workspaces/w%2F1/sessions?agent=codex&archived=true',
+    ]);
+    expect(queryKeys.sessions('w/1', 'codex')).toEqual(['sessions', 'w/1', 'codex']);
+    expect(queryKeys.sessions('w/1', 'codex', true)).toEqual(['sessions', 'w/1', 'codex', 'archived']);
+
+    respond(204);
+    await expect(
+      api.sessionAction('w/1', 's 1', 'codex', { action: 'delete', confirmed: true }),
+    ).resolves.toBeUndefined();
+    const [url, init] = vi.mocked(fetch).mock.calls[0]!;
+    expect(url).toBe('/api/workspaces/w%2F1/sessions/s%201/actions?agent=codex');
+    expect(init).toMatchObject({
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', confirmed: true }),
+    });
+    expect(init).not.toHaveProperty('signal');
+  });
+
   it('密码和保存偏好仅发送到认证接口，取消保存只发送目标', async () => {
     respond(200, { connected: true, authMode: 'password', saved: true, savingAvailable: true, paused: false });
     await api.connectSsh({

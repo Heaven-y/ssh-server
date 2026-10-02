@@ -85,11 +85,12 @@
 ### F7 会话记录
 
 - F7.1 网页显示 Claude Code 和 Codex 本地已有的会话记录，按工作区筛选并显示所属 Agent，网页本身不另存对话。
-- F7.2 删除会话：Codex 使用官方接口 `thread/delete`；Claude 使用 Agent SDK 的 `deleteSession`。删除前确认会话不在运行中。
-- F7.3 Codex 支持归档和恢复（`thread/archive`、`thread/unarchive`）。
+- F7.2 删除会话：Codex 使用官方接口 `thread/delete`；Claude 使用 Agent SDK 的 `deleteSession`。删除须明确确认原生记录及相关子会话的影响；管理与对话准备、运行、同步收尾互斥，操作前验证原生 ID 与工作区目录。
+- F7.3 Codex 支持归档列表、归档和恢复（`thread/list(archived: true)`、`thread/archive`、`thread/unarchive`）。归档条目先恢复后才能继续对话或重命名，恢复范围以官方结果为准。
 - F7.4 打开历史会话时恢复其原 Agent 和官方会话 ID，通过对应运行时继续会话；显示历史与向运行时续接上下文分别处理。
+- F7.5 两类会话均通过官方接口重命名；标题去除首尾空白后为 1–200 个字符。失败保留条目并允许核对重试，操作结果仅更新对应工作区与原生会话。
 
-当前阶段已实现 F2 的主对话链路及 F7.1/F7.4，真实网页与 GLM 两轮验证见 [Codex 对话验收](../guides/codex-conversation-acceptance.md)。skills / 命令、上下文状态与手动压缩、模型目录、删除及归档尚未接入；A7 真实 SSH 验收仍待完成。
+当前已实现 F2 的主对话链路和 F7 的原生会话管理，分别见 [Codex 对话验收](../guides/codex-conversation-acceptance.md) 与 [会话管理验收](../guides/session-management-acceptance.md)。A8 已验证网页和原生存储/API，VS Code 插件界面与 CLI 交互列表刷新仍待观察；skills / 命令、上下文状态与手动压缩、模型目录及 A7 真实 SSH 尚未完成。
 
 ### F8 轻量文件编辑
 

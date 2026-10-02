@@ -7,7 +7,13 @@ import { createSessionRegistry } from './chat/registry';
 import { TurnManager } from './chat/turn-manager';
 import { createSessionsService } from './chat/sessions';
 import { createClaudeSessions } from './agents/claude-sessions';
-import { runCodexTurn, listCodexSessions, readCodexSession, assertCodexSession } from './agents/codex';
+import {
+  runCodexTurn,
+  listCodexSessions,
+  readCodexSession,
+  assertCodexSession,
+  mutateCodexSession,
+} from './agents/codex';
 import { loadConfig } from './config';
 import { buildApp } from './http/app';
 import { registerInternalRoutes } from './http/internal.routes';
@@ -66,16 +72,21 @@ async function main(): Promise<void> {
     driver: createRcloneDriver({ configDir: config.configDir, pool }),
   });
   const registry = createSessionRegistry();
-  const sessions = createSessionsService({
-    claude: createClaudeSessions(),
-    codex: {
-      list: (dir, signal) => listCodexSessions(dir, { signal }),
-      read: (id, dir, signal) => readCodexSession(id, dir, { signal }),
-      assertBelongs: (id, dir, signal) => assertCodexSession(id, dir, { signal }),
+  let turns: TurnManager;
+  const sessions = createSessionsService(
+    {
+      claude: createClaudeSessions(),
+      codex: {
+        list: (dir, signal, archived) => listCodexSessions(dir, { signal, archived }),
+        read: (id, dir, signal) => readCodexSession(id, dir, { signal }),
+        assertBelongs: (id, dir, signal) => assertCodexSession(id, dir, { signal }),
+        mutate: (id, dir, input) => mutateCodexSession(id, dir, input),
+      },
     },
-  });
+    { withIdleSession: (session, operation) => turns.withIdleSession(session, operation) },
+  );
   let port = config.port;
-  const turns = new TurnManager({
+  turns = new TurnManager({
     getWorkspace: (id) => store.get(id),
     registry,
     sessions,

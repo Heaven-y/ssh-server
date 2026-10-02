@@ -1,8 +1,10 @@
+import type { SessionActionInput } from '@ssh-server/shared';
 import { sameSessionDirectory } from '../session-scope';
 import type { NativeSessionRead, NativeSessionSummary } from '../types';
+import { SessionError } from '../../chat/sessions';
 import { CodexClient } from './client';
 import { CodexEventMapper } from './mapper';
-import { CodexError, record, text, type CodexRuntimeOptions, type RecordValue } from './types';
+import { cancelled, CodexError, record, text, type CodexRuntimeOptions, type RecordValue } from './types';
 
 const MAX_SESSIONS = 100_000;
 function completeTurns(thread: RecordValue): RecordValue[] {
@@ -87,8 +89,9 @@ async function matchingSummaries(data: unknown[], dir: string): Promise<NativeSe
 
 export async function listCodexSessions(
   dir: string,
-  options: CodexRuntimeOptions = {},
+  options: CodexRuntimeOptions & { archived?: boolean } = {},
 ): Promise<NativeSessionSummary[]> {
+  const archived = options.archived ?? false;
   return withClient(dir, options, async (client) => {
     const sessions = new Map<string, NativeSessionSummary>();
     const cursors = new Set<string>();
@@ -101,6 +104,7 @@ export async function listCodexSessions(
         sortKey: 'updated_at',
         modelProviders: [],
         sourceKinds: ['cli', 'vscode', 'exec', 'appServer'],
+        archived,
         cursor,
       });
       if (!Array.isArray(response.data)) throw new CodexError('Codex 未返回有效的会话列表。');
@@ -114,5 +118,39 @@ export async function listCodexSessions(
       if (cursor) cursors.add(cursor);
     } while (cursor);
     return [...sessions.values()].sort((left, right) => right.lastModified - left.lastModified);
+  });
+}
+
+async function mutableThread(client: CodexClient, id: string, dir: string): Promise<void> {
+  const thread = record((await client.request('thread/read', { threadId: id, includeTurns: false })).thread);
+  if (thread.id !== id || !(await sameSessionDirectory(text(thread.cwd), dir)))
+    throw new SessionError(404, 'session_missing', 'Codex 在当前工作区中没有此会话');
+  if (record(thread.status).type === 'active')
+    throw new SessionError(409, 'session_busy', 'Codex 会话正在运行，请结束后再管理');
+  if (thread.parentThreadId || record(thread.source).subAgent || text(thread.source).startsWith('subAgent'))
+    throw new SessionError(400, 'unsupported_action', '不能单独管理 Codex 内部子代理会话');
+}
+
+/** 原生请求发送后继续等结果；停止等待并不代表撤销重命名、归档或删除。 */
+export async function mutateCodexSession(
+  id: string,
+  dir: string,
+  input: SessionActionInput,
+  options: CodexRuntimeOptions = {},
+): Promise<void> {
+  if (options.signal?.aborted) throw cancelled();
+  await withClient(dir, { ...options, signal: undefined }, async (client) => {
+    await mutableThread(client, id, dir);
+    if (options.signal?.aborted) throw cancelled();
+    const methods = {
+      rename: 'thread/name/set',
+      delete: 'thread/delete',
+      archive: 'thread/archive',
+      unarchive: 'thread/unarchive',
+    };
+    await client.request(methods[input.action], {
+      threadId: id,
+      ...(input.action === 'rename' ? { name: input.title } : {}),
+    });
   });
 }

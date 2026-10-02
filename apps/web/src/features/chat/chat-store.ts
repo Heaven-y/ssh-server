@@ -1,12 +1,15 @@
 // 会话身份包含 Agent；历史请求与实时轮次分别校验选择代次和关联 ID。
 import { create } from 'zustand';
-import type { AgentKind, ServerMessage, SessionRef } from '@ssh-server/shared';
+import type { AgentKind, ServerMessage, SessionActionInput, SessionRef } from '@ssh-server/shared';
 import { api, queryKeys } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
 import { connectChat, type ChatSocket, type ConnectionStatus } from '../../lib/ws';
 import { markPermissionPending, reduceChat, type ChatItem } from './chat-reducer';
 
 const LAST_WORKSPACE_KEY = 'ssh-server.lastWorkspace';
+export type SessionOperation = { action: SessionActionInput['action']; pending: boolean; error?: string };
+export const sessionActionKey = (workspaceId: string, session: SessionRef): string =>
+  JSON.stringify([workspaceId, session.agent, session.sessionId]);
 type ChatState = {
   connection: ConnectionStatus;
   workspaceId?: string;
@@ -22,6 +25,8 @@ type ChatState = {
   interruptRequested: boolean;
   loadingHistory: boolean;
   banner?: string;
+  sessionOperations: Record<string, SessionOperation>;
+  manageSession(workspaceId: string, session: SessionRef, input: SessionActionInput): Promise<boolean>;
   selectWorkspace(id: string): void;
   newSession(agent?: AgentKind): void;
   setAgent(agent: AgentKind): void;
@@ -64,6 +69,22 @@ function historyIsCurrent(controller: AbortController, generation: number, works
     current.sessionId === session.sessionId
   );
 }
+function sameSession(current: ChatState, workspaceId: string, session: SessionRef): boolean {
+  return (
+    current.workspaceId === workspaceId && current.agent === session.agent && current.sessionId === session.sessionId
+  );
+}
+function managementPending(current: ChatState): boolean {
+  if (!current.workspaceId || !current.sessionId) return false;
+  return (
+    current.sessionOperations[
+      sessionActionKey(current.workspaceId, { agent: current.agent, sessionId: current.sessionId })
+    ]?.pending === true
+  );
+}
+function cannotSend(current: ChatState, text: string): boolean {
+  return current.running || current.loadingHistory || !text.trim() || managementPending(current);
+}
 export const lastWorkspaceId = () => localStorage.getItem(LAST_WORKSPACE_KEY) ?? undefined;
 
 export const useChat = create<ChatState>()((set, get) => ({
@@ -71,6 +92,7 @@ export const useChat = create<ChatState>()((set, get) => ({
   agent: 'claude',
   modelOverrides: { claude: '', codex: '' },
   reasoningEffort: '',
+  sessionOperations: {},
   ...emptyConversation,
   selectWorkspace(id) {
     if (get().workspaceId === id) return;
@@ -110,9 +132,48 @@ export const useChat = create<ChatState>()((set, get) => ({
   },
   setModel: (model) => set((current) => ({ modelOverrides: { ...current.modelOverrides, [current.agent]: model } })),
   setReasoningEffort: (reasoningEffort) => set({ reasoningEffort }),
+  async manageSession(workspaceId, session, input) {
+    const key = sessionActionKey(workspaceId, session);
+    const current = get();
+    if (current.sessionOperations[key]?.pending) return false;
+    if (sameSession(current, workspaceId, session) && current.running) {
+      set({
+        sessionOperations: {
+          ...current.sessionOperations,
+          [key]: { action: input.action, pending: false, error: '会话正在运行，请结束后再管理' },
+        },
+      });
+      return false;
+    }
+    set({ sessionOperations: { ...current.sessionOperations, [key]: { action: input.action, pending: true } } });
+    try {
+      await api.sessionAction(workspaceId, session.sessionId, session.agent, input);
+      if ((input.action === 'delete' || input.action === 'archive') && sameSession(get(), workspaceId, session)) {
+        changeSelection();
+        set(emptyConversation);
+      }
+      const operations = { ...get().sessionOperations };
+      delete operations[key];
+      set({ sessionOperations: operations });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions(workspaceId, session.agent) });
+      return true;
+    } catch (error) {
+      set((latest) => ({
+        sessionOperations: {
+          ...latest.sessionOperations,
+          [key]: {
+            action: input.action,
+            pending: false,
+            error: error instanceof Error ? error.message : '会话操作未确认，请重新读取列表核对',
+          },
+        },
+      }));
+      return false;
+    }
+  },
   send(text) {
     const current = get();
-    if (!current.workspaceId || current.running || current.loadingHistory || !socket || !text.trim()) return false;
+    if (!current.workspaceId || !socket || cannotSend(current, text)) return false;
     const clientTurnId = crypto.randomUUID();
     const sent = socket.send({
       type: 'chat.send',

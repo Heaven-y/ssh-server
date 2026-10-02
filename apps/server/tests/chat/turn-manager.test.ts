@@ -87,6 +87,57 @@ const send = (extra: Record<string, unknown> = {}) => ({
 });
 
 describe('TurnManager', () => {
+  it('会话管理与运行及同步收尾互斥，同 ID 的另一 Agent 可独立操作', async () => {
+    let finishSync!: (status: SyncStatus) => void;
+    const { turns, fake } = setup(
+      () =>
+        new Promise((resolve) => {
+          finishSync = resolve;
+        }),
+    );
+    const session = { agent: 'claude' as const, sessionId: 'managed' };
+    const mutation = vi.fn(async () => undefined);
+    await turns.handle(fakeSocket().socket, send({ sessionId: session.sessionId }));
+    await expect(turns.withIdleSession(session, mutation)).rejects.toMatchObject({ status: 409 });
+    expect(mutation).not.toHaveBeenCalled();
+    await turns.withIdleSession({ ...session, agent: 'codex' }, mutation);
+    expect(mutation).toHaveBeenCalledOnce();
+    fake.turns[0]!.finish();
+    await flush();
+    await expect(turns.withIdleSession(session, mutation)).rejects.toMatchObject({ status: 409 });
+    finishSync({ phase: 'ready', conflicts: [], deletions: [], settings: SyncSettingsSchema.parse({}) });
+    await flush();
+    await turns.withIdleSession(session, mutation);
+    expect(mutation).toHaveBeenCalledTimes(2);
+  });
+
+  it('管理在异步校验前占锁，失败后释放，关闭后拒绝新管理操作', async () => {
+    const { turns, fake } = setup();
+    const session = { agent: 'claude' as const, sessionId: 'managed' };
+    let rejectOperation!: (reason: Error) => void;
+    const pending = turns.withIdleSession(
+      session,
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectOperation = reject;
+        }),
+    );
+    const rejected = expect(pending).rejects.toThrow('原生操作失败');
+    const second = vi.fn(async () => undefined);
+    await expect(turns.withIdleSession(session, second)).rejects.toMatchObject({ status: 409 });
+    const socket = fakeSocket();
+    await turns.handle(socket.socket, send({ sessionId: session.sessionId }));
+    expect(fake.turns).toHaveLength(0);
+    expect(socket.sent.at(-1)).toMatchObject({ type: 'error', clientTurnId: 'c1' });
+    rejectOperation(new Error('原生操作失败'));
+    await rejected;
+    await turns.withIdleSession(session, second);
+    expect(second).toHaveBeenCalledOnce();
+    await turns.dispose();
+    await expect(turns.withIdleSession(session, second)).rejects.toMatchObject({ status: 503 });
+    expect(second).toHaveBeenCalledOnce();
+  });
+
   it('turn.started → agent.event → turn.finished', async () => {
     const { fake, turns } = setup();
     const { socket, sent } = fakeSocket();

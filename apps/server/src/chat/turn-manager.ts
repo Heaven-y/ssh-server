@@ -1,6 +1,6 @@
 // 轮次按 Agent 与原生会话隔离；耗时准备前先建立应用轮次，允许及时中断。
 import { randomUUID } from 'node:crypto';
-import type { AgentEvent, AgentKind, ClientMessage, ServerMessage, Workspace } from '@ssh-server/shared';
+import type { AgentEvent, AgentKind, ClientMessage, ServerMessage, SessionRef, Workspace } from '@ssh-server/shared';
 import { runClaudeTurn } from '../agents/claude-adapter';
 import type { AgentTurnInput, PermissionAnswer, TurnHandle, TurnRunner } from '../agents/types';
 import type { SessionRegistry } from './registry';
@@ -53,6 +53,20 @@ export class TurnManager {
 
   constructor(private readonly deps: TurnManagerDeps) {
     this.runners = { claude: deps.runTurn ?? runClaudeTurn, ...deps.runners };
+  }
+
+  /** 原生管理从范围校验到写入结果全程占锁，避免与准备、运行及同步收尾交错。 */
+  async withIdleSession<T>(session: SessionRef, operation: () => Promise<T>): Promise<T> {
+    if (this.stopping) throw new SessionError(503, 'server_stopping', '后端正在关闭，请稍后重试');
+    const key = sessionKey(session.agent, session.sessionId);
+    if (this.sessions.has(key)) throw new SessionError(409, 'session_busy', '会话正在运行或处理其他操作，请稍后重试');
+    const owner = randomUUID();
+    this.sessions.set(key, owner);
+    try {
+      return await operation();
+    } finally {
+      if (this.sessions.get(key) === owner) this.sessions.delete(key);
+    }
   }
 
   async handle(socket: Socket, msg: ClientMessage): Promise<void> {

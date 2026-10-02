@@ -3,6 +3,7 @@ import type {
   AgentKind,
   SessionSummary,
   SessionHistory,
+  SessionActionInput,
   NativeConfigAgent,
   NativeConfigDocument,
   NativeConfigInput,
@@ -173,10 +174,22 @@ export const api = {
   decideSyncDeletions: (id: string, decision: 'confirm' | 'reject') => postSync(id, '/deletions', { decision }),
   acknowledgeSyncConflicts: (id: string) => postSync(id, '/conflicts/ack'),
   updateSyncSettings: (id: string, settings: SyncSettings) => postSync(id, '/settings', settings),
-  listSessions: (workspaceId: string, agent: AgentKind = 'claude') =>
-    request<SessionSummary[]>(`/api/workspaces/${encodeURIComponent(workspaceId)}/sessions?agent=${agent}`, {
-      cache: 'no-store',
-    }),
+  listSessions: (workspaceId: string, agent: AgentKind = 'claude', archived = false) =>
+    request<SessionSummary[]>(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions?agent=${agent}${archived ? '&archived=true' : ''}`,
+      {
+        cache: 'no-store',
+      },
+    ),
+  /** 原生管理请求不因面板关闭而取消；结果以运行时响应和重新读取为准。 */
+  sessionAction: (workspaceId: string, sessionId: string, agent: AgentKind, input: SessionActionInput) =>
+    request<void>(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/actions?agent=${agent}`,
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+    ),
   sessionEvents: (workspaceId: string, sessionId: string, agent: AgentKind = 'claude', signal?: AbortSignal) =>
     request<SessionHistory>(
       `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/events?agent=${agent}`,
@@ -189,7 +202,8 @@ export const queryKeys = {
   workspaces: ['workspaces'] as const,
   sshHosts: ['ssh-hosts'] as const,
   sshCredentials: (sshHost: string) => ['ssh-credentials', sshHost] as const,
-  sessions: (workspaceId: string, agent: AgentKind = 'claude') => ['sessions', workspaceId, agent] as const,
+  sessions: (workspaceId: string, agent: AgentKind = 'claude', archived = false) =>
+    archived ? (['sessions', workspaceId, agent, 'archived'] as const) : (['sessions', workspaceId, agent] as const),
   sync: (workspaceId: string) => ['sync', workspaceId] as const,
   versions: (workspaceId: string) => ['versions', workspaceId] as const,
 };

@@ -226,7 +226,10 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 - 已接入列表与历史：Claude 使用 SDK 原生接口，Codex 使用 `thread/list` / `thread/read`，按工作区本地文件夹筛选。读取和续接再次校验原生 cwd 与官方 ID，拒绝越界或不完整历史。
 - `chat/sessions.ts` 统一两类 provider，HTTP 会话路由用 `agent` 参数区分来源。网页分别加载两类列表；一个运行时失败仍显示另一类历史，并为失败来源提供重新读取。
 - 列表、选中状态和查询键保留所属 Agent；历史请求绑定工作区、Agent、官方 ID 与选择代次，切换后忽略迟到结果，读取期间禁止发送。展示历史不替代官方上下文续接。
-- 后续删除：Claude `deleteSession`、Codex `thread/delete`；归档/恢复：Codex `thread/archive` / `thread/unarchive`。当前没有这些入口，仍需运行状态校验与跨客户端一致性验收。
+- 已接入管理：Claude `renameSession` / `deleteSession`，Codex `thread/name/set` / `thread/delete` / `thread/archive` / `thread/unarchive`；归档列表使用 `thread/list(archived: true)`，保持目录过滤、分页与子代理排除。产品不手工删除原生 JSONL。
+- 管理前验证原生 ID/cwd；Claude 缺少 cwd 时拒绝修改，Codex 拒绝 active 状态与内部子代理。`TurnManager.withIdleSession` 复用 `(agent, sessionId)` 锁，从验证前持有至原生操作返回，并与对话准备、运行及同步收尾互斥；忙时返回 409，失败只释放本次占用。
+- HTTP 管理入口校验删除 `confirmed: true` 与 1–200 字符标题。请求交给原生运行时后继续等待结果，网页断开不视为回滚；匿名错误提示重新读取核对。前端成功后刷新对应来源，删除/归档的迟到结果只清空仍匹配工作区、Agent 和 ID 的当前对话。
+- Codex 0.156.1 不支持直接重命名归档记录，网页仅提供恢复/删除，恢复后从普通列表改名。删除说明相关子会话影响，归档说明派生子会话影响，恢复不承诺恢复全部后代。真实原生与网页验收见 [会话管理验收](../guides/session-management-acceptance.md)；外部客户端并发不由本后端统一加锁。
 
 ### 5.8 policy：命令黑名单
 
@@ -306,8 +309,8 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 | 编号 | 事项 |
 |---|---|
 | V1 | Claude SDK `settingSources` 设置后能否读到 cc-switch 写入的 `env`（地址、令牌） |
-| V2 | Claude SDK `listSessions` / `deleteSession` 的参数与行为，删除后 VS Code 插件是否同步不可见 |
-| V3 | CLI 0.156.1 的真实网页对话、原生列表/读取及原 ID 续接已通过；删除/归档与跨客户端一致性待实现验证 |
+| V2 | Claude 原生重命名/删除及网页删除已验证存储/API 更新；VS Code 插件界面和 CLI 交互列表刷新待独立验证 |
+| V3 | CLI 0.156.1 的对话/续接与重命名、删除、归档/恢复已通过原生及网页验证；A8 独立客户端界面刷新仍待验证 |
 | V4 | GLM 真实网页轮次已通过原生 MCP `remote_peek` 访问受控内部服务；A7 的真实 SSH/同步串联仍待验证 |
 | V5 | 已实现读取生效的 `developer_instructions` 后追加工作区约束；各类项目 `AGENTS.md` 组合的完整行为仍需按实际环境验证 |
 | V6 | 受控原生客户端、替身进程与浏览器已验证审批确认/去重/单次批准拒绝及中断清理；不据此宣称真实 SSH 审批串联完成 |
@@ -323,4 +326,4 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 | V16 | 对话流、SSH PTY、资源采样及同步同时运行时的消息响应；同一会话禁止重叠轮次、同一工作区同步不重叠，超时 / 输出限制不影响其他活动 |
 | V17 | 使用服务器已有 Python / 项目环境执行用户要求的统计、绘图和结果处理；分析脚本先同步，必要小文件按需返回，不整份下载大数据或自动触发分析 |
 
-2026-10-03 状态核对：认证、保存凭据与 rclone 同步基础已接入，已有真实 Claude → MCP → SSH 及传输/网页记录。原生配置、项目文件编辑和本地版本历史/恢复已实现；Codex 真实网页与 GLM 两轮、原生 MCP、列表/历史/续接通过，详情见 [Codex 对话验收](../guides/codex-conversation-acceptance.md)。本阶段 SSH/同步使用受控替身，A5/A13/A7 实际 SSH 串联仍待用户指定 Host 与允许测试的目录；终端、资源面板、完整并发、skills / 命令、上下文/压缩、模型目录与删除/归档尚未完成。
+2026-10-03 状态核对：认证、保存凭据与 rclone 同步基础已接入，已有真实 Claude → MCP → SSH 及传输/网页记录。原生配置、项目文件编辑和本地版本历史/恢复已实现；Codex 真实网页与 GLM 两轮、原生 MCP、列表/历史/续接通过，详情见 [Codex 对话验收](../guides/codex-conversation-acceptance.md)。两类原生重命名/删除与 Codex 归档/恢复亦已接入，A8 独立客户端刷新待验。此前 Codex 对话的 SSH/同步使用受控替身，A5/A13/A7 实际 SSH 串联仍待用户指定 Host 与允许测试的目录；终端、资源面板、完整并发、skills / 命令、上下文/压缩与模型目录尚未完成。

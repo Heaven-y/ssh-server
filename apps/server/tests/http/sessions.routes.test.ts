@@ -2,11 +2,11 @@ import os from 'node:os';
 import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Workspace } from '@ssh-server/shared';
+import type { SessionRef, Workspace } from '@ssh-server/shared';
 import type { WorkspaceStore } from '../../src/workspaces/store';
 import { registerSessionRoutes } from '../../src/http/sessions.routes';
 import { createClaudeSessions, type ClaudeSessionsApi } from '../../src/agents/claude-sessions';
-import { createSessionsService, type SessionProvider } from '../../src/chat/sessions';
+import { createSessionsService, SessionError, type SessionProvider } from '../../src/chat/sessions';
 
 const ws: Workspace = {
   id: 'w1',
@@ -56,13 +56,76 @@ function setup() {
       events: [{ type: 'text' as const, delta: 'Codex 回复' }],
     })),
     assertBelongs: vi.fn(async () => undefined),
+    mutate: vi.fn(async () => undefined),
   };
-  const sessions = createSessionsService({ claude: createClaudeSessions(api), codex });
+  const withIdleSession = vi.fn(async (_session: SessionRef) => undefined);
+  const sessions = createSessionsService(
+    { claude: createClaudeSessions(api), codex },
+    {
+      withIdleSession: async (session, operation) => {
+        await withIdleSession(session);
+        return operation();
+      },
+    },
+  );
   registerSessionRoutes(app, { store, sessions });
-  return { app, api, codex, sessions };
+  return { app, api, codex, sessions, withIdleSession };
 }
 
 describe('会话接口', () => {
+  it('会话管理校验确认与名称，并按原生身份加锁', async () => {
+    const { app, codex, withIdleSession } = setup();
+    const url = '/api/workspaces/w1/sessions/s1/actions?agent=codex';
+    for (const payload of [
+      { action: 'delete' },
+      { action: 'delete', confirmed: false },
+      { action: 'rename', title: '  ' },
+    ])
+      expect((await app.inject({ method: 'POST', url, payload })).statusCode).toBe(400);
+    expect(codex.mutate).not.toHaveBeenCalled();
+    const renamed = await app.inject({ method: 'POST', url, payload: { action: 'rename', title: '  新名称  ' } });
+    expect(renamed.statusCode).toBe(204);
+    expect(renamed.headers['cache-control']).toBe('no-store');
+    expect(withIdleSession).toHaveBeenCalledWith({ agent: 'codex', sessionId: 's1' });
+    expect(codex.mutate).toHaveBeenCalledWith('s1', ws.localDir, { action: 'rename', title: '新名称' });
+    expect((await app.inject({ method: 'POST', url, payload: { action: 'delete', confirmed: true } })).statusCode).toBe(
+      204,
+    );
+  });
+
+  it('运行冲突返回409，原生异常匿名返回且不会误报管理成功', async () => {
+    const { app, codex, withIdleSession } = setup();
+    const request = {
+      method: 'POST' as const,
+      url: '/api/workspaces/w1/sessions/s1/actions?agent=codex',
+      payload: { action: 'archive' },
+    };
+    withIdleSession.mockRejectedValueOnce(new SessionError(409, 'session_busy', '会话正在运行'));
+    expect((await app.inject(request)).statusCode).toBe(409);
+    expect(codex.mutate).not.toHaveBeenCalled();
+    vi.mocked(codex.mutate!).mockRejectedValueOnce(new Error('private-native-details'));
+    const failed = await app.inject(request);
+    expect(failed.statusCode).toBe(503);
+    expect(failed.body).not.toContain('private-native-details');
+    expect((await app.inject(request)).statusCode).toBe(204);
+  });
+
+  it('归档查询只发给Codex，Claude归档操作被拒绝', async () => {
+    const { app, codex } = setup();
+    expect((await app.inject('/api/workspaces/w1/sessions?agent=codex&archived=true')).statusCode).toBe(200);
+    expect(codex.list).toHaveBeenCalledWith(ws.localDir, expect.any(AbortSignal), true);
+    expect((await app.inject('/api/workspaces/w1/sessions?agent=claude&archived=true')).statusCode).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/workspaces/w1/sessions/s1/actions',
+          payload: { action: 'archive' },
+        })
+      ).statusCode,
+    ).toBe(400);
+  });
+
   it('列出工作区本地文件夹下的会话', async () => {
     const { app, api } = setup();
     const r = await app.inject({ method: 'GET', url: '/api/workspaces/w1/sessions' });

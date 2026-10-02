@@ -25,7 +25,7 @@
 ```
 
 - Claude/Codex 对话沿用本机原生配置，网页可编辑对应原生配置文件。后续调用重读配置，运行中的轮次保留启动时设置；Codex 新会话采用新默认模型，历史续接保留原生会话模型，显式填写模型才覆盖。
-- 一个会话固定 Claude 或 Codex，支持流式回复、工具结果、网页审批、中断、原生列表与续接。上下文由官方运行时管理，skills / 命令入口及压缩状态展示仍待接入。
+- 一个会话固定 Claude 或 Codex，支持流式回复、工具结果、网页审批、中断、原生列表与续接；两类会话可重命名和删除，Codex 另支持归档与恢复。上下文由官方运行时管理，skills / 命令入口及压缩状态展示仍待接入。
 - SSH 已支持账号密码、已有私钥及 Windows 当前用户加密保存。断开后保留已保存密码并暂停自动连接；重新连接可复用，取消保存勾选会清除保存项并断开，不设独立“忘记密码”入口。
 - 服务器上不安装任何东西，只需要已有的 SSH 账号。
 - 大文件（数据、模型权重、输出）只留在服务器上，Agent 需要时通过远程工具查看。
@@ -72,5 +72,7 @@
 ## 状态
 
 开发中：M1 已有真实 Claude → MCP → SSH 验收脚本，M2 认证同步基础已完成；此前真实传输 6 项与网页同步 5 项通过，见[认证同步验收](docs/guides/m2-acceptance.md)。Codex app-server 0.156.1 已完成真实网页与 GLM 两轮对话、原生 MCP 工具调用、列表/历史读取和原 ID 续接，见[Codex 对话验收](docs/guides/codex-conversation-acceptance.md)及[配置验收](docs/guides/agent-config-acceptance.md)。
+
+原生会话管理已接入，并使用临时合成记录通过真实 SDK/app-server 与网页验收，见[会话管理验收](docs/guides/session-management-acceptance.md)。A8 已验证网页及原生存储/API，VS Code 插件界面与 CLI 交互列表的刷新仍待独立验证。
 
 [文件编辑](docs/guides/workspace-files-acceptance.md)与[本地版本记录](docs/guides/local-versions-acceptance.md)已有受控验收。本阶段 Codex 的 SSH/同步也使用受控替身；A5、A13、A7 实际 SSH 串联仍待指定 Host 与允许测试的目录，终端、资源面板和完整并发验证亦未完成，见[路线图](docs/roadmap.md)。
