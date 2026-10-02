@@ -1,32 +1,81 @@
 # 路线图
 
-验收编号见 [product/requirements.md](product/requirements.md) 第 6 节。
+更新日期：2026-10-02。验收编号见 [需求](product/requirements.md) 第 6 节，已确认的取舍见 [设计决策](engineering/decisions.md)。本轮完成需求、后端选型与职责边界归档，不表示下列新增功能已经开发。
 
 | 里程碑 | 内容 | 验收 | 状态 |
 |---|---|---|---|
-| M0 | 文档、仓库规范、项目 skill | — | 完成 |
-| M1 | 最小链路：后端 + 访问控制 + 手动配置的工作区 + Claude 对话（流式）+ `remote_exec` + 命令黑名单 | A1、A11 | 进行中 |
-| M2 | 同步：rclone bisync、过滤规则、删除检查与确认、冲突提示 | A2、A3、A4、A9 | 未开始 |
-| M3 | 版本记录：保存、历史、diff、恢复 | A5 | 未开始 |
-| M4 | Codex 适配器、模型选择、会话列表 / 删除 / 归档 | A6、A7、A8 | 未开始 |
-| M5 | 新建工作区向导（本地与服务器目录浏览、同步预览）、网页终端 | A10 | 未开始 |
+| M0 | 文档、仓库规范、项目 skill | — | 完成，持续更新文档 |
+| M1 | 最小链路：后端 + 访问控制 + 手动配置的工作区 + Claude 对话（流式）+ `remote_exec` + 命令黑名单 | A1、A11 | Task 1–10 已实现；Task 11 未完成 |
+| M2 | SSH 密码接入与最小输入入口；rclone bisync、过滤规则、删除确认、冲突处理、执行前同步阻断；按用户要求读取远程结果并使用已有 Python / 项目环境分析 | A2、A3、A4、A9、A12（执行 / 同步部分）、A17、A19 | 未开始 |
+| M3 | 轻量文件浏览 / 编辑、保存文件后同步；本地保存版本、历史、diff、恢复 | A5、A13 | 未开始 |
+| M4 | Codex 适配器、会话固定 Agent、模型选择、会话列表 / 删除 / 归档、原生 skills / 命令、上下文及压缩状态 | A6、A7、A8、A14、A15、A16 | 未开始；M1 已有 Claude 会话列表 / 续接基础 |
+| M5 | 完整工作区向导、目录浏览 / 同步预览、密码连接交互；参考 Pebrel 的网页终端；服务器资源面板 | A10、A12（向导 / 终端部分）、A18 | 未开始 |
 | M6 | 设置页、错误与空状态、端到端测试 | 全部复测 | 未开始 |
+
+技术方向已确认：本地后端继续 Node.js + TypeScript + Fastify，异步协调 Agent、SSH、子进程、同步和网页状态；Python 分析默认在服务器已有环境执行。独立 `.exe` / 安装器、Go 迁移与外部工具打包只属于比较话题，不增加相应里程碑。并发与远端分析验证分别见架构 V16、V17。
 
 ## M0 待办
 
-- [x] 项目 skill 安装与验证（见 [guides/dev-environment.md](guides/dev-environment.md)）
+- [x] 项目 skill 安装与验证（见 [开发环境](guides/dev-environment.md)）
 - [x] README、AGENTS.md、CLAUDE.md
 - [x] 需求、架构、界面布局、路线图
-- [x] 复测 ui-ux-pro-max 脚本路径（guides/dev-environment.md 4.2）
+- [x] 复测 ui-ux-pro-max 脚本路径（开发环境 4.2）
 - [x] 目录按用途划分（docs 分 product / engineering / guides，脚本移到 scripts/dev）
 - [x] 首次提交
 
 ## M1 进度
 
-计划见 [superpowers/plans/2026-10-01-m1-minimal-chain.md](superpowers/plans/2026-10-01-m1-minimal-chain.md)。
+计划见 [M1 实施计划](superpowers/plans/2026-10-01-m1-minimal-chain.md)。
 
 - [x] Task 1–9：workspaces 骨架、共享协议、命令黑名单、ssh config 与 known_hosts、远程执行与连接池、工作区存储、访问控制、远程工具 MCP、Claude 适配器与对话 WebSocket
-- [x] Task 10：前端（工作区、会话、对话界面）；`npm test`、`npm run typecheck`、`npm run build -w @ssh-server/web` 通过，浏览器冒烟检查通过（登录、空状态、表单校验、连接状态、控制台无错误）
-- [x] 复用成熟库：规范写入 [guides/dev-environment.md](guides/dev-environment.md) 1.1、1.2；`ssh-config.ts` 改用 `ssh-config` 库；前端使用 react-query、partysocket、use-stick-to-bottom
-- [x] 工程检查：`npm run check`（类型、ESLint 与复杂度、Prettier、jscpd 重复率、Vitest 覆盖率）与 GitHub Actions；超标的 7 个函数已拆分，补测试后行覆盖 92%（见 [guides/dev-environment.md](guides/dev-environment.md) 1.3）
-- [ ] Task 11：真实服务器验收（`npm run e2e:m1`、浏览器端到端）与文档收尾——需要用户提供可用的 SSH Host
+- [x] Task 10：前端（工作区、会话、对话界面）；此前已记录 `npm test`、`npm run typecheck`、`npm run build -w @ssh-server/web` 通过，浏览器冒烟检查通过（登录、空状态、表单校验、连接状态、控制台无错误）
+- [x] 复用成熟库：规范写入开发环境 1.1、1.2；`ssh-config.ts` 改用 `ssh-config` 库；前端使用 react-query、partysocket、use-stick-to-bottom
+- [x] 工程检查：接入 `npm run check`（类型、ESLint 与复杂度、Prettier、jscpd 重复率、Vitest 覆盖率）与 GitHub Actions；此前记录补测试后的行覆盖率约 92%（见开发环境 1.3）
+- [ ] Task 11：创建 `scripts/dev/e2e-m1.ts`，执行真实模型 / SSH 验收及浏览器端到端，记录结论并收尾文档
+
+2026-10-02 核对发现：`package.json` 已声明 `e2e:m1`，但对应脚本仍不存在；现有 `scripts/dev/ssh-smoke.ts` 只检查直接 SSH 命令，不能替代 Agent → MCP → SSH 的真实验收。需要可用的 SSH Host 和工作区目录完成 Task 11，当前不能将 M1 标为全部完成。
+
+当前实现边界：
+
+- SSH 只读取本机私钥，尚不支持网页账号密码输入与认证。
+- Claude 已接入流式对话、审批、中断、历史列表与原生续接；尚无 skills / `/` 命令选择、原生上下文 / 压缩状态展示。
+- 本地文件修改不会自动到服务器，同步尚未实现；现有注入指令明确提示这一限制。
+- Codex、版本记录、网页文件编辑、交互终端、资源面板尚未实现。
+
+## M2–M6 本轮补充的实施范围
+
+### M2：认证、同步与远程工作流
+
+- [ ] 账号密码和已有私钥共用连接配置，提供最小密码输入 / 重新认证入口；密码只保留在本地内存
+- [ ] 验证 ssh2 与 rclone 的密码传递、主机密钥校验和凭据生命周期，不将密码写入参数、日志或磁盘
+- [ ] 首次小文件拉取与基线建立、定时 / 手动 / 轮次结束同步，防误删与保留双方冲突版本
+- [ ] 同一工作区的同步请求串行调度，SSH / rclone 使用异步接口，不阻塞对话或其他工作区
+- [ ] 执行前同步成功后才能运行；相关删除 / 冲突或同步失败时阻断，不运行旧代码
+- [ ] 后台训练返回启动信息或任务 ID；用户手动要求后读取远程结果，按需使用已有 Python / 项目环境统计、绘图或处理；新脚本先同步，不自动检测完成或唤起 Agent
+
+### M3：轻量编辑与版本记录
+
+- [ ] 选定成熟编辑组件，接入同步范围内的文件浏览、脚本编辑、保存及外部改动冲突提示
+- [ ] 区分“保存文件”“服务器已同步”和“保存版本”；同步不依赖 git 提交
+- [ ] 本地 git 历史、diff 与恢复，并将恢复结果同步到服务器
+
+### M4：两类原生 Agent 能力
+
+- [ ] Codex app-server 接入，会话按原 Agent 与官方 ID 继续，不做跨 Agent 上下文转换
+- [ ] skills 发现、选择与调用；官方可接入的 `/` 命令和 CLI-only 限制提示
+- [ ] 官方上下文 / 压缩状态映射与手动压缩，不在网页自建上下文管理
+- [ ] 模型跟随本地配置，以及正式的会话删除 / Codex 归档恢复
+
+### M5：向导、终端与资源状态
+
+- [ ] 完整连接向导：导入 Host / 手动配置、账号密码 / 私钥、主机指纹、目录浏览、按需同步预览
+- [ ] xterm.js SSH 终端，参考 Pebrel 的外观、多标签、分屏与可调整布局，实际核对视觉和全屏程序
+- [ ] 基于已有 `nvidia-smi` / Linux 信息的 GPU、CPU、内存、磁盘与进程面板，标注采集主机、时间和不可用状态
+- [ ] 资源采样与 AI 对话独立，按 SSH 目标共享采样并控制刷新开销；不依赖 `nvitop` 或服务器新装软件
+- [ ] 对话、终端、资源采样和同步分别反馈状态；对话 / 终端运行期间资源仍刷新，不以整页加载阻塞其他入口
+
+### M6：完整链路与并发验收
+
+- [ ] 验证对话、终端、资源采样与同步同时运行的响应，单会话单轮、同工作区同步串行、超时和输出限制，记录架构 V16、V17 的真实结论
+
+上述各项仍需相应里程碑的具体设计 / 实施计划，不把需求归档当作实施完成。详细待验证事项见 [架构第 8 节](engineering/architecture.md#8-待验证事项)。

@@ -1,14 +1,20 @@
-# M1 最小链路 Implementation Plan
+# M1 最小链路实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> 实施此计划时使用项目的 `subagent-driven-development` 或 `executing-plans` 技能。本文保留 M1 的原步骤供追溯，当前状态以以下注记和路线图为准。
+
+**状态（2026-10-02）：** Task 1–10 的功能代码已实现，Task 11 尚未完成，`scripts/dev/e2e-m1.ts` 未创建，真实模型 / SSH 链路未验收。原步骤中的勾选不是本轮重新执行测试或提交的证明；后续新增功能以 [需求](../../product/requirements.md)、[设计决策](../../engineering/decisions.md) 和 [路线图](../../roadmap.md) 为准。
+
+**范围更新：** 密码认证与同步在 M2，轻量编辑与版本记录在 M3，Codex / 固定 Agent / skills / 命令 / 上下文状态在 M4，完整向导 / Pebrel 终端参考 / 资源面板在 M5。本计划仅覆盖 M1；不增加任务完成自动检测，训练结果由用户手动要求查看。
 
 **Goal:** 在本机网页里和本机 Claude Code 对话，Claude 通过 `remote_exec` 在 SSH 服务器上执行命令并流式显示，危险命令被黑名单拦截。
 
-**Architecture:** npm workspaces 分为 `packages/shared`（协议类型）、`apps/server`（Fastify 后端，只监听 127.0.0.1）、`apps/web`（React 前端）。后端用 Claude Agent SDK 驱动对话，把远程工具作为 stdio MCP 服务注入；MCP 服务把请求转发给后端内部接口，后端过黑名单后用 ssh2 执行。
+**Architecture:** npm workspaces 分为 `packages/shared`（协议类型）、`apps/server`（Node.js + TypeScript + Fastify 本地后端，只监听 127.0.0.1）、`apps/web`（React 前端）。后端用 Claude Agent SDK 驱动对话，把远程工具作为 stdio MCP 服务注入；MCP 服务把请求转发给后端内部接口，后端过黑名单后用 ssh2 执行。
 
 **Tech Stack:** Node 22、TypeScript 5.9.3（仅类型检查）、tsx 4（运行 TS）、Vitest 5、Fastify 5、zod 4、ssh2、@anthropic-ai/claude-agent-sdk 0.3.286、@modelcontextprotocol/sdk 1.31、React 19、Vite 8、Tailwind 4、streamdown。
 
-**Spec:** `docs/superpowers/specs/2026-10-01-m1-minimal-chain-design.md`
+**技术方向确认（2026-10-02）：** 继续上述后端技术栈，使用异步接口协调 Agent、SSH、子进程与网页消息。Python 分析默认使用服务器已有环境，不为 Python 项目替换网页后端；新脚本先同步后远程分析属于 M2。同会话单轮、同工作区同步串行及终端 / 资源刷新独立按最新架构实施；完整并发验收进入 M6。独立 `.exe` / 安装器和 Go 迁移未增加为计划任务。
+
+**设计：** [M1 最小链路设计](../specs/2026-10-01-m1-minimal-chain-design.md)
 
 ## Global Constraints
 
@@ -18,7 +24,8 @@
 - 后端只监听 `127.0.0.1` / `::1` / `localhost`。
 - 不修改 `~/.claude`、`~/.codex`、`~/.ssh` 下任何文件（只读）。
 - 服务器上只执行只读命令（`hostname`、`pwd`、`ls`、`uname`）。
-- 每个任务结束前 `npm test` 与 `npm run typecheck` 通过，再按 git-commit-zh 规范提交。
+- 本地后端与 MCP 保持 Node.js / TypeScript；远程计算使用已有环境，服务器零安装。耗时 I/O 使用异步接口，不在后端请求中执行项目重计算。
+- 代码任务结束前验证 `npm test` 与 `npm run typecheck`；纯文档变更按实际影响范围检查。所有“提交”及“推送”步骤都以用户明确要求为前提，否则不执行，遵循仓库 AGENTS.md。
 
 ## Review Focus
 
@@ -449,6 +456,8 @@ export function resolvePermission(items: ChatItem[], requestId: string, allow: b
 
 ### Task 11: M1 验收与文档
 
+2026-10-02 状态：本任务仍未完成。必须先补下列脚本，再执行真实模型 / SSH 和浏览器验收；直接 SSH 冒烟、已有单元测试和文档更新均不能代替它。
+
 **Files:**
 - Create: `scripts/dev/e2e-m1.ts`
 - Modify: `docs/roadmap.md`、`docs/engineering/architecture.md`（第 8 节）、`docs/guides/dev-environment.md`、`README.md`
@@ -461,6 +470,6 @@ export function resolvePermission(items: ChatItem[], requestId: string, allow: b
   - 打印 `PASS` / `FAIL`、首个事件耗时、总耗时；结束时关闭子进程、删除临时目录。
 - [ ] **Step 2: 运行验收** `npm run e2e:m1 -- --host <真实 Host> --remote-dir "~"` → `PASS`；记录耗时与模型名。
 - [ ] **Step 3: 浏览器验收**（webapp-testing 或内置浏览器）：`npm start` 后打开访问地址，在界面中创建工作区，发送同一句话，确认出现 `remote_exec` 卡片且结果为服务器主机名；再发送 `请用 remote_exec 执行 sudo whoami`，确认卡片显示 `命令被拒绝`（规则 privilege）。截图保存到会话临时目录，不进仓库。
-- [ ] **Step 4: 更新文档**：路线图 M0、M1 标记完成并写验收记录；架构文档第 8 节写入 V1（本地配置是否生效）、V2（会话列表与历史）、V10（访问控制）的结论；开发环境文档补充 `npm run dev`、`npm start`、`npm run e2e:m1` 用法和新发现的问题；README 加"快速开始"。
+- [ ] **Step 4: 更新文档**：真实验收通过后将路线图 M1 标记完成并写验收记录；架构文档第 8 节写入 V1（本地配置是否生效）、V2（会话列表与历史）、V10（访问控制）的结论；开发环境文档补充运行用法和新发现的问题；README 更新当前实现范围。保留 2026-10-02 已确认的 M2–M5 需求，不把待实现能力标为完成。
 - [ ] **Step 5: 验证** `npm test`、`npm run typecheck`；文档链接与敏感信息检查（同首次提交时的检查）。
-- [ ] **Step 6: 提交并推送** `docs: 记录 M1 验收结果并更新文档`；`git push origin main`。
+- [ ] **Step 6: 用户明确要求时提交 / 推送**：提交信息 `docs: 记录 M1 验收结果并更新文档`；推送另按用户明确指令执行，不因本计划出现 `git push` 就自动推送。

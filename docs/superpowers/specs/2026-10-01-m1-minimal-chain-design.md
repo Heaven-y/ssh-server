@@ -2,7 +2,11 @@
 
 - 日期：2026-10-01
 - 对应：`docs/roadmap.md` M1；验收 A1、A11（`docs/product/requirements.md` 第 6 节）
-- 前提：需求、架构、界面文档已确认；本文只写 M1 的具体决定，不重复架构文档。
+- 前提：本文保留 M1 的阶段设计。2026-10-02 更新后的完整产品范围以 [需求](../../product/requirements.md)、[架构](../../engineering/architecture.md)、[设计决策](../../engineering/decisions.md) 和 [路线图](../../roadmap.md) 为准。
+
+状态注记（2026-10-02）：M1 Task 1–10 已实现，Task 11 未完成；`scripts/dev/e2e-m1.ts` 尚不存在，真实模型 / SSH 链路未验收。本轮确认了账号密码、轻量编辑、原生 skills / 命令、上下文状态、Pebrel 终端参考和资源面板，分别进入 M2–M5，不能将下文的 M1 限定当作最终产品限制。结果检查只由用户手动发消息触发，不加入自动任务完成检测。
+
+技术方向注记（2026-10-02）：继续 Node.js + TypeScript + Fastify 本地后端，负责 Agent、SSH、子进程和流式消息的异步协调。Python 统计 / 绘图默认在服务器已有环境执行；新脚本同步后执行属于 M2 工作流。完整并发约定为单会话单轮、同工作区同步串行，终端与资源刷新独立，见最新架构；独立 `.exe` / 安装器与 Go 迁移未加入交付范围，不扩展 M1。
 
 ## 1. 目标
 
@@ -18,7 +22,7 @@
 - Claude 对话：流式文本、工具调用卡片、权限请求批准 / 拒绝、中断、会话列表与历史、继续会话。
 - 远程工具：`remote_exec`、`remote_peek`；命令黑名单；`~/.ssh/config` 解析与 `known_hosts` 校验。
 
-不包含（后续里程碑）：同步（M2）、保存与历史（M3）、Codex（M4）、目录浏览与终端（M5）、设置页与命令面板（M6）、右侧面板。
+不包含（后续里程碑）：密码认证与同步（M2）、轻量编辑与版本历史（M3）、Codex 及完整 skills / 命令 / 上下文状态（M4）、完整向导、目录浏览、终端与资源面板（M5）、设置页与网页命令面板（M6）。M1 本身不扩展这些功能。
 
 M1 没有同步：Agent 在本地文件夹改的文件不会到服务器，`remote_exec` 只作用于服务器上已有的文件。注入给 Agent 的指令要写明这一点。
 
@@ -40,7 +44,7 @@ apps/web/src/          app/、features/workspaces/、features/chat/、lib/、sty
 scripts/dev/e2e-m1.ts  真实服务器验收脚本
 ```
 
-- 服务端和 MCP 子进程都用 `node --import tsx` 直接运行 TS，不单独编译；`tsc --noEmit` 只做类型检查；测试用 Vitest，测试文件与源码放在一起。
+- 后端采用 Node.js + TypeScript + Fastify；服务端和 MCP 子进程都用 `node --import tsx` 直接运行 TS，不单独编译；`tsc --noEmit` 只做类型检查；测试用 Vitest，测试文件与源码放在一起。
 - 共享包直接导出 TS 源码，server（tsx）和 web（Vite）都能直接引用。
 
 环境变量：
@@ -82,7 +86,7 @@ type Workspace = {
 ## 6. SSH
 
 - `~/.ssh/config`：支持 `Host`（多个模式、`*` `?` 通配、带引号的别名，包括中文）和 `HostName`、`Port`、`User`、`IdentityFile`；`Match` 块整体跳过；`Include`、`ProxyJump`、`ProxyCommand` 记为不支持并在界面提示。按 OpenSSH 规则，各匹配块中先出现的值优先。文件可能带 BOM、CRLF。
-- 认证：依次尝试 `IdentityFile`，未配置时尝试 `~/.ssh/id_ed25519`、`id_ecdsa`、`id_rsa`。M1 不支持带密码的私钥（报错说明）。
+- 认证（仅 M1）：依次读取 `IdentityFile`，未配置时尝试 `~/.ssh/id_ed25519`、`id_ecdsa`、`id_rsa`；当前连接实现选择可读取的私钥，不支持网页账号密码或带密码的私钥。正式目标必须支持账号密码，见需求 F1，不以免密登录为最终前提。
 - 主机密钥：读 `~/.ssh/known_hosts`，支持普通条目、`[host]:port`、哈希条目（`|1|salt|hash`），`@revoked` 视为拒绝。找不到主机时拒绝，并提示先在终端执行一次 `ssh <Host>`；密钥不一致拒绝。
 - 每个 Host 一条长连接，断开后下次使用时重连。
 - 远程命令：`cd <目录> && exec timeout <秒> bash -lc <命令>`。所有参数用 POSIX 单引号转义；`~` 开头的目录写成 `"$HOME"/'<其余部分>'`。
@@ -108,7 +112,7 @@ type Workspace = {
 | `kill-all` | `kill` / `pkill` 的目标为 `-1` |
 | `chmod-777-recursive` | `chmod` 递归且权限为 `777` |
 | `authorized-keys` | 写入、移动、删除或修改 `authorized_keys` |
-| `fork-bomb` | `:(){ :|:& };:` 形式 |
+| `fork-bomb` | `:(){ :\|:& };:` 形式 |
 | `crontab-remove` | `crontab -r` |
 
 - 工作区可按 ruleId 停用默认规则；自定义规则放到 M6。
@@ -152,7 +156,7 @@ type Workspace = {
 - 运行、训练、测试、查看数据：使用 remote_exec，在该目录下执行。
 - 查看大文件、目录占用：使用 remote_peek。
 - 当前版本尚未实现同步：你在本地文件夹中修改的文件不会出现在服务器上，不要假设已同步。
-- 长时间任务用 nohup 或 Slurm 提交，再用 remote_exec 查看进度。
+- 长时间任务用服务器已有的 nohup 或 Slurm 提交；用户手动要求时再用 remote_exec 查看进度或结果，不自动检测训练完成。
 ```
 
 ## 10. 对话协议
@@ -186,7 +190,7 @@ type Workspace = {
 |---|---|
 | 单元 | 黑名单（每条规则 + 不应误拦的命令）、ssh config、known_hosts、远程命令拼装、exec 截断与超时、工作区存储、访问控制、事件映射、编辑范围、`reduceChat` |
 | 集成 | 内部接口（拒绝时不调用 SSH）、MCP stdio 冒烟（假后端）、WebSocket 来源校验 |
-| 验收 | `scripts/dev/e2e-m1.ts`：真实服务器上让 Claude 执行 `hostname` 并与直接 SSH 结果比对；浏览器中完成同一操作 |
+| 验收 | 待创建的 `scripts/dev/e2e-m1.ts`：真实服务器上让 Claude 执行 `hostname` 并与直接 SSH 结果比对；浏览器中完成同一操作。当前尚未执行这项验收 |
 
 验收时服务器上只执行只读命令。
 
