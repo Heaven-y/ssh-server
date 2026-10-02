@@ -9,15 +9,16 @@ export function Composer() {
   const [text, setText] = useState('');
   const running = useChat((s) => s.running);
   const connected = useChat((s) => s.connection === 'open');
+  const loading = useChat((s) => s.loadingHistory);
+  const stopping = useChat((s) => s.interruptRequested);
   const send = useChat((s) => s.send);
   const interrupt = useChat((s) => s.interrupt);
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
     const value = text.trim();
-    if (!value || running || !connected) return;
-    send(value);
-    setText('');
+    if (!value || running || !connected || loading) return;
+    if (send(value)) setText('');
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -44,18 +45,23 @@ export function Composer() {
         />
         <div className="flex items-end justify-between gap-3">
           <p className="pb-1 text-xs leading-5 text-muted-foreground">
-            {running ? '正在处理，可随时停止' : 'Enter 发送 · Shift+Enter 换行'}
+            {loading ? '正在读取历史，请稍候…' : 'Enter 发送 · Shift+Enter 换行'}
           </p>
           {running ? (
-            <button type="button" className={`${buttonClass('danger')} shrink-0 whitespace-nowrap`} onClick={interrupt}>
+            <button
+              type="button"
+              className={`${buttonClass('danger')} shrink-0 whitespace-nowrap`}
+              disabled={stopping}
+              onClick={interrupt}
+            >
               <Square aria-hidden className="size-4" />
-              停止
+              {stopping ? '正在停止…' : '停止'}
             </button>
           ) : (
             <button
               type="submit"
               className={`${buttonClass('primary')} shrink-0 whitespace-nowrap`}
-              disabled={!connected || !text.trim()}
+              disabled={!connected || !text.trim() || loading}
             >
               <SendHorizontal aria-hidden className="size-4" />
               发送

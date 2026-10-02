@@ -24,8 +24,8 @@
    └─ 资源面板 ──► SSH 只读采样（GPU / CPU / 内存等，不调用模型）
 ```
 
-- Claude 对话沿用本机原生配置；网页已提供 Claude/Codex 原生配置编辑，Codex 对话适配器仍待接入。后续调用读取新配置，运行中的轮次保留启动时设置。
-- 一个会话固定 Claude 或 Codex；上下文、续接、压缩和 skills / 命令沿用对应官方运行时。
+- Claude/Codex 对话沿用本机原生配置，网页可编辑对应原生配置文件。后续调用重读配置，运行中的轮次保留启动时设置；Codex 新会话采用新默认模型，历史续接保留原生会话模型，显式填写模型才覆盖。
+- 一个会话固定 Claude 或 Codex，支持流式回复、工具结果、网页审批、中断、原生列表与续接。上下文由官方运行时管理，skills / 命令入口及压缩状态展示仍待接入。
 - SSH 已支持账号密码、已有私钥及 Windows 当前用户加密保存。断开后保留已保存密码并暂停自动连接；重新连接可复用，取消保存勾选会清除保存项并断开，不设独立“忘记密码”入口。
 - 服务器上不安装任何东西，只需要已有的 SSH 账号。
 - 大文件（数据、模型权重、输出）只留在服务器上，Agent 需要时通过远程工具查看。
@@ -35,7 +35,7 @@
 - 终端视觉与交互参考 Pebrel，手动编辑复用 CodeMirror，支持常用脚本与配置文件。
 - 对话、终端、资源刷新与同步通过异步 I/O 协调；同一会话单轮运行，同一工作区同步串行。当前沿用 Node.js 本地启动，独立 `.exe` 打包或 Go 迁移未加入交付范围。
 
-当前已接入 Claude 对话、SSH 认证、rclone 双向同步、原生配置编辑、网页文件编辑和本地版本记录。版本保存、历史、差异与恢复按工作区限定范围；恢复保留 HEAD 和暂存区，再进入同步流程。删除确认、冲突保留与执行前后同步已实现；Codex 网页对话、终端及资源面板仍在路线图中。
+当前已接入 Claude/Codex 对话、SSH 认证、rclone 双向同步、原生配置编辑、网页文件编辑和本地版本记录。版本保存、历史、差异与恢复按工作区限定范围；恢复保留 HEAD 和暂存区，再进入同步流程。删除确认、冲突保留与执行前后同步已实现；终端、资源面板及其余原生 Agent 能力仍在路线图中。
 
 界面采用中性深色的对话工作区，SSH/同步显示紧凑摘要，详情和新建表单按需展开；参考依据、实际截图与验证范围见 [界面验收](docs/guides/workspace-ui-acceptance.md)。
 
@@ -71,4 +71,6 @@
 
 ## 状态
 
-开发中：M1 已有真实 Claude → MCP → SSH 验收脚本，M2 认证同步基础已完成。测试已移至各包独立的 `tests/` 目录；加密保存密码已贯通网页与 SSH。此前真实传输 6 项与网页同步 5 项通过，见[验收记录](docs/guides/m2-acceptance.md)。更新 GLM 配置后的 Codex 原生调用通过，见[配置验收记录](docs/guides/agent-config-acceptance.md)。网页文件编辑及本地版本记录的受控验收见[文件验收记录](docs/guides/workspace-files-acceptance.md)与[版本验收记录](docs/guides/local-versions-acceptance.md)；新增入口的实际 SSH 串联复验，以及 Codex 网页对话、终端和资源面板仍待完成，见[路线图](docs/roadmap.md)。
+开发中：M1 已有真实 Claude → MCP → SSH 验收脚本，M2 认证同步基础已完成；此前真实传输 6 项与网页同步 5 项通过，见[认证同步验收](docs/guides/m2-acceptance.md)。Codex app-server 0.156.1 已完成真实网页与 GLM 两轮对话、原生 MCP 工具调用、列表/历史读取和原 ID 续接，见[Codex 对话验收](docs/guides/codex-conversation-acceptance.md)及[配置验收](docs/guides/agent-config-acceptance.md)。
+
+[文件编辑](docs/guides/workspace-files-acceptance.md)与[本地版本记录](docs/guides/local-versions-acceptance.md)已有受控验收。本阶段 Codex 的 SSH/同步也使用受控替身；A5、A13、A7 实际 SSH 串联仍待指定 Host 与允许测试的目录，终端、资源面板和完整并发验证亦未完成，见[路线图](docs/roadmap.md)。

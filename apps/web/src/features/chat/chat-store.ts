@@ -1,42 +1,43 @@
-// 当前工作区与会话的对话状态；WebSocket 消息在这里转成界面条目
+// 会话身份包含 Agent；历史请求与实时轮次分别校验选择代次和关联 ID。
 import { create } from 'zustand';
-import type { ServerMessage } from '@ssh-server/shared';
+import type { AgentKind, ServerMessage, SessionRef } from '@ssh-server/shared';
 import { api, queryKeys } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
 import { connectChat, type ChatSocket, type ConnectionStatus } from '../../lib/ws';
-import { reduceChat, resolvePermission, type ChatItem } from './chat-reducer';
+import { markPermissionPending, reduceChat, type ChatItem } from './chat-reducer';
 
 const LAST_WORKSPACE_KEY = 'ssh-server.lastWorkspace';
-
 type ChatState = {
   connection: ConnectionStatus;
   workspaceId?: string;
-  /** 新会话在收到 session 事件前没有 id */
+  agent: AgentKind;
   sessionId?: string;
-  /** 用户填写的模型，空字符串表示跟随本地配置 */
-  model: string;
-  /** Agent 实际使用的模型（来自 session 事件） */
+  modelOverrides: Record<AgentKind, string>;
+  reasoningEffort: string;
   actualModel?: string;
   items: ChatItem[];
   running: boolean;
   turnId?: string;
   pendingClientTurnId?: string;
+  interruptRequested: boolean;
   loadingHistory: boolean;
   banner?: string;
-
   selectWorkspace(id: string): void;
-  newSession(): void;
-  openSession(sessionId: string): Promise<void>;
+  newSession(agent?: AgentKind): void;
+  setAgent(agent: AgentKind): void;
+  openSession(session: SessionRef): Promise<void>;
   setModel(model: string): void;
-  send(text: string): void;
+  setReasoningEffort(effort: string): void;
+  send(text: string): boolean;
   interrupt(): void;
   respondPermission(requestId: string, allow: boolean): void;
   dismissBanner(): void;
 };
 
 let socket: ChatSocket | undefined;
-
-/** 切换会话时清空的部分；进行中的轮次在后端继续运行，界面不再接收它的事件 */
+let historyRequest: AbortController | undefined;
+let selectionGeneration = 0;
+const pendingInterrupts = new Set<string>();
 const emptyConversation = {
   sessionId: undefined,
   actualModel: undefined,
@@ -44,123 +45,168 @@ const emptyConversation = {
   running: false,
   turnId: undefined,
   pendingClientTurnId: undefined,
+  interruptRequested: false,
   loadingHistory: false,
   banner: undefined,
 };
-
+function changeSelection(): number {
+  historyRequest?.abort();
+  historyRequest = undefined;
+  return ++selectionGeneration;
+}
+function historyIsCurrent(controller: AbortController, generation: number, workspaceId: string, session: SessionRef) {
+  const current = useChat.getState();
+  return (
+    !controller.signal.aborted &&
+    generation === selectionGeneration &&
+    current.workspaceId === workspaceId &&
+    current.agent === session.agent &&
+    current.sessionId === session.sessionId
+  );
+}
 export const lastWorkspaceId = () => localStorage.getItem(LAST_WORKSPACE_KEY) ?? undefined;
 
 export const useChat = create<ChatState>()((set, get) => ({
   connection: 'connecting',
-  model: '',
+  agent: 'claude',
+  modelOverrides: { claude: '', codex: '' },
+  reasoningEffort: '',
   ...emptyConversation,
-
   selectWorkspace(id) {
     if (get().workspaceId === id) return;
+    changeSelection();
     localStorage.setItem(LAST_WORKSPACE_KEY, id);
     set({ workspaceId: id, ...emptyConversation });
   },
-
-  newSession: () => set(emptyConversation),
-
-  async openSession(sessionId) {
+  newSession(agent = get().agent) {
+    changeSelection();
+    set({ ...emptyConversation, agent });
+  },
+  setAgent(agent) {
+    const current = get();
+    if (current.sessionId || current.running || current.loadingHistory || current.pendingClientTurnId) return;
+    if (current.agent !== agent) get().newSession(agent);
+  },
+  async openSession(session) {
     const { workspaceId } = get();
     if (!workspaceId) return;
-    set({ ...emptyConversation, sessionId, loadingHistory: true });
+    const generation = changeSelection();
+    const controller = new AbortController();
+    historyRequest = controller;
+    set({ ...emptyConversation, agent: session.agent, sessionId: session.sessionId, loadingHistory: true });
     try {
-      const events = await api.sessionEvents(workspaceId, sessionId);
-      if (get().sessionId !== sessionId) return; // 加载期间已切换到别的会话
-      const items = [...events, { type: 'turn_end', isError: false } as const].reduce(reduceChat, []);
-      const session = events.find((e) => e.type === 'session');
-      set({ items, loadingHistory: false, actualModel: session?.model });
-    } catch (e) {
-      if (get().sessionId === sessionId)
-        set({ loadingHistory: false, banner: `加载会话失败：${(e as Error).message}` });
+      const history = await api.sessionEvents(workspaceId, session.sessionId, session.agent, controller.signal);
+      if (!historyIsCurrent(controller, generation, workspaceId, session)) return;
+      if (history.session.agent !== session.agent || history.session.sessionId !== session.sessionId)
+        throw new Error('会话身份不匹配，未载入历史');
+      const items = [...history.events, { type: 'turn_end', isError: false } as const].reduce(reduceChat, []);
+      set({ items, loadingHistory: false, actualModel: history.actualModel });
+    } catch (error) {
+      if (historyIsCurrent(controller, generation, workspaceId, session))
+        set({ loadingHistory: false, banner: `加载会话失败：${error instanceof Error ? error.message : '请重试'}` });
+    } finally {
+      if (historyRequest === controller) historyRequest = undefined;
     }
   },
-
-  setModel: (model) => set({ model }),
-
+  setModel: (model) => set((current) => ({ modelOverrides: { ...current.modelOverrides, [current.agent]: model } })),
+  setReasoningEffort: (reasoningEffort) => set({ reasoningEffort }),
   send(text) {
-    const { workspaceId, sessionId, model, running } = get();
-    if (!workspaceId || running || !socket) return;
+    const current = get();
+    if (!current.workspaceId || current.running || current.loadingHistory || !socket || !text.trim()) return false;
     const clientTurnId = crypto.randomUUID();
     const sent = socket.send({
       type: 'chat.send',
-      workspaceId,
-      sessionId,
+      workspaceId: current.workspaceId,
+      agent: current.agent,
+      sessionId: current.sessionId,
       text,
-      model: model.trim() || undefined,
+      model: current.modelOverrides[current.agent].trim() || undefined,
+      reasoningEffort: current.agent === 'codex' ? current.reasoningEffort.trim() || undefined : undefined,
       clientTurnId,
     });
     if (!sent) {
       set({ banner: '连接已断开，消息未发送。请等待重新连接后再试。' });
-      return;
+      return false;
     }
-    set((s) => ({
-      items: reduceChat(s.items, { type: 'user_message', text }),
+    set((state) => ({
+      items: reduceChat(state.items, { type: 'user_message', text }),
       running: true,
       pendingClientTurnId: clientTurnId,
+      interruptRequested: false,
       banner: undefined,
     }));
+    return true;
   },
-
   interrupt() {
-    const { turnId } = get();
-    if (turnId) socket?.send({ type: 'chat.interrupt', turnId });
+    const current = get();
+    if (!current.running || current.interruptRequested) return;
+    if (current.turnId) {
+      if (!socket?.send({ type: 'chat.interrupt', turnId: current.turnId })) return;
+    } else if (current.pendingClientTurnId) pendingInterrupts.add(current.pendingClientTurnId);
+    set({ interruptRequested: true });
   },
-
   respondPermission(requestId, allow) {
-    if (!socket?.send({ type: 'permission.respond', requestId, allow })) {
+    const current = get();
+    if (!canRespond(current, requestId)) return;
+    if (!socket?.send({ type: 'permission.respond', turnId: current.turnId!, requestId, allow })) {
       set({ banner: '连接已断开，答复未发送。' });
       return;
     }
-    set((s) => ({ items: resolvePermission(s.items, requestId, allow) }));
+    set((state) => ({ items: markPermissionPending(state.items, requestId) }));
   },
-
   dismissBanner: () => set({ banner: undefined }),
 }));
 
+function canRespond(current: ChatState, requestId: string): boolean {
+  if (!current.running || !current.turnId || current.interruptRequested || current.connection !== 'open') return false;
+  return current.items.some(
+    (item) => item.kind === 'permission' && item.id === requestId && !item.resolved && !item.responding,
+  );
+}
 type Msg<T extends ServerMessage['type']> = Extract<ServerMessage, { type: T }>;
-
 function onTurnStarted(msg: Msg<'turn.started'>): void {
-  if (msg.clientTurnId !== useChat.getState().pendingClientTurnId) return;
+  if (pendingInterrupts.delete(msg.clientTurnId)) socket?.send({ type: 'chat.interrupt', turnId: msg.turnId });
+  const current = useChat.getState();
+  if (
+    msg.clientTurnId !== current.pendingClientTurnId ||
+    msg.workspaceId !== current.workspaceId ||
+    msg.agent !== current.agent
+  )
+    return;
   useChat.setState({ turnId: msg.turnId, pendingClientTurnId: undefined });
 }
-
 function onAgentEvent(msg: Msg<'agent.event'>): void {
-  const s = useChat.getState();
-  if (msg.turnId !== s.turnId) return;
-  const e = msg.event;
+  const current = useChat.getState();
+  if (msg.turnId !== current.turnId) return;
+  const event = msg.event;
+  if (event.type === 'session' && event.agent && event.agent !== current.agent) return;
+  if (event.type === 'session' && current.sessionId && current.sessionId !== event.sessionId) return;
   useChat.setState({
-    items: reduceChat(s.items, e),
-    ...(e.type === 'session' ? { sessionId: e.sessionId, actualModel: e.model } : {}),
+    items: reduceChat(current.items, event),
+    ...(event.type === 'session' ? { sessionId: event.sessionId, actualModel: event.model } : {}),
   });
 }
-
 function onTurnFinished(msg: Msg<'turn.finished'>): void {
-  const s = useChat.getState();
-  if (msg.turnId !== s.turnId) return;
+  void queryClient.invalidateQueries({ queryKey: queryKeys.sessions(msg.workspaceId, msg.agent) });
+  const current = useChat.getState();
+  if (msg.turnId !== current.turnId || msg.workspaceId !== current.workspaceId || msg.agent !== current.agent) return;
   useChat.setState({
     running: false,
     turnId: undefined,
-    items: reduceChat(s.items, { type: 'turn_end', isError: false }),
+    interruptRequested: false,
+    items: reduceChat(current.items, { type: 'turn_end', isError: false }),
   });
-  if (s.workspaceId) void queryClient.invalidateQueries({ queryKey: queryKeys.sessions(s.workspaceId) });
 }
-
-/** 不带 turnId 的错误发生在轮次开始之前（如会话正在运行），此时结束等待状态 */
 function onError(msg: Msg<'error'>): void {
-  const s = useChat.getState();
-  if (msg.turnId) {
-    if (msg.turnId === s.turnId) useChat.setState({ banner: msg.message });
+  const current = useChat.getState();
+  if (msg.clientTurnId) pendingInterrupts.delete(msg.clientTurnId);
+  if (msg.turnId && msg.turnId === current.turnId) {
+    useChat.setState({ banner: msg.message });
     return;
   }
-  if (s.pendingClientTurnId === undefined) return;
-  useChat.setState({ banner: msg.message, running: false, pendingClientTurnId: undefined });
+  if (!msg.clientTurnId || msg.clientTurnId !== current.pendingClientTurnId) return;
+  useChat.setState({ banner: msg.message, running: false, pendingClientTurnId: undefined, interruptRequested: false });
 }
-
-/** 处理后端消息：只接收当前界面这一轮的事件 */
 function handleServerMessage(msg: ServerMessage): void {
   switch (msg.type) {
     case 'turn.started':
@@ -173,26 +219,23 @@ function handleServerMessage(msg: ServerMessage): void {
       return onError(msg);
   }
 }
-
 function handleStatus(status: ConnectionStatus): void {
-  const { running } = useChat.getState();
-  // 断线后本轮剩余事件不会补发，结束运行状态并提示用户
-  if (status !== 'open' && running) {
+  const current = useChat.getState();
+  if (status !== 'open') pendingInterrupts.clear();
+  if (status !== 'open' && current.running) {
     useChat.setState({
       running: false,
       turnId: undefined,
       pendingClientTurnId: undefined,
+      interruptRequested: false,
+      items: reduceChat(current.items, { type: 'turn_end', isError: true }),
       banner: '连接已断开，本轮输出可能不完整。重新连接后可从会话列表重新打开查看。',
     });
   }
   useChat.setState({ connection: status });
 }
-
 type Connect = typeof connectChat;
-
-/** 应用启动时调用一次；测试可传入假的连接函数 */
 export function startChatConnection(connect: Connect = connectChat): void {
   socket ??= connect({ onMessage: handleServerMessage, onStatus: handleStatus });
 }
-
 export const reconnectChat = () => socket?.reconnect();

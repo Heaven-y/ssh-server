@@ -1,103 +1,232 @@
-// 对话轮次管理：把网页的消息交给 Agent 适配器，把事件推回网页
+// 轮次按 Agent 与原生会话隔离；耗时准备前先建立应用轮次，允许及时中断。
 import { randomUUID } from 'node:crypto';
-import type { AgentEvent, ClientMessage, ServerMessage, Workspace } from '@ssh-server/shared';
-import { runClaudeTurn, type ClaudeTurnInput, type PermissionAnswer, type TurnHandle } from '../agents/claude-adapter';
+import type { AgentEvent, AgentKind, ClientMessage, ServerMessage, Workspace } from '@ssh-server/shared';
+import { runClaudeTurn } from '../agents/claude-adapter';
+import type { AgentTurnInput, PermissionAnswer, TurnHandle, TurnRunner } from '../agents/types';
 import type { SessionRegistry } from './registry';
+import { SessionError, type SessionsService } from './sessions';
 import type { SyncManager } from '../sync/manager';
 
 export type Socket = { send(msg: ServerMessage): void; isOpen(): boolean };
-
 export type TurnManagerDeps = {
   getWorkspace(id: string): Promise<Workspace | undefined>;
   registry: SessionRegistry;
-  /** 后端内部接口地址（实际监听端口） */
   internalUrl(): string;
-  runTurn?: (input: ClaudeTurnInput) => TurnHandle;
+  runTurn?: TurnRunner;
+  runners?: Partial<Record<AgentKind, TurnRunner>>;
+  sessions: Pick<SessionsService, 'assertBelongs'>;
   sync: Pick<SyncManager, 'sync'>;
 };
+type Turn = {
+  id: string;
+  socket: Socket;
+  workspaceId: string;
+  agent: AgentKind;
+  controller: AbortController;
+  handle?: TurnHandle;
+  sessionId?: string;
+  workspace?: Workspace;
+  token?: string;
+  finished: boolean;
+};
+type Pending = { turn: Turn; resolve(answer: PermissionAnswer): void };
+type Send = Extract<ClientMessage, { type: 'chat.send' }>;
+const sessionKey = (agent: AgentKind, id: string) => `${agent}:${id}`;
 
-type Turn = { id: string; socket: Socket; handle?: TurnHandle; sessionId?: string };
-type Pending = { turnId: string; resolve(a: PermissionAnswer): void };
+/** 中断停止等待，同时消费仍在退出的元数据请求，避免未处理拒绝。 */
+function preparing<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new Error('本轮已中断'));
+    signal.addEventListener('abort', abort, { once: true });
+    if (signal.aborted) abort();
+    operation.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
 
 export class TurnManager {
   private turns = new Map<string, Turn>();
-  /** sessionId → turnId：同一会话同一时间只允许一轮 */
   private sessions = new Map<string, string>();
   private pending = new Map<string, Pending>();
   private closed = new WeakSet<Socket>();
-  private readonly runTurn: (input: ClaudeTurnInput) => TurnHandle;
+  private stopping = false;
+  private readonly runners: Partial<Record<AgentKind, TurnRunner>>;
 
   constructor(private readonly deps: TurnManagerDeps) {
-    this.runTurn = deps.runTurn ?? runClaudeTurn;
+    this.runners = { claude: deps.runTurn ?? runClaudeTurn, ...deps.runners };
   }
 
   async handle(socket: Socket, msg: ClientMessage): Promise<void> {
     switch (msg.type) {
       case 'chat.send':
         return this.start(socket, msg);
-      case 'chat.interrupt':
-        await this.turns.get(msg.turnId)?.handle?.interrupt();
+      case 'chat.interrupt': {
+        const turn = this.turns.get(msg.turnId);
+        if (!turn || turn.socket !== socket) return;
+        turn.controller.abort();
+        await turn.handle?.interrupt();
         return;
-      case 'permission.respond': {
-        const p = this.pending.get(msg.requestId);
-        if (p) {
-          this.pending.delete(msg.requestId);
-          p.resolve({ allow: msg.allow, message: msg.message });
-        }
-        return;
+      }
+      case 'permission.respond':
+        return this.respond(socket, msg);
+    }
+  }
+
+  socketClosed(socket: Socket): void {
+    this.closed.add(socket);
+    for (const [id, pending] of this.pending) {
+      if (pending.turn.socket === socket) {
+        this.pending.delete(id);
+        pending.resolve({ allow: false, message: '网页连接已断开' });
       }
     }
   }
 
-  /** 连接关闭：不再向它发送；轮次继续运行，待确认的权限请求由适配器超时拒绝 */
-  socketClosed(socket: Socket): void {
-    this.closed.add(socket);
+  /** 退出后端时停止本进程拥有的轮次，并立即撤销内部工具令牌。 */
+  async dispose(): Promise<void> {
+    this.stopping = true;
+    const handles: TurnHandle[] = [];
+    for (const turn of this.turns.values()) {
+      this.closed.add(turn.socket);
+      turn.controller.abort();
+      if (turn.token) this.deps.registry.unregister(turn.token);
+      if (turn.handle) handles.push(turn.handle);
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stopped = Promise.allSettled(handles.flatMap((handle) => [handle.interrupt(), handle.done]));
+    try {
+      await Promise.race([
+        stopped,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, 6000);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private send(socket: Socket, msg: ServerMessage): void {
     if (!this.closed.has(socket) && socket.isOpen()) socket.send(msg);
   }
 
-  private async start(socket: Socket, msg: Extract<ClientMessage, { type: 'chat.send' }>): Promise<void> {
-    const ws = await this.deps.getWorkspace(msg.workspaceId);
-    if (!ws) return this.send(socket, { type: 'error', message: '工作区不存在' });
-    if (msg.sessionId && this.sessions.has(msg.sessionId))
-      return this.send(socket, { type: 'error', message: '该会话正在运行' });
+  private respond(socket: Socket, msg: Extract<ClientMessage, { type: 'permission.respond' }>): void {
+    const pending = this.pending.get(msg.requestId);
+    if (!pending || pending.turn.id !== msg.turnId || pending.turn.socket !== socket) return;
+    if (pending.turn.controller.signal.aborted) return;
+    this.pending.delete(msg.requestId);
+    pending.resolve({ allow: msg.allow, message: msg.message });
+  }
 
-    const turn: Turn = { id: randomUUID(), socket, sessionId: msg.sessionId };
-    this.turns.set(turn.id, turn);
-    if (msg.sessionId) this.sessions.set(msg.sessionId, turn.id);
-    const token = this.deps.registry.register(ws.id);
-    this.send(socket, { type: 'turn.started', turnId: turn.id, clientTurnId: msg.clientTurnId });
+  private bindSession(turn: Turn, id: string): boolean {
+    const key = sessionKey(turn.agent, id);
+    const occupied = this.sessions.get(key);
+    if ((turn.sessionId && turn.sessionId !== id) || (occupied && occupied !== turn.id)) {
+      this.send(turn.socket, { type: 'error', turnId: turn.id, message: '原生会话身份发生变化，已停止本轮' });
+      turn.controller.abort();
+      void turn.handle?.interrupt().catch(() => undefined);
+      return false;
+    }
+    turn.sessionId = id;
+    this.sessions.set(key, turn.id);
+    return true;
+  }
 
-    const emit = (event: AgentEvent) => {
-      if (event.type === 'session' && event.sessionId && !turn.sessionId) {
-        turn.sessionId = event.sessionId;
-        this.sessions.set(event.sessionId, turn.id);
+  private event(turn: Turn, event: AgentEvent): void {
+    if (turn.finished) return;
+    if (event.type === 'session') {
+      if (!this.bindSession(turn, event.sessionId)) return;
+      event = { ...event, agent: turn.agent };
+    }
+    if (event.type === 'permission_resolved') {
+      const pending = this.pending.get(event.requestId);
+      if (pending?.turn === turn) {
+        this.pending.delete(event.requestId);
+        pending.resolve({ allow: false, message: '原生确认请求已结束' });
       }
-      this.send(socket, { type: 'agent.event', turnId: turn.id, event });
-    };
+    }
+    this.send(turn.socket, { type: 'agent.event', turnId: turn.id, event });
+  }
 
-    turn.handle = this.runTurn({
+  private permission(turn: Turn, req: Parameters<AgentTurnInput['requestPermission']>[0]): Promise<PermissionAnswer> {
+    if (turn.controller.signal.aborted || turn.finished || this.closed.has(turn.socket))
+      return Promise.resolve({ allow: false, message: '本轮或连接已结束' });
+    return new Promise((resolve) => this.pending.set(req.requestId, { turn, resolve }));
+  }
+
+  private async start(socket: Socket, msg: Send): Promise<void> {
+    if (this.stopping) {
+      this.send(socket, { type: 'error', clientTurnId: msg.clientTurnId, message: '后端正在关闭，请稍后重试' });
+      return;
+    }
+    const agent = msg.agent ?? 'claude';
+    const key = msg.sessionId && sessionKey(agent, msg.sessionId);
+    if (key && this.sessions.has(key)) {
+      this.send(socket, { type: 'error', clientTurnId: msg.clientTurnId, message: '该会话正在运行' });
+      return;
+    }
+    const turn: Turn = {
+      id: randomUUID(),
+      socket,
+      agent,
+      workspaceId: msg.workspaceId,
+      sessionId: msg.sessionId,
+      controller: new AbortController(),
+      finished: false,
+    };
+    this.turns.set(turn.id, turn);
+    if (key) this.sessions.set(key, turn.id);
+    this.send(socket, {
+      type: 'turn.started',
+      turnId: turn.id,
+      clientTurnId: msg.clientTurnId,
+      workspaceId: msg.workspaceId,
+      agent,
+    });
+    try {
+      await this.prepare(turn, msg);
+    } catch (error) {
+      if (!turn.controller.signal.aborted)
+        this.send(socket, {
+          type: 'error',
+          turnId: turn.id,
+          message: error instanceof SessionError ? error.message : 'Agent 调用失败，请检查本机运行时和配置',
+        });
+      await this.finish(turn);
+    }
+  }
+
+  private async prepare(turn: Turn, msg: Send): Promise<void> {
+    const { signal } = turn.controller;
+    const ws = await preparing(this.deps.getWorkspace(msg.workspaceId), signal);
+    if (!ws) throw new SessionError(404, 'workspace_missing', '工作区不存在');
+    turn.workspace = ws;
+    if (msg.sessionId) await preparing(this.deps.sessions.assertBelongs(ws, turn.agent, msg.sessionId, signal), signal);
+    signal.throwIfAborted();
+    const runner = this.runners[turn.agent];
+    if (!runner) throw new SessionError(503, 'agent_unavailable', '当前 Agent 适配器不可用');
+    turn.token = this.deps.registry.register(ws.id);
+    turn.handle = runner({
       workspace: ws,
       sessionId: msg.sessionId,
       model: msg.model,
+      reasoningEffort: turn.agent === 'codex' ? msg.reasoningEffort : undefined,
       text: msg.text,
-      mcpEnv: { SSH_SERVER_INTERNAL_URL: this.deps.internalUrl(), SSH_SERVER_SESSION_TOKEN: token },
-      emit,
-      requestPermission: (req) =>
-        new Promise<PermissionAnswer>((resolve) => this.pending.set(req.requestId, { turnId: turn.id, resolve })),
+      mcpEnv: { SSH_SERVER_INTERNAL_URL: this.deps.internalUrl(), SSH_SERVER_SESSION_TOKEN: turn.token },
+      emit: (event) => this.event(turn, event),
+      requestPermission: (req) => this.permission(turn, req),
     });
-
+    if (signal.aborted) void turn.handle.interrupt();
     void turn.handle.done
-      .catch((e: unknown) => this.send(socket, { type: 'error', turnId: turn.id, message: (e as Error).message }))
-      .then(() => this.finish(turn, token, ws));
+      .catch(() => {
+        this.send(turn.socket, { type: 'error', turnId: turn.id, message: 'Agent 运行失败，请检查本机运行时和配置' });
+      })
+      .then(() => this.finish(turn));
   }
 
-  private async finish(turn: Turn, token: string, ws: Workspace): Promise<void> {
-    this.deps.registry.unregister(token);
+  private async synchronize(turn: Turn): Promise<void> {
+    if (!turn.handle || !turn.workspace) return;
     try {
-      const status = await this.deps.sync.sync(ws);
+      const status = await this.deps.sync.sync(turn.workspace);
       if (status.phase !== 'ready')
         this.send(turn.socket, {
           type: 'error',
@@ -107,14 +236,27 @@ export class TurnManager {
     } catch {
       this.send(turn.socket, { type: 'error', turnId: turn.id, message: '本轮结束后同步失败，请检查同步面板' });
     }
-    this.turns.delete(turn.id);
-    if (turn.sessionId && this.sessions.get(turn.sessionId) === turn.id) this.sessions.delete(turn.sessionId);
-    for (const [id, p] of this.pending) {
-      if (p.turnId === turn.id) {
+  }
+
+  private async finish(turn: Turn): Promise<void> {
+    if (turn.finished) return;
+    turn.finished = true;
+    if (turn.token) this.deps.registry.unregister(turn.token);
+    for (const [id, pending] of this.pending) {
+      if (pending.turn === turn) {
         this.pending.delete(id);
-        p.resolve({ allow: false, message: '本轮已结束' });
+        pending.resolve({ allow: false, message: '本轮已结束' });
       }
     }
-    this.send(turn.socket, { type: 'turn.finished', turnId: turn.id });
+    await this.synchronize(turn);
+    this.turns.delete(turn.id);
+    const key = turn.sessionId && sessionKey(turn.agent, turn.sessionId);
+    if (key && this.sessions.get(key) === turn.id) this.sessions.delete(key);
+    this.send(turn.socket, {
+      type: 'turn.finished',
+      turnId: turn.id,
+      workspaceId: turn.workspaceId,
+      agent: turn.agent,
+    });
   }
 }

@@ -27,3 +27,5 @@ export type {
   VersionRestoreResult,
 } from './versions';
 export { VERSION_MESSAGE_MAX_LENGTH } from './versions';
+export { AgentKindSchema, NativeSessionIdSchema } from './agents';
+export type { AgentKind, SessionRef, SessionSummary, SessionHistory } from './agents';

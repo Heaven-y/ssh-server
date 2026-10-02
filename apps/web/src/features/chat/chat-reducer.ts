@@ -12,7 +12,7 @@ export type ChatItem =
       input: unknown;
       output?: string;
       isError?: boolean;
-      status: 'running' | 'done';
+      status: 'running' | 'done' | 'incomplete';
     }
   | {
       kind: 'permission';
@@ -20,7 +20,8 @@ export type ChatItem =
       toolName: string;
       input: unknown;
       description?: string;
-      resolved?: 'allow' | 'deny';
+      resolved?: 'allow' | 'deny' | 'cancelled';
+      responding?: boolean;
     }
   | { kind: 'error'; id: string; message: string };
 
@@ -54,22 +55,53 @@ export function reduceChat(items: ChatItem[], e: AgentEvent): ChatItem[] {
       return items.map((i) =>
         i.kind === 'tool' && i.id === e.id ? { ...i, output: e.output, isError: e.isError, status: 'done' } : i,
       );
+    default:
+      return reduceLifecycle(items, e);
+  }
+}
+
+function finishItems(items: ChatItem[]): ChatItem[] {
+  return items.map((item) => {
+    if (item.kind === 'assistant' && item.streaming) return { ...item, streaming: false };
+    if (item.kind === 'tool' && item.status === 'running') return { ...item, status: 'incomplete' };
+    if (item.kind === 'permission' && !item.resolved) return { ...item, resolved: 'cancelled', responding: false };
+    return item;
+  });
+}
+
+function reduceLifecycle(items: ChatItem[], e: AgentEvent): ChatItem[] {
+  switch (e.type) {
     case 'permission_request':
       return [
         ...items,
         { kind: 'permission', id: e.requestId, toolName: e.toolName, input: e.input, description: e.description },
       ];
     case 'turn_end':
-      return items.map((i) => (i.kind === 'assistant' && i.streaming ? { ...i, streaming: false } : i));
+      return finishItems(items);
+    case 'permission_resolved':
+      return resolvePermission(items, e.requestId, e.decision);
     case 'error':
       return [...items, { kind: 'error', id: nextId(items, 'error'), message: e.message }];
-    case 'session':
+    default:
       return items;
   }
 }
 
-export function resolvePermission(items: ChatItem[], requestId: string, allow: boolean): ChatItem[] {
+export function resolvePermission(
+  items: ChatItem[],
+  requestId: string,
+  decision: 'allowed' | 'denied' | 'cancelled',
+): ChatItem[] {
+  const resolved = { allowed: 'allow', denied: 'deny', cancelled: 'cancelled' } as const;
   return items.map((i) =>
-    i.kind === 'permission' && i.id === requestId ? { ...i, resolved: allow ? 'allow' : 'deny' } : i,
+    i.kind === 'permission' && i.id === requestId && !i.resolved
+      ? { ...i, resolved: resolved[decision], responding: false }
+      : i,
+  );
+}
+
+export function markPermissionPending(items: ChatItem[], requestId: string): ChatItem[] {
+  return items.map((item) =>
+    item.kind === 'permission' && item.id === requestId && !item.resolved ? { ...item, responding: true } : item,
   );
 }

@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError } from '../../src/lib/api';
+import { api, ApiError, queryKeys } from '../../src/lib/api';
 
 const localDir = path.join(os.tmpdir(), 'ssh-server-fixture', 'demo');
 const respond = (status: number, body?: unknown) =>
@@ -44,10 +44,22 @@ describe('api', () => {
     await expect(api.listSshHosts()).rejects.toThrow('请求失败（500）');
   });
 
-  it('路径参数会转义', async () => {
+  it('会话请求和缓存按 Agent 隔离，历史读取传递取消信号', async () => {
     respond(200, []);
     await api.sessionEvents('w/1', 's 1');
-    expect(vi.mocked(fetch).mock.calls[0]![0]).toBe('/api/workspaces/w%2F1/sessions/s%201/events');
+    expect(vi.mocked(fetch).mock.calls[0]![0]).toBe('/api/workspaces/w%2F1/sessions/s%201/events?agent=claude');
+    await api.listSessions('w/1', 'codex');
+    expect(vi.mocked(fetch).mock.calls[1]).toEqual([
+      '/api/workspaces/w%2F1/sessions?agent=codex',
+      expect.objectContaining({ cache: 'no-store' }),
+    ]);
+    const controller = new AbortController();
+    await api.sessionEvents('w/1', 's 1', 'codex', controller.signal);
+    expect(vi.mocked(fetch).mock.calls[2]).toEqual([
+      '/api/workspaces/w%2F1/sessions/s%201/events?agent=codex',
+      expect.objectContaining({ cache: 'no-store', signal: controller.signal }),
+    ]);
+    expect(queryKeys.sessions('w/1')).not.toEqual(queryKeys.sessions('w/1', 'codex'));
   });
 
   it('密码和保存偏好仅发送到认证接口，取消保存只发送目标', async () => {

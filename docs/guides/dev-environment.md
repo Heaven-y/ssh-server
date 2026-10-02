@@ -2,7 +2,7 @@
 
 本文档说明开发这个仓库所需的本机环境、代码规范、项目 skill 的管理方式，以及已经发现并处理的问题。
 
-需求与实现进度更新于 2026-10-02，见 [需求](../product/requirements.md)、[设计决策](../engineering/decisions.md) 和 [路线图](../roadmap.md)。认证与同步核心已接入；编辑器、终端和资源面板仍待后续实施。
+需求与实现进度更新于 2026-10-03，见 [需求](../product/requirements.md)、[设计决策](../engineering/decisions.md) 和 [路线图](../roadmap.md)。认证同步、Claude/Codex 对话主链路、原生配置、文件编辑及本地版本记录已接入；终端、资源面板和其余原生能力待后续实施。
 
 ## 1. 本机环境
 
@@ -10,7 +10,7 @@
 |---|---|
 | Node.js | 22+，运行本地 TypeScript + Fastify 后端，沿用现有 tsx 启动方式 |
 | Git | 2.43+，本地版本恢复需要 `GIT_ATTR_SOURCE` 支持目标提交属性 |
-| Claude Code、Codex CLI | 已安装并配置好，开发和测试都使用本机配置 |
+| Claude Code、Codex CLI | 已安装并配置好，产品沿用本机原生配置；Codex app-server 本阶段验证版本为 0.156.1，验收使用指定配置的隔离副本 |
 | 本机 Python | 3.x，仅部分开发 skill 的脚本按需使用（用 `python` 调用，见 4.3）；网页后端不依赖 Python |
 | rclone | 本机固定 1.75.1；通过 PATH 或 `SSH_SERVER_RCLONE` 指定，服务器无需安装 |
 
@@ -38,6 +38,7 @@
 | known_hosts 校验（`ssh/known-hosts.ts`） | 手写 | ssh2 不提供 known_hosts 解析；逻辑约 100 行，含哈希条目与 `@revoked`，已有测试覆盖 |
 | 远程命令拼装、工作区存储、访问控制 | 手写 | 项目特有逻辑，代码量小 |
 | SSH 连接、HTTP、WebSocket、MCP、Agent | ssh2、Fastify、@fastify/websocket、@modelcontextprotocol/sdk、Claude Agent SDK | — |
+| Codex 对话与历史 | 已安装的官方 app-server 0.156.1，stdio JSON-RPC | 复用原生配置、会话、审批与上下文；每轮及历史读取独立启动，不增加模型协议转换层 |
 | 前端接口数据（加载、错误、刷新） | `@tanstack/react-query` | 替代手写的 loading / error 状态与刷新逻辑 |
 | 前端 WebSocket 断线重连 | `partysocket` | 自带退避重连与发送缓冲 |
 | 对话区贴底滚动 | `use-stick-to-bottom` | 流式输出时贴底、用户上翻时停止，提供"回到底部"状态 |
@@ -79,11 +80,13 @@
 | SSH 认证 | 已有私钥/密码、Windows 加密保存、断开暂停、显式复用和取消保存；核心验证见 M2 验收记录 | 完整向导、终端与服务器环境组合验收待 M5 |
 | 同步 | rclone 稳定镜像/过滤/删除确认/冲突保留、执行前后与轮次结束同步已实现；修复后的真实传输 6 项与网页同步 5 项通过 | 完整多活动并发验收在 M6；额外模型交互继续验证 |
 | Claude 会话 | 流式、审批、中断、原生续接/列表及真实模型工具链已接入 | skills / 命令、上下文 / 压缩状态及剩余网页验收 |
-| Codex | 本机 CLI 0.156.1 协议已核对，网页适配器未接入 | 固定 Agent、官方 skills / 控制接口、审批和历史一致性 |
+| Codex | app-server 0.156.1 已接入流式/工具、审批、中断、固定 Agent、手动模型/推理强度、原生列表/历史/续接；GLM 真实网页两轮通过 | A7 真实 SSH；skills / 命令、上下文/压缩、模型目录、删除/归档 |
 | 文件编辑 / 本地版本 | CodeMirror 编辑、保存后同步、本地 Git 历史与恢复已接入，受控浏览器流程通过 | A5/A13 新增入口的实际 SSH 串联复验 |
 | 终端 / 资源面板 | 未接入 | PTY 全屏显示、SSH 指标与采样开销 |
 
 这里的接口核对与此前测试记录不能替代真实模型 / SSH 验收；详细事项见 [架构第 8 节](../engineering/architecture.md#8-待验证事项)。
+
+Codex 对话的真实模型证据、受控审批/中断及浏览器范围见 [对话验收记录](codex-conversation-acceptance.md)。每次调用重读配置，但新 thread 才采用新默认模型；原生 resume 保留历史模型，显式选择才覆盖。SSH/同步替身不替代 A5/A13/A7 的实际服务器复验。
 
 ### 1.5 后端职责、远程 Python 与并发
 
@@ -216,5 +219,6 @@ skills-lock.json              # 记录每个 skill 的来源和内容哈希
 - 认证读取本机 Host 与 known_hosts。私钥模式需要可读私钥，密码模式不回退私钥或 SSH Agent；临时密码不进入工作区 JSON、浏览器缓存、Agent、日志或 argv。
 - 同步元数据、信任副本、缓存与临时目录在后端配置目录，`.git` 永不传输；只同步代码和小文件，排除范围变化需确认重建基线。
 - `/` 命令、压缩和资源状态按官方接口 / 服务器实际能力验证。终端测试使用服务器已有工具，不为了 `nvitop` 或监控而在服务器安装软件。
+- Codex 正式启动使用原生 `CODEX_HOME/config.toml`，可通过 `SSH_SERVER_CODEX` 指定已安装的可执行入口。真实模型验收复制运行时指定配置到隔离目录，结束后核对源摘要、删除临时密钥副本；原生 MCP 的内部令牌仅通过进程环境传递，轮次结束撤销。
 - 远程分析验证使用已有 Python / 项目环境，不为网页版安装科学计算依赖；对话、终端、资源采样与同步的并发验证按相关里程碑进行，参照架构 V16、V17。
 - 文档修改只检查链接、编号、编码、冲突表述与变更范围；代码改动再按受影响范围运行相关测试及工程检查，不重复未受影响的全量测试。

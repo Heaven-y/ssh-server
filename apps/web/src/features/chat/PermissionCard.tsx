@@ -5,10 +5,12 @@ import { useChat } from './chat-store';
 import { shortToolName } from './ToolCard';
 
 type PermissionItem = Extract<ChatItem, { kind: 'permission' }>;
+const RESOLVED_LABELS = { allow: '已批准', deny: '已拒绝', cancelled: '已结束或取消' } as const;
 
 /** 权限请求：Agent 要执行不在自动允许范围内的操作（如本地 Bash），等待用户批准或拒绝 */
 export function PermissionCard({ item }: { item: PermissionItem }) {
   const respond = useChat((s) => s.respondPermission);
+  const active = useChat((s) => s.running && s.connection === 'open' && !!s.turnId && !s.interruptRequested);
   const name = shortToolName(item.toolName);
 
   return (
@@ -32,14 +34,29 @@ export function PermissionCard({ item }: { item: PermissionItem }) {
       </pre>
       {item.resolved ? (
         <p className={`mt-3 text-xs ${item.resolved === 'allow' ? 'text-success' : 'text-muted-foreground'}`}>
-          {item.resolved === 'allow' ? '已批准' : '已拒绝'}
+          {RESOLVED_LABELS[item.resolved]}
         </p>
       ) : (
-        <div className="mt-3 flex flex-wrap justify-end gap-2">
-          <button type="button" className={buttonClass('primary')} onClick={() => respond(item.id, true)}>
+        <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+          {item.responding && (
+            <span role="status" className="mr-auto text-xs text-muted-foreground">
+              等待后端确认…
+            </span>
+          )}
+          <button
+            type="button"
+            className={buttonClass('primary')}
+            disabled={!active || item.responding}
+            onClick={() => respond(item.id, true)}
+          >
             批准
           </button>
-          <button type="button" className={buttonClass('danger')} onClick={() => respond(item.id, false)}>
+          <button
+            type="button"
+            className={buttonClass('danger')}
+            disabled={!active || item.responding}
+            onClick={() => respond(item.id, false)}
+          >
             拒绝
           </button>
         </div>

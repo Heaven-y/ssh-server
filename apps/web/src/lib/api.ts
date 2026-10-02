@@ -1,6 +1,8 @@
 // REST 接口封装：Cookie 由 /auth 设置，同源请求自动携带
 import type {
-  AgentEvent,
+  AgentKind,
+  SessionSummary,
+  SessionHistory,
   NativeConfigAgent,
   NativeConfigDocument,
   NativeConfigInput,
@@ -23,7 +25,7 @@ import type {
   WorkspaceInput,
 } from '@ssh-server/shared';
 
-export type SessionSummary = { sessionId: string; summary: string; lastModified: number };
+export type { SessionSummary } from '@ssh-server/shared';
 
 export type SshConnectionTarget = { sshHost: string; remoteDir: string; authMode: SshAuthMode };
 export type SshConnectInput = Omit<SshConnectionTarget, 'authMode'> &
@@ -171,11 +173,14 @@ export const api = {
   decideSyncDeletions: (id: string, decision: 'confirm' | 'reject') => postSync(id, '/deletions', { decision }),
   acknowledgeSyncConflicts: (id: string) => postSync(id, '/conflicts/ack'),
   updateSyncSettings: (id: string, settings: SyncSettings) => postSync(id, '/settings', settings),
-  listSessions: (workspaceId: string) =>
-    request<SessionSummary[]>(`/api/workspaces/${encodeURIComponent(workspaceId)}/sessions`),
-  sessionEvents: (workspaceId: string, sessionId: string) =>
-    request<AgentEvent[]>(
-      `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/events`,
+  listSessions: (workspaceId: string, agent: AgentKind = 'claude') =>
+    request<SessionSummary[]>(`/api/workspaces/${encodeURIComponent(workspaceId)}/sessions?agent=${agent}`, {
+      cache: 'no-store',
+    }),
+  sessionEvents: (workspaceId: string, sessionId: string, agent: AgentKind = 'claude', signal?: AbortSignal) =>
+    request<SessionHistory>(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/events?agent=${agent}`,
+      { signal, cache: 'no-store' },
     ),
 };
 
@@ -184,7 +189,7 @@ export const queryKeys = {
   workspaces: ['workspaces'] as const,
   sshHosts: ['ssh-hosts'] as const,
   sshCredentials: (sshHost: string) => ['ssh-credentials', sshHost] as const,
-  sessions: (workspaceId: string) => ['sessions', workspaceId] as const,
+  sessions: (workspaceId: string, agent: AgentKind = 'claude') => ['sessions', workspaceId, agent] as const,
   sync: (workspaceId: string) => ['sync', workspaceId] as const,
   versions: (workspaceId: string) => ['versions', workspaceId] as const,
 };

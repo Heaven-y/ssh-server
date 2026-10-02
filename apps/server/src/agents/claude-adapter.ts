@@ -1,7 +1,7 @@
 // Claude 适配器：用 Claude Agent SDK 驱动本机 Claude Code，跑一轮对话并输出统一事件
 import { randomUUID } from 'node:crypto';
 import { query as sdkQuery, type Options } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentEvent, Workspace } from '@ssh-server/shared';
+import type { AgentTurnInput, PermissionAnswer, TurnHandle } from './types';
 import { MCP_SERVER_NAME, resolveRemoteToolsCommand } from '../remote-tools/launch';
 import { ClaudeEventMapper } from './claude-mapper';
 import { isInsideDir } from './edit-scope';
@@ -13,23 +13,8 @@ export type QueryFn = (params: {
   options: Options;
 }) => AsyncIterable<unknown> & { interrupt(): Promise<unknown> };
 
-export type PermissionAnswer = { allow: boolean; message?: string };
-
-export type ClaudeTurnInput = {
-  workspace: Workspace;
-  /** 继续已有会话 */
-  sessionId?: string;
-  /** 不传表示跟随本地配置 */
-  model?: string;
-  text: string;
-  /** 注入给 remote-tools 子进程的内部地址与会话令牌 */
-  mcpEnv: Record<string, string>;
-  emit(e: AgentEvent): void;
-  requestPermission(req: { requestId: string; toolName: string; input: unknown }): Promise<PermissionAnswer>;
-  queryFn?: QueryFn;
-};
-
-export type TurnHandle = { interrupt(): Promise<void>; done: Promise<void> };
+export type ClaudeTurnInput = AgentTurnInput & { queryFn?: QueryFn };
+export type { PermissionAnswer, TurnHandle } from './types';
 
 export const PERMISSION_TIMEOUT_MS = 300_000;
 const ABORT_FALLBACK_MS = 5_000;
@@ -58,6 +43,7 @@ function editTarget(input: Record<string, unknown>): string | undefined {
 
 /** 等待网页答复；超时或被中断时拒绝 */
 function waitAnswer(pending: Promise<PermissionAnswer>, signal: AbortSignal): Promise<PermissionAnswer> {
+  if (signal.aborted) return Promise.resolve({ allow: false, message: '本轮已中断' });
   return new Promise((resolve) => {
     let settled = false;
     const finish = (a: PermissionAnswer) => {
@@ -87,6 +73,7 @@ export function runClaudeTurn(input: ClaudeTurnInput): TurnHandle {
     const requestId = randomUUID();
     input.emit({ type: 'permission_request', requestId, toolName, input: toolInput });
     const answer = await waitAnswer(input.requestPermission({ requestId, toolName, input: toolInput }), opts.signal);
+    input.emit({ type: 'permission_resolved', requestId, decision: answer.allow ? 'allowed' : 'denied' });
     return answer.allow
       ? { behavior: 'allow' as const, updatedInput: toolInput }
       : { behavior: 'deny' as const, message: answer.message ?? '用户拒绝' };

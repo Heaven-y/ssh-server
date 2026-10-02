@@ -1,4 +1,4 @@
-import { ChevronRight, CircleCheck, CircleX, LoaderCircle, Terminal, Wrench } from 'lucide-react';
+import { ChevronRight, CircleAlert, CircleCheck, CircleX, LoaderCircle, Terminal, Wrench } from 'lucide-react';
 import type { ChatItem } from './chat-reducer';
 
 type ToolItem = Extract<ChatItem, { kind: 'tool' }>;
@@ -23,6 +23,13 @@ function execSummary(output?: string): string | undefined {
 }
 
 function StatusLabel({ item }: { item: ToolItem }) {
+  if (item.status === 'incomplete')
+    return (
+      <span className="flex items-center gap-1 text-warning">
+        <CircleAlert aria-hidden className="size-3.5" />
+        结果未返回
+      </span>
+    );
   if (item.status === 'running')
     return (
       <span className="flex items-center gap-1 text-muted-foreground">
@@ -65,6 +72,9 @@ export function ToolCard({ item }: { item: ToolItem }) {
             )}
           </span>
           {summary && <span className="mt-0.5 block text-xs text-muted-foreground">{summary}</span>}
+          {item.status === 'incomplete' && (
+            <span className="mt-0.5 block text-xs text-warning">需核对实际执行状态</span>
+          )}
         </span>
         <span className="shrink-0 text-xs">
           <StatusLabel item={item} />

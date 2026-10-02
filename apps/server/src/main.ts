@@ -5,6 +5,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createSessionRegistry } from './chat/registry';
 import { TurnManager } from './chat/turn-manager';
+import { createSessionsService } from './chat/sessions';
+import { createClaudeSessions } from './agents/claude-sessions';
+import { runCodexTurn, listCodexSessions, readCodexSession, assertCodexSession } from './agents/codex';
 import { loadConfig } from './config';
 import { buildApp } from './http/app';
 import { registerInternalRoutes } from './http/internal.routes';
@@ -63,10 +66,20 @@ async function main(): Promise<void> {
     driver: createRcloneDriver({ configDir: config.configDir, pool }),
   });
   const registry = createSessionRegistry();
+  const sessions = createSessionsService({
+    claude: createClaudeSessions(),
+    codex: {
+      list: (dir, signal) => listCodexSessions(dir, { signal }),
+      read: (id, dir, signal) => readCodexSession(id, dir, { signal }),
+      assertBelongs: (id, dir, signal) => assertCodexSession(id, dir, { signal }),
+    },
+  });
   let port = config.port;
   const turns = new TurnManager({
     getWorkspace: (id) => store.get(id),
     registry,
+    sessions,
+    runners: { codex: runCodexTurn },
     internalUrl: () => `http://${hostForUrl(config.host)}:${port}`,
     sync,
   });
@@ -80,7 +93,7 @@ async function main(): Promise<void> {
     webDir: WEB_DIST,
     routes: (a) => {
       registerInternalRoutes(a, { registry, getWorkspace: (id) => store.get(id), pool, sync });
-      registerSessionRoutes(a, { store });
+      registerSessionRoutes(a, { store, sessions });
       registerSshRoutes(a, { pool });
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
       registerFileRoutes(a, { store, files: createWorkspaceFilesService(), sync });
@@ -99,7 +112,7 @@ async function main(): Promise<void> {
   const shutdown = () => {
     sync.dispose();
     pool.dispose();
-    void app.close().finally(() => process.exit(0));
+    void turns.dispose().finally(() => app.close().finally(() => process.exit(0)));
   };
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);

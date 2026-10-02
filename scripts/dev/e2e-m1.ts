@@ -114,6 +114,7 @@ function collectTurn(socket: WebSocket, workspaceId: string): Promise<TurnResult
           socket.send(
             JSON.stringify({
               type: 'permission.respond',
+              turnId: message.turnId,
               requestId: message.event.requestId,
               allow: false,
               message: '只读验收仅允许 remote_exec 执行 hostname，拒绝其他操作',

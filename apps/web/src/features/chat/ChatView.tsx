@@ -1,13 +1,13 @@
 import { ArrowDown, CircleAlert, X } from 'lucide-react';
-import { useId } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom';
 import type { Workspace } from '@ssh-server/shared';
-import { buttonClass, inputClass } from '../../ui/styles';
+import { buttonClass } from '../../ui/styles';
 import { api, queryKeys } from '../../lib/api';
 import { useChat } from './chat-store';
 import { Composer } from './Composer';
 import { MessageItem } from './MessageItem';
+import { AgentControls, AGENT_LABELS } from './AgentControls';
 
 function Banner() {
   const banner = useChat((s) => s.banner);
@@ -28,35 +28,6 @@ function Banner() {
       >
         <X aria-hidden className="size-4" />
       </button>
-    </div>
-  );
-}
-
-function ModelInput() {
-  const id = useId();
-  const model = useChat((s) => s.model);
-  const actual = useChat((s) => s.actualModel);
-  const setModel = useChat((s) => s.setModel);
-  return (
-    <div className="flex min-w-0 max-w-full flex-col items-end gap-1 text-xs text-muted-foreground">
-      <div className="flex items-center gap-2">
-        <label htmlFor={id} className="shrink-0 whitespace-nowrap">
-          模型
-        </label>
-        <input
-          id={id}
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          placeholder="跟随本地配置"
-          spellCheck={false}
-          className={`${inputClass} w-44 py-1.5 font-mono text-xs`}
-        />
-      </div>
-      {actual && (
-        <span title={actual} className="max-w-64 truncate">
-          实际模型：{actual}
-        </span>
-      )}
     </div>
   );
 }
@@ -114,10 +85,11 @@ function Messages() {
 
 export function ChatView({ workspace }: { workspace: Workspace }) {
   const sessionId = useChat((s) => s.sessionId);
+  const agent = useChat((s) => s.agent);
   // 与侧栏共享查询结果，使用已有会话标题，避免把不易辨认的 ID 当作标题。
   const sessions = useQuery({
-    queryKey: queryKeys.sessions(workspace.id),
-    queryFn: () => api.listSessions(workspace.id),
+    queryKey: queryKeys.sessions(workspace.id, agent),
+    queryFn: () => api.listSessions(workspace.id, agent),
   });
   const title = sessions.data?.find((session) => session.sessionId === sessionId)?.summary;
   return (
@@ -127,9 +99,11 @@ export function ChatView({ workspace }: { workspace: Workspace }) {
           <h1 className="truncate text-sm font-medium" title={sessionId}>
             {sessionId ? title || '历史会话' : '新会话'}
           </h1>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">Claude · {workspace.name}</p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {AGENT_LABELS[agent]} · {workspace.name}
+          </p>
         </div>
-        <ModelInput />
+        <AgentControls />
       </div>
       <Banner />
       <div className="flex min-h-0 flex-1 flex-col">

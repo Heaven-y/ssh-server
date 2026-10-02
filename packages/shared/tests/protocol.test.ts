@@ -10,6 +10,8 @@ describe('ClientMessageSchema', () => {
   it('接受合法的 chat.send', () => {
     expect(ClientMessageSchema.safeParse(send).success).toBe(true);
     expect(ClientMessageSchema.safeParse({ ...send, sessionId: 's1', model: 'sonnet' }).success).toBe(true);
+    expect(ClientMessageSchema.safeParse({ ...send, agent: 'codex', reasoningEffort: 'high' }).success).toBe(true);
+    expect(ClientMessageSchema.safeParse({ ...send, agent: 'unknown' }).success).toBe(false);
   });
 
   it('拒绝空消息', () => {
@@ -22,7 +24,7 @@ describe('ClientMessageSchema', () => {
   });
 
   it('接受带拒绝原因的 permission.respond', () => {
-    const msg = { type: 'permission.respond', requestId: 'r1', allow: false, message: '不允许' };
+    const msg = { type: 'permission.respond', turnId: 't1', requestId: 'r1', allow: false, message: '不允许' };
     expect(ClientMessageSchema.safeParse(msg).success).toBe(true);
   });
 

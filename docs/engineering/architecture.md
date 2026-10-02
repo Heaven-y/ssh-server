@@ -1,6 +1,6 @@
 # 架构
 
-更新日期：2026-10-03。本文是目标架构，当前仅实现 M1 的主要链路，完成状态见 [路线图](../roadmap.md)。已确认的取舍集中在 [设计决策](decisions.md)，本轮新增功能不能视为已经实现。
+更新日期：2026-10-03。本文同时标明已接入模块与后续目标。当前已实现双 Agent 对话主链路、认证同步、原生配置、文件编辑和本地版本记录；终端、资源面板及其余原生能力待后续接入。完成与验收范围见 [路线图](../roadmap.md)，已确认的取舍集中在 [设计决策](decisions.md)。
 
 ## 1. 总览
 
@@ -35,7 +35,7 @@
 | 后端 | Fastify + `@fastify/websocket` | HTTP、访问控制和流式消息，继续现有实现 |
 | 参数校验 | zod | 接口入参、配置文件 |
 | Claude | `@anthropic-ai/claude-agent-sdk` | 调用本机 Claude Code |
-| Codex | 本机 Codex app-server（JSON-RPC over stdio） | 会话、skills、权限和上下文操作直接接入官方协议，与本机 CLI 版本对齐 |
+| Codex | 本机 Codex app-server（JSON-RPC over stdio） | 已按 CLI 0.156.1 接入对话、审批、中断及原生会话；skills 和压缩控制待后续 |
 | MCP | `@modelcontextprotocol/sdk` | 远程工具服务 |
 | SSH | `ssh2` | 支持账号密码与已有私钥，导入 `~/.ssh/config` 或手动配置；凭据在本地处理 |
 | 同步 | rclone（外部可执行文件） | `rclone bisync` 走 SFTP |
@@ -46,7 +46,7 @@
 | 消息渲染 | streamdown（流式 Markdown）+ shiki（代码高亮）、@pierre/diffs（diff）、@tanstack/react-virtual（长列表） | |
 | 前端状态与接口数据 | zustand、`@tanstack/react-query`、partysocket | zustand 管流式状态，react-query 管接口加载与刷新，partysocket 管 WebSocket 重连 |
 | 终端 | @xterm/xterm + @xterm/addon-fit | |
-| 文件编辑 | 成熟 React 编辑组件，具体选型待定 | 轻量脚本编辑；Monaco / CodeMirror 为候选，不引入完整 IDE |
+| 文件编辑 | `@uiw/react-codemirror` / CodeMirror 6 | 原生配置和轻量脚本编辑共用，按需加载，不引入完整 IDE |
 | 资源状态 | SSH 采样 + WebSocket + 网页指标面板 | 使用服务器已有工具，不依赖 `nvitop` 或服务器采集服务 |
 | 字体 | @fontsource/ibm-plex-sans、@fontsource/jetbrains-mono | 本地打包，不访问外部字体服务 |
 | 存储 | JSON 文件 | 只存工作区配置，不存对话 |
@@ -134,25 +134,11 @@ ssh-server/
 
 ### 5.1 agents：Agent 适配器
 
-创建会话时选择适配器，历史会话按原 Agent 与官方会话 ID 继续；一个会话不能中途切换 Agent。两个适配器对外输出统一事件流。下列类型仅为目标接口示意，实际 M1 协议以 `packages/shared/src/events.ts` 为准：
+创建会话时选择适配器，历史会话按原 Agent 与官方会话 ID 继续；一个会话不能中途切换 Agent。共享身份是 `(agent, sessionId)`，Codex 使用可供 `thread/resume` 的 `thread.id`，不使用分叉树根 `thread.sessionId`。
 
-```ts
-interface AgentAdapter {
-  startTurn(input: TurnInput): AsyncIterable<AgentEvent>;
-  interrupt(sessionId: string): Promise<void>;
-}
+两个适配器复用 `agents/types.ts` 的 `AgentTurnInput`、`TurnRunner` 和 `TurnHandle`（`interrupt()` / `done`），统一事件以 `packages/shared/src/events.ts` 为准。当前输出会话、文本、思考摘要、工具调用/结果、审批请求/处理、轮次结束及错误。未返回结果的工具卡在轮次结束或断线后标为“结果未返回”，不能推断执行成功。
 
-type AgentEvent =
-  | { type: 'session'; sessionId: string; model: string }
-  | { type: 'text' | 'reasoning'; delta: string }
-  | { type: 'tool_call'; id: string; name: string; input: unknown }
-  | { type: 'tool_result'; id: string; output: string; isError: boolean }
-  | { type: 'permission_request'; id: string; description: string }
-  | { type: 'turn_end'; usage?: unknown }
-  | { type: 'error'; message: string };
-```
-
-目标事件流还需覆盖能力清单、原生上下文用量 / 压缩状态；资源采样和文件同步状态使用独立的工作区事件，不触发新的 Agent 轮次。
+后续事件流还需覆盖能力清单、原生上下文用量 / 压缩状态；资源采样和文件同步状态使用独立的工作区事件，不触发新的 Agent 轮次。
 
 Claude（Agent SDK `query()`）：
 
@@ -164,15 +150,20 @@ Claude（Agent SDK `query()`）：
 
 Codex（app-server）：
 
-- `thread/start` 传 `cwd`、`sandbox`、`approvalPolicy`、`developerInstructions`（工作区指令），通过 `config` 注入 `mcp_servers`。
-- "跟随本地配置"时不传 `model`、`modelProvider`；不传 `env`、`baseUrl`、`apiKey`，否则会覆盖本地配置或不再继承环境变量。
-- 继续会话用 `thread/resume`。
-- Codex 无法关闭本地命令执行，只能用指令约束；沙箱设为 `workspace-write`，限制在工作区文件夹内。
+- `agents/codex/` 按启动解析、JSON-RPC 客户端、配置、事件转换、审批、对话和会话读取拆分。每轮启动独立进程，列表/历史使用短生命周期进程；正式读取原生 `CODEX_HOME/config.toml`，可用 `SSH_SERVER_CODEX` 指定已安装运行时。
+- 先 `initialize` / `initialized`，再 `config/read(cwd)`；保留生效的 `developer_instructions` 并追加工作区约束。`thread/start` / `thread/resume` 固定当前目录、`workspace-write` 沙箱、`on-request` 审批，随后 `turn/start`。
+- 默认不传 `model`、`modelProvider`、`baseUrl`、`apiKey` 覆盖。新 thread 跟随配置中的新默认模型；续接保留原生会话模型，只有显式填写模型才覆盖。推理强度也仅在填写时传入，历史实际模型不转成用户覆盖值。每轮重启进程只保证重读配置，不保证历史换模型。
+- 通过本轮 `config` 添加 required 的远程 MCP，保留其他原生 MCP 配置。内部地址与短期令牌仅放子进程环境，MCP 配置只列 `env_vars` 名称；不写入 argv、配置正文或 Agent 输入，本地 shell 过滤这些变量，结束后撤销令牌。MCP 启动失败拒绝本轮，不退回本地运行项目。
+- JSON-RPC 按行读取，单条上限 8 MiB，待处理请求最多 128 个，普通请求超时 30 秒；退出时拒绝等待者，持续排空 stderr 而不回显原始配置诊断。
+- 原生命令/文件审批只返回单次 accept/decline；权限请求只对本次明确内容返回 turn 级授权。网页 UUID 与原生 RPC ID 分离，后端验证 socket、turnId 与 requestId 的归属；未知交互请求明确拒绝。
+- 审批收到后端处理事件后才关闭，准备阶段可取消启动；运行阶段调用 `turn/interrupt`，5 秒未结束则终止本轮进程。完成、超时与中断均清理待审批项，迟到答复失效。
+- 网页断线后运行继续，但立即拒绝已有待审批请求；重连不自动创建新轮次。
+- Codex 保留本地命令能力；项目运行、训练、测试和数据读取使用远程工具的要求由工作区指令约束，不能把本地沙箱视为服务器安全边界。
 
-上下文与原生能力：
+上下文与后续原生能力：
 
 - Claude 用官方 `resume`，Codex 用 `thread/resume`；历史接口供网页显示消息，不把显示历史重新拼成全量提示词。
-- 上下文管理和自动压缩由官方运行时负责。Claude 映射 `compact_boundary` 及其手动 / 自动触发信息；Codex 映射原生 token 用量与压缩通知。未提供的状态显示不可用。
+- 上下文管理和自动压缩由官方运行时负责。后续接入 Claude `compact_boundary` 及其手动 / 自动触发信息、Codex 原生 token 用量与压缩通知；目前未展示这些状态，未提供的数据不能估造。
 - Claude 从 init 元数据和 `supportedCommands()` 等 SDK 接口取得 skills / 命令能力，区分可接入命令与 terminal-only 命令；Codex 使用 `skills/list`（工作区本地 `cwd`）及官方 `{ type: 'skill', name, path }` 输入。
 - 手动压缩、会话控制等 `/` 命令映射到实际官方动作，Codex 压缩用 `thread/compact/start`。未被官方接入接口支持的 CLI 命令明确标注限制，不靠普通文本转发冒充支持。
 - 能力列表按 Agent 与工作区发现，普通会话不修改全局配置；设置页由用户明确保存时校验并原子更新对应原生配置。配置、凭据均不复制到服务器。
@@ -232,10 +223,10 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 
 ### 5.7 sessions
 
-- 列表：Claude 用 SDK `listSessions`，Codex 用 `thread/list`，按工作区本地文件夹筛选。
-- 删除：Claude 用 SDK `deleteSession`；Codex 用 `thread/delete`。删除前确认会话不在运行。
-- 归档：Codex `thread/archive` / `thread/unarchive`。
-- 列表保留所属 Agent 标识与官方 ID；打开历史后始终路由回原适配器，不执行跨 Agent 历史转换。
+- 已接入列表与历史：Claude 使用 SDK 原生接口，Codex 使用 `thread/list` / `thread/read`，按工作区本地文件夹筛选。读取和续接再次校验原生 cwd 与官方 ID，拒绝越界或不完整历史。
+- `chat/sessions.ts` 统一两类 provider，HTTP 会话路由用 `agent` 参数区分来源。网页分别加载两类列表；一个运行时失败仍显示另一类历史，并为失败来源提供重新读取。
+- 列表、选中状态和查询键保留所属 Agent；历史请求绑定工作区、Agent、官方 ID 与选择代次，切换后忽略迟到结果，读取期间禁止发送。展示历史不替代官方上下文续接。
+- 后续删除：Claude `deleteSession`、Codex `thread/delete`；归档/恢复：Codex `thread/archive` / `thread/unarchive`。当前没有这些入口，仍需运行状态校验与跨客户端一致性验收。
 
 ### 5.8 policy：命令黑名单
 
@@ -316,10 +307,10 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 |---|---|
 | V1 | Claude SDK `settingSources` 设置后能否读到 cc-switch 写入的 `env`（地址、令牌） |
 | V2 | Claude SDK `listSessions` / `deleteSession` 的参数与行为，删除后 VS Code 插件是否同步不可见 |
-| V3 | 已选 Codex app-server；本机 CLI 0.156.1 生成的协议含会话列表 / 删除等接口，真实集成与删除后各客户端一致性仍待验证 |
-| V4 | Codex 通过 `config` 注入 `mcp_servers` 是否生效 |
-| V5 | Codex `developerInstructions` 与项目 `AGENTS.md` 同时存在时的合并行为 |
-| V6 | Codex app-server 的审批请求如何转给网页 |
+| V3 | CLI 0.156.1 的真实网页对话、原生列表/读取及原 ID 续接已通过；删除/归档与跨客户端一致性待实现验证 |
+| V4 | GLM 真实网页轮次已通过原生 MCP `remote_peek` 访问受控内部服务；A7 的真实 SSH/同步串联仍待验证 |
+| V5 | 已实现读取生效的 `developer_instructions` 后追加工作区约束；各类项目 `AGENTS.md` 组合的完整行为仍需按实际环境验证 |
+| V6 | 受控原生客户端、替身进程与浏览器已验证审批确认/去重/单次批准拒绝及中断清理；不据此宣称真实 SSH 审批串联完成 |
 | V7 | rclone bisync 在 Windows 上、配合 `--max-size` 与临时排除的行为；首次同步的耗时 |
 | V8 | 删除检查对比的清单格式（bisync 清单文件）在版本更新后是否稳定 |
 | V9 | ssh2 交互 shell、窗口尺寸同步与服务器已有全屏工具的显示；`nvitop` / `htop` 仅在已有时验证，不作为安装前提 |
@@ -332,4 +323,4 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 | V16 | 对话流、SSH PTY、资源采样及同步同时运行时的消息响应；同一会话禁止重叠轮次、同一工作区同步不重叠，超时 / 输出限制不影响其他活动 |
 | V17 | 使用服务器已有 Python / 项目环境执行用户要求的统计、绘图和结果处理；分析脚本先同步，必要小文件按需返回，不整份下载大数据或自动触发分析 |
 
-2026-10-03 状态核对：私钥与内存密码认证、rclone 小文件双向同步、稳定本地镜像、删除确认、冲突保留、执行前后及轮次结束同步已接入；断开或凭据替换取消传输，过期请求不会清除新凭据。真实 Claude → MCP → SSH hostname 与原生历史验收已通过，修复后的传输及网页验收记录见路线图。Windows 当前用户加密保存已接入，网页复用保存项、取消保存和主动断开暂停均已贯通；本轮凭据验收见验收记录。原生配置、项目文件编辑与本地版本历史/恢复已实现，A5/A13 新增入口的真实 SSH 串联复验待完成。Codex 网页对话、终端和资源面板仍在后续实施范围；skills / 命令选择及压缩状态展示未接入。
+2026-10-03 状态核对：认证、保存凭据与 rclone 同步基础已接入，已有真实 Claude → MCP → SSH 及传输/网页记录。原生配置、项目文件编辑和本地版本历史/恢复已实现；Codex 真实网页与 GLM 两轮、原生 MCP、列表/历史/续接通过，详情见 [Codex 对话验收](../guides/codex-conversation-acceptance.md)。本阶段 SSH/同步使用受控替身，A5/A13/A7 实际 SSH 串联仍待用户指定 Host 与允许测试的目录；终端、资源面板、完整并发、skills / 命令、上下文/压缩、模型目录与删除/归档尚未完成。

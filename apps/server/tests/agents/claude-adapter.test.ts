@@ -158,8 +158,28 @@ describe('runClaudeTurn：权限', () => {
   });
 
   it('网页同意时允许', async () => {
-    const { fn } = await canUseTool();
+    const { fn, events } = await canUseTool();
     expect((await fn('Bash', { command: 'ls' }, { signal })).behavior).toBe('allow');
+    const request = events.find((event) => event.type === 'permission_request');
+    expect(events.at(-1)).toEqual({ type: 'permission_resolved', requestId: request?.requestId, decision: 'allowed' });
+  });
+
+  it('中断及时结束审批，迟到的批准不改变已拒绝结果', async () => {
+    let answer!: (value: { allow: boolean }) => void;
+    const { fn, events } = await canUseTool({
+      requestPermission: () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    });
+    const controller = new AbortController();
+    const pending = fn('Bash', { command: 'ls' }, { signal: controller.signal });
+    controller.abort();
+    expect(await pending).toMatchObject({ behavior: 'deny', message: '本轮已中断' });
+    answer({ allow: true });
+    await Promise.resolve();
+    expect(events.filter((event) => event.type === 'permission_resolved')).toMatchObject([{ decision: 'denied' }]);
+    expect((await fn('Bash', { command: 'ls' }, { signal: controller.signal })).behavior).toBe('deny');
   });
 
   it('超时无答复时拒绝', async () => {

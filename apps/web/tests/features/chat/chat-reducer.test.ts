@@ -27,6 +27,8 @@ describe('reduceChat', () => {
     const items = run([
       { type: 'tool_call', id: 't1', name: 'mcp__ssh-server__remote_exec', input: { command: 'ls' } },
       { type: 'tool_result', id: 't1', output: 'ok', isError: true },
+      { type: 'turn_end', isError: true },
+      { type: 'turn_end', isError: false },
     ]);
     expect(items).toEqual([
       {
@@ -44,8 +46,11 @@ describe('reduceChat', () => {
   it('权限请求生成条目，答复后标记结果', () => {
     const items = run([{ type: 'permission_request', requestId: 'p1', toolName: 'Bash', input: { command: 'ls' } }]);
     expect(items[0]).toMatchObject({ kind: 'permission', id: 'p1', toolName: 'Bash' });
-    expect(resolvePermission(items, 'p1', true)[0]).toMatchObject({ resolved: 'allow' });
-    expect(resolvePermission(items, 'p1', false)[0]).toMatchObject({ resolved: 'deny' });
+    expect(resolvePermission(items, 'p1', 'allowed')[0]).toMatchObject({ resolved: 'allow' });
+    expect(resolvePermission(items, 'p1', 'denied')[0]).toMatchObject({ resolved: 'deny' });
+    expect(run([{ type: 'permission_resolved', requestId: 'p1', decision: 'cancelled' }], items)[0]).toMatchObject({
+      resolved: 'cancelled',
+    });
   });
 
   it('turn_end 结束所有流式条目；error、user_message 生成对应条目', () => {
@@ -53,11 +58,16 @@ describe('reduceChat', () => {
       { type: 'user_message', text: '问' },
       { type: 'text', delta: '答' },
       { type: 'error', message: '出错了' },
+      { type: 'permission_request', requestId: 'p1', toolName: 'command', input: {} },
+      { type: 'tool_call', id: 'unfinished', name: 'command', input: {} },
       { type: 'turn_end', isError: true },
     ]);
-    expect(items.map((i) => i.kind)).toEqual(['user', 'assistant', 'error']);
+    expect(items.map((i) => i.kind)).toEqual(['user', 'assistant', 'error', 'permission', 'tool']);
     expect(items[1]).toMatchObject({ streaming: false });
     expect(items[2]).toMatchObject({ message: '出错了' });
+    expect(items[3]).toMatchObject({ resolved: 'cancelled' });
+    expect(items[4]).toMatchObject({ status: 'incomplete' });
+    expect(items[4]).not.toHaveProperty('isError');
   });
 
   it('思考增量合并为一个思考条目', () => {
@@ -69,10 +79,15 @@ describe('reduceChat', () => {
   });
 
   it('不修改传入的数组', () => {
-    const start: ChatItem[] = [{ kind: 'assistant', id: 'a', text: 'x', streaming: true }];
+    const start: ChatItem[] = [
+      { kind: 'assistant', id: 'a', text: 'x', streaming: true },
+      { kind: 'tool', id: 'partial', name: 'command', input: {}, output: '已收到部分输出', status: 'running' },
+    ];
     const snapshot = JSON.stringify(start);
     reduceChat(start, { type: 'text', delta: 'y' });
-    reduceChat(start, { type: 'turn_end', isError: false });
+    const ended = reduceChat(start, { type: 'turn_end', isError: false });
+    expect(ended[1]).toMatchObject({ output: '已收到部分输出', status: 'incomplete' });
+    expect(reduceChat(ended, { type: 'turn_end', isError: false })).toEqual(ended);
     expect(JSON.stringify(start)).toBe(snapshot);
   });
 });
