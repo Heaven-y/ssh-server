@@ -172,7 +172,7 @@ export function useSshConnection(target: SshConnectionTarget) {
           )
           .then((result) => {
             if (result.connected !== true || result.authMode !== authMode) {
-              throw new ApiError(502, '连接接口返回了无效状态', undefined, 'protocol_error');
+              throw new ApiError(502, '连接接口返回了无效状态', { code: 'protocol_error' });
             }
             return result;
           }),

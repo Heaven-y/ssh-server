@@ -6,6 +6,7 @@ import { lastWorkspaceId, useChat } from '../features/chat/chat-store';
 import { SyncPanel } from '../features/sync/SyncPanel';
 import { SshConnectionPanel } from '../features/ssh/SshConnectionPanel';
 import { WorkspaceSidebar } from '../features/workspaces/WorkspaceSidebar';
+import { VersionsPanel } from '../features/versions/VersionsPanel';
 import { api, queryKeys } from '../lib/api';
 import { TopBar } from './TopBar';
 
@@ -65,6 +66,7 @@ export function App() {
                   workspace={current}
                 />
                 <SyncPanel key={current.id} workspace={current} />
+                <VersionsPanel workspace={current} />
               </div>
               <ChatView workspace={current} />
             </>

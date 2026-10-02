@@ -12,7 +12,9 @@ import { registerSessionRoutes } from './http/sessions.routes';
 import { registerSshRoutes } from './http/ssh.routes';
 import { registerAgentConfigRoutes } from './http/agent-config.routes';
 import { registerFileRoutes } from './http/files.routes';
+import { registerVersionRoutes } from './http/versions.routes';
 import { createWorkspaceFilesService } from './files/service';
+import { createVersionsService } from './vcs/service';
 import { registerSyncRoutes } from './http/sync.routes';
 import { registerWsRoutes } from './http/ws.routes';
 import { createSshPool } from './ssh/pool';
@@ -82,6 +84,7 @@ async function main(): Promise<void> {
       registerSshRoutes(a, { pool });
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
       registerFileRoutes(a, { store, files: createWorkspaceFilesService(), sync });
+      registerVersionRoutes(a, { store, versions: createVersionsService(), sync });
       registerSyncRoutes(a, { store, sync });
       registerWsRoutes(a, { turns });
     },

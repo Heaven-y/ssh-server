@@ -13,3 +13,17 @@ export type { SyncSettings, SyncConflict, SyncStatus } from './sync';
 export type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from './settings';
 export { MAX_EDITABLE_FILE_BYTES } from './files';
 export type { WorkspaceDirectory, WorkspaceFileEntry, WorkspaceFile, WorkspaceFileInput } from './files';
+export type {
+  VersionChange,
+  VersionExcluded,
+  VersionStatus,
+  VersionCommit,
+  VersionHistory,
+  VersionDiff,
+  VersionSaveInput,
+  VersionSaveResult,
+  VersionRestoreInput,
+  VersionRestorePreview,
+  VersionRestoreResult,
+} from './versions';
+export { VERSION_MESSAGE_MAX_LENGTH } from './versions';

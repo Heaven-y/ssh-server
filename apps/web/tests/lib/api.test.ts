@@ -23,11 +23,18 @@ describe('api', () => {
     expect(init).toMatchObject({ method: 'POST', headers: { 'content-type': 'application/json' } });
   });
 
-  it('400 时抛出带字段名的 ApiError', async () => {
+  it('接口错误保留字段名、分类及部分恢复路径', async () => {
     respond(400, { field: 'localDir', message: '本地文件夹不存在' });
     const err = await api.listWorkspaces().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect(err).toMatchObject({ status: 400, field: 'localDir', message: '本地文件夹不存在' });
+    respond(500, { code: 'partial_restore', message: '部分文件恢复失败', affectedPaths: ['main.py'] });
+    await expect(api.restoreVersion('w1', { commit: 'a'.repeat(40), revision: 'b'.repeat(64) })).rejects.toMatchObject({
+      status: 500,
+      code: 'partial_restore',
+      affectedPaths: ['main.py'],
+    });
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string)).toMatchObject({ confirmed: true });
   });
 
   it('401 提示打开访问地址；无 JSON 的错误给出状态码', async () => {

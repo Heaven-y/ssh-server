@@ -35,7 +35,7 @@
 - 终端视觉与交互参考 Pebrel，手动编辑复用 CodeMirror，支持常用脚本与配置文件。
 - 对话、终端、资源刷新与同步通过异步 I/O 协调；同一会话单轮运行，同一工作区同步串行。当前沿用 Node.js 本地启动，独立 `.exe` 打包或 Go 迁移未加入交付范围。
 
-当前已接入 Claude 对话、SSH 认证、rclone 双向同步、原生配置编辑和网页文件编辑。删除确认、冲突保留与执行前后同步已实现；Codex 网页对话、版本历史、终端及资源面板仍在路线图中。
+当前已接入 Claude 对话、SSH 认证、rclone 双向同步、原生配置编辑、网页文件编辑和本地版本记录。版本保存、历史、差异与恢复按工作区限定范围；恢复保留 HEAD 和暂存区，再进入同步流程。删除确认、冲突保留与执行前后同步已实现；Codex 网页对话、终端及资源面板仍在路线图中。
 
 界面采用中性深色的对话工作区，SSH/同步显示紧凑摘要，详情和新建表单按需展开；参考依据、实际截图与验证范围见 [界面验收](docs/guides/workspace-ui-acceptance.md)。
 
@@ -53,7 +53,7 @@
 ## 环境要求
 
 - Windows 10/11（首要支持平台）
-- Node.js 22+、git
+- Node.js 22+、Git 2.43+（版本恢复使用目标提交的属性规则）
 - 本机已安装并配置好 Claude Code 和/或 Codex CLI
 - rclone **1.75.1**（本机运行，服务器不需要安装）；从 [官方版本下载](https://downloads.rclone.org/v1.75.1/) 安装并核对 SHA-256。放入 PATH，或将环境变量 `SSH_SERVER_RCLONE` 指向可执行文件。
 - SSH 服务器的账号及可用认证方式：本机 `~/.ssh/config` Host、已登记的 `known_hosts`，以及可读私钥或网页输入的密码
@@ -71,4 +71,4 @@
 
 ## 状态
 
-开发中：M1 已有真实 Claude → MCP → SSH 验收脚本，M2 认证同步基础已完成。测试已移至各包独立的 `tests/` 目录；加密保存密码已贯通网页与 SSH。此前真实传输 6 项与网页同步 5 项通过，见[验收记录](docs/guides/m2-acceptance.md)。原生配置编辑已实现，更新 GLM 配置后的 Codex 原生调用通过，见[配置验收记录](docs/guides/agent-config-acceptance.md)。网页文件编辑与保存后同步的受控验收已通过，见[文件验收记录](docs/guides/workspace-files-acceptance.md)；版本历史、Codex 网页对话、终端和资源面板仍待实施，见[路线图](docs/roadmap.md)。
+开发中：M1 已有真实 Claude → MCP → SSH 验收脚本，M2 认证同步基础已完成。测试已移至各包独立的 `tests/` 目录；加密保存密码已贯通网页与 SSH。此前真实传输 6 项与网页同步 5 项通过，见[验收记录](docs/guides/m2-acceptance.md)。更新 GLM 配置后的 Codex 原生调用通过，见[配置验收记录](docs/guides/agent-config-acceptance.md)。网页文件编辑及本地版本记录的受控验收见[文件验收记录](docs/guides/workspace-files-acceptance.md)与[版本验收记录](docs/guides/local-versions-acceptance.md)；新增入口的实际 SSH 串联复验，以及 Codex 网页对话、终端和资源面板仍待完成，见[路线图](docs/roadmap.md)。

@@ -7,6 +7,14 @@ import type {
   WorkspaceDirectory,
   WorkspaceFile,
   WorkspaceFileInput,
+  VersionStatus,
+  VersionHistory,
+  VersionDiff,
+  VersionSaveInput,
+  VersionSaveResult,
+  VersionRestoreInput,
+  VersionRestorePreview,
+  VersionRestoreResult,
   SshAuthMode,
   SshHostInfo,
   SyncSettings,
@@ -28,13 +36,19 @@ export type SshConnectResult = { connected: true; authMode: SshAuthMode } & SshC
 
 /** 接口错误；field 用于工作区字段校验，code 用于 SSH 错误分类 */
 export class ApiError extends Error {
+  readonly field?: string;
+  readonly code?: string;
+  readonly affectedPaths?: string[];
+
   constructor(
     readonly status: number,
     message: string,
-    readonly field?: string,
-    readonly code?: string,
+    details: { field?: string; code?: string; affectedPaths?: string[] } = {},
   ) {
     super(message);
+    this.field = details.field;
+    this.code = details.code;
+    this.affectedPaths = details.affectedPaths;
   }
 }
 
@@ -45,19 +59,48 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   });
   if (res.status === 401) throw new ApiError(401, '未登录：请打开后端启动时打印的访问地址');
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { message?: string; field?: string; code?: string };
-    throw new ApiError(res.status, body.message ?? `请求失败（${res.status}）`, body.field, body.code);
+    const body = (await res.json().catch(() => ({}))) as {
+      message?: string;
+      field?: string;
+      code?: string;
+      affectedPaths?: string[];
+    };
+    throw new ApiError(res.status, body.message ?? `请求失败（${res.status}）`, body);
   }
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
 const syncUrl = (id: string) => `/api/workspaces/${encodeURIComponent(id)}/sync`;
+const versionsUrl = (id: string) => `/api/workspaces/${encodeURIComponent(id)}/versions`;
 const fileUrl = (id: string, suffix: string, relative: string) =>
   `/api/workspaces/${encodeURIComponent(id)}/${suffix}?path=${encodeURIComponent(relative)}`;
 const postSync = (id: string, suffix = '', body: unknown = {}) =>
   request<SyncStatus>(syncUrl(id) + suffix, { method: 'POST', body: JSON.stringify(body) });
 
 export const api = {
+  initializeVersions: (id: string) =>
+    request<VersionStatus>(versionsUrl(id) + '/initialize', { method: 'POST', body: '{}' }),
+  versionStatus: (id: string) => request<VersionStatus>(versionsUrl(id), { cache: 'no-store' }),
+  versionHistory: (id: string, skip = 0) =>
+    request<VersionHistory>(versionsUrl(id) + `/history?skip=${skip}`, { cache: 'no-store' }),
+  versionDiff: (id: string, input: { commit?: string; path?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (input.commit) query.set('commit', input.commit);
+    if (input.path) query.set('path', input.path);
+    return request<VersionDiff>(versionsUrl(id) + '/diff?' + query.toString(), { cache: 'no-store' });
+  },
+  saveVersion: (id: string, input: VersionSaveInput) =>
+    request<VersionSaveResult>(versionsUrl(id) + '/save', { method: 'POST', body: JSON.stringify(input) }),
+  previewVersionRestore: (id: string, input: VersionRestoreInput) =>
+    request<VersionRestorePreview>(versionsUrl(id) + '/restore/preview', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  restoreVersion: (id: string, input: VersionRestoreInput & { revision: string }) =>
+    request<VersionRestoreResult>(versionsUrl(id) + '/restore', {
+      method: 'POST',
+      body: JSON.stringify({ ...input, confirmed: true }),
+    }),
   listFiles: (id: string, relative = '', signal?: AbortSignal) =>
     request<WorkspaceDirectory>(fileUrl(id, 'files', relative), { signal, cache: 'no-store' }),
   readFile: (id: string, relative: string, signal?: AbortSignal) =>
@@ -143,4 +186,5 @@ export const queryKeys = {
   sshCredentials: (sshHost: string) => ['ssh-credentials', sshHost] as const,
   sessions: (workspaceId: string) => ['sessions', workspaceId] as const,
   sync: (workspaceId: string) => ['sync', workspaceId] as const,
+  versions: (workspaceId: string) => ['versions', workspaceId] as const,
 };
