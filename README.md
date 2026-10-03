@@ -68,6 +68,8 @@
 
 提交前按影响范围验证类型、ESLint（含圈复杂度）、格式及相关测试；`npm run check` 提供完整检查入口，适用于无可靠基准或全局改动。门槛见 [docs/guides/dev-environment.md](docs/guides/dev-environment.md) 1.3。
 
+分支采用长期 `main` 与短期 `codex/<主题>`。已验证阶段经授权归并后回到 `main`，清理已合并工作分支；合入主分支不等于发布或所有需求已完成。本地归并与远端推送分别授权，完整流程见 [分支与提交规范](docs/guides/dev-environment.md#16-本仓库的-git-分支与提交)。
+
 ## 安全说明
 
 - 后端只监听 `127.0.0.1`，并校验访问令牌和请求来源，不要把端口暴露到局域网或公网。
