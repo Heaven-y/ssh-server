@@ -25,7 +25,7 @@
 - [x] 目录按用途划分（docs 分 product / engineering / guides，脚本移到 scripts/dev）
 - [x] 测试统一迁移到各包 tests；SSH 界面按交互状态、密码表单和展示拆到 features/ssh，工具配置及目录规范同步
 - [x] 首次提交
-- [x] 分支规范：`main` 保存已验证阶段，采用短期 `codex/<主题>`；累计阶段提交归并后清理旧功能分支，本地归并不等同于远端发布，见 [开发规范](guides/dev-environment.md#16-本仓库的-git-分支与提交)
+- [x] 分支规范：`main` 保存已验证阶段，保留 `feat/ssh-workflow` 等大功能分支；小分支合入大分支后清理，两级归并均用 `merge --no-ff` 保留提交和合并节点。本地归并不等同于远端发布，见 [开发规范](guides/dev-environment.md#16-本仓库的-git-分支与提交)
 
 ## M1 进度
 

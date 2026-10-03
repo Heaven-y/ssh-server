@@ -10,7 +10,7 @@
 - 有成熟的库或组件就直接使用，不全部手写；选用标准与记录见 `docs/guides/dev-environment.md` 1.1、1.2。
 - 后端沿用 Node.js + TypeScript + Fastify；Python 分析默认通过 SSH 在服务器已有环境执行。技术栈、并发与打包范围遵循 `docs/engineering/decisions.md` D19、D20 和 `docs/engineering/architecture.md`，不因讨论备选语言而自动迁移或增加打包任务。
 - 未经用户明确要求不提交、不推送。
-- 分支采用 `main` + 短期 `codex/<主题>`：`main` 保存已验证的阶段基线，新功能或修复从它创建工作分支；用户授权归并后优先快进合并，确认提交已保留且无工作树占用，再删除已合并分支。不得强制删除未合并分支或改写已发布历史，细则见 `docs/guides/dev-environment.md` 1.6。
+- 分支采用 `main` → 保留的大功能分支 → 短期小功能分支；保留现有 `feat/ssh-workflow`，Codex 新建分支使用 `codex/` 前缀。小分支合入所属大分支、大分支阶段合入 `main` 均使用 `git merge --no-ff`，保留原始提交和合并节点；仅在确认已合并且无工作树占用后删除小分支，大分支不自动删除。不使用 squash 或 rebase 代替合并，不强制删除未合并分支或改写历史，细则见 `docs/guides/dev-environment.md` 1.6。
 
 ## 文档
 
