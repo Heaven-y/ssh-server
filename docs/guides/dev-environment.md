@@ -239,6 +239,11 @@ skills-lock.json              # 记录每个 skill 的来源和内容哈希
 - ssh2 的 Ed25519 生成器会裁剪公钥前导零，偶发生成无法被自身解析的畸形密钥；已在独立生成/解析中复现。
 - SSH fixture 使用 ECDSA 256 位临时密钥，避免不相关的随机失败；产品继续支持现有私钥和主机密钥算法，未修改依赖源码或放宽校验。
 
+### 4.12 Windows 系统加密子进程的模块环境
+
+- Windows CI 中，原环境白名单使 PowerShell 停在 `Add-Type -AssemblyName System.Security`，达到 10 秒限制后保存密码失败。同一虚拟机补充 `USERPROFILE`、`APPDATA`、`LOCALAPPDATA`、`PSModulePath` 后，对照探针在约 460 毫秒内完成加解密；尚不能归因到某一个变量。
+- 加密子进程保留显式环境白名单，只补齐上述四项路径。凭据仍经标准输入传递，保留 10 秒超时和输出上限，不继承其他服务凭据；临时 CI 诊断步骤和脚本已移除。
+
 ## 5. 开发运行与验收说明
 
 - Windows PowerShell 可用 `npm.cmd run dev` 启动后端与 Vite，或用 `npm.cmd start` 构建前端后启动本地服务；访问控制和启动参数见 [M1 设计](../superpowers/specs/2026-10-01-m1-minimal-chain-design.md)。

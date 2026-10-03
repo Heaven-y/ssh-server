@@ -35,7 +35,18 @@ export function createWindowsProtector(deps: Deps = {}): SecretProtector {
         ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', protectionScript(method)],
         {
           input: JSON.stringify({ data: data.toString('base64'), entropy: entropy.toString('base64') }),
-          env: { SystemRoot: root, WINDIR: root, PATH: process.env.PATH, TEMP: process.env.TEMP, TMP: process.env.TMP },
+          // PowerShell 模块加载依赖当前用户目录与模块路径；不继承其他服务凭据。
+          env: {
+            SystemRoot: root,
+            WINDIR: root,
+            PATH: process.env.PATH,
+            TEMP: process.env.TEMP,
+            TMP: process.env.TMP,
+            USERPROFILE: process.env.USERPROFILE,
+            APPDATA: process.env.APPDATA,
+            LOCALAPPDATA: process.env.LOCALAPPDATA,
+            PSModulePath: process.env.PSModulePath,
+          },
           timeoutMs: 10_000,
           outputCap: 32_768,
         },
