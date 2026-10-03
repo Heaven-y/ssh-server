@@ -9,6 +9,7 @@
     "build": "vite build"
   },
   "dependencies": {
+    "@ariakit/react": "0.4.40",
     "@codemirror/lang-json": "6.0.2",
     "@codemirror/lang-markdown": "6.5.2",
     "@codemirror/language": "6.12.4",
