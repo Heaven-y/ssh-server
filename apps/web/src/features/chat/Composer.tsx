@@ -1,10 +1,11 @@
 import { SendHorizontal, Square } from 'lucide-react';
-import { useId, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import { buttonClass } from '../../ui/styles';
 import { managementPending, useChat } from './chat-store';
 import { CapabilityPicker } from './CapabilityPicker';
 import { selectionRestriction } from './capability-selection';
 import { ContextStatus } from './ContextStatus';
+import { ComposerInput } from './ComposerInput';
 
 function ComposerActions({ disabled }: { disabled: boolean }) {
   const running = useChat((s) => s.running);
@@ -65,13 +66,6 @@ export function Composer() {
     if (send(text.trim())) setText('');
   };
 
-  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault();
-      submit();
-    }
-  };
-
   return (
     <form onSubmit={submit} className="shrink-0 space-y-2 px-4 pt-2 pb-4 sm:px-6">
       <ContextStatus />
@@ -80,14 +74,13 @@ export function Composer() {
         <label htmlFor={id} className="sr-only">
           输入消息
         </label>
-        <textarea
+        <ComposerInput
           id={id}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKeyDown}
-          rows={2}
+          text={text}
+          onChange={setText}
+          onSend={submit}
+          busy={busy}
           placeholder={placeholder(connected, selection?.argumentHint)}
-          className="max-h-60 min-h-16 w-full min-w-0 resize-none bg-transparent text-[15px] leading-7 text-foreground placeholder:text-muted-foreground focus-visible:outline-none [field-sizing:content]"
         />
         {restriction && <p className="text-xs leading-5 text-warning">{restriction}</p>}
         <ComposerActions disabled={blocked} />

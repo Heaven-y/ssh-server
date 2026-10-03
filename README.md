@@ -40,7 +40,7 @@
 
 远端文件管理已补入需求，尚未实现。文件区将提供“本地代码 / 服务器文件”双视图，支持右键菜单、目标选择和拖动操作；涉及已同步代码时协调两端路径，仅服务器文件不要求先同步到本机，也不调用模型。范围与验收见 [需求 F10](docs/product/requirements.md#f10-远端文件管理) 和 [文件区布局](docs/product/ui-layout.md#54-服务器文件视图待实现)。
 
-技能与命令通过输入区按钮搜索选择，也可直接输入已支持的 `/name`；输入 `/` 自动展开候选仍待实现。模型候选保留手动输入，目录失败不阻断普通消息。上下文只显示原生字段，压缩须由官方事件确认完成，见[原生能力验收](docs/guides/native-capabilities-acceptance.md)。
+技能与命令可通过按钮搜索，或在消息开头输入 `/` 自动补全；上下方向键选择、Enter 确认，保留附加参数，再次 Enter 发送。路径和参数区保持普通编辑，详见[补全验收](docs/guides/slash-completion-acceptance.md)。模型候选保留手动输入，目录失败不阻断普通消息。上下文只显示原生字段，压缩须由官方事件确认完成，见[原生能力验收](docs/guides/native-capabilities-acceptance.md)。
 
 界面采用中性深色的对话工作区，SSH/同步显示紧凑摘要，详情和新建表单按需展开；参考依据、实际截图与验证范围见 [界面验收](docs/guides/workspace-ui-acceptance.md)。
 

@@ -111,7 +111,9 @@ Pebrel 的 README 与许可已核对，截图的实际视觉核对尚未完成�
 
 上下文卡可展开查看原生窗口、用量来源和模型；Claude 明示“原生估计”，Codex 明示“原生统计/估算”，不由 token/window 推算比例。压缩展示原生进行中、完成、失败、中断或结果未确认，历史保留原生边界，新普通轮次不复活旧的未确认压缩。
 
-既有真实网页与 GLM 两轮证据见 [Codex 对话验收](../guides/codex-conversation-acceptance.md)，本轮能力控件见 [原生能力验收](../guides/native-capabilities-acceptance.md)。下面的工具分组、虚拟列表，以及输入 `/` 时自动展开候选仍属目标范围；本轮已实现按钮搜索选择和后端直接 slash 解析，未缩减自动展开目标。
+消息开头输入 `/` 自动展开当前 Agent 候选，浮层贴近输入框并保留焦点。上下方向键移动高亮，Enter 只确认选择，再次 Enter 才发送；Esc 收起并保留原文，Shift+Enter 换行。输入法组字时不触发选择或发送。只补全首个命令名，路径、正文和参数区保持普通编辑；光标移回命令名后可按方向键重新展开，选择保留已有参数。候选最多显示 20 项，继续输入缩小范围，名称、别名、来源和说明均可搜索。
+
+既有真实网页与 GLM 两轮证据见 [Codex 对话验收](../guides/codex-conversation-acceptance.md)，能力控件和输入补全分别见 [原生能力验收](../guides/native-capabilities-acceptance.md) 与[补全验收](../guides/slash-completion-acceptance.md)。下面的工具分组、虚拟列表仍属目标范围。
 
 - 顶部：会话标题；新会话创建时选择 Claude / Codex，已有会话显示固定 Agent 标识，不能切换；模型选择（默认“跟随本地配置”，可下拉或手动输入）；Codex 另有推理强度。实际使用的模型名显示在标题旁。
 - 消息类型：
