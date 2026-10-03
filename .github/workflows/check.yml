@@ -24,4 +24,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: 定位 Windows 系统加密阶段
+        if: runner.os == 'Windows'
+        run: node --import tsx scripts/dev/diagnose-windows-protection.ts
       - run: npm run check
