@@ -25,6 +25,8 @@ import { registerCapabilityRoutes } from './http/capabilities.routes';
 import { registerSshRoutes } from './http/ssh.routes';
 import { registerAgentConfigRoutes } from './http/agent-config.routes';
 import { registerFileRoutes } from './http/files.routes';
+import { registerRemoteFileRoutes } from './http/remote-files.routes';
+import { createRemoteFilesService } from './remote-files/service';
 import { registerVersionRoutes } from './http/versions.routes';
 import { createWorkspaceFilesService } from './files/service';
 import { createVersionsService } from './vcs/service';
@@ -117,6 +119,7 @@ async function main(): Promise<void> {
       registerSshRoutes(a, { pool });
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
       registerFileRoutes(a, { store, files: createWorkspaceFilesService(), sync });
+      registerRemoteFileRoutes(a, createRemoteFilesService({ store, pool }));
       registerVersionRoutes(a, { store, versions: createVersionsService(), sync });
       registerSyncRoutes(a, { store, sync });
       registerWsRoutes(a, { turns });

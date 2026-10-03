@@ -11,6 +11,9 @@ import type {
   WorkspaceDirectory,
   WorkspaceFile,
   WorkspaceFileInput,
+  RemoteBrowseTarget,
+  RemoteBrowseSession,
+  RemoteDirectory,
   VersionStatus,
   VersionHistory,
   VersionDiff,
@@ -76,12 +79,38 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 const syncUrl = (id: string) => `/api/workspaces/${encodeURIComponent(id)}/sync`;
 const versionsUrl = (id: string) => `/api/workspaces/${encodeURIComponent(id)}/versions`;
+const remoteSessionsUrl = (id: string) => `/api/workspaces/${encodeURIComponent(id)}/remote-files/sessions`;
 const fileUrl = (id: string, suffix: string, relative: string) =>
   `/api/workspaces/${encodeURIComponent(id)}/${suffix}?path=${encodeURIComponent(relative)}`;
 const postSync = (id: string, suffix = '', body: unknown = {}) =>
   request<SyncStatus>(syncUrl(id) + suffix, { method: 'POST', body: JSON.stringify(body) });
 
 export const api = {
+  bindRemoteBrowseTarget: (id: string, target: RemoteBrowseTarget) =>
+    request<{ binding: string }>(`/api/workspaces/${encodeURIComponent(id)}/remote-files/bindings`, {
+      method: 'POST',
+      cache: 'no-store',
+      body: JSON.stringify(target),
+    }),
+  createRemoteBrowseSession: (id: string, target: RemoteBrowseTarget, binding: string) =>
+    request<RemoteBrowseSession>(remoteSessionsUrl(id), {
+      method: 'POST',
+      cache: 'no-store',
+      body: JSON.stringify({ ...target, binding }),
+    }),
+  listRemoteFiles: (id: string, sessionId: string, input: { path: string; cursor?: string }, signal?: AbortSignal) => {
+    const query = new URLSearchParams({ path: input.path });
+    if (input.cursor) query.set('cursor', input.cursor);
+    return request<RemoteDirectory>(`${remoteSessionsUrl(id)}/${encodeURIComponent(sessionId)}?${query}`, {
+      signal,
+      cache: 'no-store',
+    });
+  },
+  closeRemoteBrowseSession: (id: string, sessionId: string) =>
+    request<void>(`${remoteSessionsUrl(id)}/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+      keepalive: true,
+    }),
   agentCapabilities: (workspaceId: string, agent: AgentKind, signal?: AbortSignal) =>
     request<AgentCapabilities>(`/api/workspaces/${encodeURIComponent(workspaceId)}/agent-capabilities?agent=${agent}`, {
       signal,
