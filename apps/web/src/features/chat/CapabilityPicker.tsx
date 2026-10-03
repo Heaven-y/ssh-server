@@ -6,6 +6,7 @@ import { buttonClass, inputClass } from '../../ui/styles';
 import { useChat } from './chat-store';
 import { capabilityRestriction } from './capability-selection';
 import { useAgentCapabilities } from './use-agent-capabilities';
+import { matchesCapability } from './slash-completion';
 
 function CapabilityEntry({ entry, disabled, select }: { entry: AgentCapability; disabled: boolean; select(): void }) {
   const sessionId = useChat((state) => state.sessionId);
@@ -41,13 +42,7 @@ function CapabilityDialog({ disabled, onClose }: { disabled: boolean; onClose():
   const query = useAgentCapabilities(true);
   const select = useChat((state) => state.selectCapability);
   const phrase = search.trim().toLocaleLowerCase();
-  const entries = (query.data?.entries ?? []).filter((entry) =>
-    [entry.name, entry.description, entry.source, ...(entry.aliases ?? [])]
-      .filter(Boolean)
-      .join(' ')
-      .toLocaleLowerCase()
-      .includes(phrase),
-  );
+  const entries = (query.data?.entries ?? []).filter((entry) => matchesCapability(entry, phrase));
   return (
     <DetailDialog title="技能与命令" onClose={onClose}>
       <div className="space-y-4">

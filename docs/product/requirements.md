@@ -90,7 +90,7 @@
 - F7.4 打开历史会话时恢复其原 Agent 和官方会话 ID，通过对应运行时继续会话；显示历史与向运行时续接上下文分别处理。
 - F7.5 两类会话均通过官方接口重命名；标题去除首尾空白后为 1–200 个字符。失败保留条目并允许核对重试，操作结果仅更新对应工作区与原生会话。
 
-当前已实现 F2 主对话链路、原生能力目录/按钮选择、模型候选、上下文/压缩和 F7 会话管理，证据见 [Codex 对话验收](../guides/codex-conversation-acceptance.md)、[会话管理验收](../guides/session-management-acceptance.md) 与 [原生能力验收](../guides/native-capabilities-acceptance.md)。输入 `/` 自动展开仍待实现；A8 独立插件/CLI 界面刷新和 A7 真实 SSH 尚未完成。
+当前已实现 F2 主对话链路、原生能力目录/按钮选择、模型候选、上下文/压缩和 F7 会话管理，证据见 [Codex 对话验收](../guides/codex-conversation-acceptance.md)、[会话管理验收](../guides/session-management-acceptance.md) 与 [原生能力验收](../guides/native-capabilities-acceptance.md)。输入 `/` 自动补全已接入，见[补全验收](../guides/slash-completion-acceptance.md)；A8 独立插件/CLI 界面刷新和 A7 真实 SSH 尚未完成。
 
 ### F8 轻量文件编辑
 
