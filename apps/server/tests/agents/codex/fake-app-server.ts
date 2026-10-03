@@ -2,6 +2,7 @@
 import { appendFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import path from 'node:path';
+import { capabilityHandlers } from './fake-capabilities';
 
 type Message = {
   id?: string | number;
@@ -137,6 +138,14 @@ function mutation(message: Message): void {
   else complete();
 }
 const handlers: Record<string, (message: Message) => void> = {
+  ...capabilityHandlers(mode, {
+    reply,
+    notify,
+    write,
+    mark: (name) => {
+      if (logFile) appendFileSync(logFile, `${JSON.stringify({ fixturePhase: name })}\n`);
+    },
+  }),
   initialize: (message) => reply(message, { userAgent: 'fixture' }),
   initialized: () => {},
   'config/read': config,

@@ -1,6 +1,7 @@
 // REST 接口封装：Cookie 由 /auth 设置，同源请求自动携带
 import type {
   AgentKind,
+  AgentCapabilities,
   SessionSummary,
   SessionHistory,
   SessionActionInput,
@@ -81,6 +82,11 @@ const postSync = (id: string, suffix = '', body: unknown = {}) =>
   request<SyncStatus>(syncUrl(id) + suffix, { method: 'POST', body: JSON.stringify(body) });
 
 export const api = {
+  agentCapabilities: (workspaceId: string, agent: AgentKind, signal?: AbortSignal) =>
+    request<AgentCapabilities>(`/api/workspaces/${encodeURIComponent(workspaceId)}/agent-capabilities?agent=${agent}`, {
+      signal,
+      cache: 'no-store',
+    }),
   initializeVersions: (id: string) =>
     request<VersionStatus>(versionsUrl(id) + '/initialize', { method: 'POST', body: '{}' }),
   versionStatus: (id: string) => request<VersionStatus>(versionsUrl(id), { cache: 'no-store' }),
@@ -199,6 +205,7 @@ export const api = {
 
 /** react-query 的缓存键，集中定义便于失效刷新 */
 export const queryKeys = {
+  agentCapabilities: (workspaceId: string, agent: AgentKind) => ['agent-capabilities', workspaceId, agent] as const,
   workspaces: ['workspaces'] as const,
   sshHosts: ['ssh-hosts'] as const,
   sshCredentials: (sshHost: string) => ['ssh-credentials', sshHost] as const,

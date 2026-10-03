@@ -5,6 +5,7 @@ import { runClaudeTurn } from '../agents/claude-adapter';
 import type { AgentTurnInput, PermissionAnswer, TurnHandle, TurnRunner } from '../agents/types';
 import type { SessionRegistry } from './registry';
 import { SessionError, type SessionsService } from './sessions';
+import type { CapabilitiesService } from './capabilities';
 import type { SyncManager } from '../sync/manager';
 
 export type Socket = { send(msg: ServerMessage): void; isOpen(): boolean };
@@ -15,6 +16,7 @@ export type TurnManagerDeps = {
   runTurn?: TurnRunner;
   runners?: Partial<Record<AgentKind, TurnRunner>>;
   sessions: Pick<SessionsService, 'assertBelongs'>;
+  capabilities?: Pick<CapabilitiesService, 'prepare'>;
   sync: Pick<SyncManager, 'sync'>;
 };
 type Turn = {
@@ -28,6 +30,7 @@ type Turn = {
   workspace?: Workspace;
   token?: string;
   finished: boolean;
+  syncAfter?: boolean;
 };
 type Pending = { turn: Turn; resolve(answer: PermissionAnswer): void };
 type Send = Extract<ClientMessage, { type: 'chat.send' }>;
@@ -215,16 +218,24 @@ export class TurnManager {
     if (!ws) throw new SessionError(404, 'workspace_missing', '工作区不存在');
     turn.workspace = ws;
     if (msg.sessionId) await preparing(this.deps.sessions.assertBelongs(ws, turn.agent, msg.sessionId, signal), signal);
+    if (msg.selection && !this.deps.capabilities)
+      throw new SessionError(503, 'capabilities_unavailable', '当前原生能力不可用');
+    const prepared = this.deps.capabilities
+      ? await preparing(this.deps.capabilities.prepare(ws, turn.agent, msg, signal), signal)
+      : { text: msg.text, invocation: undefined };
     signal.throwIfAborted();
     const runner = this.runners[turn.agent];
     if (!runner) throw new SessionError(503, 'agent_unavailable', '当前 Agent 适配器不可用');
     turn.token = this.deps.registry.register(ws.id);
+    // 纯上下文查询/压缩不编辑项目文件，也不触发服务器同步。
+    turn.syncAfter = prepared.invocation?.kind !== 'command';
     turn.handle = runner({
       workspace: ws,
       sessionId: msg.sessionId,
       model: msg.model,
       reasoningEffort: turn.agent === 'codex' ? msg.reasoningEffort : undefined,
-      text: msg.text,
+      text: prepared.text,
+      invocation: prepared.invocation,
       mcpEnv: { SSH_SERVER_INTERNAL_URL: this.deps.internalUrl(), SSH_SERVER_SESSION_TOKEN: turn.token },
       emit: (event) => this.event(turn, event),
       requestPermission: (req) => this.permission(turn, req),
@@ -238,7 +249,7 @@ export class TurnManager {
   }
 
   private async synchronize(turn: Turn): Promise<void> {
-    if (!turn.handle || !turn.workspace) return;
+    if (!turn.handle || !turn.workspace || turn.syncAfter === false) return;
     try {
       const status = await this.deps.sync.sync(turn.workspace);
       if (status.phase !== 'ready')

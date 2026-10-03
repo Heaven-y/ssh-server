@@ -16,6 +16,8 @@ export function threadParams(input: AgentTurnInput, nativeConfig: RecordValue): 
       required: true,
     },
   };
+  // compact 没有 turn/start 的 effort 参数，显式选择也需传给线程配置；默认仍不覆盖。
+  if (input.reasoningEffort) config.model_reasoning_effort = input.reasoningEffort;
   for (const key of envNames) {
     config[`shell_environment_policy.filters.${key}`] = 'exclude';
     config[`shell_environment_policy.set.${key}`] = '';

@@ -1,7 +1,8 @@
 // 把 Agent 事件转成界面条目：实时对话和历史记录共用，纯函数，不修改入参
-import type { AgentEvent } from '@ssh-server/shared';
+import type { AgentEvent, CompactionState } from '@ssh-server/shared';
 
 export type ChatItem =
+  | { kind: 'compaction'; id: string; state: CompactionState; incomplete?: boolean }
   | { kind: 'user'; id: string; text: string }
   | { kind: 'assistant'; id: string; text: string; streaming: boolean }
   | { kind: 'reasoning'; id: string; text: string }
@@ -43,6 +44,8 @@ function appendText(items: ChatItem[], kind: 'assistant' | 'reasoning', delta: s
 
 export function reduceChat(items: ChatItem[], e: AgentEvent): ChatItem[] {
   switch (e.type) {
+    case 'compaction':
+      return updateCompaction(items, e.state);
     case 'user_message':
       return [...items, { kind: 'user', id: nextId(items, 'user'), text: e.text }];
     case 'text':
@@ -62,11 +65,21 @@ export function reduceChat(items: ChatItem[], e: AgentEvent): ChatItem[] {
 
 function finishItems(items: ChatItem[]): ChatItem[] {
   return items.map((item) => {
+    if (item.kind === 'compaction' && item.state.status === 'running') return { ...item, incomplete: true };
     if (item.kind === 'assistant' && item.streaming) return { ...item, streaming: false };
     if (item.kind === 'tool' && item.status === 'running') return { ...item, status: 'incomplete' };
     if (item.kind === 'permission' && !item.resolved) return { ...item, resolved: 'cancelled', responding: false };
     return item;
   });
+}
+
+/** 只由原生压缩事件确认结果；轮次结束不能把未确认的压缩标成成功。 */
+function updateCompaction(items: ChatItem[], state: CompactionState): ChatItem[] {
+  const index = items.findLastIndex(
+    (item) => item.kind === 'compaction' && item.state.status === 'running' && !item.incomplete,
+  );
+  if (index < 0) return [...items, { kind: 'compaction', id: nextId(items, 'compaction'), state }];
+  return items.map((item, position) => (position === index ? { ...item, state } : item));
 }
 
 function reduceLifecycle(items: ChatItem[], e: AgentEvent): ChatItem[] {

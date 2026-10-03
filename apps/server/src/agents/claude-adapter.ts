@@ -1,23 +1,18 @@
 // Claude 适配器：用 Claude Agent SDK 驱动本机 Claude Code，跑一轮对话并输出统一事件
 import { randomUUID } from 'node:crypto';
-import { query as sdkQuery, type Options } from '@anthropic-ai/claude-agent-sdk';
+import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentTurnInput, PermissionAnswer, TurnHandle } from './types';
 import { MCP_SERVER_NAME, resolveRemoteToolsCommand } from '../remote-tools/launch';
-import { ClaudeEventMapper } from './claude-mapper';
+import type { QueryFn } from './claude-query';
+import { runClaudeQuery } from './claude-turn';
 import { isInsideDir } from './edit-scope';
 import { buildInstructions } from './instructions';
 
-/** SDK query 中用到的部分，便于测试注入 */
-export type QueryFn = (params: {
-  prompt: string;
-  options: Options;
-}) => AsyncIterable<unknown> & { interrupt(): Promise<unknown> };
-
+export type { QueryFn } from './claude-query';
 export type ClaudeTurnInput = AgentTurnInput & { queryFn?: QueryFn };
 export type { PermissionAnswer, TurnHandle } from './types';
 
 export const PERMISSION_TIMEOUT_MS = 300_000;
-const ABORT_FALLBACK_MS = 5_000;
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit']);
 const ALLOWED_TOOLS = [
   `mcp__${MCP_SERVER_NAME}__remote_exec`,
@@ -99,40 +94,5 @@ export function runClaudeTurn(input: ClaudeTurnInput): TurnHandle {
     ...(input.model ? { model: input.model } : {}),
   } as unknown as Options;
 
-  const queryFn = input.queryFn ?? (sdkQuery as QueryFn);
-  const q = queryFn({ prompt: input.text, options });
-  let finished = false;
-
-  const done = (async () => {
-    const mapper = new ClaudeEventMapper();
-    let ended = false;
-    try {
-      for await (const msg of q) {
-        for (const e of mapper.map(msg)) {
-          if (e.type === 'turn_end') ended = true;
-          input.emit(e);
-        }
-      }
-    } catch (e) {
-      if (!abortController.signal.aborted) input.emit({ type: 'error', message: (e as Error).message });
-    }
-    if (!ended) input.emit({ type: 'turn_end', isError: true });
-    finished = true;
-  })();
-
-  return {
-    done,
-    async interrupt() {
-      try {
-        await q.interrupt();
-      } catch {
-        abortController.abort();
-        return;
-      }
-      // interrupt 后仍未结束时，再强制中止
-      setTimeout(() => {
-        if (!finished) abortController.abort();
-      }, ABORT_FALLBACK_MS).unref?.();
-    },
-  };
+  return runClaudeQuery(input, options, abortController);
 }

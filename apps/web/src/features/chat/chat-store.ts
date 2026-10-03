@@ -1,10 +1,20 @@
 // 会话身份包含 Agent；历史请求与实时轮次分别校验选择代次和关联 ID。
 import { create } from 'zustand';
-import type { AgentKind, ServerMessage, SessionActionInput, SessionRef } from '@ssh-server/shared';
+import type {
+  AgentKind,
+  AgentCapability,
+  AgentEvent,
+  ContextUsage,
+  CompactionState,
+  ServerMessage,
+  SessionActionInput,
+  SessionRef,
+} from '@ssh-server/shared';
 import { api, queryKeys } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
 import { connectChat, type ChatSocket, type ConnectionStatus } from '../../lib/ws';
 import { markPermissionPending, reduceChat, type ChatItem } from './chat-reducer';
+import { capabilityRestriction, selectionRestriction } from './capability-selection';
 
 const LAST_WORKSPACE_KEY = 'ssh-server.lastWorkspace';
 export type SessionOperation = { action: SessionActionInput['action']; pending: boolean; error?: string };
@@ -18,6 +28,9 @@ type ChatState = {
   modelOverrides: Record<AgentKind, string>;
   reasoningEffort: string;
   actualModel?: string;
+  selectedCapability?: AgentCapability;
+  contextUsage?: ContextUsage | null;
+  compaction?: CompactionState;
   items: ChatItem[];
   running: boolean;
   turnId?: string;
@@ -33,6 +46,7 @@ type ChatState = {
   openSession(session: SessionRef): Promise<void>;
   setModel(model: string): void;
   setReasoningEffort(effort: string): void;
+  selectCapability(capability?: AgentCapability): void;
   send(text: string): boolean;
   interrupt(): void;
   respondPermission(requestId: string, allow: boolean): void;
@@ -46,6 +60,9 @@ const pendingInterrupts = new Set<string>();
 const emptyConversation = {
   sessionId: undefined,
   actualModel: undefined,
+  selectedCapability: undefined,
+  contextUsage: undefined,
+  compaction: undefined,
   items: [] as ChatItem[],
   running: false,
   turnId: undefined,
@@ -74,7 +91,7 @@ function sameSession(current: ChatState, workspaceId: string, session: SessionRe
     current.workspaceId === workspaceId && current.agent === session.agent && current.sessionId === session.sessionId
   );
 }
-function managementPending(current: ChatState): boolean {
+export function managementPending(current: ChatState): boolean {
   if (!current.workspaceId || !current.sessionId) return false;
   return (
     current.sessionOperations[
@@ -83,7 +100,17 @@ function managementPending(current: ChatState): boolean {
   );
 }
 function cannotSend(current: ChatState, text: string): boolean {
-  return current.running || current.loadingHistory || !text.trim() || managementPending(current);
+  return (
+    current.running ||
+    current.loadingHistory ||
+    (!text.trim() && !current.selectedCapability) ||
+    managementPending(current)
+  );
+}
+function nativeStatus(event: AgentEvent): { contextUsage?: ContextUsage | null; compaction?: CompactionState } {
+  if (event.type === 'context') return { contextUsage: event.usage };
+  if (event.type === 'compaction') return { compaction: event.state };
+  return {};
 }
 export const lastWorkspaceId = () => localStorage.getItem(LAST_WORKSPACE_KEY) ?? undefined;
 
@@ -122,7 +149,8 @@ export const useChat = create<ChatState>()((set, get) => ({
       if (history.session.agent !== session.agent || history.session.sessionId !== session.sessionId)
         throw new Error('会话身份不匹配，未载入历史');
       const items = [...history.events, { type: 'turn_end', isError: false } as const].reduce(reduceChat, []);
-      set({ items, loadingHistory: false, actualModel: history.actualModel });
+      const statuses = history.events.reduce((result, event) => ({ ...result, ...nativeStatus(event) }), {});
+      set({ items, loadingHistory: false, actualModel: history.actualModel, ...statuses });
     } catch (error) {
       if (historyIsCurrent(controller, generation, workspaceId, session))
         set({ loadingHistory: false, banner: `加载会话失败：${error instanceof Error ? error.message : '请重试'}` });
@@ -132,6 +160,12 @@ export const useChat = create<ChatState>()((set, get) => ({
   },
   setModel: (model) => set((current) => ({ modelOverrides: { ...current.modelOverrides, [current.agent]: model } })),
   setReasoningEffort: (reasoningEffort) => set({ reasoningEffort }),
+  selectCapability(capability) {
+    const current = get();
+    if (current.running || current.loadingHistory || managementPending(current)) return;
+    if (capability && capabilityRestriction(capability, current.sessionId)) return;
+    set({ selectedCapability: capability });
+  },
   async manageSession(workspaceId, session, input) {
     const key = sessionActionKey(workspaceId, session);
     const current = get();
@@ -174,6 +208,11 @@ export const useChat = create<ChatState>()((set, get) => ({
   send(text) {
     const current = get();
     if (!current.workspaceId || !socket || cannotSend(current, text)) return false;
+    const restriction = selectionRestriction(current.selectedCapability, current.sessionId, text);
+    if (restriction) {
+      set({ banner: restriction });
+      return false;
+    }
     const clientTurnId = crypto.randomUUID();
     const sent = socket.send({
       type: 'chat.send',
@@ -181,6 +220,7 @@ export const useChat = create<ChatState>()((set, get) => ({
       agent: current.agent,
       sessionId: current.sessionId,
       text,
+      ...(current.selectedCapability ? { selection: { id: current.selectedCapability.id } } : {}),
       model: current.modelOverrides[current.agent].trim() || undefined,
       reasoningEffort: current.agent === 'codex' ? current.reasoningEffort.trim() || undefined : undefined,
       clientTurnId,
@@ -190,7 +230,13 @@ export const useChat = create<ChatState>()((set, get) => ({
       return false;
     }
     set((state) => ({
-      items: reduceChat(state.items, { type: 'user_message', text }),
+      items: reduceChat(state.items, {
+        type: 'user_message',
+        text: current.selectedCapability ? `/${current.selectedCapability.name}${text ? ` ${text}` : ''}` : text,
+      }),
+      selectedCapability: undefined,
+      // 旧轮次未确认的压缩留在历史中，新轮次不能把它重新显示为进行中。
+      compaction: state.compaction?.status === 'running' ? undefined : state.compaction,
       running: true,
       pendingClientTurnId: clientTurnId,
       interruptRequested: false,
@@ -244,6 +290,7 @@ function onAgentEvent(msg: Msg<'agent.event'>): void {
   if (event.type === 'session' && current.sessionId && current.sessionId !== event.sessionId) return;
   useChat.setState({
     items: reduceChat(current.items, event),
+    ...nativeStatus(event),
     ...(event.type === 'session' ? { sessionId: event.sessionId, actualModel: event.model } : {}),
   });
 }

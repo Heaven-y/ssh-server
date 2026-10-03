@@ -19,6 +19,29 @@ const user = (content: unknown) => ({
 });
 
 describe('ClaudeEventMapper.map', () => {
+  it('自动压缩按原生保留 UUID 忽略重放，保留压缩后的新回复', () => {
+    const m = new ClaudeEventMapper();
+    const boundary = {
+      type: 'system',
+      subtype: 'compact_boundary',
+      compact_metadata: {
+        trigger: 'auto',
+        pre_tokens: 190000,
+        post_tokens: 600,
+        preserved_messages: { anchor_uuid: 'summary', uuids: ['old-reply', 'old-result'] },
+      },
+    };
+    expect(m.map(boundary)).toMatchObject([{ type: 'compaction', state: { status: 'completed', trigger: 'auto' } }]);
+    expect(m.map({ ...assistant('old-model-id', [{ type: 'text', text: '旧失败回复' }]), uuid: 'old-reply' })).toEqual(
+      [],
+    );
+    expect(
+      m.map({ ...user([{ type: 'tool_result', tool_use_id: 'old-tool', content: '旧结果' }]), uuid: 'old-result' }),
+    ).toEqual([]);
+    expect(
+      m.map({ ...assistant('new-model-id', [{ type: 'text', text: '真正的新回复' }]), uuid: 'new-reply' }),
+    ).toEqual([{ type: 'text', delta: '真正的新回复' }]);
+  });
   it('init → session', () => {
     const m = new ClaudeEventMapper();
     const cwd = path.join(os.tmpdir(), 'ssh-server-fixture', 'demo');
@@ -106,6 +129,24 @@ describe('ClaudeEventMapper.map', () => {
 });
 
 describe('ClaudeEventMapper.mapHistory', () => {
+  it('历史仅保留原生压缩边界，不据历史回复补造上下文估计', () => {
+    const m = new ClaudeEventMapper();
+    expect(
+      m.mapHistory({
+        type: 'system',
+        subtype: 'compact_boundary',
+        compact_metadata: { trigger: 'auto', pre_tokens: 190000, post_tokens: 600 },
+      }),
+    ).toEqual([
+      { type: 'compaction', state: { status: 'completed', trigger: 'auto', beforeTokens: 190000, afterTokens: 600 } },
+    ]);
+    expect(
+      m.mapHistory({
+        ...assistant('history', [{ type: 'text', text: '历史回复' }]),
+        context_usage: { total_tokens: 500 },
+      }),
+    ).toEqual([{ type: 'text', delta: '历史回复' }]);
+  });
   it('用户文本 → user_message（字符串或 text 块）', () => {
     const m = new ClaudeEventMapper();
     expect(

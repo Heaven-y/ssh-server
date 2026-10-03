@@ -1,6 +1,6 @@
 # 架构
 
-更新日期：2026-10-03。本文同时标明已接入模块与后续目标。当前已实现双 Agent 对话主链路、认证同步、原生配置、文件编辑和本地版本记录；终端、资源面板及其余原生能力待后续接入。完成与验收范围见 [路线图](../roadmap.md)，已确认的取舍集中在 [设计决策](decisions.md)。
+更新日期：2026-10-03。本文同时标明已接入模块与后续目标。当前已实现双 Agent 对话与原生能力、认证同步、原生配置、文件编辑和本地版本记录；终端、资源面板及 `/` 自动展开等目标待后续接入。完成与验收范围见 [路线图](../roadmap.md)，已确认的取舍集中在 [设计决策](decisions.md)。
 
 ## 1. 总览
 
@@ -35,7 +35,7 @@
 | 后端 | Fastify + `@fastify/websocket` | HTTP、访问控制和流式消息，继续现有实现 |
 | 参数校验 | zod | 接口入参、配置文件 |
 | Claude | `@anthropic-ai/claude-agent-sdk` | 调用本机 Claude Code |
-| Codex | 本机 Codex app-server（JSON-RPC over stdio） | 已按 CLI 0.156.1 接入对话、审批、中断及原生会话；skills 和压缩控制待后续 |
+| Codex | 本机 Codex app-server（JSON-RPC over stdio） | 已按 CLI 0.156.1 接入对话、原生会话、技能/模型目录及上下文/压缩控制 |
 | MCP | `@modelcontextprotocol/sdk` | 远程工具服务 |
 | SSH | `ssh2` | 支持账号密码与已有私钥，导入 `~/.ssh/config` 或手动配置；凭据在本地处理 |
 | 同步 | rclone（外部可执行文件） | `rclone bisync` 走 SFTP |
@@ -138,7 +138,7 @@ ssh-server/
 
 两个适配器复用 `agents/types.ts` 的 `AgentTurnInput`、`TurnRunner` 和 `TurnHandle`（`interrupt()` / `done`），统一事件以 `packages/shared/src/events.ts` 为准。当前输出会话、文本、思考摘要、工具调用/结果、审批请求/处理、轮次结束及错误。未返回结果的工具卡在轮次结束或断线后标为“结果未返回”，不能推断执行成功。
 
-后续事件流还需覆盖能力清单、原生上下文用量 / 压缩状态；资源采样和文件同步状态使用独立的工作区事件，不触发新的 Agent 轮次。
+能力清单通过工作区 HTTP 接口按需读取，原生用量和压缩状态分别映射为 `context` / `compaction` 事件。资源采样和文件同步状态使用独立的工作区事件，不触发新的 Agent 轮次。
 
 Claude（Agent SDK `query()`）：
 
@@ -147,11 +147,12 @@ Claude（Agent SDK `query()`）：
 - "跟随本地配置"时不传 `model`、`env`；手动选择模型时只传 `model`。
 - `mcpServers` 注入远程工具服务；`systemPrompt` 的 preset `append` 注入工作区指令（见 5.3）。
 - `canUseTool` 把权限请求转成 `permission_request` 事件，等待网页答复。
+- 每轮使用仅发送一条消息的 AsyncIterable，在同一 Query 发送前验证技能/命令；本轮 result 后限时读取 summary 上下文，再关闭输入和 Query。纯 context 使用控制接口，不发送模型消息。
 
 Codex（app-server）：
 
 - `agents/codex/` 按启动解析、JSON-RPC 客户端、配置、事件转换、审批、对话和会话读取拆分。每轮启动独立进程，列表/历史使用短生命周期进程；正式读取原生 `CODEX_HOME/config.toml`，可用 `SSH_SERVER_CODEX` 指定已安装运行时。
-- 先 `initialize` / `initialized`，再 `config/read(cwd)`；保留生效的 `developer_instructions` 并追加工作区约束。`thread/start` / `thread/resume` 固定当前目录、`workspace-write` 沙箱、`on-request` 审批，随后 `turn/start`。
+- 先 `initialize` / `initialized`，再 `config/read(cwd)`；保留生效的 `developer_instructions` 并追加工作区约束。`thread/start` / `thread/resume` 固定当前目录、`workspace-write` 沙箱、`on-request` 审批；普通/技能消息调用 `turn/start`，手动压缩在 resume 后调用 `thread/compact/start`。
 - 默认不传 `model`、`modelProvider`、`baseUrl`、`apiKey` 覆盖。新 thread 跟随配置中的新默认模型；续接保留原生会话模型，只有显式填写模型才覆盖。推理强度也仅在填写时传入，历史实际模型不转成用户覆盖值。每轮重启进程只保证重读配置，不保证历史换模型。
 - 通过本轮 `config` 添加 required 的远程 MCP，保留其他原生 MCP 配置。内部地址与短期令牌仅放子进程环境，MCP 配置只列 `env_vars` 名称；不写入 argv、配置正文或 Agent 输入，本地 shell 过滤这些变量，结束后撤销令牌。MCP 启动失败拒绝本轮，不退回本地运行项目。
 - JSON-RPC 按行读取，单条上限 8 MiB，待处理请求最多 128 个，普通请求超时 30 秒；退出时拒绝等待者，持续排空 stderr 而不回显原始配置诊断。
@@ -160,13 +161,16 @@ Codex（app-server）：
 - 网页断线后运行继续，但立即拒绝已有待审批请求；重连不自动创建新轮次。
 - Codex 保留本地命令能力；项目运行、训练、测试和数据读取使用远程工具的要求由工作区指令约束，不能把本地沙箱视为服务器安全边界。
 
-上下文与后续原生能力：
+原生能力目录与上下文：
 
 - Claude 用官方 `resume`，Codex 用 `thread/resume`；历史接口供网页显示消息，不把显示历史重新拼成全量提示词。
-- 上下文管理和自动压缩由官方运行时负责。后续接入 Claude `compact_boundary` 及其手动 / 自动触发信息、Codex 原生 token 用量与压缩通知；目前未展示这些状态，未提供的数据不能估造。
-- Claude 从 init 元数据和 `supportedCommands()` 等 SDK 接口取得 skills / 命令能力，区分可接入命令与 terminal-only 命令；Codex 使用 `skills/list`（工作区本地 `cwd`）及官方 `{ type: 'skill', name, path }` 输入。
-- 手动压缩、会话控制等 `/` 命令映射到实际官方动作，Codex 压缩用 `thread/compact/start`。未被官方接入接口支持的 CLI 命令明确标注限制，不靠普通文本转发冒充支持。
-- 能力列表按 Agent 与工作区发现，普通会话不修改全局配置；设置页由用户明确保存时校验并原子更新对应原生配置。配置、凭据均不复制到服务器。
+- `chat/capabilities.ts` 与固定工作区 `agent-capabilities` 路由返回技能/命令、模型建议及匿名警告。公开项含稳定 ID、来源提示、可用性、会话/参数要求；私有 invocation 不返回网页。目录按工作区/Agent 隔离，按需读取、支持刷新，部分失败保留可用分支。
+- Claude 读取 `supportedCommands()` / `supportedModels()`；Codex 按 cwd 使用 `skills/list(forceReload: true)` / `model/list`。模型目录默认项不是配置模型，建议缺失时仍可手动输入；配置保存仅失效对应 Agent 的能力元数据缓存。
+- 网页只发送能力 ID，服务端先按当前目录解析，适配器在实际运行的同一实例再次验证。Codex 校验名称/path/enabled 后传原生 `{ type: 'skill', name, path }`；Claude 验证名称和来源后发送原生 slash 消息。未知、禁用、过期和歧义项不降级为普通提示词。
+- 直接 `/name 参数` 按精确名称再别名解析；普通文本不额外发现目录。当前命令为两类 compact 和 Claude context，均要求已有会话；Codex compact 无附加参数，Codex context 与其他未接入命令显示限制。纯 context/compact 沿用会话锁与停止能力，但不触发结束同步。
+- Claude 上下文来自 `getContextUsage({detail:'summary'})`，标为原生估计；Codex 取通知中的 `tokenUsage.last.totalTokens` 与 `modelContextWindow`，不使用累计 total 或配置窗口推算占用。仅 Claude 原生给出的 percentage 可展示，缺失值显示不可用。
+- Claude 手动压缩依据本轮状态和 manual `compact_boundary`，顶层 result success 不能证明成功；Codex RPC 接受不等于压缩完成，须由当前轮次的原生压缩/结束通知确认。失败、取消与未确认分别保留，历史只展示已有原生边界，不补造旧用量。
+- 切换工作区/Agent/会话清理能力选择与当前上下文，迟到结果隔离。新轮次清理旧 running 压缩摘要，历史仍保留未确认标记；普通运行态不能复活旧操作。输入 `/` 自动展开候选仍待前端接入。
 
 ### 5.2 remote-tools：远程工具
 
@@ -278,7 +282,7 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 2. 适配器通过官方接口启动或继续会话，注入远程工具与工作区指令；上下文和压缩由运行时负责。
 3. Agent 在本地副本改代码；需要运行时调用 `remote_exec`。
 4. `remote_exec`：黑名单检查 → 执行前同步（含删除 / 冲突检查）→ 成功后 SSH 执行 → 拉回小文件 → 返回命令结果与同步状态。前置同步未成功则不执行。
-5. 回复结束后再同步一次，界面更新待记录版本的改动数；不创建 git 提交，也不等待后台训练完成。
+5. 普通消息或技能回复结束后再同步一次，界面更新待记录版本的改动数；纯 context/compact 不触发这次同步。不创建 git 提交，也不等待后台训练完成。
 
 ### 6.2 保存与恢复
 
@@ -319,11 +323,11 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 | V9 | ssh2 交互 shell、窗口尺寸同步与服务器已有全屏工具的显示；`nvitop` / `htop` 仅在已有时验证，不作为安装前提 |
 | V10 | 后端令牌与来源校验能否挡住跨站请求和 DNS 重绑定 |
 | V11 | 密码与私钥贯通连接、执行、目录、同步和终端；已保存密码可用于重连/重启，取消保存与目标变化不会复用旧凭据，明文不落盘、不泄露 |
-| V12 | Claude / Codex 的 skills 发现与调用、可执行 `/` 命令清单，以及 terminal-only 命令的限制提示 |
-| V13 | 官方上下文用量、自动 / 手动压缩事件与长会话续接的网页呈现；不自行重建上下文 |
+| V12 | 两类技能/模型目录、按钮选择、直接 slash 解析及限制提示已接入，真实运行时/合成模型协议与网页证据见原生能力验收；`/` 自动展开仍待实现 |
+| V13 | 原生上下文和压缩事件已展示，成功/失败/取消及不触发同步的边界已验证；外部模型增量与长会话范围以原生能力验收记录为准 |
 | V14 | 轻量编辑器选型、按需加载、保存后同步、未保存内容与 AI / 同步改动的冲突处理 |
 | V15 | 真实服务器已有工具与权限、GPU / CPU / 内存 / 进程指标解析、采样开销、同目标复用及断线 / 不可用状态；资源刷新不调用模型 |
 | V16 | 对话流、SSH PTY、资源采样及同步同时运行时的消息响应；同一会话禁止重叠轮次、同一工作区同步不重叠，超时 / 输出限制不影响其他活动 |
 | V17 | 使用服务器已有 Python / 项目环境执行用户要求的统计、绘图和结果处理；分析脚本先同步，必要小文件按需返回，不整份下载大数据或自动触发分析 |
 
-2026-10-03 状态核对：认证、保存凭据与 rclone 同步基础已接入，已有真实 Claude → MCP → SSH 及传输/网页记录。原生配置、项目文件编辑和本地版本历史/恢复已实现；Codex 真实网页与 GLM 两轮、原生 MCP、列表/历史/续接通过，详情见 [Codex 对话验收](../guides/codex-conversation-acceptance.md)。两类原生重命名/删除与 Codex 归档/恢复亦已接入，A8 独立客户端刷新待验。此前 Codex 对话的 SSH/同步使用受控替身，A5/A13/A7 实际 SSH 串联仍待用户指定 Host 与允许测试的目录；终端、资源面板、完整并发、skills / 命令、上下文/压缩与模型目录尚未完成。
+2026-10-03 状态核对：认证同步、双 Agent 对话与会话管理、原生配置、文件编辑和版本恢复已接入；技能/命令按钮选择、模型候选、上下文/压缩见 [原生能力验收](../guides/native-capabilities-acceptance.md)。此前真实模型工具链记录见 [Codex 对话验收](../guides/codex-conversation-acceptance.md)。A5/A13/A7 实际 SSH 串联仍待指定 Host 与允许测试的目录，A8 独立客户端刷新待验；终端、资源面板、完整并发及 `/` 自动展开尚未完成。

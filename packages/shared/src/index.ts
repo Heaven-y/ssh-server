@@ -29,3 +29,12 @@ export type {
 export { VERSION_MESSAGE_MAX_LENGTH } from './versions';
 export { AgentKindSchema, NativeSessionIdSchema, SessionActionSchema } from './agents';
 export type { AgentKind, SessionRef, SessionSummary, SessionHistory, SessionActionInput } from './agents';
+export { CapabilitySelectionSchema } from './capabilities';
+export type {
+  CapabilitySelection,
+  AgentCapabilities,
+  AgentCapability,
+  AgentModel,
+  ContextUsage,
+  CompactionState,
+} from './capabilities';

@@ -13,6 +13,20 @@ const respond = (status: number, body?: unknown) =>
 afterEach(() => vi.unstubAllGlobals());
 
 describe('api', () => {
+  it('能力请求按工作区与 Agent 隔离缓存键，并传递取消信号和 no-store', async () => {
+    const result = { agent: 'codex', entries: [], models: [], warnings: ['部分能力不可用'] };
+    respond(200, result);
+    const controller = new AbortController();
+    await expect(api.agentCapabilities('w/1', 'codex', controller.signal)).resolves.toEqual(result);
+    expect(vi.mocked(fetch).mock.calls[0]).toEqual([
+      '/api/workspaces/w%2F1/agent-capabilities?agent=codex',
+      expect.objectContaining({ signal: controller.signal, cache: 'no-store' }),
+    ]);
+    expect(queryKeys.agentCapabilities('w/1', 'codex')).toEqual(['agent-capabilities', 'w/1', 'codex']);
+    expect(queryKeys.agentCapabilities('w/1', 'codex')).not.toEqual(queryKeys.agentCapabilities('w/1', 'claude'));
+    expect(queryKeys.agentCapabilities('w/1', 'codex')).not.toEqual(queryKeys.agentCapabilities('w2', 'codex'));
+  });
+
   it('成功时返回 JSON；POST 带 content-type', async () => {
     respond(201, { id: 'w1' });
     await expect(api.createWorkspace({ name: 'n', localDir, sshHost: 'h', remoteDir: '~' })).resolves.toEqual({

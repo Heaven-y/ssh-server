@@ -2,6 +2,7 @@ import { CheckCircle2, CircleAlert, LoaderCircle, RefreshCw, Save, Settings2, X 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { NativeConfigAgent, NativeConfigDocument } from '@ssh-server/shared';
 import { api, ApiError } from '../../lib/api';
+import { queryClient } from '../../lib/query-client';
 import { CodeEditor } from '../../ui/CodeEditor';
 import { buttonClass, inputClass } from '../../ui/styles';
 
@@ -98,6 +99,10 @@ export default function SettingsDialog({ onClose }: { onClose(): void }) {
       setContent(result.content);
       setMessage('配置已保存到本机。');
       setPhase('ready');
+      void queryClient.invalidateQueries({
+        queryKey: ['agent-capabilities'],
+        predicate: (query) => query.queryKey[2] === agent,
+      });
     } catch (error) {
       if (controller.signal.aborted) return;
       setMessage(errorMessage(error));
@@ -184,8 +189,8 @@ export default function SettingsDialog({ onClose }: { onClose(): void }) {
           </div>
           <ConfigFeedback document={document} dirty={dirty} phase={phase} message={message} />
           <p className="text-xs leading-5 text-muted-foreground">
-            Claude 后续调用读取新配置，正在运行的轮次保持原设置。项目或会话配置可以覆盖本机默认值。Codex
-            网页对话尚未接入，保存的是其本机原生配置。
+            后续调用读取新配置，正在运行的轮次保持原设置。Codex
+            新会话采用新默认模型，历史续接保留原模型；显式填写模型才覆盖。
           </p>
         </div>
         <footer className="flex shrink-0 justify-end gap-2 border-t border-border px-5 py-4">

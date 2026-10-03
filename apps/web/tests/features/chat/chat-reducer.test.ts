@@ -5,6 +5,28 @@ import { reduceChat, resolvePermission, type ChatItem } from '../../../src/featu
 const run = (events: AgentEvent[], start: ChatItem[] = []) => events.reduce(reduceChat, start);
 
 describe('reduceChat', () => {
+  it('压缩只接受原生终态，普通轮次成功不改写失败、中断或未确认边界', () => {
+    for (const status of ['completed', 'failed', 'cancelled'] as const) {
+      const items = run([
+        { type: 'compaction', state: { status: 'running', trigger: 'manual' } },
+        { type: 'compaction', state: { status, trigger: 'manual', message: '原生结果' } },
+        { type: 'turn_end', isError: false },
+      ]);
+      expect(items).toMatchObject([{ kind: 'compaction', state: { status, message: '原生结果' } }]);
+      expect(items[0]).not.toHaveProperty('incomplete');
+    }
+    const history = run([
+      { type: 'compaction', state: { status: 'completed', trigger: 'auto' } },
+      { type: 'turn_end', isError: false },
+      { type: 'compaction', state: { status: 'running', trigger: 'manual' } },
+      { type: 'turn_end', isError: false },
+    ]);
+    expect(history).toMatchObject([
+      { kind: 'compaction', state: { status: 'completed', trigger: 'auto' } },
+      { kind: 'compaction', state: { status: 'running', trigger: 'manual' }, incomplete: true },
+    ]);
+  });
+
   it('连续的 text 拼接到同一个助手条目', () => {
     const items = run([
       { type: 'text', delta: '你' },

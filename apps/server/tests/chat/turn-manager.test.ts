@@ -11,7 +11,7 @@ import {
 import type { AgentTurnInput } from '../../src/agents/types';
 import { createSessionRegistry } from '../../src/chat/registry';
 import { SessionError } from '../../src/chat/sessions';
-import { TurnManager, type Socket } from '../../src/chat/turn-manager';
+import { TurnManager, type Socket, type TurnManagerDeps } from '../../src/chat/turn-manager';
 
 const ws: Workspace = {
   id: 'w1',
@@ -50,7 +50,10 @@ function fakeRunTurn() {
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-function setup(syncOperation?: (workspace: Workspace) => Promise<SyncStatus>) {
+function setup(
+  syncOperation?: (workspace: Workspace) => Promise<SyncStatus>,
+  capabilities?: TurnManagerDeps['capabilities'],
+) {
   const registry = createSessionRegistry();
   const fake = fakeRunTurn();
   const codex = fakeRunTurn();
@@ -73,6 +76,7 @@ function setup(syncOperation?: (workspace: Workspace) => Promise<SyncStatus>) {
     runTurn: fake.runTurn,
     runners: { codex: codex.runTurn },
     sessions,
+    capabilities,
     sync,
   });
   return { registry, fake, codex, sessions, turns, sync };
@@ -87,6 +91,47 @@ const send = (extra: Record<string, unknown> = {}) => ({
 });
 
 describe('TurnManager', () => {
+  it('原生能力解析在启动前完成，纯上下文命令不触发服务器同步', async () => {
+    const prepare = vi.fn(async () => ({
+      text: '',
+      invocation: { kind: 'command' as const, name: 'compact' as const },
+    }));
+    const { turns, codex, sync } = setup(undefined, { prepare });
+    await turns.handle(
+      fakeSocket().socket,
+      send({ agent: 'codex', sessionId: 'native', selection: { id: 'compact' }, text: '' }),
+    );
+    expect(codex.turns[0]!.input).toMatchObject({ text: '', invocation: { kind: 'command', name: 'compact' } });
+    codex.turns[0]!.finish();
+    await flush();
+    expect(sync.sync).not.toHaveBeenCalled();
+    prepare.mockRejectedValueOnce(new SessionError(400, 'capability_missing', '技能已变化'));
+    const rejected = fakeSocket();
+    await turns.handle(rejected.socket, send({ agent: 'codex', selection: { id: 'stale' } }));
+    expect(codex.turns).toHaveLength(1);
+    expect(rejected.sent.at(-2)).toMatchObject({ type: 'error', message: '技能已变化' });
+  });
+
+  it('能力发现中取消后，迟到结果不能启动适配器', async () => {
+    let resolve!: (value: { text: string }) => void;
+    const { turns, fake, sync } = setup(undefined, {
+      prepare: () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    });
+    const current = fakeSocket();
+    const pending = turns.handle(current.socket, send({ selection: { id: 'skill' } }));
+    await flush();
+    const start = current.sent.find((message) => message.type === 'turn.started')!;
+    await turns.handle(current.socket, { type: 'chat.interrupt', turnId: start.turnId });
+    await pending;
+    resolve({ text: '迟到输入' });
+    await flush();
+    expect(fake.turns).toHaveLength(0);
+    expect(sync.sync).not.toHaveBeenCalled();
+  });
+
   it('会话管理与运行及同步收尾互斥，同 ID 的另一 Agent 可独立操作', async () => {
     let finishSync!: (status: SyncStatus) => void;
     const { turns, fake } = setup(

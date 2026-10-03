@@ -78,3 +78,80 @@ describe('Codex 工具与思考事件', () => {
     ]);
   });
 });
+
+describe('Codex 上下文与压缩事件', () => {
+  it('上下文只取 last 与通知窗口；缺失值不由累计量或配置推算', () => {
+    const mapper = new CodexEventMapper();
+    mapper.setModel('actual-model');
+    expect(
+      mapper.map('thread/tokenUsage/updated', {
+        tokenUsage: {
+          total: { totalTokens: 40_000 },
+          last: { totalTokens: 450 },
+          modelContextWindow: 95_000,
+        },
+      }),
+    ).toEqual([
+      {
+        type: 'context',
+        usage: { usedTokens: 450, windowTokens: 95_000, model: 'actual-model', source: 'codex_native' },
+      },
+    ]);
+    expect(
+      mapper.map('thread/tokenUsage/updated', {
+        tokenUsage: {
+          total: { totalTokens: 50_000 },
+          last: { totalTokens: 0 },
+          modelContextWindow: null,
+        },
+      }),
+    ).toEqual([{ type: 'context', usage: { usedTokens: 0, model: 'actual-model', source: 'codex_native' } }]);
+    expect(mapper.map('thread/tokenUsage/updated', { tokenUsage: { total: { totalTokens: 50_000 } } })).toEqual([
+      { type: 'context', usage: null },
+    ]);
+  });
+
+  it('自动压缩完成后，普通轮次后续失败不能改写已完成状态', () => {
+    const mapper = new CodexEventMapper();
+    mapper.map('thread/tokenUsage/updated', { tokenUsage: { last: { totalTokens: 6000 } } });
+    const item = { id: 'auto-compact', type: 'contextCompaction' };
+    expect(mapper.map('item/started', { item })).toEqual([
+      { type: 'compaction', state: { status: 'running', trigger: 'auto', beforeTokens: 6000 } },
+    ]);
+    mapper.map('thread/tokenUsage/updated', { tokenUsage: { last: { totalTokens: 2000 } } });
+    expect(mapper.map('item/completed', { item })).toEqual([
+      { type: 'compaction', state: { status: 'completed', trigger: 'auto', beforeTokens: 6000, afterTokens: 2000 } },
+    ]);
+    expect(mapper.finishCompaction('failed')).toEqual([]);
+    expect(mapper.map('item/completed', { item })).toEqual([]);
+  });
+
+  it('手动压缩 item 完成仍等待当前轮次；轮次失败不标成功', () => {
+    const mapper = new CodexEventMapper({ manualCompaction: true });
+    expect(mapper.startManualCompaction()).toMatchObject([
+      { type: 'compaction', state: { status: 'running', trigger: 'manual' } },
+    ]);
+    const item = { id: 'manual-compact', type: 'contextCompaction' };
+    expect(mapper.map('item/started', { item })).toEqual([]);
+    expect(mapper.map('item/completed', { item })).toEqual([]);
+    expect(mapper.finishCompaction('failed')).toMatchObject([
+      { type: 'compaction', state: { status: 'failed', trigger: 'manual' } },
+    ]);
+    expect(mapper.finishCompaction('completed')).toEqual([]);
+  });
+
+  it('历史展示原生压缩边界与纯技能调用，但不猜触发来源或旧 token 数', () => {
+    const events = new CodexEventMapper().history({
+      status: 'completed',
+      items: [
+        { id: 'skill-call', type: 'userMessage', content: [{ type: 'skill', name: 'example', path: 'ignored' }] },
+        { id: 'history-compact', type: 'contextCompaction' },
+      ],
+    });
+    expect(events).toEqual([
+      { type: 'user_message', text: '技能：example' },
+      { type: 'compaction', state: { status: 'completed' } },
+      { type: 'turn_end', isError: false },
+    ]);
+  });
+});

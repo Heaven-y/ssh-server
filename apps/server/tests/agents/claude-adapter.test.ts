@@ -22,9 +22,11 @@ type CanUseTool = (
 function fakeQuery(messages: unknown[] = [], fail?: Error) {
   const state: { options?: Record<string, unknown>; prompt?: unknown; interrupted: boolean } = { interrupted: false };
   const queryFn: QueryFn = ({ prompt, options }) => {
-    state.prompt = prompt;
     state.options = options;
     async function* gen() {
+      const first = await prompt[Symbol.asyncIterator]().next();
+      if (first.done) return;
+      state.prompt = first.value.message.content;
       for (const m of messages) yield m;
       if (fail) throw fail;
     }
@@ -108,7 +110,8 @@ describe('runClaudeTurn：事件', () => {
     ]);
     const { handle, events } = run(fake);
     await handle.done;
-    expect(events.map((e) => e.type)).toEqual(['session', 'turn_end']);
+    expect(events.map((e) => e.type)).toEqual(['session', 'context', 'turn_end']);
+    expect(events[1]).toEqual({ type: 'context', usage: null });
   });
 
   it('SDK 抛错时输出 error，并以出错的 turn_end 结束', async () => {
@@ -121,12 +124,13 @@ describe('runClaudeTurn：事件', () => {
     ]);
   });
 
-  it('interrupt 调用 query 的 interrupt', async () => {
+  it('发送前中断会取消初始化，不投递用户消息', async () => {
     const fake = fakeQuery();
     const { handle } = run(fake);
     await handle.interrupt();
-    expect(fake.state.interrupted).toBe(true);
     await handle.done;
+    expect(fake.state.prompt).toBeUndefined();
+    expect((fake.state.options!.abortController as AbortController).signal.aborted).toBe(true);
   });
 });
 

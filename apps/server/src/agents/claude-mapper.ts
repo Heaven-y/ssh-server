@@ -1,5 +1,6 @@
 // 把 Claude Agent SDK 的消息转换成统一的 AgentEvent
 import type { AgentEvent } from '@ssh-server/shared';
+import { claudeCompactionBoundary, claudeCompactionStatus, ClaudeReplayFilter } from './claude-compaction';
 
 type Rec = Record<string, unknown>;
 const isRec = (v: unknown): v is Rec => typeof v === 'object' && v !== null;
@@ -81,6 +82,7 @@ function assistantBlock(b: unknown, includeText: boolean): AgentEvent[] {
 }
 /** 每轮对话新建一个 mapper：它记录哪些消息已经流式输出过文本 */
 export class ClaudeEventMapper {
+  private replay = new ClaudeReplayFilter();
   /** 已经收到过 text_delta 的消息 id */
   private streamed = new Set<string>();
   private currentMessageId: string | undefined;
@@ -90,9 +92,10 @@ export class ClaudeEventMapper {
   map(msg: unknown): AgentEvent[] {
     // 子代理的消息不在 M1 中展示
     if (!isRec(msg) || msg.parent_tool_use_id) return [];
+    if (this.replay.skip(msg)) return [];
     switch (msg.type) {
       case 'system':
-        return sessionEvent(msg);
+        return [...sessionEvent(msg), ...claudeCompactionBoundary(msg), ...claudeCompactionStatus(msg)];
       case 'stream_event':
         return this.streamEvent(msg.event);
       case 'assistant':
@@ -109,6 +112,7 @@ export class ClaudeEventMapper {
   /** 历史记录：用户文本输出为 user_message，助手文本总是输出 */
   mapHistory(msg: unknown): AgentEvent[] {
     if (!isRec(msg) || msg.parent_tool_use_id) return [];
+    if (msg.type === 'system') return claudeCompactionBoundary(msg);
     if (msg.type === 'assistant') return this.assistant(msg, true);
     if (msg.type !== 'user') return [];
     return [...userTexts(msg), ...this.toolResults(msg)];

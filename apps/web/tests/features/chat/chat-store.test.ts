@@ -1,5 +1,12 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentKind, ClientMessage, ServerMessage, SessionActionInput, SessionHistory } from '@ssh-server/shared';
+import type {
+  AgentCapability,
+  AgentKind,
+  ClientMessage,
+  ServerMessage,
+  SessionActionInput,
+  SessionHistory,
+} from '@ssh-server/shared';
 import type { ConnectionStatus } from '../../../src/lib/ws';
 
 // node 环境没有 localStorage，用内存实现
@@ -164,6 +171,124 @@ function history(agent: AgentKind, text: string): SessionHistory {
     actualModel: 'native-model',
   };
 }
+
+describe('原生能力状态', () => {
+  const skill: AgentCapability = {
+    id: 'skill-demo',
+    kind: 'skill',
+    name: 'demo',
+    description: '演示技能',
+    source: '项目',
+    available: true,
+    requiresSession: false,
+    supportsArguments: true,
+  };
+
+  it('仅技能可发送，连接不接受时保留选择，接受后只传 ID 并清理选择', () => {
+    useChat.getState().selectCapability(skill);
+    open = false;
+    expect(useChat.getState().send('')).toBe(false);
+    expect(useChat.getState().selectedCapability).toEqual(skill);
+    expect(useChat.getState().items).toEqual([]);
+    open = true;
+    expect(useChat.getState().send('')).toBe(true);
+    expect(sent[0]).toMatchObject({ type: 'chat.send', text: '', selection: { id: skill.id } });
+    expect((sent[0] as Extract<ClientMessage, { type: 'chat.send' }>).selection).toEqual({ id: skill.id });
+    expect(useChat.getState().selectedCapability).toBeUndefined();
+    expect(useChat.getState().items).toMatchObject([{ kind: 'user', text: '/demo' }]);
+  });
+
+  it('禁用项和缺少会话的命令不能选择，无参数命令与管理中的目标不能发送', () => {
+    const compact = {
+      ...skill,
+      id: 'command-compact',
+      kind: 'command' as const,
+      name: 'compact',
+      requiresSession: true,
+      supportsArguments: false,
+    };
+    useChat.getState().selectCapability({ ...skill, available: false, unavailableReason: 'CLI 专用' });
+    expect(useChat.getState().selectedCapability).toBeUndefined();
+    useChat.getState().selectCapability(compact);
+    expect(useChat.getState().selectedCapability).toBeUndefined();
+    useChat.setState({ sessionId: 'native-id' });
+    useChat.getState().selectCapability(compact);
+    expect(useChat.getState().send('不支持的参数')).toBe(false);
+    expect(useChat.getState().selectedCapability).toEqual(compact);
+    const key = sessionActionKey('w1', { agent: 'claude', sessionId: 'native-id' });
+    useChat.setState({ sessionOperations: { [key]: { action: 'rename', pending: true } } });
+    expect(useChat.getState().send('')).toBe(false);
+    expect(sent).toHaveLength(0);
+  });
+
+  it('工作区、Agent 与原生会话切换均清理所选能力', async () => {
+    useChat.getState().selectCapability(skill);
+    useChat.getState().selectWorkspace('w2');
+    expect(useChat.getState().selectedCapability).toBeUndefined();
+    useChat.getState().selectCapability(skill);
+    useChat.getState().setAgent('codex');
+    expect(useChat.getState().selectedCapability).toBeUndefined();
+    useChat.getState().selectCapability(skill);
+    vi.spyOn(api, 'sessionEvents').mockResolvedValue(history('codex', '已有会话'));
+    await useChat.getState().openSession({ agent: 'codex', sessionId: 'same-id' });
+    expect(useChat.getState().selectedCapability).toBeUndefined();
+  });
+
+  it('上下文保留原生字段和不可用状态，切换后忽略旧轮次状态', () => {
+    const turnId = startTurn();
+    const usage = { source: 'codex_native' as const, usedTokens: 200, windowTokens: 1000 };
+    emit({ type: 'agent.event', turnId, event: { type: 'context', usage } });
+    expect(useChat.getState().contextUsage).toEqual(usage);
+    expect(useChat.getState().contextUsage).not.toHaveProperty('percentage');
+    emit({ type: 'agent.event', turnId, event: { type: 'context', usage: null } });
+    expect(useChat.getState().contextUsage).toBeNull();
+    useChat.getState().selectWorkspace('w2');
+    emit({ type: 'agent.event', turnId, event: { type: 'context', usage } });
+    emit({ type: 'agent.event', turnId, event: { type: 'compaction', state: { status: 'completed' } } });
+    expect(useChat.getState()).toMatchObject({ contextUsage: undefined, compaction: undefined });
+  });
+
+  it('历史保留原生压缩边界，不把候选或实际模型写成模型与推理覆盖', async () => {
+    useChat.getState().newSession('codex');
+    queryClient.setQueryData(queryKeys.agentCapabilities('w1', 'codex'), {
+      agent: 'codex',
+      entries: [],
+      warnings: [],
+      models: [{ id: 'catalog-model', label: '候选', reasoningEfforts: ['high'] }],
+    });
+    vi.spyOn(api, 'sessionEvents').mockResolvedValue({
+      ...history('codex', '原生历史'),
+      events: [
+        { type: 'compaction', state: { status: 'completed', trigger: 'manual', beforeTokens: 500, afterTokens: 100 } },
+      ],
+    });
+    await useChat.getState().openSession({ agent: 'codex', sessionId: 'same-id' });
+    expect(useChat.getState().items).toMatchObject([
+      { kind: 'compaction', state: { status: 'completed', beforeTokens: 500, afterTokens: 100 } },
+    ]);
+    expect(useChat.getState().contextUsage).toBeUndefined();
+    expect(useChat.getState().send('继续')).toBe(true);
+    expect(sent[0]).toMatchObject({ agent: 'codex', model: undefined, reasoningEffort: undefined });
+    expect(useChat.getState().compaction).toMatchObject({ status: 'completed' });
+    queryClient.removeQueries({ queryKey: queryKeys.agentCapabilities('w1', 'codex') });
+  });
+
+  it('断线后的普通新轮次不复活旧压缩，历史仍保留未确认边界', () => {
+    const turnId = startTurn('压缩当前会话');
+    emit({
+      type: 'agent.event',
+      turnId,
+      event: { type: 'compaction', state: { status: 'running', trigger: 'manual' } },
+    });
+    status('connecting');
+    const boundary = useChat.getState().items.find((item) => item.kind === 'compaction');
+    expect(boundary).toMatchObject({ state: { status: 'running' }, incomplete: true });
+    status('open');
+    expect(useChat.getState().send('继续普通对话')).toBe(true);
+    expect(useChat.getState().compaction).toBeUndefined();
+    expect(useChat.getState().items.find((item) => item.kind === 'compaction')).toEqual(boundary);
+  });
+});
 
 describe('chat-store', () => {
   it('选择工作区时记住它，并清空当前会话', () => {

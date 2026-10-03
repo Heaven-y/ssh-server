@@ -16,6 +16,15 @@ describe('ClientMessageSchema', () => {
 
   it('拒绝空消息', () => {
     expect(ClientMessageSchema.safeParse({ ...send, text: '' }).success).toBe(false);
+    expect(ClientMessageSchema.safeParse({ ...send, text: '  ' }).success).toBe(false);
+  });
+
+  it('允许仅选择能力，并拒绝客户端指定原生调用路径', () => {
+    expect(ClientMessageSchema.safeParse({ ...send, text: '', selection: { id: 'skill-1' } }).success).toBe(true);
+    expect(ClientMessageSchema.safeParse({ ...send, text: '', selection: { id: '' } }).success).toBe(false);
+    expect(
+      ClientMessageSchema.safeParse({ ...send, selection: { id: 'skill-1', path: './arbitrary-skill' } }).success,
+    ).toBe(false);
   });
 
   it('拒绝缺少 workspaceId 的 chat.send', () => {

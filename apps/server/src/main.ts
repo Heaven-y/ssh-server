@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { createSessionRegistry } from './chat/registry';
 import { TurnManager } from './chat/turn-manager';
 import { createSessionsService } from './chat/sessions';
+import { createCapabilitiesService } from './chat/capabilities';
+import { discoverClaudeCapabilities } from './agents/claude-capabilities';
 import { createClaudeSessions } from './agents/claude-sessions';
 import {
   runCodexTurn,
@@ -13,11 +15,13 @@ import {
   readCodexSession,
   assertCodexSession,
   mutateCodexSession,
+  discoverCodexCapabilities,
 } from './agents/codex';
 import { loadConfig } from './config';
 import { buildApp } from './http/app';
 import { registerInternalRoutes } from './http/internal.routes';
 import { registerSessionRoutes } from './http/sessions.routes';
+import { registerCapabilityRoutes } from './http/capabilities.routes';
 import { registerSshRoutes } from './http/ssh.routes';
 import { registerAgentConfigRoutes } from './http/agent-config.routes';
 import { registerFileRoutes } from './http/files.routes';
@@ -72,7 +76,10 @@ async function main(): Promise<void> {
     driver: createRcloneDriver({ configDir: config.configDir, pool }),
   });
   const registry = createSessionRegistry();
-  let turns: TurnManager;
+  const capabilities = createCapabilitiesService({
+    claude: (dir, signal) => discoverClaudeCapabilities(dir, { signal }),
+    codex: (dir, signal) => discoverCodexCapabilities(dir, { signal }),
+  });
   const sessions = createSessionsService(
     {
       claude: createClaudeSessions(),
@@ -86,10 +93,11 @@ async function main(): Promise<void> {
     { withIdleSession: (session, operation) => turns.withIdleSession(session, operation) },
   );
   let port = config.port;
-  turns = new TurnManager({
+  const turns: TurnManager = new TurnManager({
     getWorkspace: (id) => store.get(id),
     registry,
     sessions,
+    capabilities,
     runners: { codex: runCodexTurn },
     internalUrl: () => `http://${hostForUrl(config.host)}:${port}`,
     sync,
@@ -105,6 +113,7 @@ async function main(): Promise<void> {
     routes: (a) => {
       registerInternalRoutes(a, { registry, getWorkspace: (id) => store.get(id), pool, sync });
       registerSessionRoutes(a, { store, sessions });
+      registerCapabilityRoutes(a, { store, capabilities });
       registerSshRoutes(a, { pool });
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
       registerFileRoutes(a, { store, files: createWorkspaceFilesService(), sync });

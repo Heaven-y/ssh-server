@@ -4,10 +4,13 @@ import { Streamdown } from 'streamdown';
 import type { ChatItem } from './chat-reducer';
 import { PermissionCard } from './PermissionCard';
 import { ToolCard } from './ToolCard';
+import { CompactionStatus } from './ContextStatus';
 
 /** 单个对话条目；memo 避免流式更新时整列表重渲染（条目内容不变时引用不变） */
 export const MessageItem = memo(function MessageItem({ item }: { item: ChatItem }) {
   switch (item.kind) {
+    case 'compaction':
+      return <CompactionStatus state={item.state} incomplete={item.incomplete} />;
     case 'user':
       return (
         <div className="ml-auto max-w-[88%] rounded-xl bg-muted/70 px-4 py-3 text-[15px] leading-7 whitespace-pre-wrap break-words">

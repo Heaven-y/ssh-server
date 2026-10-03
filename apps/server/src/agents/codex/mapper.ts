@@ -1,4 +1,5 @@
 import type { AgentEvent } from '@ssh-server/shared';
+import { CodexCompaction } from './compaction';
 import { list, record, text, type RecordValue } from './types';
 
 const TOOL_OUTPUT_MAX_CHARS = 20_000;
@@ -62,12 +63,33 @@ export class CodexEventMapper {
   private readonly completed = new Set<string>();
   private readonly called = new Set<string>();
   private readonly items = new Map<string, RecordValue>();
+  private readonly compaction: CodexCompaction;
+  private usedTokens?: number;
+  private model?: string;
+
+  constructor(options: { manualCompaction?: boolean } = {}) {
+    this.compaction = new CodexCompaction(options.manualCompaction === true);
+  }
+
+  setModel(model: string): void {
+    this.model = model || undefined;
+  }
+  startManualCompaction(): AgentEvent[] {
+    return this.compaction.startManual(this.usedTokens);
+  }
+  finishCompaction(status: string): AgentEvent[] {
+    return this.compaction.finish(status);
+  }
+  compactionConfirmed(): boolean {
+    return this.compaction.confirmed;
+  }
 
   item(id: string): RecordValue {
     return this.items.get(id) ?? {};
   }
 
   map(method: string, params: RecordValue): AgentEvent[] {
+    if (method === 'thread/tokenUsage/updated') return [this.context(params)];
     if (method === 'item/started' || method === 'item/completed') {
       return this.mapItem(record(params.item), method === 'item/completed', false);
     }
@@ -82,17 +104,49 @@ export class CodexEventMapper {
   }
 
   finishItems(turn: RecordValue): AgentEvent[] {
-    return list(turn.items).flatMap((item) => this.mapItem(record(item), true, false));
+    // 完成通知的快照不是压缩完成确认；手动压缩必须收到当前 item/completed。
+    return list(turn.items)
+      .filter((item) => record(item).type !== 'contextCompaction')
+      .flatMap((item) => this.mapItem(record(item), true, false));
+  }
+
+  private context(params: RecordValue): AgentEvent {
+    const usage = record(params.tokenUsage);
+    const used = record(usage.last).totalTokens;
+    if (typeof used !== 'number' || !Number.isFinite(used) || used < 0) {
+      this.usedTokens = undefined;
+      return { type: 'context', usage: null };
+    }
+    this.usedTokens = used;
+    const window = usage.modelContextWindow;
+    return {
+      type: 'context',
+      usage: {
+        usedTokens: used,
+        source: 'codex_native',
+        ...(typeof window === 'number' && Number.isFinite(window) && window > 0 ? { windowTokens: window } : {}),
+        ...(this.model ? { model: this.model } : {}),
+      },
+    };
   }
 
   private mapItem(item: RecordValue, complete: boolean, history: boolean): AgentEvent[] {
     const id = text(item.id);
     if (!id) return [];
     this.items.set(id, item);
+    if (item.type === 'contextCompaction') return this.mapCompaction(item, complete, history);
     if (TOOL_TYPES.has(text(item.type))) return this.mapTool(item, complete);
     if (!complete || this.completed.has(id)) return [];
     this.completed.add(id);
     return this.mapText(item, history);
+  }
+
+  private mapCompaction(item: RecordValue, complete: boolean, history: boolean): AgentEvent[] {
+    if (!history) return this.compaction.item(text(item.id), complete, this.usedTokens);
+    if (this.completed.has(text(item.id))) return [];
+    this.completed.add(text(item.id));
+    const trigger = item.trigger === 'manual' || item.trigger === 'auto' ? item.trigger : undefined;
+    return [{ type: 'compaction', state: { status: 'completed', ...(trigger ? { trigger } : {}) } }];
   }
 
   private mapText(item: RecordValue, history: boolean): AgentEvent[] {
@@ -109,8 +163,12 @@ export class CodexEventMapper {
 
   private userMessage(item: RecordValue): AgentEvent[] {
     const content = list(item.content)
-      .filter((part) => record(part).type === 'text')
-      .map((part) => text(record(part).text))
+      .map((part) => {
+        const value = record(part);
+        if (value.type === 'text') return text(value.text);
+        return value.type === 'skill' && text(value.name) ? `技能：${text(value.name)}` : '';
+      })
+      .filter(Boolean)
       .join('\n');
     return content ? [{ type: 'user_message', text: content }] : [];
   }

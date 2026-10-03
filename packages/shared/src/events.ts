@@ -1,7 +1,10 @@
 // Agent 对话事件：后端把 Claude / Codex 的原始消息统一转换成这些事件，再推送给前端
 import type { AgentKind } from './agents';
+import type { CompactionState, ContextUsage } from './capabilities';
 
 export type AgentEvent =
+  | { type: 'context'; usage: ContextUsage | null }
+  | { type: 'compaction'; state: CompactionState }
   /** 会话开始或继续，sessionId 由 Agent 分配 */
   | { type: 'session'; sessionId: string; model: string; cwd: string; agent?: AgentKind }
   /** 用户消息（只出现在历史记录中，实时对话由前端自己显示） */
