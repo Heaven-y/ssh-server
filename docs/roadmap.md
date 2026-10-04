@@ -129,6 +129,8 @@
 
 尚未完成的项目按相应里程碑继续设计、实施和验证，不把需求归档当作实施完成。详细待验证事项见 [架构第 8 节](engineering/architecture.md#8-待验证事项)。
 
+连接向导[PR #8](https://github.com/Heaven-y/ssh-server/pull/8)双平台CI37234735439成功，随后以两级--no-ff合入feat（5147dc0）与main（7845821）并推送；[main CI37235267430](https://github.com/Heaven-y/ssh-server/actions/runs/37235267430)双平台成功。工作区删除生命周期从最新feat创建codex/workspace-lifecycle继续实施。
+
 2026-10-05 状态核对：浏览和操作阶段已整合；Task 4 同步路径协调及编辑保护已接入，本机核心回归与网页证据见同步协调验收。A20–A23 的真实 SSH、实际 rclone 迁移、跨文件系统和浏览器磁盘保存仍不能标记为完整通过；终端本机基础及真实PTY全屏工具、资源详情与真实只读指标完成。五步连接向导已实现，一次Review的两项问题先复现后修复；真实SSH创建/初始化、三宽度网页、手动目标与Windows保存密码验收通过。产品设置/删除/界面和完整M6继续实施。
 
 Task 4阶段已使用两级 `--no-ff` 合入 `feat/ssh-workflow` 和 `main`；[此前main CI](https://github.com/Heaven-y/ssh-server/actions/runs/37190899240)双平台成功。终端[PR#5](https://github.com/Heaven-y/ssh-server/pull/5)的[双平台CI](https://github.com/Heaven-y/ssh-server/actions/runs/37224820671)成功；随后Linux暴露的同步恢复收尾竞态已修复，[PR#6](https://github.com/Heaven-y/ssh-server/pull/6)与[main d0547e8 CI](https://github.com/Heaven-y/ssh-server/actions/runs/37226825812)双平台成功。资源详情一次Review及最少核心回归完成；真实工具浏览器画面、原生OS输入法和密码重启串联仍在A10/A12，整项目目标保持进行中。

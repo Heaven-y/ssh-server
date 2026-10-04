@@ -93,6 +93,13 @@ export type {
   WorkspaceSetupResult,
 } from './setup';
 export type { AgentKind, SessionRef, SessionSummary, SessionHistory, SessionActionInput } from './agents';
+export { WorkspaceRemovalInputSchema } from './workspace-removal';
+export type {
+  WorkspaceRemovalInput,
+  WorkspaceRemovalBlocker,
+  WorkspaceRemovalPreview,
+  WorkspaceRemovalResult,
+} from './workspace-removal';
 export { CapabilitySelectionSchema } from './capabilities';
 export type {
   CapabilitySelection,
