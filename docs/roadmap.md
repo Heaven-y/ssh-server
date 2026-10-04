@@ -106,7 +106,7 @@
 - [x] 同服务器新建目录、重命名、移动、复制、删除的预检与任务后端，显式下载流及网页入口；右键菜单、目标选择、拖动和键盘入口，默认不覆盖同名目标，证据与阶段限制见[操作验收](guides/remote-file-operations-acceptance.md)
 - [x] 同/跨文件系统操作的独立持久任务状态与结果核对机制；移动/复制在服务器完成，下载不自动纳入 Git/同步；真实跨文件系统及浏览器保存验收仍列于 M6
 - [x] 与同步范围内源/目标及混合目录协调，保留编辑缓冲和冲突，防止旧路径重新生成；仅服务器操作不依赖无关同步或模型。本机受控传输与网页证据见[同步协调验收](guides/remote-file-sync-acceptance.md)，实际 rclone 与真实 SSH 保留在 M6
-- [ ] xterm.js SSH 终端，参考 Pebrel 的外观、多标签、分屏与可调整布局；已实际查看参考分屏截图，[书面设计](superpowers/specs/2026-10-04-web-terminal-design.md)已确认，[实施计划](superpowers/plans/2026-10-04-web-terminal.md)已自查待审阅，尚未实施或验收全屏程序
+- [ ] xterm.js SSH 终端，参考 Pebrel 的外观、多标签、分屏与可调整布局；已实际查看参考分屏截图，[书面设计](superpowers/specs/2026-10-04-web-terminal-design.md)已确认，[实施计划](superpowers/plans/2026-10-04-web-terminal.md)已确认，实施中，尚未实施或验收全屏程序
 - [ ] 基于已有 `nvidia-smi` / Linux 信息的 GPU、CPU、内存、磁盘与进程面板，标注采集主机、时间和不可用状态
 - [ ] 资源采样与 AI 对话独立，按 SSH 目标共享采样并控制刷新开销；不依赖 `nvitop` 或服务器新装软件
 - [ ] 对话、终端、资源采样和同步分别反馈状态；对话 / 终端运行期间资源仍刷新，不以整页加载阻塞其他入口
@@ -131,4 +131,4 @@
 
 2026-10-04 状态核对：浏览和操作阶段已整合；Task 4 同步路径协调及编辑保护已接入，本机核心回归与网页证据见同步协调验收。A20–A23 的真实 SSH、实际 rclone 迁移、跨文件系统和浏览器磁盘保存仍不能标记为完整通过；向导、终端及资源面板继续实施。
 
-Task 4 阶段已使用两级 `--no-ff` 合入 `feat/ssh-workflow` 和 `main`；[main 整合后 CI](https://github.com/Heaven-y/ssh-server/actions/runs/37190899240)的 Windows、Linux 均成功。`codex/ssh-workflow-terminal` 的终端设计已获用户确认，实施计划已自查待书面审阅；尚未安装依赖或实施终端，整项目目标继续保持进行中。
+Task 4 阶段已使用两级 `--no-ff` 合入 `feat/ssh-workflow` 和 `main`；[main 整合后 CI](https://github.com/Heaven-y/ssh-server/actions/runs/37190899240)的 Windows、Linux 均成功。`codex/ssh-workflow-terminal` 的终端设计已获用户确认，实施计划已自查已获自主实施授权；终端进入实施阶段，尚未完成验收，整项目目标继续保持进行中。

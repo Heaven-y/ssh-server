@@ -202,7 +202,7 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 - 连接按解析后的地址、端口、账号、认证方式、可信记录与凭据代次复用；参数变化不能复用旧连接，工作目录由所属工作区决定。执行、同步和服务器目录已共用 resolver；终端与资源采样继续接入同一入口。
 - 终端：`shell()` 打开 PTY，数据经 WebSocket 与 xterm.js 双向转发，支持窗口尺寸变化、多标签和可调整布局。视觉与分屏交互参考 Pebrel，仅参考设计。
 
-终端的目标绑定、目录确认、独立 WebSocket、背压与释放规则见[已确认的网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.md)；模块职责、连接 guard 和稳定窗格宿主见[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)，计划已自查，待书面审阅。当前尚无 PTY 产品入口，不能将文档状态视为产品实现。
+终端的目标绑定、目录确认、独立 WebSocket、背压与释放规则见[已确认的网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.md)；模块职责、连接 guard 和稳定窗格宿主见[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)，计划已自查，已获自主实施授权。当前尚无 PTY 产品入口，不能将文档状态视为产品实现。
 
 ### 5.5 sync
 

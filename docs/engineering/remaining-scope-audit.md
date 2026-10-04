@@ -12,7 +12,7 @@
 | F1.5 工作区删除 | [工作区路由](../../apps/server/src/http/workspaces.routes.ts)已提供删除配置接口，存储不删除项目文件；[侧栏](../../apps/web/src/features/workspaces/WorkspaceSidebar.tsx)只有选择和新建 | 网页删除入口、影响说明及活动会话/编辑/任务/终端的生命周期协调；保持本地及服务器项目文件不删除 |
 | F1.8 未知主机指纹 | [SSH 客户端](../../apps/server/src/ssh/client.ts)拒绝未知、变化和吊销密钥，提示用户在本机终端核对 | 网页展示实际指纹并显式确认未知主机；确认绑定目标及本次握手，变化和吊销仍拒绝，避免接受后的目标或密钥竞态 |
 | F3.4 工作区规则追加 | schema 仅有 `disabledRules`；[黑名单](../../apps/server/src/policy/policy.ts)过滤默认规则，[执行路由](../../apps/server/src/http/internal.routes.ts)只传停用项 | 追加自定义规则的配置、验证与执行接线；默认规则的网页管理入口也未提供，不把已有默认黑名单标为完整设置功能 |
-| F4 / A10 网页终端 | 当前没有终端产品模块、PTY 路由或 xterm 依赖；[书面设计](../superpowers/specs/2026-10-04-web-terminal-design.md)已确认，[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)已自查待审阅 | PTY、默认目录确认、固定目标、独立 WebSocket、复制粘贴、多标签/分屏、尺寸变化与通道回收；实际检查交互和全屏程序 |
+| F4 / A10 网页终端 | 当前没有终端产品模块、PTY 路由或 xterm 依赖；[书面设计](../superpowers/specs/2026-10-04-web-terminal-design.md)已确认，[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)已确认，实施中 | PTY、默认目录确认、固定目标、独立 WebSocket、复制粘贴、多标签/分屏、尺寸变化与通道回收；实际检查交互和全屏程序 |
 | F5.2 创建前同步预览 | [同步路由](../../apps/server/src/http/sync.routes.ts)已有状态、同步、初始化及规则保存，没有创建前预览入口 | 用户触发的文件数/总大小与排除项统计；预览不传输正文、不自动遍历大项目，首次同步的两端处理方式明确确认 |
 | F9 / A18 资源面板 | [后端注册](../../apps/server/src/main.ts)未接采样服务或资源路由，前端没有资源面板 | SSH 只读采样、结构化指标、实际主机/时间/可用性、同目标共享、可见性暂停/降频、失败退避；不检测训练完成或调用模型 |
 | 界面第 7 节产品设置 | [设置弹窗](../../apps/web/src/features/settings/SettingsDialog.tsx)只编辑原生 Agent 配置；[同步规则表单](../../apps/web/src/features/sync/SyncSettingsForm.tsx)只改当前工作区过滤规则 | 新会话 Agent/模型默认值、产品同步默认值与刷新参数、工作区规则管理及环境检测入口。默认“跟随本地配置”不能被目录候选或历史实际模型转成覆盖参数 |
