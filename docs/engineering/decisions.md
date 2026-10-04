@@ -58,7 +58,7 @@
 
 [Pebrel](https://github.com/Kuddev/pebrel) 用于参考终端外观、多标签、分屏和可调整布局。网页底层仍使用 xterm.js 与 SSH PTY，分屏的具体布局在 M5 细化。
 
-2026-10-04 已实际查看 Pebrel 的[终端分屏截图](https://github.com/Kuddev/pebrel/blob/main/docs/screenshots/split-ai-workflows.png)，参考紧凑标签、细分隔线和独立窗格；不将截图复制为产品资产，不宣称匹配其精确配色。项目整体语义色仍以 [界面布局](../product/ui-layout.md) 为准，终端细节在实现时通过实际渲染检查。具体方案见待审的[网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.md)，尚未实施。
+2026-10-04 已实际查看 Pebrel 的[终端分屏截图](https://github.com/Kuddev/pebrel/blob/main/docs/screenshots/split-ai-workflows.png)，参考紧凑标签、细分隔线和独立窗格；不将截图复制为产品资产，不宣称匹配其精确配色。项目整体语义色仍以 [界面布局](../product/ui-layout.md) 为准。[网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.md)已实施并完成三种宽度渲染检查，具体取舍见[终端实施决策](web-terminal-decisions.md)，实际结果及边界见[终端验收](../guides/web-terminal-acceptance.md)。
 
 ## 6. 手动结果分析与实时资源显示
 
@@ -84,7 +84,7 @@ SSH 密码 / 私钥、模型服务令牌、网页访问令牌是不同凭据。�
 - 用户可选择保存密码，由 Windows 当前用户的系统加密能力保护本机独立凭据文件。主动断开、退出清理内存但保留保存项；取消“保存密码”勾选时移除保存项并断开，不另设忘记入口，目标地址、端口或账号变化时不复用旧凭据。
 - ssh2 和 rclone 使用同一组认证信息。明文密码不能放在命令行参数、日志、磁盘临时配置、Agent 或浏览器持久存储。
 - 不将 rclone 的密码混淆当作加密或允许落盘的理由，不因密码认证关闭服务器主机密钥校验。
-- 当前已实现内存密码、私钥认证、加密保存密码与同步基础；主动断开保留密文，取消保存删除密文。完整向导与终端贯通仍待 M5，验收边界见路线图。
+- 当前已实现内存密码、私钥认证、加密保存密码与同步基础；主动断开保留密文，取消保存删除密文。完整向导仍待M5，终端基础已贯通，本机证据见终端验收，验收边界见路线图。
 
 ## 8. 后端选型、分析位置与运行边界
 

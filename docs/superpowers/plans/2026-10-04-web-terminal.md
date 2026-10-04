@@ -139,18 +139,18 @@ type TerminalServerMessage =
 
 **接口：** `startTerminalFixture({ configDir, workspaceDir }): Promise<{ pool: SshPool; workspace: Workspace; close(): Promise<void> }>` 提供真实 ssh2 握手、SFTP 元数据和 PTY 通道；受控远端实现识别初始化及测试命令、回显字节并模拟备用屏幕/鼠标/窗口事件。实际 POSIX 全屏工具依赖真实服务器另验，不把合成终端模拟标为 `htop` 实测。
 
-- [ ] 按已选择的执行方式完成全分支核心 Review，覆盖设计目标、五项 Review Focus、异步收尾和访问边界；不使用 astra，不续接历史代理。先处理实际问题，再确定最少回归断言。
-- [ ] 补共享协议与 binding 核心回归：`rejectsInvalidControl` 断言 1/501 行列、未知字段、非法 base64 被拒绝；`rejectsChangedTargetDuringOpen` 断言到期/篡改/工作区删除/配置或代次变化不开 PTY，有效绑定不回传连接配置。
-- [ ] 补 pool/初始化核心回归：`closesLateChannels` 断言 abort 后晚到的 SFTP/PTY close 且不登记；`ignoresEchoAndPreservesTrailingBytes` 断言逐字节成功帧、回显假标记、成功后中文 bytes 完整；目录失败/128 KiB 超限/10 秒与30 秒超时均不开放输入。
-- [ ] 补会话/HTTP核心回归：`boundsBothStreamsAndRejectsOverAck` 断言 32 KiB 分帧、256 KiB 暂停、64 KiB 以下恢复、1 MiB 终止及非法 ack；`isolatesPaneAndDrainsExit` 断言单窗格关闭不 disconnect、真实 exit 排在输出后、send 失败不报完整；名额 8/32、慢消费60秒、pong60秒与无权限 WS 的拒绝只覆盖各一条核心路径。
-- [ ] 补 web 核心回归：`preservesExitAndDropsPendingPaste` 断言 exit 不被 close 覆盖，32 KiB 分块、确认前不发送、背压暂停、断线后新连接无旧输入；`keepsPaneIdentityAcrossLayoutChanges` 断言分屏/相邻关闭保持 paneId、超过4拒绝、隐藏不发送零尺寸，实例保留再由浏览器核对。
-- [ ] 执行一次关联回归：`npm test -- packages/shared/tests/terminal.test.ts apps/server/tests/terminal apps/server/tests/http/terminal.routes.test.ts apps/server/tests/http/security.test.ts apps/server/tests/ssh/pool.test.ts apps/server/tests/ssh/sftp.test.ts apps/web/tests/features/terminal`；修复后只复跑受影响文件。fixture 的 TS/静态检查纳入 scripts 现有配置。
-- [ ] 启动真实 ssh2 fixture 和网页，实际检查 960/1280/1920 渲染、中文/IME、复制/单行与多行粘贴、ANSI/备用屏幕/鼠标、resize、上下/左右嵌套分屏、收起/最大化/切换聊天的实例保留；用随机标记证明输入只进入选定通道，关闭单窗格后其他 PTY、SFTP、聊天可继续。检查目录失败、断线/拥塞状态、收尾所有通道及计时器；截图和完整验收结论写入文档。
-- [ ] 正式文档仅标实际通过范围；真实 A10/A12 仍需待答的 SSH 授权，A18/V16 待资源面板与完整并发。最终核心回归/修复/验收与文档分成可审阅提交，未执行事项保持未勾选。
+- [x] 按已选择的执行方式完成全分支核心 Review，覆盖设计目标、五项 Review Focus、异步收尾和访问边界；不使用 astra，不续接历史代理。先处理实际问题，再确定最少回归断言。
+- [x] 补共享协议与 binding 核心回归：`rejectsInvalidControl` 断言 1/501 行列、未知字段、非法 base64 被拒绝；`rejectsChangedTargetDuringOpen` 断言到期/篡改/工作区删除/配置或代次变化不开 PTY，有效绑定不回传连接配置。
+- [x] 补 pool/初始化核心回归：`closesLateChannels` 断言 abort 后晚到的 SFTP/PTY close 且不登记；`ignoresEchoAndPreservesTrailingBytes` 断言逐字节成功帧、回显假标记、成功后中文 bytes 完整；目录失败/128 KiB 超限/10 秒与30 秒超时均不开放输入。
+- [x] 补会话/HTTP核心回归：`boundsBothStreamsAndRejectsOverAck` 断言 32 KiB 分帧、256 KiB 暂停、64 KiB 以下恢复、1 MiB 终止及非法 ack；`isolatesPaneAndDrainsExit` 断言单窗格关闭不 disconnect、真实 exit 排在输出后、send 失败不报完整；名额 8/32、慢消费60秒、pong60秒与无权限 WS 的拒绝只覆盖各一条核心路径。
+- [x] 补 web 核心回归：`preservesExitAndDropsPendingPaste` 断言 exit 不被 close 覆盖，32 KiB 分块、确认前不发送、背压暂停、断线后新连接无旧输入；`keepsPaneIdentityAcrossLayoutChanges` 断言分屏/相邻关闭保持 paneId、超过4拒绝、隐藏不发送零尺寸，实例保留再由浏览器核对。
+- [x] 执行一次关联回归：`npm test -- packages/shared/tests/terminal.test.ts apps/server/tests/terminal apps/server/tests/http/terminal.routes.test.ts apps/server/tests/http/security.test.ts apps/server/tests/ssh/pool.test.ts apps/server/tests/ssh/sftp.test.ts apps/web/tests/features/terminal`；修复后只复跑受影响文件。fixture 的 TS/静态检查纳入 scripts 现有配置。
+- [x] 启动真实 ssh2 fixture 和网页，实际检查 960/1280/1920 渲染、中文/composition模拟（原生OS输入法待实测）、复制/单行与多行粘贴、ANSI/备用屏幕/鼠标、resize、上下/左右嵌套分屏、收起/最大化/切换聊天的实例保留；用随机标记证明输入只进入选定通道，关闭单窗格后其他 PTY、SFTP、聊天可继续。目录失败、断线/拥塞和计时器由核心回归检查；网页结束核对所有PTY收尾；截图和完整验收结论写入文档。
+- [x] 正式文档仅标实际通过范围；真实A10/A12仍需恢复本机既有目标并在独立临时目录验收，A18/V16 待资源面板与完整并发。最终核心回归/修复/验收与文档分成可审阅提交，未执行事项保持未勾选。
 
 ### 任务 7：阶段验证与两级 Git 整合
 
-- [ ] 核心实现、Review、网页证据完成后执行一次 `npm run check` 和 web build；若覆盖率暴露核心路径缺口，补对应断言，不为了过门禁写镜像实现的测试、不降低门槛。记录结果，通过后提交完整阶段。
+- [x] 核心实现、Review、网页证据完成后执行一次 `npm run check` 和 web build；若覆盖率暴露核心路径缺口，补对应断言，不为了过门禁写镜像实现的测试、不降低门槛。记录结果，通过后提交完整阶段。
 - [ ] 刷新远端与工作树状态，推送 `codex/ssh-workflow-terminal`，核对 Windows/Linux CI 终态；失败仅复验相关变更，未通过不合并。
 - [ ] 从无冲突且无他人改动的大分支用 `git merge --no-ff codex/ssh-workflow-terminal` 整合并正常推送；达到可用终端阶段基线后，在占用 main 的工作树以 `--no-ff` 合入 `feat/ssh-workflow`，正常推送并核对双平台 CI。合并树相同沿用已通过基准，有冲突解决则验证实际受影响部分，不反复跑相同全量测试。
 - [ ] 若采用 PR，标题/正文描述最终交付行为与验证范围，使用普通 merge 保留历史，创建后附加到当前任务。核对小分支 tip 被大分支和 main 包含且无工作树占用后，才清理已合并小分支；保留 `feat/ssh-workflow`，不 squash/rebase/强推。
