@@ -46,9 +46,15 @@ import { createTerminalManager } from './terminal/manager';
 import { registerResourcesRoutes } from './http/resources.routes';
 import { createResourcesService } from './resources/service';
 import { createSshPool } from './ssh/pool';
+import { createServerTargets, serverHostConfig } from './ssh/targets';
+import { registerSshTargetRoutes } from './http/ssh-targets.routes';
+import { registerHostTrustRoutes } from './http/ssh-host-trust.routes';
+import { createHostTrust } from './ssh/host-trust';
 import { createPasswordStore } from './ssh/password-store';
 import { listHosts, parseSshConfig } from './ssh/ssh-config';
 import { createWorkspaceStore } from './workspaces/store';
+import { createWorkspaceSetup } from './workspaces/setup/service';
+import { registerWorkspaceSetupRoutes } from './http/workspace-setup.routes';
 import { createRcloneDriver } from './sync/rclone';
 import { createSyncManager } from './sync/manager';
 import { createNativeConfigService } from './settings/native-config';
@@ -63,7 +69,7 @@ async function dirExists(p: string): Promise<boolean> {
 }
 
 /** 每次调用都重新读取 ~/.ssh/config，用户修改后无需重启 */
-async function listSshHosts() {
+async function listConfiguredSshHosts() {
   const home = os.homedir();
   const text = await readFile(path.join(home, '.ssh', 'config'), 'utf8').catch(() => '');
   return listHosts(parseSshConfig(text, home));
@@ -80,12 +86,32 @@ async function main(): Promise<void> {
   const config = loadConfig(process.env, process.argv.slice(2));
   await mkdir(config.configDir, { recursive: true });
 
+  const targets = createServerTargets({ configDir: config.configDir });
+  const listSshHosts = async () => [
+    ...(await listConfiguredSshHosts()).map((host) => ({ ...host, source: 'ssh-config' as const })),
+    ...(await targets.list()).map((server) => ({
+      alias: server.alias,
+      name: server.name,
+      hostname: server.hostname,
+      user: server.username,
+      port: server.port,
+      source: 'manual' as const,
+      unsupported: [],
+    })),
+  ];
+
   const store = createWorkspaceStore({
     configDir: config.configDir,
     dirExists,
     knownHosts: async () => (await listSshHosts()).map((h) => h.alias),
   });
-  const pool = createSshPool({ passwordStore: createPasswordStore({ configDir: config.configDir }) });
+  const pool = createSshPool({
+    passwordStore: createPasswordStore({ configDir: config.configDir }),
+    lookupHost: async (alias) => {
+      const server = await targets.get(alias);
+      return server ? serverHostConfig(server) : undefined;
+    },
+  });
   const terminalBindings = createTerminalBindings({ store, pool });
   const terminals = createTerminalManager({ store, pool, bindings: terminalBindings });
   const resources = createResourcesService({ store, pool });
@@ -94,6 +120,7 @@ async function main(): Promise<void> {
     driver: createRcloneDriver({ configDir: config.configDir, pool }),
   });
   const registry = createSessionRegistry();
+  const setup = createWorkspaceSetup({ store, pool, sync, configDir: config.configDir });
   const capabilities = createCapabilitiesService({
     claude: (dir, signal) => discoverClaudeCapabilities(dir, { signal }),
     codex: (dir, signal) => discoverCodexCapabilities(dir, { signal }),
@@ -127,12 +154,16 @@ async function main(): Promise<void> {
     devOrigin: config.devOrigin,
     store,
     listSshHosts,
+    setup,
     webDir: WEB_DIST,
     routes: (a) => {
       registerInternalRoutes(a, { registry, getWorkspace: (id) => store.get(id), pool, sync });
       registerSessionRoutes(a, { store, sessions });
       registerCapabilityRoutes(a, { store, capabilities });
       registerSshRoutes(a, { pool });
+      registerSshTargetRoutes(a, targets);
+      registerWorkspaceSetupRoutes(a, setup);
+      registerHostTrustRoutes(a, createHostTrust({ pool }));
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
       registerFileRoutes(a, { store, files: createWorkspaceFilesService(), sync });
       const browse = createRemoteFilesService({ store, pool });

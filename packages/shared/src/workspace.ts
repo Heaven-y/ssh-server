@@ -14,7 +14,7 @@ export const WorkspaceInputSchema = z.object({
   name: z.string().trim().min(1).max(100),
   /** 本地文件夹的绝对路径，是否存在由后端检查 */
   localDir: z.string().min(1),
-  /** ~/.ssh/config 中的 Host 别名 */
+  /** ~/.ssh/config 或本工具独立连接表中的稳定别名 */
   sshHost: z.string().min(1),
   /** 不传时复用已有私钥；密码只通过独立认证接口提交 */
   authMode: SshAuthModeSchema.optional(),
@@ -34,6 +34,8 @@ export type Workspace = WorkspaceInput & { id: string };
 /** ~/.ssh/config 中可选的 Host，unsupported 列出本工具暂不支持的选项（如 ProxyJump） */
 export type SshHostInfo = {
   alias: string;
+  name?: string;
+  source?: 'ssh-config' | 'manual';
   hostname?: string;
   user?: string;
   port?: number;

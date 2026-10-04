@@ -76,6 +76,8 @@
 
 测试放各包独立的 `tests/`，与 `src/` 的模块路径对应；新增测试只覆盖核心行为和实际回归，复用现有路径，避免重复断言。需要绝对路径的本机 fixture 用 `path.resolve` / 临时目录生成，不写死开发机路径；协议和安全边界的路径字面量保留其测试意义。执行相关测试示例：`npm test -- apps/server/tests/ssh apps/server/tests/http/ssh.routes.test.ts`。目录总览见 [架构第 3 节](../engineering/architecture.md#3-仓库结构)。
 
+向导Hook生命周期回归使用固定版本Testing Library React 16.3.3、DOM 10.4.2及jsdom 27.4.0，在单个测试文件指定jsdom；其他纯函数仍使用node环境。选择27.4.0是为兼容现有Node 22.20，更新版本30.1.2要求22.22.2以上；不提高项目运行时要求，不排除新增Hook覆盖率。实际网页交互继续由浏览器验收补充。
+
 ### 1.4 当前接入状态与后续验证
 
 | 能力 | 当前状态（2026-10-03） | 后续验证 |
