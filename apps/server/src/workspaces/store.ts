@@ -17,7 +17,7 @@ export class WorkspaceValidationError extends Error {
 export type WorkspaceStore = {
   list(): Promise<Workspace[]>;
   get(id: string): Promise<Workspace | undefined>;
-  create(input: WorkspaceInput): Promise<Workspace>;
+  create(input: WorkspaceInput, beforePersist?: () => Promise<void>): Promise<Workspace>;
   update(id: string, patch: Partial<WorkspaceInput>): Promise<Workspace | undefined>;
   remove(id: string): Promise<boolean>;
 };
@@ -88,10 +88,12 @@ export function createWorkspaceStore(deps: WorkspaceStoreDeps): WorkspaceStore {
   return {
     list: () => serial(load),
     get: (id) => serial(async () => (await load()).find((w) => w.id === id)),
-    create: (input) =>
+    create: (input, beforePersist) =>
       serial(async () => {
         const ws: Workspace = { ...(await validate(input)), id: randomUUID() };
-        await save([...(await load()), ws]);
+        const list = await load();
+        await beforePersist?.();
+        await save([...list, ws]);
         return ws;
       }),
     update: (id, patch) =>

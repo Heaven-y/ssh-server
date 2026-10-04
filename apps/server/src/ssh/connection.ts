@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { SshAuthMode, Workspace } from '@ssh-server/shared';
 import { createCredentialVault } from './credentials';
+import { knownHostRecordsForTarget } from './known-hosts';
 import { parseSshConfig, resolveHost, type SshHostConfig } from './ssh-config';
 
 export type SshTarget = string | { alias: string; authMode?: SshAuthMode };
@@ -44,7 +45,11 @@ export type ResolvedConnection = {
   password?: string;
 };
 
-export type ConnectionDeps = { homeDir?: string; readFile?: (file: string) => Promise<Buffer> };
+export type ConnectionDeps = {
+  homeDir?: string;
+  readFile?: (file: string) => Promise<Buffer>;
+  lookupHost?: (alias: string) => Promise<SshHostConfig | undefined>;
+};
 export const workspaceTarget = (ws: Workspace): SshTarget =>
   ws.authMode ? { alias: ws.sshHost, authMode: ws.authMode } : ws.sshHost;
 export const targetAlias = (target: SshTarget): string => (typeof target === 'string' ? target : target.alias);
@@ -64,6 +69,8 @@ export function createConnectionResolver(deps: ConnectionDeps = {}) {
   let resetGeneration = 0;
 
   async function loadHost(alias: string): Promise<SshHostConfig> {
+    const managed = await deps.lookupHost?.(alias);
+    if (managed) return managed;
     const text = (await readFile(path.join(sshDir, 'config')).catch(() => Buffer.alloc(0))).toString('utf8');
     const host = resolveHost(parseSshConfig(text, homeDir), alias);
     if (!host) throw new SshConnectionError('unsupported_config', 'SSH config 中没有指定 Host');
@@ -125,7 +132,15 @@ export function createConnectionResolver(deps: ConnectionDeps = {}) {
       authMode,
       knownHostsFile,
       knownHosts,
-      cacheKey: digest(JSON.stringify([alias, identity, authMode, keyDigest, digest(knownHosts)])),
+      cacheKey: digest(
+        JSON.stringify([
+          alias,
+          identity,
+          authMode,
+          keyDigest,
+          knownHostRecordsForTarget(knownHosts, host.hostname, host.port),
+        ]),
+      ),
       ...auth,
     };
   }
@@ -140,7 +155,7 @@ export function createConnectionResolver(deps: ConnectionDeps = {}) {
         JSON.stringify([
           targetIdentity(host, host.user ?? os.userInfo().username),
           host.identityFiles,
-          digest(knownHosts),
+          knownHostRecordsForTarget(knownHosts.toString('utf8'), host.hostname, host.port),
           key ? [key.keyFile, digest(key.privateKey)] : null,
         ]),
       );

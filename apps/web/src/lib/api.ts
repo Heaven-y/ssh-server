@@ -33,7 +33,16 @@ import type {
   WorkspaceInput,
   TerminalTarget,
   TerminalBinding,
+  HostTrustStatus,
+  HostTrustConfirmation,
+  ManualServerInput,
+  ManagedServer,
   ResourceSnapshot,
+  LocalDirectory,
+  WorkspaceSetupCreate,
+  WorkspaceSetupVerification,
+  WorkspaceSetupPreview,
+  WorkspaceSetupResult,
 } from '@ssh-server/shared';
 
 export type { SessionSummary } from '@ssh-server/shared';
@@ -241,6 +250,86 @@ export const api = {
       }),
     }),
   listSshHosts: () => request<SshHostInfo[]>('/api/ssh-hosts'),
+  setupLocalDirectory: (input: { path?: string; cursor?: string }, signal?: AbortSignal) =>
+    request<LocalDirectory>('/api/workspace-setup/local-directory', {
+      method: 'POST',
+      signal,
+      cache: 'no-store',
+      body: JSON.stringify(input),
+    }),
+  closeSetupLocal: (cursor: string) =>
+    request<{ closed: true }>('/api/workspace-setup/local-directory/close', {
+      method: 'POST',
+      body: JSON.stringify({ cursor }),
+    }),
+  openSetupRemote: (input: { sshHost: string; authMode: SshAuthMode }, signal?: AbortSignal) =>
+    request<RemoteBrowseSession>('/api/workspace-setup/remote/open', {
+      method: 'POST',
+      signal,
+      cache: 'no-store',
+      body: JSON.stringify(input),
+    }),
+  readSetupRemote: (session: string, input: { path: string; cursor?: string }, signal?: AbortSignal) =>
+    request<RemoteDirectory>('/api/workspace-setup/remote/list', {
+      method: 'POST',
+      signal,
+      cache: 'no-store',
+      body: JSON.stringify({ session, ...input }),
+    }),
+  closeSetupRemote: (session: string) =>
+    request<{ closed: true }>('/api/workspace-setup/remote/close', {
+      method: 'POST',
+      body: JSON.stringify({ session }),
+    }),
+  setupRemoteSize: (session: string, path: string, signal?: AbortSignal) =>
+    request<{ path: string; bytes: number; sampledAt: number }>('/api/workspace-setup/remote/size', {
+      method: 'POST',
+      signal,
+      cache: 'no-store',
+      body: JSON.stringify({ session, path }),
+    }),
+  previewWorkspace: (input: WorkspaceInput, signal?: AbortSignal) =>
+    request<WorkspaceSetupPreview>('/api/workspace-setup/preview', {
+      method: 'POST',
+      signal,
+      cache: 'no-store',
+      body: JSON.stringify(input),
+    }),
+  verifyWorkspace: (input: WorkspaceInput, signal?: AbortSignal) =>
+    request<WorkspaceSetupVerification>('/api/workspace-setup/verify', {
+      method: 'POST',
+      signal,
+      cache: 'no-store',
+      body: JSON.stringify(input),
+    }),
+  revokeWorkspaceVerification: (verification: string) =>
+    request<{ revoked: true }>('/api/workspace-setup/revoke', {
+      method: 'POST',
+      body: JSON.stringify({ verification }),
+    }),
+  createVerifiedWorkspace: (input: WorkspaceSetupCreate, signal?: AbortSignal) =>
+    request<WorkspaceSetupResult>('/api/workspaces', {
+      method: 'POST',
+      signal,
+      cache: 'no-store',
+      body: JSON.stringify(input),
+    }),
+  saveSshTarget: (input: ManualServerInput, signal?: AbortSignal) =>
+    request<ManagedServer>('/api/ssh-targets', { method: 'POST', signal, body: JSON.stringify(input) }),
+  probeHostKey: (sshHost: string, signal?: AbortSignal) =>
+    request<HostTrustStatus>('/api/ssh/host-key', {
+      method: 'POST',
+      signal,
+      cache: 'no-store',
+      body: JSON.stringify({ sshHost }),
+    }),
+  confirmHostKey: (input: HostTrustConfirmation, signal?: AbortSignal) =>
+    request<HostTrustStatus>('/api/ssh/host-key/confirm', {
+      method: 'POST',
+      signal,
+      cache: 'no-store',
+      body: JSON.stringify(input),
+    }),
   /** 凭据只随这次请求发送，不经过 React Query 或浏览器持久存储。 */
   connectSsh: (input: SshConnectInput, signal?: AbortSignal) =>
     request<SshConnectResult>('/api/ssh/connect', {

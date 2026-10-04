@@ -304,6 +304,16 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 - 下载只在用户明确选择后进行，经 SSH/SFTP 和本地 HTTP 流式传输到用户选择的下载位置，控制缓冲并支持取消；不自动落入工作区镜像或 Git，不将大文件整体读入内存。服务器内部移动/复制不经过这条下载链路。
 - `downloads` 在打开前及打开句柄后复验普通文件属性。流的高水位为 64 KiB，ssh2 可预取更多数据，高水位不是硬内存上限；背压和中止传至独立 SFTP 通道。浏览器支持保存选择器时逐块写入；否则交由下载管理器，网页只确认交接，不声称已保存到磁盘。
 
+### 5.13 workspaces/setup：创建前向导与验证
+
+手动目标存储在本机servers.json，以稳定managed-ssh-UUID别名接入共享resolver；不改写SSH config，密码继续使用独立凭据存储。host-trust通过独立无认证握手取得实际公钥，只接受显式确认后的未知公钥追加，变化/吊销拒绝；挑战两分钟、一次消费、有界32项。
+
+local/remote提供只读草稿目录浏览，每页200项、最多32组、15分钟空闲过期；remote复用RemoteFilesService独立SFTP通道，du按需执行。preview复用同步过滤，使用本地目录迭代和独立临时rclone lsjson清单，不读正文、不创建同步基线；20000项/30秒上限和20项排除例子，finally清理。
+
+verification生成五分钟/64项一次性快照票，绑定配置、认证代次、连接cacheKey、本地根身份及远端规范路径。生产POST工作区要求该票及首次同步确认；创建开始和store串行队列写盘前均复验，每轮race截止可释放挂起resolver。远端检查结束重新lstat/realpath，rclone拒绝逻辑/物理根重定向。最后检查之后的任意外部修改不属于已锁定保证。
+
+保存是提交点，之后调用既有sync.initialize，真实失败/冲突保留工作区；不以HTTP30秒截止伪造首次同步失败。网页取消撤票、关闭草稿与清DOM密码；创建mutation完成后刷新列表，外部卸载不自动切换工作区。见[验收](../guides/workspace-setup-acceptance.md)和设计W01–W15。
+
 ## 6. 关键流程
 
 ### 6.1 一轮对话

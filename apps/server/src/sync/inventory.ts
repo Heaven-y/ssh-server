@@ -1,6 +1,6 @@
 // 本地文件清单：不跟随符号链接，固定跳过 .git，不读取大文件内容。
 import { createHash } from 'node:crypto';
-import { lstat, mkdir, readdir, readFile } from 'node:fs/promises';
+import { lstat, mkdir, opendir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { SyncSettings } from '@ssh-server/shared';
 import { SyncError } from './errors';
@@ -14,14 +14,20 @@ export function workspaceStateDir(configDir: string, id: string): string {
 export async function localInventory(
   root: string,
   settings: SyncSettings,
+  options: { signal?: AbortSignal; maxEntries?: number } = {},
 ): Promise<{ all: FileEntry[]; included: FileEntry[]; directories: string[] }> {
   const all: FileEntry[] = [];
   const directories: string[] = [];
+  let entries = 0;
+  options.signal?.throwIfAborted();
   const rootStat = await lstat(root);
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink())
     throw new SyncError('unsafe_path', '本地同步根目录必须是普通目录');
   async function visit(relative: string): Promise<void> {
-    for (const item of await readdir(path.join(root, relative), { withFileTypes: true })) {
+    for await (const item of await opendir(path.join(root, relative))) {
+      options.signal?.throwIfAborted();
+      if (++entries > (options.maxEntries ?? Number.POSITIVE_INFINITY))
+        throw new SyncError('inventory_limit', '清单数量超过本次预览上限，未完成统计');
       if (item.name.toLowerCase() === '.git') continue;
       const file = relative ? `${relative}/${item.name}` : item.name;
       safeRelativePath(file);
@@ -34,6 +40,7 @@ export async function localInventory(
     }
   }
   await visit('');
+  options.signal?.throwIfAborted();
   return { all, included: all.filter((file) => eligibleFile(file.path, file.size, settings)), directories };
 }
 export async function safeLocalFile(root: string, relative: string): Promise<string> {

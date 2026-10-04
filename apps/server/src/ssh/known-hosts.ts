@@ -67,6 +67,14 @@ function keyType(key: Buffer): string | undefined {
   const len = key.readUInt32BE(0);
   return len > 0 && 4 + len <= key.length ? key.subarray(4, 4 + len).toString('latin1') : undefined;
 }
+export { keyType as hostKeyType, hostName as knownHostName };
+
+/** 连接身份仅绑定该目标的有效解析记录；其他主机的信任修改不重建本连接。 */
+export function knownHostRecordsForTarget(text: string, host: string, port: number): string {
+  return JSON.stringify(
+    entriesFor(text, host, port).map(({ marker, type, key }) => [marker, type, key.toString('base64')]),
+  );
+}
 
 /** 从已有信任记录筛出该目标；不读取或信任远端新密钥，也不修改用户 known_hosts。 */
 export function knownHostsForTarget(text: string, host: string, port: number): string {

@@ -266,7 +266,8 @@ it('同设备移动退化为复制时使用已保存的正文证明核对，不�
     source: { exists: false },
     destination: { exists: true, contentDigest: proof },
   });
-  expect((await fixture.tasks.check(ws.id, task.id)).phase).toBe('completed');
+  // needs_check先更新内存再持久化，活动控制器收尾前check只返回状态；等可核对后保留同一结果断言。
+  await vi.waitFor(async () => expect((await fixture.tasks.check(ws.id, task.id)).phase).toBe('completed'));
   expect(fixture.executor.run.mock.calls[1]?.[1].verifyContent).toBe(true);
 });
 
