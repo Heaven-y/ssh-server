@@ -61,6 +61,8 @@ import { registerWorkspaceSetupRoutes } from './http/workspace-setup.routes';
 import { createRcloneDriver } from './sync/rclone';
 import { createSyncManager } from './sync/manager';
 import { createNativeConfigService } from './settings/native-config';
+import { createProductSettings } from './settings/product-settings';
+import { registerProductSettingsRoutes } from './http/product-settings.routes';
 
 const WEB_DIST = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
@@ -88,6 +90,7 @@ function accessUrl(host: string, port: number, token: string, devOrigin?: string
 async function main(): Promise<void> {
   const config = loadConfig(process.env, process.argv.slice(2));
   await mkdir(config.configDir, { recursive: true });
+  const productSettings = createProductSettings({ configDir: config.configDir });
 
   const targets = createServerTargets({ configDir: config.configDir });
   const listSshHosts = async () => [
@@ -202,6 +205,7 @@ async function main(): Promise<void> {
       registerWorkspaceSetupRoutes(a, setup);
       registerHostTrustRoutes(a, createHostTrust({ pool }));
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
+      registerProductSettingsRoutes(a, productSettings);
       registerFileRoutes(a, { store, files: createWorkspaceFilesService(), sync });
       registerFileEditorRoutes(a, { store, editors, acquireWorkspace });
       registerRemoteFileRoutes(a, browse);
