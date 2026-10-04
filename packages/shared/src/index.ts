@@ -3,6 +3,16 @@
 /** 前后端协议版本，协议出现不兼容变化时递增 */
 export const PROTOCOL_VERSION = 1;
 
+export { RESOURCE_LIMITS } from './resources';
+export type {
+  ResourceGpu,
+  ResourceProcess,
+  ResourceHost,
+  ResourceDisk,
+  ResourceReading,
+  ResourceSnapshot,
+} from './resources';
+
 export {
   TERMINAL_LIMITS,
   TerminalTargetSchema,
