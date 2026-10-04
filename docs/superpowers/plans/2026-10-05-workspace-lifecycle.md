@@ -42,9 +42,9 @@
 
 文件：features/workspaces/WorkspaceRemoveDialog.tsx/WorkspaceSidebar.tsx；app/App.tsx；features/chat/chat-store.ts；features/terminal/terminal-store.ts；lib/api.ts。
 
-- [ ] 每行移除按钮、配置预览、保留内容、阻断原因、默认未确认及单次提交；失败保持目标和重试。
-- [ ] 成功刷新/清理查询及所属布局；当前项移除后选择下一项或空，独立文件/资源面板关闭，外部卸载不切换其他目标。
-- [ ] web类型、相关lint/格式/build通过，提交。
+- [x] 每行移除按钮、配置预览、保留内容、阻断原因、默认未确认及单次提交；失败保持目标和重试。
+- [x] 成功刷新/清理查询及所属布局；当前项移除后选择下一项或空，独立文件/资源面板关闭，外部卸载不切换其他目标。
+- [x] web类型、相关lint/格式/build通过，提交。
 
 ## 任务4：一次Review、核心回归、验收和整合
 

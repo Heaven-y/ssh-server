@@ -22,17 +22,20 @@ export function App() {
   const [terminalLoaded, setTerminalLoaded] = useState(false);
   const [terminalVisible, setTerminalVisible] = useState(false);
   const hideTerminal = useCallback(() => setTerminalVisible(false), []);
-  const workspaces = useQuery({ queryKey: queryKeys.workspaces, queryFn: api.listWorkspaces });
+  const workspaces = useQuery({ queryKey: queryKeys.workspaces, queryFn: ({ signal }) => api.listWorkspaces(signal) });
   const workspaceId = useChat((s) => s.workspaceId);
   const selectWorkspace = useChat((s) => s.selectWorkspace);
   const current = workspaces.data?.find((w) => w.id === workspaceId);
+  const workspaceRemoved = useCallback((id: string) => {
+    setFilesWorkspace((opened) => (opened?.id === id ? undefined : opened));
+  }, []);
 
   // 首次加载后恢复上次的工作区，否则选第一个
   useEffect(() => {
     const list = workspaces.data;
-    if (!list?.length || current) return;
+    if (!list || current) return;
     const last = lastWorkspaceId();
-    selectWorkspace(list.find((w) => w.id === last)?.id ?? list[0]!.id);
+    selectWorkspace(list.find((w) => w.id === last)?.id ?? list[0]?.id);
   }, [workspaces.data, current, selectWorkspace]);
 
   return (
@@ -63,7 +66,7 @@ export function App() {
         </Suspense>
       )}
       <div className="flex min-h-0 flex-1">
-        <WorkspaceSidebar workspaces={workspaces} currentId={current?.id} />
+        <WorkspaceSidebar workspaces={workspaces} currentId={current?.id} onRemoved={workspaceRemoved} />
         <WorkspaceArea
           workspace={current}
           terminalLoaded={terminalLoaded}
@@ -82,8 +85,8 @@ export function App() {
                     workspace={current}
                   />
                   <SyncPanel key={current.id} workspace={current} />
-                  <VersionsPanel workspace={current} />
-                  <ResourcesPanel workspace={current} />
+                  <VersionsPanel key={current.id} workspace={current} />
+                  <ResourcesPanel key={current.id} workspace={current} />
                 </div>
                 <ChatView workspace={current} />
               </>
