@@ -1,6 +1,6 @@
 # 设计决策
 
-更新日期：2026-10-03。本文集中记录已经确定的方向及其边界；功能定义见 [需求](../product/requirements.md)，实现设计见 [架构](architecture.md)，实际完成状态见 [路线图](../roadmap.md)。“已确定”不等于“已实现”。
+更新日期：2026-10-04。本文集中记录已经确定的方向及其边界；功能定义见 [需求](../product/requirements.md)，实现设计见 [架构](architecture.md)，实际完成状态见 [路线图](../roadmap.md)。“已确定”不等于“已实现”。
 
 ## 1. 决策总表
 
@@ -58,7 +58,7 @@
 
 [Pebrel](https://github.com/Kuddev/pebrel) 用于参考终端外观、多标签、分屏和可调整布局。网页底层仍使用 xterm.js 与 SSH PTY，分屏的具体布局在 M5 细化。
 
-已核对 Pebrel 的 README 和许可，尚未完成截图的实际视觉核对，因此不宣称已经匹配其精确配色。项目整体语义色仍以 [界面布局](../product/ui-layout.md) 为准，终端细节在实现时通过实际渲染检查。
+2026-10-04 已实际查看 Pebrel 的[终端分屏截图](https://github.com/Kuddev/pebrel/blob/main/docs/screenshots/split-ai-workflows.png)，参考紧凑标签、细分隔线和独立窗格；不将截图复制为产品资产，不宣称匹配其精确配色。项目整体语义色仍以 [界面布局](../product/ui-layout.md) 为准，终端细节在实现时通过实际渲染检查。具体方案见待审的[网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.md)，尚未实施。
 
 ## 6. 手动结果分析与实时资源显示
 
