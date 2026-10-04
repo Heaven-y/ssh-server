@@ -46,6 +46,8 @@ import { createTerminalManager } from './terminal/manager';
 import { createSshPool } from './ssh/pool';
 import { createServerTargets, serverHostConfig } from './ssh/targets';
 import { registerSshTargetRoutes } from './http/ssh-targets.routes';
+import { registerHostTrustRoutes } from './http/ssh-host-trust.routes';
+import { createHostTrust } from './ssh/host-trust';
 import { createPasswordStore } from './ssh/password-store';
 import { listHosts, parseSshConfig } from './ssh/ssh-config';
 import { createWorkspaceStore } from './workspaces/store';
@@ -153,6 +155,7 @@ async function main(): Promise<void> {
       registerCapabilityRoutes(a, { store, capabilities });
       registerSshRoutes(a, { pool });
       registerSshTargetRoutes(a, targets);
+      registerHostTrustRoutes(a, createHostTrust({ pool }));
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
       registerFileRoutes(a, { store, files: createWorkspaceFilesService(), sync });
       const browse = createRemoteFilesService({ store, pool });

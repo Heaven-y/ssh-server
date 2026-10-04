@@ -5,6 +5,7 @@ import { buttonClass } from '../../ui/styles';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { useSshConnection } from './use-ssh-connection';
 import { SshPasswordField } from './SshPasswordField';
+import { HostKeyConfirmation } from './HostKeyConfirmation';
 
 type Connection = ReturnType<typeof useSshConnection>;
 
@@ -120,6 +121,12 @@ export function SshConnectionPanel({ workspace }: { workspace: Workspace }) {
               <SshConnectionFeedback connection={connection} />
             </div>
             <SshConnectionDetails workspace={workspace} connection={connection} />
+            <HostKeyConfirmation
+              sshHost={workspace.sshHost}
+              disabled={connection.busy}
+              onChecking={connection.clearPassword}
+              onTrusted={connection.reset}
+            />
             <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
               <button
                 type="button"

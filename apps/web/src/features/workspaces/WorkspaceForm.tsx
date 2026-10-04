@@ -12,6 +12,7 @@ import { api, ApiError, queryKeys } from '../../lib/api';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { SshConnectionFeedback } from '../ssh/SshConnectionPanel';
 import { SshPasswordField } from '../ssh/SshPasswordField';
+import { HostKeyConfirmation } from '../ssh/HostKeyConfirmation';
 import { sshTargetErrors, useSshConnection } from '../ssh/use-ssh-connection';
 
 type Field = 'name' | 'localDir' | 'sshHost' | 'remoteDir';
@@ -326,6 +327,12 @@ export function WorkspaceForm({
         {connection.busy ? '正在测试连接…' : '测试连接'}
       </button>
       <SshConnectionFeedback connection={connection} />
+      <HostKeyConfirmation
+        sshHost={values.sshHost}
+        disabled={busy}
+        onChecking={connection.clearPassword}
+        onTrusted={connection.reset}
+      />
       {needsVerification && (
         <p className="text-xs leading-5 text-warning">密码认证须先验证成功，才能创建。目标改变后需要重新测试。</p>
       )}

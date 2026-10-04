@@ -23,3 +23,21 @@ export type ManagedServer = ManualServerInput & { alias: string };
 export const ManagedServerSchema = ManualServerInputSchema.extend({
   alias: z.string().regex(/^managed-ssh-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/),
 });
+
+export type HostTrustStatus = {
+  status: 'trusted' | 'unknown';
+  alias: string;
+  target: { hostname: string; port: number; username: string };
+  algorithm: string;
+  fingerprint: string;
+  challenge?: string;
+  expiresAt?: number;
+};
+export const HostTrustConfirmationSchema = z
+  .object({
+    challenge: z.string().uuid(),
+    fingerprint: z.string().regex(/^SHA256:[A-Za-z0-9+/]{43}$/),
+    confirmed: z.literal(true),
+  })
+  .strict();
+export type HostTrustConfirmation = z.infer<typeof HostTrustConfirmationSchema>;

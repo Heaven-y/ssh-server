@@ -8,7 +8,7 @@ type ConnectionState = { targetId: string; phase: Phase; message?: string };
 
 const TARGET_SCHEMA = WorkspaceInputSchema.pick({ sshHost: true, remoteDir: true, authMode: true });
 const SSH_ERRORS: Record<string, string> = {
-  host_key_unknown: '尚未登记服务器主机密钥。请先在本机终端用 ssh 核对该 Host 的指纹，再重试。',
+  host_key_unknown: '尚未登记服务器主机密钥。请点击“检查实际指纹”，通过可信渠道核对并确认后重新测试连接。',
   host_key_mismatch: '服务器主机密钥与 known_hosts 不一致，已拒绝连接。请核实密钥变化原因后再重试。',
   host_key_revoked: '服务器主机密钥已吊销，已拒绝连接。请联系服务器管理员核实。',
   unsupported_config: '该 Host 未配置或包含暂不支持的 SSH 选项。请检查本机 ~/.ssh/config。',

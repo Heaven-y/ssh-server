@@ -62,8 +62,8 @@ export type {
 } from './versions';
 export { VERSION_MESSAGE_MAX_LENGTH } from './versions';
 export { AgentKindSchema, NativeSessionIdSchema, SessionActionSchema } from './agents';
-export { ManualServerInputSchema, ManagedServerSchema } from './setup';
-export type { ManualServerInput, ManagedServer } from './setup';
+export { ManualServerInputSchema, ManagedServerSchema, HostTrustConfirmationSchema } from './setup';
+export type { ManualServerInput, ManagedServer, HostTrustStatus, HostTrustConfirmation } from './setup';
 export type { AgentKind, SessionRef, SessionSummary, SessionHistory, SessionActionInput } from './agents';
 export { CapabilitySelectionSchema } from './capabilities';
 export type {

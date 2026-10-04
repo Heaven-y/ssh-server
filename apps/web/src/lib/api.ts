@@ -33,6 +33,10 @@ import type {
   WorkspaceInput,
   TerminalTarget,
   TerminalBinding,
+  HostTrustStatus,
+  HostTrustConfirmation,
+  ManualServerInput,
+  ManagedServer,
 } from '@ssh-server/shared';
 
 export type { SessionSummary } from '@ssh-server/shared';
@@ -235,6 +239,22 @@ export const api = {
       }),
     }),
   listSshHosts: () => request<SshHostInfo[]>('/api/ssh-hosts'),
+  saveSshTarget: (input: ManualServerInput, signal?: AbortSignal) =>
+    request<ManagedServer>('/api/ssh-targets', { method: 'POST', signal, body: JSON.stringify(input) }),
+  probeHostKey: (sshHost: string, signal?: AbortSignal) =>
+    request<HostTrustStatus>('/api/ssh/host-key', {
+      method: 'POST',
+      signal,
+      cache: 'no-store',
+      body: JSON.stringify({ sshHost }),
+    }),
+  confirmHostKey: (input: HostTrustConfirmation, signal?: AbortSignal) =>
+    request<HostTrustStatus>('/api/ssh/host-key/confirm', {
+      method: 'POST',
+      signal,
+      cache: 'no-store',
+      body: JSON.stringify(input),
+    }),
   /** 凭据只随这次请求发送，不经过 React Query 或浏览器持久存储。 */
   connectSsh: (input: SshConnectInput, signal?: AbortSignal) =>
     request<SshConnectResult>('/api/ssh/connect', {
