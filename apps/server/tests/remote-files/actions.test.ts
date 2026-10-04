@@ -96,7 +96,11 @@ it('预检保留原工作区根配置，复验配置并阻止同步范围内提�
   const action = actionFixture();
   const workspace = { ...ws, remoteDir: '~/linked-project' };
   const executor = { run: vi.fn(async () => action.plan) };
-  const store = { list: async () => [structuredClone(workspace)], get: async () => structuredClone(workspace) };
+  const unrelated: Workspace[] = [];
+  const store = {
+    list: async () => [structuredClone(workspace), ...unrelated],
+    get: async () => structuredClone(workspace),
+  };
   const pool = {
     identity: async () => 'fixture-identity',
     resolveConnection: async () => ({
@@ -152,6 +156,9 @@ it('预检保留原工作区根配置，复验配置并阻止同步范围内提�
   );
   expect(unmanaged.canSubmit).toBe(true);
   expect(unmanaged.affectedWorkspaces).toEqual([]);
+  unrelated.push({ ...workspace, id: 'unrelated', remoteDir: '~/unrelated-project' });
+  await expect(preflights.validate(saved)).rejects.toMatchObject({ code: 'stale_preflight' });
+  await expect(preflights.validate(saved, false)).resolves.toBeUndefined();
 });
 
 it('重复提交只创建一个已持久化任务，执行仍传入原始配置根', async () => {

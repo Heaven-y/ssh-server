@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { SyncStatus, WorkspaceFile } from '@ssh-server/shared';
 import { api, ApiError, queryKeys } from '../../lib/api';
+import { createEditorConnection, type EditorConnection } from './editor-connection';
 
 const messageOf = (error: unknown) =>
   error instanceof ApiError ? error.message : '文件操作失败，请检查本机服务后重试。';
@@ -75,18 +76,26 @@ export function useFileEditor(workspaceId: string) {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [external, setExternal] = useState('');
+  const [protection, setProtection] = useState('正在登记编辑保护…');
+  const guard = useRef<EditorConnection | null>(null);
   const request = useRef<AbortController | null>(null);
   const working = useRef(false);
   const alive = useRef(true);
   const dirty = !!file && content !== file.content;
+  const publish = (current: WorkspaceFile | undefined, dirty: boolean, busy: boolean) =>
+    guard.current?.update({ path: current?.path ?? null, dirty, busy });
 
   useEffect(() => {
     alive.current = true;
+    const connection = createEditorConnection(workspaceId, setProtection);
+    guard.current = connection;
     return () => {
       alive.current = false;
       request.current?.abort();
+      connection.dispose();
+      guard.current = null;
     };
-  }, []);
+  }, [workspaceId]);
   useEffect(() => {
     if (!dirty && busy !== 'saving') return;
     const leaving = (event: BeforeUnloadEvent) => {
@@ -97,16 +106,29 @@ export function useFileEditor(workspaceId: string) {
   }, [dirty, busy]);
   useFileRevision(workspaceId, file, !busy, setExternal);
 
-  const edit = useCallback((value: string) => {
-    setContent(value);
-    setMessage('');
-    setError('');
-  }, []);
+  const edit = useCallback(
+    (value: string) => {
+      if (!guard.current?.canEdit()) return;
+      guard.current.update({ path: file?.path ?? null, dirty: !!file && value !== file.content, busy: false });
+      setContent(value);
+      setMessage('');
+      setError('');
+    },
+    [file],
+  );
   const canLeave = () =>
-    !working.current && (!dirty || window.confirm('文件有未保存修改。取消可返回保存；确定将放弃修改。'));
+    !working.current &&
+    !guard.current?.isReserved() &&
+    (!dirty || window.confirm('文件有未保存修改。取消可返回保存；确定将放弃修改。'));
+  const canClose = () => {
+    if (!canLeave()) return false;
+    guard.current?.approveClose();
+    return true;
+  };
   const open = async (relative: string) => {
-    if (!canLeave()) return;
+    if (!guard.current?.canEdit() || !canLeave()) return;
     working.current = true;
+    publish(file, dirty, true);
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
@@ -119,16 +141,22 @@ export function useFileEditor(workspaceId: string) {
       setFile(current);
       setContent(current.content);
       setExternal('');
+      publish(current, false, false);
     } catch (failure) {
-      if (!controller.signal.aborted) setError(messageOf(failure));
+      if (!controller.signal.aborted) {
+        setError(messageOf(failure));
+        publish(file, dirty, false);
+      }
     } finally {
       working.current = false;
       if (alive.current) setBusy(undefined);
     }
   };
+  const canSave = () => !!file && !working.current && dirty && guard.current?.canEdit();
   const save = async () => {
-    if (!file || working.current || !dirty) return;
+    if (!file || !canSave()) return;
     working.current = true;
+    publish(file, dirty, true);
     setBusy('saving');
     setError('');
     setMessage('正在保存到本地…');
@@ -136,6 +164,7 @@ export function useFileEditor(workspaceId: string) {
     try {
       const local = await api.saveFile(workspaceId, { path: file.path, content, revision: file.revision });
       saved = true;
+      publish(local, false, true);
       if (alive.current) {
         setFile(local);
         setContent(local.content);
@@ -157,8 +186,9 @@ export function useFileEditor(workspaceId: string) {
       }
     } finally {
       working.current = false;
+      publish(file, !saved && dirty, false);
       if (alive.current) setBusy(undefined);
     }
   };
-  return { file, content, dirty, busy, message, error, external, edit, open, save, canLeave };
+  return { file, content, dirty, busy, message, error, external, protection, edit, open, save, canClose };
 }

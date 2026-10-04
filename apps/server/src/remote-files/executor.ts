@@ -9,6 +9,11 @@ import { fileOperationError, RemoteFilesError } from './errors';
 
 const facts = z.array(z.string()).length(6);
 const parent = z.array(z.string()).length(3);
+const SourceEntrySchema = z.object({
+  path: z.string().max(4096),
+  type: z.enum(['file', 'directory', 'link']),
+  size: z.number().int().nonnegative(),
+});
 export const RemoteActionPlanSchema = z.object({
   kind: z.enum(['mkdir', 'rename', 'move', 'copy', 'delete']),
   roots: z.array(z.string()),
@@ -26,6 +31,7 @@ export const RemoteActionPlanSchema = z.object({
   sourceParent: parent.optional(),
   destinationParent: parent.optional(),
   crossFilesystem: z.boolean(),
+  sourceEntries: z.array(SourceEntrySchema).max(50_000).optional(),
 });
 export type RemoteActionPlan = z.infer<typeof RemoteActionPlanSchema>;
 export type HelperInput = RemoteFileActionInput & {
@@ -33,6 +39,7 @@ export type HelperInput = RemoteFileActionInput & {
   roots: string[];
   expected?: RemoteActionPlan;
   verifyContent?: boolean;
+  includeEntries?: boolean;
 };
 const PhaseSchema = z.object({
   event: z.literal('phase'),
@@ -46,6 +53,7 @@ const EventSchema = z.discriminatedUnion('event', [
   PhaseSchema,
   z.object({ event: z.literal('result'), result: z.unknown() }),
   z.object({ event: z.literal('error'), code: z.string() }),
+  SourceEntrySchema.extend({ event: z.literal('entry') }),
 ]);
 type Phase = Omit<z.infer<typeof PhaseSchema>, 'event'>;
 type Options = { signal?: AbortSignal; timeoutMs?: number; onPhase?: (phase: Phase) => Promise<void> };
@@ -64,15 +72,36 @@ function stopChannel(channel: ClientChannel) {
   channel.close();
 }
 
-async function consume(channel: ClientChannel, options: Options) {
-  let pending = '';
+function collectEvents(options: Options, includeEntries: boolean) {
   let result: unknown;
+  const entries: z.infer<typeof SourceEntrySchema>[] = [];
+  let metadataBytes = 0;
   const lineOf = async (line: string) => {
     const event = EventSchema.parse(JSON.parse(line));
     if (event.event === 'error') throw fileOperationError(event.code);
     if (event.event === 'phase') await options.onPhase?.(event);
     if (event.event === 'result') result = event.result;
+    if (event.event === 'entry') {
+      metadataBytes += Buffer.byteLength(line);
+      if (!includeEntries || entries.length >= 50_000 || metadataBytes > 2 * 1024 * 1024)
+        throw new RemoteFilesError('scan_incomplete');
+      entries.push({ path: event.path, type: event.type, size: event.size });
+    }
   };
+  return {
+    lineOf,
+    finish() {
+      if (result === undefined) throw new RemoteFilesError('operation_failed');
+      if (includeEntries && (result as { entries?: number }).entries !== entries.length)
+        throw new RemoteFilesError('scan_incomplete');
+      return includeEntries ? { ...(result as object), sourceEntries: entries } : result;
+    },
+  };
+}
+
+async function consume(channel: ClientChannel, options: Options, includeEntries = false) {
+  let pending = '';
+  const events = collectEvents(options, includeEntries);
   for await (const raw of channel) {
     options.signal?.throwIfAborted();
     pending += Buffer.from(raw as Uint8Array).toString('utf8');
@@ -81,11 +110,11 @@ async function consume(channel: ClientChannel, options: Options) {
     while ((end = pending.indexOf('\n')) >= 0) {
       const line = pending.slice(0, end);
       pending = pending.slice(end + 1);
-      if (line) await lineOf(line);
+      if (line) await events.lineOf(line);
     }
   }
-  if (pending.trim() || result === undefined) throw new RemoteFilesError('operation_failed');
-  return result;
+  if (pending.trim()) throw new RemoteFilesError('operation_failed');
+  return events.finish();
 }
 
 /** 正文永不经过本机；只读取固定处理器的少量 JSON 状态，消费速度控制 SSH 输出。 */
@@ -93,7 +122,9 @@ export function createRemoteExecutor(pool: Pick<SshPool, 'openExec'>): RemoteExe
   return {
     async run(target, input, options = {}) {
       const source = Buffer.from(await helperSource).toString('base64');
-      const payload = Buffer.from(JSON.stringify(input)).toString('base64');
+      // 清单仅用于本机影响分类；对象摘要已绑定完整树，不把大清单塞进 SSH 命令参数。
+      const expected = input.expected ? { ...input.expected, sourceEntries: undefined } : undefined;
+      const payload = Buffer.from(JSON.stringify({ ...input, expected })).toString('base64');
       const script = `import base64;exec(base64.b64decode('${source}'))`;
       const signal = AbortSignal.any([
         AbortSignal.timeout(options.timeoutMs ?? 30_000),
@@ -116,7 +147,7 @@ export function createRemoteExecutor(pool: Pick<SshPool, 'openExec'>): RemoteExe
       signal.addEventListener('abort', stop, { once: true });
       if (signal.aborted) stop();
       try {
-        const result = await consume(channel, { ...options, signal });
+        const result = await consume(channel, { ...options, signal }, input.includeEntries);
         await closed;
         signal.throwIfAborted();
         if (exitCode !== 0) throw new RemoteFilesError('operation_failed');

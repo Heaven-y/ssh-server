@@ -7,10 +7,12 @@ import { preserveInitialConflicts } from './initialize';
 import { hash, localInventory, type FileEntry } from './inventory';
 import type { RcloneContext, SyncDriver } from './rclone';
 import { localFileMissing, stageSnapshot } from './snapshot';
+import { createRemoteFileChanges } from './remote-changes';
+import { bindSyncCancellation } from './cancellation';
 import { loadSyncState, newConflicts, publicStatus, saveSyncState, settingsDigest, type SyncState } from './state';
 
 type Deps = { configDir: string; driver: SyncDriver };
-type SyncOptions = { initialize?: boolean; confirmed?: boolean; approved?: Map<string, string> };
+type SyncOptions = { initialize?: boolean; confirmed?: boolean; approved?: Map<string, string>; signal?: AbortSignal };
 export function createSyncManager(deps: Deps) {
   const states = new Map<string, Promise<SyncState>>();
   const queues = new Map<string, Promise<unknown>>();
@@ -55,6 +57,7 @@ export function createSyncManager(deps: Deps) {
     });
   }
   function blocked(state: SyncState, options: SyncOptions): boolean {
+    if (state.remoteTask) return true;
     if (state.phase === 'conflicts' || state.reason === 'deletions') return true;
     if (options.initialize) return false;
     return (
@@ -153,7 +156,7 @@ export function createSyncManager(deps: Deps) {
   }
   async function prepareMirror(input: TransferInput, context: RcloneContext) {
     const snapshot = await stageSnapshot({ configDir: deps.configDir, ws: input.ws, settings: input.settings });
-    const fresh = { ...input, local: { included: snapshot.inventory, all: snapshot.all } };
+    const fresh = { ...input, local: { ...input.local, included: snapshot.inventory, all: snapshot.all } };
     for (const file of snapshot.all) fresh.options.approved?.delete(file.path);
     const remote = await checkSnapshot(fresh, context);
     if (!remote) return undefined;
@@ -224,18 +227,22 @@ export function createSyncManager(deps: Deps) {
     const settings = settingsOf(ws);
     if (blocked(state, options)) return publicStatus(state, settings);
     let context: RcloneContext | undefined;
+    let unbindCancellation = () => {};
     try {
+      options.signal?.throwIfAborted();
       const local = await localInventory(ws.localDir, settings);
       const input = { ws, state, settings, options, local };
       const plan = await initializationPlan(input);
       if (!plan.proceed) return publicStatus(state, settings);
       context = await deps.driver.open(ws, settings);
       active.add(context);
+      unbindCancellation = bindSyncCancellation(context, options.signal);
       const remote = await checkSnapshot(input, context);
       if (remote) await transfer({ ...input, ...plan, remote }, context);
     } catch (error) {
       await fail(ws, state, error);
     } finally {
+      unbindCancellation();
       if (context) {
         active.delete(context);
         context.close();
@@ -294,8 +301,16 @@ export function createSyncManager(deps: Deps) {
     }
     return publicStatus(state, settings);
   }
+  const remoteFiles = createRemoteFileChanges({ ...deps, active, get, save, settingsOf });
   return {
     transaction,
+    remoteFiles: {
+      prepare: (ws: Workspace, id: string, signal?: AbortSignal) =>
+        remoteFiles.prepare(ws, id, () => perform(ws, { signal }), signal),
+      finish: remoteFiles.finish,
+      abortBeforeDispatch: remoteFiles.abortBeforeDispatch,
+      checkPaths: remoteFiles.checkPaths,
+    },
     async status(ws: Workspace): Promise<SyncStatus> {
       const state = await get(ws);
       const settings = settingsOf(ws);
@@ -319,7 +334,13 @@ export function createSyncManager(deps: Deps) {
         if (state.phase !== 'conflicts' || !state.conflicts.length) return publicStatus(state, settings);
         const present = new Set((await localInventory(ws.localDir, settings)).included.map((file) => file.path));
         if (state.conflicts.some((conflict) => !present.has(conflict.path)))
-          return publicStatus({ ...state, message: '请先将选定内容恢复到原始文件路径' }, settings);
+          return publicStatus(
+            {
+              ...state,
+              message: '请先将选定内容恢复到原始文件路径，并确认文件在同步大小范围内；超限内容须另行保留或调整阈值',
+            },
+            settings,
+          );
         Object.assign(state, { phase: 'ready', conflicts: [], message: undefined });
         await save(ws, state);
         return perform(ws);
