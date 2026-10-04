@@ -11,6 +11,7 @@ import {
 import type { SshPool } from '../../ssh/pool';
 import type { SyncManager } from '../../sync/manager';
 import { workspaceTarget } from '../../ssh/connection';
+import { remoteOperation } from '../../remote-files/operation';
 import type { WorkspaceStore } from '../store';
 import { inspectLocalRoot } from './local';
 import { inspectRemoteRoot } from './remote';
@@ -48,8 +49,11 @@ export function createSetupVerification(deps: Deps) {
   let pending = 0;
   const local = deps.inspectLocal ?? inspectLocalRoot;
   const remote = deps.inspectRemote ?? inspectRemoteRoot;
-  async function check(raw: WorkspaceInput, parent: AbortSignal): Promise<Checked> {
-    const signal = AbortSignal.any([parent, AbortSignal.timeout(30000)]);
+  function check(raw: WorkspaceInput, parent: AbortSignal): Promise<Checked> {
+    // 配置读取可能不接收 signal；race 让取消/截止立即释放写盘队列，迟到检查没有保存副作用。
+    return remoteOperation(parent, (signal) => inspect(raw, signal));
+  }
+  async function inspect(raw: WorkspaceInput, signal: AbortSignal): Promise<Checked> {
     if (!path.isAbsolute(raw.localDir))
       throw new WorkspaceSetupError('local_directory_invalid', '本地目录必须是绝对路径');
     const input = normalizeSetupInput(raw);

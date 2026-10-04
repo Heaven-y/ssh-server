@@ -53,17 +53,17 @@ verify返回{verification,expiresAt,local:{empty,git},target}；create返回{wor
 文件：web/features/workspaces/WorkspaceForm.tsx及setup/{LocalStep,ServerStep,RemoteStep,SyncStep,ConfirmStep,DirectoryPicker,use-workspace-setup}.tsx/ts；api.ts与既有SSH反馈/同步表单。
 消费：任务1–3的协议与API。onCreated(workspace)保留现有列表接线；显示初始化结果后完成选择，不改变历史会话。
 
-- [ ] 名称与本地逐级目录、导入/保存手动目标、认证和指纹、远端分页/手动路径/按需大小、同步规则/预览。
-- [ ] 汇总双方非空与合并保留冲突说明；最后验证票成功才允许勾选创建/初始化，字段变化撤销，创建不可重复。
-- [ ] 取消中断请求/关闭草稿/清DOM密码；迟到结果不改新目标或切换已关闭页面；web类型、相关lint/format及build预期exit0，提交。
+- [x] 名称与本地逐级目录、导入/保存手动目标、认证和指纹、远端分页/手动路径/按需大小、同步规则/预览。
+- [x] 汇总双方非空与合并保留冲突说明；最后验证票成功才允许勾选创建/初始化，字段变化撤销，创建不可重复。
+- [x] 取消中断请求/关闭草稿/清DOM密码；迟到结果不改新目标或切换已关闭页面；web类型、相关lint/format及build预期exit0，提交。
 
 ## 任务5：一次Review、核心回归与整合
 
 文件：server/tests/ssh/targets/host-trust、workspaces/setup及HTTP关联测试；scripts/dev/setup-fixture.ts；guides/workspace-setup-acceptance.md及正式需求/架构/决策/路线图。
 
-- [ ] 一次独立Review，五项Focus逐条裁定；核心问题先用回归复现再修复，不重复派审。
-- [ ] 最少核心：手动目标重启/别名统一/字段与密码不落盘；实际握手unknown/匹配/变更/吊销、过期/陈旧/重放确认；草稿关闭和只读分页；预览过滤/取消/上限不改基线；创建旧票/代次/目录变化拒绝、一次创建与初始化失败保留配置。
-- [ ] 真实ssh2 fixture及Edge三种宽度核对步骤、键盘、修改/关闭/失败与迟到；已有真实目标使用独立临时目录完成浏览/预览/创建和清理，不输出真实参数。
+- [x] 一次独立Review，五项Focus逐条裁定；核心问题先用回归复现再修复，不重复派审。
+- [x] 最少核心：手动目标重启/别名统一/字段与密码不落盘；实际握手unknown/匹配/变更/吊销、过期/陈旧/重放确认；草稿关闭和只读分页；预览过滤/取消/上限不改基线；创建旧票/代次/目录变化拒绝、一次创建与初始化失败保留配置。
+- [x] 真实ssh2 fixture及Edge三种宽度核对步骤、键盘、修改/关闭/失败与迟到；已有真实目标使用独立临时目录完成浏览/预览/创建和清理，不输出真实参数。
 - [ ] 同步正式文档与决策，阶段门禁、PR双平台CI及两级--no-ff整合，继续产品设置/删除/界面/M6。
 
 自查：任务接口逐级一致；任务1统一身份，任务2信任，任务3只读草稿与绑定创建，任务4全部用户步骤，任务5覆盖五项关键失败边界；用户授权覆盖技能中的重复阶段确认。

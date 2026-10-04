@@ -134,12 +134,7 @@ export async function inspectRemoteRoot(
     signal.throwIfAborted();
     const home = await reader.realpath('.');
     const input = remotePath(workspace.remoteDir, home, home);
-    const stat = await reader.lstat(input);
-    if (!stat.isDirectory() || stat.isSymbolicLink())
-      throw new WorkspaceSetupError('remote_directory_invalid', '服务器同步根必须是普通目录');
-    const root = await reader.realpath(input);
-    if (root !== input || !root.startsWith('/'))
-      throw new WorkspaceSetupError('remote_directory_invalid', '服务器同步根不能经过符号链接');
+    const root = await checkedRemotePath(reader, input);
     const empty = await remoteEmpty(reader, root, signal);
     const git = await reader.lstat(path.posix.join(root, '.git')).then(
       () => true,
@@ -158,9 +153,22 @@ export async function inspectRemoteRoot(
     signal.throwIfAborted();
     if (current.cacheKey !== config.cacheKey || pool.generation(workspace.sshHost) !== generation)
       throw new WorkspaceSetupError('setup_target_changed', '服务器认证或配置已变化，请重新验证');
+    // 元数据和权限检查可能耗时；结束时再检查原路径，拒绝检查过程中出现的链接重定向。
+    await checkedRemotePath(reader, input);
+    signal.throwIfAborted();
     return { path: root, empty, git };
   } finally {
     signal.removeEventListener('abort', abort);
     reader.close();
   }
+}
+
+async function checkedRemotePath(reader: SftpReader, input: string): Promise<string> {
+  const stat = await reader.lstat(input);
+  if (!stat.isDirectory() || stat.isSymbolicLink())
+    throw new WorkspaceSetupError('remote_directory_invalid', '服务器同步根必须是普通目录');
+  const root = await reader.realpath(input);
+  if (root !== input || !root.startsWith('/'))
+    throw new WorkspaceSetupError('remote_directory_invalid', '服务器同步根不能经过符号链接');
+  return root;
 }

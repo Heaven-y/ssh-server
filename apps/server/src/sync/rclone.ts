@@ -61,7 +61,7 @@ async function remoteRoot(pool: Pool, ws: Workspace): Promise<string> {
     workspaceTarget(ws),
     buildRemoteCommand(
       ws.remoteDir,
-      'test -d . && test -r . && test -w . && test -x . && test -z "$(find . -type l -print -quit)" && pwd -P',
+      'test "$PWD" = "$(pwd -P)" && test -d . && test -r . && test -w . && test -x . && test -z "$(find . -type l -print -quit)" && pwd -P',
       20,
     ),
     { localTimeoutMs: 30_000, outputCap: 4096 },
@@ -135,7 +135,7 @@ export async function readRcloneMetadata(
     await executeMetadataCommand(deps.pool, workspaceTarget(workspace), {
       command: buildRemoteCommand(
         workspace.remoteDir,
-        'test -d . && test -r . && test -x . && test -z "$(find . -type l -print -quit)" && pwd -P',
+        'test "$PWD" = "$(pwd -P)" && test -d . && test -r . && test -x . && test -z "$(find . -type l -print -quit)" && pwd -P',
         20,
       ),
       signal,

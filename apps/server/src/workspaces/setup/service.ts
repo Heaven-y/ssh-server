@@ -6,13 +6,15 @@ import { remoteOperation } from '../../remote-files/operation';
 import { createLocalDirectoryBrowser } from './local';
 import { createSetupRemote, type SetupTarget } from './remote';
 import { previewWorkspace } from './preview';
+import type { readRcloneMetadata } from '../../sync/rclone';
 import { createSetupVerification } from './verification';
 
 export function createWorkspaceSetup(deps: {
   store: WorkspaceStore;
   pool: SshPool;
-  sync: SyncManager;
+  sync: Pick<SyncManager, 'initialize' | 'status'>;
   configDir: string;
+  remoteMetadata?: typeof readRcloneMetadata;
 }) {
   const lifetime = new AbortController();
   const local = createLocalDirectoryBrowser();

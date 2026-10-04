@@ -142,8 +142,10 @@ it('跨工作区按固定锁序迁移；随后普通同步不会重新上传旧�
   for (const workspace of [fixture.first, fixture.second]) await fixture.sync().sync(workspace);
   fixture.uploads.length = 0;
   const task = await fixture.submit(source, destination);
-  await vi.waitFor(async () =>
-    expect((await fixture.tasks().status(fixture.first.id, task.id)).phase).toBe('completed'),
+  // 本用例包含两个工作区的多轮原子写盘；覆盖率负载下曾在1秒边界仍为sync_pending。
+  await vi.waitFor(
+    async () => expect((await fixture.tasks().status(fixture.first.id, task.id)).phase).toBe('completed'),
+    { timeout: 5000 },
   );
   expect(fixture.order).toEqual(['a', 'b']);
   await expect(readFile(path.join(fixture.first.localDir, 'old.py'))).rejects.toMatchObject({ code: 'ENOENT' });
