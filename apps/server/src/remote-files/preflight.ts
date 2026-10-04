@@ -72,6 +72,15 @@ export function createFilePreflights(deps: Deps) {
   }
   return {
     validate,
+    closeWorkspace(workspaceId: string) {
+      for (const [id, action] of prepared) {
+        if (
+          action.public.workspaceId === workspaceId ||
+          action.public.affectedWorkspaces.some((workspace) => workspace.id === workspaceId)
+        )
+          prepared.delete(id);
+      }
+    },
     take(workspaceId: string, id: string): PreparedAction {
       const action = prepared.get(id);
       if (!action || action.public.workspaceId !== workspaceId || action.public.expiresAt < Date.now())

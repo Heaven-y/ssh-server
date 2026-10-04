@@ -14,6 +14,7 @@ export function registerFileEditorRoutes(
   deps: {
     store: Pick<WorkspaceStore, 'get'>;
     editors: FileEditors;
+    acquireWorkspace?: (id: string) => () => void;
   },
 ) {
   const base = '/api/workspaces/:id/file-editors';
@@ -67,8 +68,13 @@ export function registerFileEditorRoutes(
       ws.close(1008);
     };
     let pending = (async () => {
-      if (!(await deps.store.get(id))) throw new RemoteFilesError('workspace_missing');
-      await deps.editors.attach(editorId, id, peer);
+      const release = deps.acquireWorkspace?.(id);
+      try {
+        if (!(await deps.store.get(id))) throw new RemoteFilesError('workspace_missing');
+        await deps.editors.attach(editorId, id, peer);
+      } finally {
+        release?.();
+      }
     })();
     void pending.catch(fail);
     ws.on('message', (data) => {

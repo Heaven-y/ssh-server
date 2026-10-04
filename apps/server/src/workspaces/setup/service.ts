@@ -15,6 +15,7 @@ export function createWorkspaceSetup(deps: {
   sync: Pick<SyncManager, 'initialize' | 'status'>;
   configDir: string;
   remoteMetadata?: typeof readRcloneMetadata;
+  acquireWorkspace?: (id: string) => () => void;
 }) {
   const lifetime = new AbortController();
   const local = createLocalDirectoryBrowser();

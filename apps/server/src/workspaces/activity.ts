@@ -20,6 +20,7 @@ export function createWorkspaceActivity() {
   };
   return {
     assertOpen,
+    active: (id: string) => counts.get(id) ?? 0,
     acquire(id: string) {
       assertOpen(id);
       counts.set(id, (counts.get(id) ?? 0) + 1);

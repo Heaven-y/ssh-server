@@ -10,12 +10,21 @@ export function createTerminalManager(deps: {
   store: Pick<WorkspaceStore, 'get'>;
   pool: SshPool;
   bindings: TerminalBindings;
+  assertWorkspaceOpen?: (id: string) => void;
 }) {
-  const sessions = new Set<TerminalSession>();
+  const sessions = new Map<TerminalSession, string>();
   const counts = new Map<string, number>();
   let disposed = false;
   return {
     attach(workspaceId: string, socket: WebSocket) {
+      try {
+        deps.assertWorkspaceOpen?.(workspaceId);
+      } catch {
+        const error = new TerminalError('target_changed');
+        socket.send(JSON.stringify({ type: 'error', code: error.code, message: error.message }));
+        socket.close(1008);
+        return;
+      }
       const count = counts.get(workspaceId) ?? 0;
       if (disposed || count >= TERMINAL_LIMITS.workspaceSessions || sessions.size >= TERMINAL_LIMITS.totalSessions) {
         const error = new TerminalError('limit_reached');
@@ -36,11 +45,14 @@ export function createTerminalManager(deps: {
           else counts.delete(workspaceId);
         },
       });
-      sessions.add(session);
+      sessions.set(session, workspaceId);
+    },
+    closeWorkspace(workspaceId: string) {
+      for (const [session, id] of sessions) if (id === workspaceId) session.close();
     },
     dispose() {
       disposed = true;
-      for (const session of [...sessions]) session.close();
+      for (const session of [...sessions.keys()]) session.close();
     },
   };
 }

@@ -81,6 +81,7 @@ async function tasksFixture(run: RemoteExecutor['run'], action = actionFixture()
   cleanups.push(() => rm(configDir, { recursive: true, force: true }));
   const preflights: FilePreflights = {
     create: vi.fn(),
+    closeWorkspace: vi.fn(),
     validate: vi.fn(async () => undefined),
     take: vi.fn(() => structuredClone(action)),
   };

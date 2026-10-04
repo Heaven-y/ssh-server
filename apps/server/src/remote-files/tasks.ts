@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { RemoteFileTask, RemoteFileTaskPhase } from '@ssh-server/shared';
+import type { RemoteFileTask, RemoteFileTaskPhase, WorkspaceRemovalBlocker } from '@ssh-server/shared';
 import { workspaceTarget } from '../ssh/connection';
 import { remoteFilesError, RemoteFilesError } from './errors';
 import type { RemoteExecutor } from './executor';
@@ -17,6 +17,7 @@ type Deps = {
   executor: RemoteExecutor;
   coordinator?: FileSyncCoordinator;
   onCorrupt?: (name: string) => void;
+  acquireWorkspace?: (id: string) => () => void;
 };
 const runningPhases = new Set<RemoteFileTaskPhase>([
   'queued',
@@ -39,6 +40,23 @@ export function createFileTasks(deps: Deps) {
   const locks = createPathLocks();
   let disposed = false;
   let writes: Promise<unknown> = Promise.resolve();
+  function acquire(action: PreparedAction) {
+    const releases: Array<() => void> = [];
+    const release = () => {
+      for (const done of releases.splice(0)) done();
+    };
+    try {
+      const ids = new Set([action.public.workspaceId, ...action.public.affectedWorkspaces.map((item) => item.id)]);
+      for (const id of ids) {
+        const done = deps.acquireWorkspace?.(id);
+        if (done) releases.push(done);
+      }
+      return release;
+    } catch (error) {
+      release();
+      throw error;
+    }
+  }
   function trackExecution(id: string, execution: Promise<unknown>) {
     executions.set(id, execution);
     void execution
@@ -186,32 +204,38 @@ export function createFileTasks(deps: Deps) {
     );
     if (prior) return { ...prior.task };
     const action = deps.preflights.take(workspaceId, preflightId);
-    await deps.preflights.validate(action);
-    const now = Date.now();
-    const task: RemoteFileTask = {
-      id: randomUUID(),
-      workspaceId,
-      preflightId,
-      sshHost: action.public.sshHost,
-      kind: action.public.kind,
-      source: action.public.source,
-      destination: action.public.destination,
-      phase: 'queued',
-      createdAt: now,
-      updatedAt: now,
-      cancelRequested: false,
-      remoteCompleted: false,
-      syncCompleted: false,
-      syncRequired: action.public.affectedWorkspaces.length > 0,
-    };
-    const record: Record = { task, action, dispatched: false };
-    await persist(record);
-    records.set(task.id, record);
-    const controller = new AbortController();
-    controllers.set(task.id, controller);
-    const execution = perform(record, controller);
-    trackExecution(task.id, execution);
-    return { ...task };
+    const release = acquire(action);
+    try {
+      await deps.preflights.validate(action);
+      const now = Date.now();
+      const task: RemoteFileTask = {
+        id: randomUUID(),
+        workspaceId,
+        preflightId,
+        sshHost: action.public.sshHost,
+        kind: action.public.kind,
+        source: action.public.source,
+        destination: action.public.destination,
+        phase: 'queued',
+        createdAt: now,
+        updatedAt: now,
+        cancelRequested: false,
+        remoteCompleted: false,
+        syncCompleted: false,
+        syncRequired: action.public.affectedWorkspaces.length > 0,
+      };
+      const record: Record = { task, action, dispatched: false };
+      await persist(record);
+      records.set(task.id, record);
+      const controller = new AbortController();
+      controllers.set(task.id, controller);
+      const execution = perform(record, controller).finally(release);
+      trackExecution(task.id, execution);
+      return { ...task };
+    } catch (error) {
+      release();
+      throw error;
+    }
   }
   async function restoreSync(record: Record, controller: AbortController) {
     try {
@@ -249,6 +273,25 @@ export function createFileTasks(deps: Deps) {
     }
   }
   return {
+    async blockers(workspaceId: string): Promise<WorkspaceRemovalBlocker[]> {
+      await ready;
+      // 不能使用只返回100项的展示列表；持久阻断包含发起者与全部受影响工作区。
+      const pending = [...records.values()].filter(({ task, action }) => {
+        const related =
+          task.workspaceId === workspaceId || action.public.affectedWorkspaces.some((item) => item.id === workspaceId);
+        return (
+          related &&
+          (controllers.has(task.id) ||
+            runningPhases.has(task.phase) ||
+            task.phase === 'needs_check' ||
+            task.phase === 'sync_pending' ||
+            (task.syncRequired && !task.syncCompleted))
+        );
+      });
+      return pending.length
+        ? [{ code: 'file_tasks_pending', message: `仍有 ${pending.length} 个相关文件任务运行或待核对、恢复，请先处理` }]
+        : [];
+    },
     submit(workspaceId: string, preflightId: string) {
       const key = JSON.stringify([workspaceId, preflightId]);
       const prior = submissions.get(key);
@@ -284,31 +327,41 @@ export function createFileTasks(deps: Deps) {
       await ready;
       if (controllers.has(id)) return { ...get(workspaceId, id).task };
       const record = get(workspaceId, id);
-      await deps.preflights.validate(record.action, false);
-      const result = ResultCheckSchema.parse(
-        await deps.executor.run(
-          workspaceTarget(record.action.context.workspace),
-          {
-            ...record.action.public,
-            action: 'check',
-            roots: record.action.roots,
-            verifyContent: !!record.verified,
-          },
-          { timeoutMs: 60 * 60_000 },
-        ),
-      );
-      const complete = confirmedResult(record, result);
-      const requiresSync = complete && record.action.public.affectedWorkspaces.length > 0 && !record.task.syncCompleted;
-      await update(record, {
-        resultCheck: result,
-        ...(complete
-          ? { phase: requiresSync ? 'sync_pending' : 'completed', remoteCompleted: true, syncCompleted: !requiresSync }
-          : {}),
-        message: complete
-          ? '已核对并确认服务器操作结果。'
-          : '已读取源与目标，但没有足够证据确认完整完成；请按实际结果处理部分产物。',
-      });
-      return { ...record.task };
+      const release = acquire(record.action);
+      try {
+        await deps.preflights.validate(record.action, false);
+        const result = ResultCheckSchema.parse(
+          await deps.executor.run(
+            workspaceTarget(record.action.context.workspace),
+            {
+              ...record.action.public,
+              action: 'check',
+              roots: record.action.roots,
+              verifyContent: !!record.verified,
+            },
+            { timeoutMs: 60 * 60_000 },
+          ),
+        );
+        const complete = confirmedResult(record, result);
+        const requiresSync =
+          complete && record.action.public.affectedWorkspaces.length > 0 && !record.task.syncCompleted;
+        await update(record, {
+          resultCheck: result,
+          ...(complete
+            ? {
+                phase: requiresSync ? 'sync_pending' : 'completed',
+                remoteCompleted: true,
+                syncCompleted: !requiresSync,
+              }
+            : {}),
+          message: complete
+            ? '已核对并确认服务器操作结果。'
+            : '已读取源与目标，但没有足够证据确认完整完成；请按实际结果处理部分产物。',
+        });
+        return { ...record.task };
+      } finally {
+        release();
+      }
     },
     async recover(workspaceId: string, id: string) {
       await ready;
@@ -320,6 +373,7 @@ export function createFileTasks(deps: Deps) {
       if (!deps.coordinator || !record.action.public.affectedWorkspaces.length)
         throw new RemoteFilesError('sync_pending');
       if (disposed || controllers.size >= 64) throw new RemoteFilesError('too_many_tasks');
+      const release = acquire(record.action);
       const controller = new AbortController();
       controllers.set(id, controller);
       const initialization = update(record, { phase: 'checking', cancelRequested: false });
@@ -328,6 +382,7 @@ export function createFileTasks(deps: Deps) {
         .then(() => restoreSync(record, controller))
         .finally(() => {
           if (controllers.get(id) === controller) controllers.delete(id);
+          release();
         });
       trackExecution(id, execution);
       await initialization;

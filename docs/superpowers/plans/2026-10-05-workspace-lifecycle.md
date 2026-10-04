@@ -34,9 +34,9 @@
 文件：chat/turn-manager.ts、sync/manager.ts、files/editors.ts、remote-files/{tasks,service,preflight}.ts、terminal/manager.ts、http/file-editors.routes.ts、workspaces/setup/verification.ts、main.ts。
 接口：sync.busy(id)、tasks.blockers(id)、editors.hasWorkspace(id)；terminal/browse/preflights.closeWorkspace(id)。TurnManagerDeps.acquireWorkspace?(id):release；创建提交点获得租约，初始化收尾后释放。
 
-- [ ] 对话租约覆盖准备、模型运行与同步收尾；编辑器登记覆盖串行保存；初始化从创建写盘前到结果完成都属于同一活动。
-- [ ] 阻断查询包含持久未解决状态及所有affectedWorkspaces；所属终端/SFTP关闭和预检撤销复用既有清理，池不全局断开。
-- [ ] main完整生产接线，类型/相关静态检查通过，提交。
+- [x] 对话租约覆盖准备、模型运行与同步收尾；编辑器登记覆盖串行保存；初始化从创建写盘前到结果完成都属于同一活动。
+- [x] 阻断查询包含持久未解决状态及所有affectedWorkspaces；所属终端/SFTP关闭和预检撤销复用既有清理，池不全局断开。
+- [x] main完整生产接线，类型/相关静态检查通过，提交。
 
 ## 任务3：网页移除与选择收尾
 

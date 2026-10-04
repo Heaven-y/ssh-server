@@ -30,6 +30,10 @@ L09：文件面板目标可独立于当前对话；成功移除该工作区后�
 
 L10：原生会话管理与工作区删除不同。移除配置不调用SDK/app-server会话删除，不自动产生Git提交；重新创建到相同本地目录仍能发现其原生历史。
 
+L11：文件任务提交、核对和恢复在首次异步验证前同时取得发起者与全部affectedWorkspaces租约，覆盖后台收尾。只保护HTTP发起者不足以消除跨工作区验证与写盘之间的窗口。删除预览排除自己的租约后显示活动阻断。
+
+L12：编辑器WS从读取工作区前到登记持久化全程持有租约；创建初始化从新id写盘前到初始化结果完成持有租约。所属通道清理逐项尝试，单项失败仍尝试其余项。普通同步冲突/待确认删除的状态文件保留，移除配置不替用户解决冲突；未完成文件任务及其持久同步阻断必须先恢复。
+
 ## 模块与接口
 
 - workspaces/activity.ts：createWorkspaceActivity().acquire(id):release、assertOpen(id)、exclusive(id,operation)，返回可识别的workspace_busy/deleting错误。

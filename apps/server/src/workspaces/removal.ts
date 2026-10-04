@@ -28,7 +28,10 @@ export function createWorkspaceRemoval(deps: Deps) {
       try {
         const workspace = await deps.store.get(id);
         if (!workspace) throw new WorkspaceRemovalError('workspace_missing', '工作区不存在');
-        return { workspace, configuration: signature(workspace), blockers: await deps.blockers(id) };
+        const blockers = await deps.blockers(id);
+        if (deps.activity.active(id) > 1)
+          blockers.unshift({ code: 'workspace_busy', message: '工作区仍有活动请求或对话，请结束后重试' });
+        return { workspace, configuration: signature(workspace), blockers };
       } finally {
         release();
       }
