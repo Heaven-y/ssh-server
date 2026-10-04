@@ -40,18 +40,26 @@ function samplingKey(connection: ResolvedConnection): string {
 export function createResourcesService({ store, pool }: { store: Pick<WorkspaceStore, 'get'>; pool: SshPool }) {
   const hosts = new ResourceCache<HostSample>(RESOURCE_LIMITS.hostEntries);
   const disks = new ResourceCache<ResourceDisk>(RESOURCE_LIMITS.diskEntries);
-  async function context(target: TerminalTarget, expectedKey?: string) {
+  async function checkedWorkspace(target: TerminalTarget) {
     const workspace = await store.get(target.workspaceId);
     if (!workspace) throw new ResourceTargetError('workspace_missing');
     if (terminalTargetKey(workspaceTerminalTarget(workspace)) !== terminalTargetKey(target))
       throw new ResourceTargetError('target_changed');
+    return workspace;
+  }
+  async function context(target: TerminalTarget, expectedKey?: string) {
+    const workspace = await checkedWorkspace(target);
+    const generation = pool.generation(workspace.sshHost);
     const connection = await pool.resolveConnection(workspaceTarget(workspace));
     if (expectedKey && connection.cacheKey !== expectedKey) throw new ResourceTargetError('target_changed');
+    // 解析会异步读取配置/凭据；不能继续使用解析前的工作区事实。
+    const current = await checkedWorkspace(target);
+    if (pool.generation(workspace.sshHost) !== generation) throw new ResourceTargetError('target_changed');
     return {
-      workspace,
+      workspace: current,
       key: connection.cacheKey,
       samplingKey: samplingKey(connection),
-      generation: pool.generation(workspace.sshHost),
+      generation,
     };
   }
   async function sample(target: TerminalTarget, key: string, command: string, signal: AbortSignal) {

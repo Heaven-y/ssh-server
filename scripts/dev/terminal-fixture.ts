@@ -79,7 +79,8 @@ function serveShell(channel: ServerChannel, shell: FixtureShell) {
   });
 }
 
-function serveSession(session: Session, shells: FixtureShell[]) {
+export type FixtureExec = (command: string) => { stdout: string; exitCode: number } | undefined;
+function serveSession(session: Session, shells: FixtureShell[], exec?: FixtureExec) {
   let shell: FixtureShell | undefined;
   session.on('pty', (accept, _reject, info) => {
     shell = { id: shells.length + 1, closed: false, inputs: [], sizes: [{ cols: info.cols, rows: info.rows }] };
@@ -98,14 +99,23 @@ function serveSession(session: Session, shells: FixtureShell[]) {
     serveShell(accept(), shell);
   });
   session.on('sftp', (accept) => serveSftp(accept()));
-  session.on('exec', (accept) => {
+  session.on('exec', (accept, _reject, info) => {
     const channel = accept();
-    channel.exit(0);
-    channel.end(`${ROOT}\n`);
+    const result = exec?.(info.command);
+    channel.exit(result?.exitCode ?? 0);
+    channel.end(result?.stdout ?? `${ROOT}\n`);
   });
 }
 
-export async function startTerminalFixture({ configDir, workspaceDir }: { configDir: string; workspaceDir: string }) {
+export async function startTerminalFixture({
+  configDir,
+  workspaceDir,
+  exec,
+}: {
+  configDir: string;
+  workspaceDir: string;
+  exec?: FixtureExec;
+}) {
   await mkdir(workspaceDir, { recursive: true });
   const key = ssh2.utils.generateKeyPairSync('ecdsa', { bits: 256 });
   const peers = new Set<Connection>();
@@ -119,7 +129,7 @@ export async function startTerminalFixture({ configDir, workspaceDir }: { config
         context.accept();
       else context.reject(['password']);
     });
-    client.on('ready', () => client.on('session', (accept) => serveSession(accept(), shells)));
+    client.on('ready', () => client.on('session', (accept) => serveSession(accept(), shells, exec)));
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
