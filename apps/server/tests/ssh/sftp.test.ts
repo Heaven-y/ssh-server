@@ -5,6 +5,18 @@ import { createSftpReader, openSftpChannel } from '../../src/ssh/sftp';
 
 afterEach(() => vi.useRealTimers());
 
+it('服务器不回复 SFTP 请求时超时关闭该通道，并拒绝后续调用', async () => {
+  vi.useFakeTimers();
+  const channel = Object.assign(new EventEmitter(), { end: vi.fn(), lstat: vi.fn() });
+  const reader = createSftpReader(channel as unknown as SFTPWrapper);
+  const pending = reader.lstat('pending.py').catch((error: unknown) => error);
+  await vi.advanceTimersByTimeAsync(15_000);
+  expect(await pending).toMatchObject({ code: 'sftp_timeout' });
+  expect(channel.end).toHaveBeenCalledOnce();
+  await expect(reader.lstat('next.py')).rejects.toMatchObject({ code: 'sftp_timeout' });
+  expect(channel.lstat).toHaveBeenCalledOnce();
+});
+
 it('SFTP 断线后立即拒绝新请求，不再调用通道，也不重复关闭资源', async () => {
   const channel = Object.assign(new EventEmitter(), { end: vi.fn(), lstat: vi.fn() });
   const reader = createSftpReader(channel as unknown as SFTPWrapper);
