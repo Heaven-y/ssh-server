@@ -111,6 +111,27 @@ export const api = {
       `/api/workspaces/${encodeURIComponent(id)}/remote-files/tasks/${encodeURIComponent(taskId)}/${action}`,
       { method: 'POST', body: '{}' },
     ),
+  recoverRemoteFileTask: (id: string, taskId: string) =>
+    request<RemoteFileTask>(
+      `/api/workspaces/${encodeURIComponent(id)}/remote-files/tasks/${encodeURIComponent(taskId)}/recover`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ confirmed: true }),
+      },
+    ),
+  disconnectedEditors: (id: string, signal?: AbortSignal) =>
+    request<{ editors: string[] }>(`/api/workspaces/${encodeURIComponent(id)}/file-editors`, {
+      signal,
+      cache: 'no-store',
+    }),
+  forgetFileEditor: (id: string, editorId: string) =>
+    request<{ forgotten: true }>(
+      `/api/workspaces/${encodeURIComponent(id)}/file-editors/${encodeURIComponent(editorId)}`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify({ confirmed: true }),
+      },
+    ),
   remoteFileDownloadUrl: (id: string, sessionId: string, path: string) =>
     `${remoteSessionsUrl(id)}/${encodeURIComponent(sessionId)}/download?${new URLSearchParams({ path })}`,
   bindRemoteBrowseTarget: (id: string, target: RemoteBrowseTarget) =>

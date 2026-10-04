@@ -1,20 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
-import path from 'node:path';
-import {
-  SyncSettingsSchema,
-  type RemoteFileActionInput,
-  type RemoteFilePreflight,
-  type Workspace,
-} from '@ssh-server/shared';
+import { type RemoteFileActionInput, type RemoteFilePreflight, type Workspace } from '@ssh-server/shared';
 import type { SshPool } from '../ssh/pool';
 import { workspaceTarget } from '../ssh/connection';
-import { eligibleFile, excludedPath } from '../sync/filters';
-import { SyncError } from '../sync/errors';
 import type { WorkspaceStore } from '../workspaces/store';
 import { workspaceKey } from './binding';
 import { RemoteFilesError } from './errors';
 import { RemoteActionPlanSchema, type RemoteActionPlan, type RemoteExecutor } from './executor';
-import { inside, remotePath } from './paths';
+import { remotePath } from './paths';
+import { destinationPaths, syncImpact } from './sync-impact';
 import type { RemoteFilesService } from './service';
 
 export type FileActionContext = Omit<Awaited<ReturnType<RemoteFilesService['context']>>, 'identity'>;
@@ -31,29 +24,10 @@ type Deps = {
   pool: Pick<SshPool, 'identity' | 'resolveConnection' | 'generation'>;
   browse: Pick<RemoteFilesService, 'context'>;
   executor: RemoteExecutor;
+  syncAvailable?: boolean;
+  syncPaths?: (workspace: Workspace, incoming: string[], signal: AbortSignal) => Promise<void>;
 };
 const identityHash = (value: string) => createHash('sha256').update(value).digest('hex');
-
-function affects(root: string, candidate: string | null | undefined, plan: RemoteActionPlan, ws: Workspace) {
-  if (!candidate) return false;
-  if (inside(candidate, root)) return true;
-  if (!inside(root, candidate)) return false;
-  if (plan.sourceType !== 'file') return true;
-  const relative = path.posix.relative(root, candidate);
-  return synchronizable(relative, Number(plan.sourceFacts?.[3]), ws);
-}
-
-function synchronizable(relative: string, size: number, ws: Workspace) {
-  const settings = SyncSettingsSchema.parse(ws.sync ?? {});
-  if (size > settings.maxFileBytes || excludedPath(relative, settings)) return false;
-  try {
-    return eligibleFile(relative, size, settings);
-  } catch (error) {
-    // 服务器合法但镜像无法表示的文件不进入同步范围，仍可仅在服务器管理。
-    if (error instanceof SyncError && error.code === 'unsafe_path') return false;
-    throw error;
-  }
-}
 
 export function createFilePreflights(deps: Deps) {
   const prepared = new Map<string, PreparedAction>();
@@ -77,9 +51,24 @@ export function createFilePreflights(deps: Deps) {
     )
       throw new RemoteFilesError('target_changed');
     const related = await managed(action.identity, new AbortController().signal);
-    const configurations = related.map((workspace) => ({ id: workspace.id, key: workspaceKey(workspace) }));
-    if (JSON.stringify(configurations) !== JSON.stringify(action.configurations))
-      throw new RemoteFilesError('stale_preflight');
+    const affected = new Set(action.public.affectedWorkspaces.map((item) => item.id));
+    const relevant = (id: string) => strictGeneration || affected.has(id);
+    const configurations = related
+      .filter((workspace) => relevant(workspace.id))
+      .map((workspace) => ({ id: workspace.id, key: workspaceKey(workspace) }));
+    const expected = action.configurations.filter((item) => relevant(item.id));
+    if (JSON.stringify(configurations) !== JSON.stringify(expected)) throw new RemoteFilesError('stale_preflight');
+  }
+  async function checkDestinations(
+    workspaces: Workspace[],
+    affected: RemoteFilePreflight['affectedWorkspaces'],
+    input: { plan: RemoteActionPlan; action: RemoteFileActionInput; signal: AbortSignal },
+  ) {
+    const { plan, action, signal } = input;
+    for (const item of affected) {
+      const workspace = workspaces.find((workspace) => workspace.id === item.id)!;
+      await deps.syncPaths?.(workspace, destinationPaths(workspace, item.remoteRoot, plan, action), signal);
+    }
   }
   return {
     validate,
@@ -103,14 +92,15 @@ export function createFilePreflights(deps: Deps) {
         remotePath(workspace.remoteDir, context.info.home, context.info.home),
       );
       const plan = RemoteActionPlanSchema.parse(
-        await deps.executor.run(workspaceTarget(context.workspace), { action: 'plan', ...action, roots }, { signal }),
+        await deps.executor.run(
+          workspaceTarget(context.workspace),
+          { action: 'plan', ...action, roots, includeEntries: true },
+          { signal },
+        ),
       );
-      const affectedWorkspaces = workspaces.flatMap((workspace, index) => {
-        const root = plan.roots[index]!;
-        return affects(root, action.source, plan, workspace) || affects(root, action.destination, plan, workspace)
-          ? [{ id: workspace.id, name: workspace.name, remoteRoot: root }]
-          : [];
-      });
+      const impact = syncImpact(workspaces, plan, action);
+      const affectedWorkspaces = impact.affected;
+      await checkDestinations(workspaces, affectedWorkspaces, { plan, action, signal });
       const preview: RemoteFilePreflight = {
         ...action,
         id: randomUUID(),
@@ -123,8 +113,14 @@ export function createFilePreflights(deps: Deps) {
         bytes: plan.bytes,
         crossFilesystem: plan.crossFilesystem,
         affectedWorkspaces,
-        canSubmit: affectedWorkspaces.length === 0,
-        warnings: affectedWorkspaces.length ? ['该操作涉及同步范围，当前仍待接入同步路径协调。'] : [],
+        canSubmit: affectedWorkspaces.length === 0 || (!!deps.syncAvailable && impact.complete),
+        warnings: affectedWorkspaces.length
+          ? [
+              deps.syncAvailable && impact.complete
+                ? '该操作会协调相关同步文件，存在未保存编辑、冲突或待确认删除时不执行。'
+                : '该操作涉及同步范围，当前仍待完整元数据与同步路径协调。',
+            ]
+          : [],
       };
       const result: PreparedAction = {
         public: preview,

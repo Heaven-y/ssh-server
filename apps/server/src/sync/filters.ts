@@ -23,6 +23,25 @@ export function eligibleFile(file: string, size: number, settings: SyncSettings)
   safeRelativePath(file);
   return size >= 0 && size <= settings.maxFileBytes && !excludedPath(file, settings);
 }
+
+/** Windows 的目录分量和文件名均不区分大小写；同时拒绝文件/目录占用冲突。 */
+export function assertCompatiblePaths(files: Iterable<string>, directories: Iterable<string> = []): void {
+  const entries = new Map<string, { spelling: string; file: boolean }>();
+  function add(name: string, isFile: boolean) {
+    const parts = safeRelativePath(name).split('/');
+    for (let index = 0; index < parts.length; index++) {
+      const spelling = parts.slice(0, index + 1).join('/');
+      const key = spelling.toLowerCase();
+      const file = isFile && index === parts.length - 1;
+      const previous = entries.get(key);
+      if (previous && (previous.spelling !== spelling || previous.file !== file))
+        throw new SyncError('case_collision', '路径存在 Windows 无法区分的大小写或文件目录冲突，已停止同步');
+      entries.set(key, { spelling, file });
+    }
+  }
+  for (const directory of directories) add(directory, false);
+  for (const file of files) add(file, true);
+}
 export function filterText(settings: SyncSettings): string {
   return [
     '- .git',

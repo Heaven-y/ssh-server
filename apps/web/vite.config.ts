@@ -12,7 +12,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      '/api': backend,
+      '/api': { target: backend, ws: true },
       '/auth': backend,
       '/ws': { target: backend, ws: true },
     },

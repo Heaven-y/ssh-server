@@ -14,8 +14,9 @@ export function workspaceStateDir(configDir: string, id: string): string {
 export async function localInventory(
   root: string,
   settings: SyncSettings,
-): Promise<{ all: FileEntry[]; included: FileEntry[] }> {
+): Promise<{ all: FileEntry[]; included: FileEntry[]; directories: string[] }> {
   const all: FileEntry[] = [];
+  const directories: string[] = [];
   const rootStat = await lstat(root);
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink())
     throw new SyncError('unsafe_path', '本地同步根目录必须是普通目录');
@@ -26,12 +27,14 @@ export async function localInventory(
       safeRelativePath(file);
       const stat = await lstat(path.join(root, file));
       if (stat.isSymbolicLink()) throw new SyncError('unsafe_path', '同步目录含符号链接，请移除链接后重试');
-      if (stat.isDirectory()) await visit(file);
-      else if (stat.isFile()) all.push({ path: file, size: stat.size, modTime: stat.mtime.toISOString() });
+      if (stat.isDirectory()) {
+        directories.push(file);
+        await visit(file);
+      } else if (stat.isFile()) all.push({ path: file, size: stat.size, modTime: stat.mtime.toISOString() });
     }
   }
   await visit('');
-  return { all, included: all.filter((file) => eligibleFile(file.path, file.size, settings)) };
+  return { all, included: all.filter((file) => eligibleFile(file.path, file.size, settings)), directories };
 }
 export async function safeLocalFile(root: string, relative: string): Promise<string> {
   safeRelativePath(relative);

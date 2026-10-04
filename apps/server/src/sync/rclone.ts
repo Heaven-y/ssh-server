@@ -8,7 +8,7 @@ import type { SshPool } from '../ssh/pool';
 import { knownHostsForTarget } from '../ssh/known-hosts';
 import { buildRemoteCommand } from '../ssh/remote-command';
 import { SyncError } from './errors';
-import { eligibleFile, filterText, safeRelativePath } from './filters';
+import { assertCompatiblePaths, eligibleFile, filterText, safeRelativePath } from './filters';
 import { hash, safeLocalFile, workspaceStateDir, type FileEntry } from './inventory';
 import { runProcess, type ProcessRunner } from './process';
 
@@ -19,11 +19,13 @@ export type RcloneContext = {
   restore(file: string): Promise<void>;
   moveRemote(from: string, to: string): Promise<void>;
   deleteRemote(file: string): Promise<void>;
+  pullMirror?(localDir: string): Promise<void>;
   bisync(options: {
     resync: boolean;
     allowAllDeletes: boolean;
     allowAllChanges?: boolean;
     localDir?: string;
+    remoteAuthoritative?: boolean;
   }): Promise<void>;
   close(): void;
 };
@@ -194,6 +196,13 @@ export function createRcloneDriver(deps: Deps): SyncDriver {
       return result.stdout;
     }
     const fileRemote = (file: string) => `${remote}/${safeRelativePath(file)}`;
+    function assertTaskMirror(directory: string, allowDefault = false) {
+      if (allowDefault && path.resolve(directory) === path.resolve(stateDir, 'mirror')) return;
+      const relative = path.relative(path.join(stateDir, 'remote-file-snapshots'), path.resolve(directory));
+      const parts = relative.split(path.sep);
+      if (parts.length !== 2 || !z.string().uuid().safeParse(parts[0]).success || parts[1] !== 'mirror')
+        throw new SyncError('unsafe_path', '文件任务只能向独立受控镜像拉取，不允许覆盖工作区或其他目录');
+    }
     async function readRemote(file: string): Promise<Buffer> {
       const data = await invoke(
         ['cat', fileRemote(file), '--head', String(settings.maxFileBytes + 1)],
@@ -228,9 +237,9 @@ export function createRcloneDriver(deps: Deps): SyncDriver {
         const files = parsed.data
           .filter((file) => !file.IsDir)
           .map((file) => ({ path: safeRelativePath(file.Path), size: file.Size, modTime: file.ModTime }));
-        const unique = new Set(files.map((file) => file.path.toLowerCase()));
-        if (unique.size !== files.length)
-          throw new SyncError('case_collision', '远端文件存在 Windows 无法区分的大小写重名，已停止同步');
+        if (new Set(files.map((file) => file.path)).size !== files.length)
+          throw new SyncError('listing_invalid', '远端文件清单含重复路径，已停止同步');
+        assertCompatiblePaths(files.map((file) => file.path));
         return files.filter((file) => includeLarge || eligibleFile(file.path, file.size, settings));
       },
       readRemote,
@@ -246,6 +255,19 @@ export function createRcloneDriver(deps: Deps): SyncDriver {
       },
       async deleteRemote(file) {
         await invoke(['deletefile', fileRemote(file)]);
+      },
+      async pullMirror(localDir) {
+        assertTaskMirror(localDir);
+        await invoke([
+          'sync',
+          remote,
+          localDir,
+          '--filter-from',
+          filters,
+          ...filtering,
+          '--delete-excluded',
+          '--checksum',
+        ]);
       },
       async bisync(options) {
         const args = [
@@ -268,7 +290,8 @@ export function createRcloneDriver(deps: Deps): SyncDriver {
           '--download-hash',
           '--checksum',
         ];
-        if (options.resync) args.push('--resync', '--resync-mode', 'path1');
+        if (options.remoteAuthoritative) assertTaskMirror(options.localDir ?? ws.localDir, true);
+        if (options.resync) args.push('--resync', '--resync-mode', options.remoteAuthoritative ? 'path2' : 'path1');
         if (options.allowAllDeletes) args.push('--max-delete', '100');
         // 状态机已核对目标、范围和删除决策；允许单文件工作区的全部内容变化。
         if (options.allowAllChanges) args.push('--force');

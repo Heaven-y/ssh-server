@@ -43,7 +43,13 @@ export type RemoteFilePreflight = RemoteFileActionInput & {
   files: number;
   bytes: number;
   crossFilesystem: boolean;
-  affectedWorkspaces: Array<{ id: string; name: string; remoteRoot: string }>;
+  affectedWorkspaces: Array<{
+    id: string;
+    name: string;
+    remoteRoot: string;
+    sourceFiles?: number;
+    destinationFiles?: number;
+  }>;
   warnings: string[];
   canSubmit: boolean;
 };
@@ -72,5 +78,6 @@ export type RemoteFileTask = RemoteFileActionInput & {
   message?: string;
   remoteCompleted: boolean;
   syncCompleted: boolean;
+  syncRequired?: boolean;
   resultCheck?: { source?: { exists: boolean }; destination?: { exists: boolean } };
 };

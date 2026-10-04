@@ -18,6 +18,7 @@ const Action = z
   })
   .strict();
 const Submit = z.object({ preflightId: z.string().uuid(), confirmed: z.literal(true) }).strict();
+const Recover = z.object({ confirmed: z.literal(true) }).strict();
 const Query = z.object({ path: Path }).strict();
 const Empty = z.object({}).strict();
 type Deps = { preflights: FilePreflights; tasks: FileTasks; downloads: FileDownloads };
@@ -87,6 +88,19 @@ export function registerRemoteFileActionRoutes(app: FastifyInstance, deps: Deps)
       }),
     );
   }
+  app.post(`${base}/tasks/:taskId/recover`, options, async (request, reply) =>
+    respond(reply, async () => {
+      const params = Params.safeParse(request.params);
+      if (
+        !params.success ||
+        !params.data.taskId ||
+        !Empty.safeParse(request.query).success ||
+        !Recover.safeParse(request.body).success
+      )
+        throw new RemoteFilesError('invalid_request');
+      return deps.tasks.recover(params.data.id, params.data.taskId);
+    }),
+  );
   app.get(`${base}/sessions/:sessionId/download`, options, async (request, reply) =>
     respond(reply, async () => {
       const params = Params.safeParse(request.params);

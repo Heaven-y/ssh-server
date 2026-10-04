@@ -25,6 +25,9 @@ import { registerCapabilityRoutes } from './http/capabilities.routes';
 import { registerSshRoutes } from './http/ssh.routes';
 import { registerAgentConfigRoutes } from './http/agent-config.routes';
 import { registerFileRoutes } from './http/files.routes';
+import { registerFileEditorRoutes } from './http/file-editors.routes';
+import { createFileEditors } from './files/editors';
+import { createFileSyncCoordinator } from './remote-files/sync-coordinator';
 import { registerRemoteFileRoutes } from './http/remote-files.routes';
 import { registerRemoteFileActionRoutes } from './http/remote-file-actions.routes';
 import { createRemoteExecutor } from './remote-files/executor';
@@ -126,11 +129,21 @@ async function main(): Promise<void> {
       registerFileRoutes(a, { store, files: createWorkspaceFilesService(), sync });
       const browse = createRemoteFilesService({ store, pool });
       const executor = createRemoteExecutor(pool);
-      const preflights = createFilePreflights({ store, pool, browse, executor });
+      const editors = createFileEditors(config.configDir);
+      registerFileEditorRoutes(a, { store, editors });
+      const preflights = createFilePreflights({
+        store,
+        pool,
+        browse,
+        executor,
+        syncAvailable: true,
+        syncPaths: sync.remoteFiles.checkPaths,
+      });
       const tasks = createFileTasks({
         configDir: config.configDir,
         preflights,
         executor,
+        coordinator: createFileSyncCoordinator({ store, sync, editors }),
         onCorrupt: (name) => a.log.warn({ record: name }, '文件任务记录损坏，已保留原文件，未重放操作'),
       });
       registerRemoteFileRoutes(a, browse);
