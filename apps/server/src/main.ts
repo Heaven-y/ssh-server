@@ -43,6 +43,8 @@ import { registerWsRoutes } from './http/ws.routes';
 import { registerTerminalRoutes } from './http/terminal.routes';
 import { createTerminalBindings } from './terminal/binding';
 import { createTerminalManager } from './terminal/manager';
+import { registerResourcesRoutes } from './http/resources.routes';
+import { createResourcesService } from './resources/service';
 import { createSshPool } from './ssh/pool';
 import { createPasswordStore } from './ssh/password-store';
 import { listHosts, parseSshConfig } from './ssh/ssh-config';
@@ -86,6 +88,7 @@ async function main(): Promise<void> {
   const pool = createSshPool({ passwordStore: createPasswordStore({ configDir: config.configDir }) });
   const terminalBindings = createTerminalBindings({ store, pool });
   const terminals = createTerminalManager({ store, pool, bindings: terminalBindings });
+  const resources = createResourcesService({ store, pool });
   const sync = createSyncManager({
     configDir: config.configDir,
     driver: createRcloneDriver({ configDir: config.configDir, pool }),
@@ -157,6 +160,7 @@ async function main(): Promise<void> {
       registerSyncRoutes(a, { store, sync });
       registerWsRoutes(a, { turns });
       registerTerminalRoutes(a, { terminals, bindings: terminalBindings });
+      registerResourcesRoutes(a, resources);
     },
   });
 
@@ -168,6 +172,7 @@ async function main(): Promise<void> {
 
   const shutdown = () => {
     terminals.dispose();
+    resources.dispose();
     sync.dispose();
     pool.dispose();
     void turns.dispose().finally(() => app.close().finally(() => process.exit(0)));

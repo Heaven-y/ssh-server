@@ -14,7 +14,7 @@
 | F3.4 工作区规则追加 | schema 仅有 `disabledRules`；[黑名单](../../apps/server/src/policy/policy.ts)过滤默认规则，[执行路由](../../apps/server/src/http/internal.routes.ts)只传停用项 | 追加自定义规则的配置、验证与执行接线；默认规则的网页管理入口也未提供，不把已有默认黑名单标为完整设置功能 |
 | F4 / A10 网页终端 | 后端终端协议、绑定、目录确认、PTY 路由与背压已接入；网页多标签、分屏和可调主区已接入，核心回归及本机真实ssh2网页验收完成；[书面设计](../superpowers/specs/2026-10-04-web-terminal-design.md)已确认，[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)已确认，实施中 | 真实服务器已有全屏工具、原生OS输入法和密码保存重启串联；[本机验收](../guides/web-terminal-acceptance.md)覆盖基础交互和通道回收 |
 | F5.2 创建前同步预览 | [同步路由](../../apps/server/src/http/sync.routes.ts)已有状态、同步、初始化及规则保存，没有创建前预览入口 | 用户触发的文件数/总大小与排除项统计；预览不传输正文、不自动遍历大项目，首次同步的两端处理方式明确确认 |
-| F9 / A18 资源面板 | [后端注册](../../apps/server/src/main.ts)未接采样服务或资源路由，前端没有资源面板 | SSH 只读采样、结构化指标、实际主机/时间/可用性、同目标共享、可见性暂停/降频、失败退避；不检测训练完成或调用模型 |
+| F9 / A18 资源面板 | [资源服务](../../apps/server/src/resources/service.ts)及HTTP已接入；[资源详情](../../apps/web/src/features/resources/ResourcesPanel.tsx)支持固定目标、空值/时间/过期和可见性；真实SSH、核心回归及网页证据见[验收](../guides/resources-acceptance.md) | 顶栏持续概览、产品刷新参数设置、原生页面隐藏及完整多活动组合验收；不检测训练完成或调用模型 |
 | 界面第 7 节产品设置 | [设置弹窗](../../apps/web/src/features/settings/SettingsDialog.tsx)只编辑原生 Agent 配置；[同步规则表单](../../apps/web/src/features/sync/SyncSettingsForm.tsx)只改当前工作区过滤规则 | 新会话 Agent/模型默认值、产品同步默认值与刷新参数、工作区规则管理及环境检测入口。默认“跟随本地配置”不能被目录候选或历史实际模型转成覆盖参数 |
 | 可调定时同步间隔 | [可见性调度](../../apps/web/src/features/sync/scheduler.ts)目前固定为 15 秒；隐藏和忙状态的既有门禁已实现 | 可配置间隔与生命周期接线；设置变化不叠加计时器，不绕过同工作区串行和待确认门禁 |
 | 界面第 1/3/4/5 节目标 | 现有[App](../../apps/web/src/app/App.tsx)与侧栏固定布局；[对话](../../apps/web/src/features/chat/ChatView.tsx)直接映射条目，[工具卡](../../apps/web/src/features/chat/ToolCard.tsx)逐个渲染；文件/版本页提供已有 diff | 可折叠侧栏、可调分栏与亮色切换、网页命令面板、长会话虚拟列表、连续读取工具分组、本轮改动聚合和 diff 行内反馈；按原界面目标继续实施，不以单次界面改版作为全部完成 |
@@ -27,7 +27,7 @@
 | A8 原生会话删除 | [会话管理验收](../guides/session-management-acceptance.md)记录网页和原生 API/存储结果 | 在独立 VS Code 插件界面与 CLI 列表实际刷新确认，不用后端文件检查代替客户端显示 |
 | A14–A16 与长会话体验 | [原生能力](../guides/native-capabilities-acceptance.md)及[补全验收](../guides/slash-completion-acceptance.md)记录协议、短程真实运行与网页证据 | 实际长会话的自动压缩、续接和显示负载；缺少原生比例时保持不可用，不自行估计为已确认用量 |
 | A20–A23 远端文件管理 | [浏览](../guides/remote-files-browser-acceptance.md)、[操作](../guides/remote-file-operations-acceptance.md)、[同步协调](../guides/remote-file-sync-acceptance.md)明确本机和受控范围 | 真实大文件、同/跨文件系统移动与复制、实际 rclone 迁移、冲突/取消后的结果、浏览器磁盘保存及并发响应 |
-| A10、A18 与架构 V16 | 终端已实现并完成本机验收，资源面板待实施；当前没有完整并发验收证据 | 对话、多个 PTY、资源采样、同步及文件任务同时工作；按通道核对输入、输出限制、独立取消/失败和串行边界，不仅检查静态页面 |
+| A10、A18 与架构 V16 | 终端已实现并完成本机验收，真实全屏工具及资源service已复验；资源网页和缓存核心验证完成，当前没有完整并发验收证据 | 对话、多个 PTY、资源采样、同步及文件任务同时工作；按通道核对输入、输出限制、独立取消/失败和串行边界，不仅检查静态页面 |
 
 用户已授权自主完成，后续从本机既有SSH配置和工作区恢复真实目标，并在可确认范围内选择独立临时目录。临时Agent配置不包含SSH目标；真实连接信息不写入仓库。
 

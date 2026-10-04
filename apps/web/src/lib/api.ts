@@ -33,6 +33,7 @@ import type {
   WorkspaceInput,
   TerminalTarget,
   TerminalBinding,
+  ResourceSnapshot,
 } from '@ssh-server/shared';
 
 export type { SessionSummary } from '@ssh-server/shared';
@@ -91,6 +92,11 @@ const postSync = (id: string, suffix = '', body: unknown = {}) =>
   request<SyncStatus>(syncUrl(id) + suffix, { method: 'POST', body: JSON.stringify(body) });
 
 export const api = {
+  readResources: (target: TerminalTarget, signal?: AbortSignal) =>
+    request<ResourceSnapshot>(
+      `/api/workspaces/${encodeURIComponent(target.workspaceId)}/resources?target=${encodeURIComponent(JSON.stringify(target))}`,
+      { signal, cache: 'no-store' },
+    ),
   bindTerminalTarget: (target: TerminalTarget, options: { signal?: AbortSignal; previousBinding?: string } = {}) =>
     request<TerminalBinding>(`/api/workspaces/${encodeURIComponent(target.workspaceId)}/terminal-binding`, {
       method: 'POST',
