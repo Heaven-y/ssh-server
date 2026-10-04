@@ -1,6 +1,6 @@
 import type { UseQueryResult } from '@tanstack/react-query';
-import { FolderOpen, Plus, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { FolderOpen, Plus, Shield, Trash2 } from 'lucide-react';
+import { lazy, Suspense, useState } from 'react';
 import type { Workspace } from '@ssh-server/shared';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { buttonClass } from '../../ui/styles';
@@ -8,8 +8,24 @@ import { useChat } from '../chat/chat-store';
 import { SessionList } from './SessionList';
 import { WorkspaceForm } from './WorkspaceForm';
 import { WorkspaceRemoveDialog } from './WorkspaceRemoveDialog';
+const WorkspacePolicyDialog = lazy(() => import('./WorkspacePolicyDialog'));
 
 type Props = { workspaces: UseQueryResult<Workspace[]>; currentId?: string; onRemoved?(id: string): void };
+
+function PolicyOverlay({ workspace, onClose }: { workspace?: { id: string; name: string }; onClose(): void }) {
+  if (!workspace) return null;
+  return (
+    <Suspense
+      fallback={
+        <p role="status" className="p-3 text-sm">
+          正在打开命令规则…
+        </p>
+      }
+    >
+      <WorkspacePolicyDialog key={workspace.id} workspaceId={workspace.id} name={workspace.name} onClose={onClose} />
+    </Suspense>
+  );
+}
 
 /** 工作区导航保持紧凑；会话独立滚动，新建配置在模态中完成。 */
 export function WorkspaceSidebar({ workspaces, currentId, onRemoved }: Props) {
@@ -17,6 +33,7 @@ export function WorkspaceSidebar({ workspaces, currentId, onRemoved }: Props) {
   const [creating, setCreating] = useState(false);
   const [formBusy, setFormBusy] = useState(false);
   const [removing, setRemoving] = useState<string>();
+  const [policyWorkspace, setPolicyWorkspace] = useState<{ id: string; name: string }>();
   const [notice, setNotice] = useState('');
   const list = workspaces.data ?? [];
   const closeForm = () => {
@@ -78,6 +95,15 @@ export function WorkspaceSidebar({ workspaces, currentId, onRemoved }: Props) {
               </button>
               <button
                 type="button"
+                aria-label={`命令规则：${ws.name}`}
+                title={`命令规则：${ws.name}`}
+                className={`${buttonClass('ghost')} min-h-11 w-11 shrink-0 px-0`}
+                onClick={() => setPolicyWorkspace({ id: ws.id, name: ws.name })}
+              >
+                <Shield aria-hidden className="size-4" />
+              </button>
+              <button
+                type="button"
                 aria-label={`移除工作区：${ws.name}`}
                 title={`移除工作区：${ws.name}`}
                 className={`${buttonClass('ghost')} min-h-11 w-11 shrink-0 px-0`}
@@ -122,6 +148,7 @@ export function WorkspaceSidebar({ workspaces, currentId, onRemoved }: Props) {
           }}
         />
       ) : null}
+      <PolicyOverlay workspace={policyWorkspace} onClose={() => setPolicyWorkspace(undefined)} />
     </aside>
   );
 }

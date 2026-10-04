@@ -28,12 +28,12 @@
 
 ## 任务2：网页工作区规则管理
 
-文件：web/features/workspaces/{WorkspaceSidebar,WorkspacePolicyDialog,WorkspacePolicyForm}.tsx、lib/api.ts。
+文件：web/features/workspaces/{WorkspaceSidebar,WorkspacePolicyDialog,WorkspacePolicyForm}.tsx、use-workspace-policy.ts、lib/api.ts。
 消费任务1document/input/schema/catalog。独立dialog读取基线与草稿，保存后取消旧workspaces查询并刷新，不发布旧workspace对象。
 
-- [ ] 增加按工作区按需入口、默认checkbox/恢复、自定义新增/编辑/移除及字段错误。
-- [ ] 单次保存、dirty保护、失败/409保留、重读与卸载取消；成功刷新。
-- [ ] 相关类型/lint/build及既有生命周期/设置网页回归通过，提交。
+- [x] 增加按工作区按需入口、默认checkbox/恢复、自定义新增/编辑/移除及字段错误。
+- [x] 单次保存、dirty保护、失败/409保留、重读与卸载取消；成功刷新。
+- [x] 相关类型/lint/build及既有生命周期/设置网页回归通过，提交。
 
 ## 任务3：一次Review、核心验收与整合
 

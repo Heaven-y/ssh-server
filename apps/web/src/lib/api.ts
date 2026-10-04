@@ -49,6 +49,8 @@ import type {
   ProductSettingsDocument,
   ProductSettingsInput,
   EnvironmentReport,
+  WorkspacePolicyDocument,
+  WorkspacePolicyInput,
 } from '@ssh-server/shared';
 
 export type { SessionSummary } from '@ssh-server/shared';
@@ -247,6 +249,14 @@ export const api = {
       body: JSON.stringify({ content: input.content, revision: input.revision }),
     }),
   listWorkspaces: (signal?: AbortSignal) => request<Workspace[]>('/api/workspaces', { signal }),
+  readWorkspacePolicy: (id: string, signal?: AbortSignal) =>
+    request<WorkspacePolicyDocument>(`/api/workspaces/${encodeURIComponent(id)}/policy`, { signal }),
+  saveWorkspacePolicy: (id: string, input: WorkspacePolicyInput, signal?: AbortSignal) =>
+    request<WorkspacePolicyDocument>(`/api/workspaces/${encodeURIComponent(id)}/policy`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+      signal,
+    }),
   previewWorkspaceRemoval: (id: string, signal?: AbortSignal) =>
     request<WorkspaceRemovalPreview>(`/api/workspaces/${encodeURIComponent(id)}/removal`, {
       signal,
