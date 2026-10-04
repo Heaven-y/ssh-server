@@ -1,9 +1,14 @@
 import { useId, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowUp, ChevronRight, FolderRoot, RefreshCw, Server } from 'lucide-react';
-import type { Workspace } from '@ssh-server/shared';
+import type { RemoteFileActionInput, RemoteFileActionKind, RemoteFileEntry, Workspace } from '@ssh-server/shared';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { RemoteDirectoryList } from './RemoteDirectoryList';
 import { useRemoteDirectory } from './use-remote-directory';
+import { RemoteActionDialog } from './RemoteActionDialog';
+import { RemoteActionToolbar } from './RemoteActionToolbar';
+import { RemoteDownloadDialog } from './RemoteDownloadDialog';
+import { RemoteTasks, remoteTasksKey } from './RemoteTasks';
 
 type Browser = ReturnType<typeof useRemoteDirectory>;
 
@@ -49,15 +54,13 @@ export function RemoteFilesPanel({ workspace, active }: { workspace: Workspace; 
         )}
       </div>
       <RemoteFeedback browser={browser} />
-      {directory && (
-        <RemoteDirectoryList
-          directory={directory}
-          showHidden={showHidden}
-          loading={browser.loading || targetChanged}
-          navigate={browser.navigate}
-        />
-      )}
-      <RemotePagination browser={browser} targetChanged={targetChanged} />
+      <RemoteOperations
+        workspace={workspace}
+        browser={browser}
+        active={active}
+        showHidden={showHidden}
+        targetChanged={targetChanged}
+      />
     </section>
   );
 }
@@ -229,5 +232,117 @@ function RecoveryButton({ browser }: { browser: Browser }) {
     <button type="button" className={buttonClass('outline')} onClick={browser.retry}>
       重试读取
     </button>
+  );
+}
+
+function RemoteOperations({
+  workspace,
+  browser,
+  active,
+  showHidden,
+  targetChanged,
+}: {
+  workspace: Workspace;
+  browser: Browser;
+  active: boolean;
+  showHidden: boolean;
+  targetChanged: boolean;
+}) {
+  const directory = browser.directory;
+  const [selectedPath, setSelectedPath] = useState<string>();
+  const [action, setAction] = useState<RemoteFileActionInput>();
+  const [download, setDownload] = useState<RemoteFileEntry>();
+  const queries = useQueryClient();
+  const selected = selectedEntry(directory, selectedPath, showHidden);
+  const disabled = controlsDisabled(browser);
+  function requestAction(kind: RemoteFileActionKind, entry?: RemoteFileEntry) {
+    if (kind === 'mkdir') setAction({ kind, destination: `${directory?.path.replace(/\/$/, '') ?? ''}/` });
+    else if (entry) setAction({ kind, source: entry.path, destination: kind === 'rename' ? entry.path : undefined });
+  }
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <RemoteActionToolbar
+        selected={selected}
+        disabled={disabled}
+        action={requestAction}
+        download={setDownload}
+        open={(entry) => browser.navigate(entry.path)}
+      />
+      {directory && browser.session && (
+        <RemoteDirectoryList
+          directory={directory}
+          showHidden={showHidden}
+          loading={browser.loading || targetChanged}
+          navigate={browser.navigate}
+          selectedPath={selectedPath}
+          select={setSelectedPath}
+          action={setAction}
+          download={setDownload}
+          sessionId={browser.session.id}
+        />
+      )}
+      <RemotePagination browser={browser} targetChanged={targetChanged} />
+      <RemoteTasks workspaceId={workspace.id} active={active} changed={browser.refresh} />
+      <OperationDialogs
+        workspaceId={workspace.id}
+        browser={browser}
+        action={action}
+        download={download}
+        closeAction={() => setAction(undefined)}
+        closeDownload={() => setDownload(undefined)}
+        submitted={() => {
+          void queries.invalidateQueries({ queryKey: remoteTasksKey(workspace.id) });
+        }}
+      />
+    </div>
+  );
+}
+
+function controlsDisabled(browser: Browser) {
+  return !browser.session || browser.loading || !!browser.error;
+}
+function selectedEntry(directory: Browser['directory'], path: string | undefined, hidden: boolean) {
+  return directory?.entries.find((entry) => entry.path === path && (hidden || !entry.name.startsWith('.')));
+}
+
+function OperationDialogs({
+  workspaceId,
+  browser,
+  action,
+  download,
+  closeAction,
+  closeDownload,
+  submitted,
+}: {
+  workspaceId: string;
+  browser: Browser;
+  action?: RemoteFileActionInput;
+  download?: RemoteFileEntry;
+  closeAction(): void;
+  closeDownload(): void;
+  submitted(): void;
+}) {
+  return (
+    <>
+      {action && browser.session && (
+        <RemoteActionDialog
+          workspaceId={workspaceId}
+          session={browser.session}
+          input={action}
+          currentPath={browser.directory?.path ?? browser.session.root}
+          connect={browser.createSecondarySession}
+          submitted={submitted}
+          close={closeAction}
+        />
+      )}
+      {download && browser.session && (
+        <RemoteDownloadDialog
+          workspaceId={workspaceId}
+          session={browser.session}
+          entry={download}
+          close={closeDownload}
+        />
+      )}
+    </>
   );
 }

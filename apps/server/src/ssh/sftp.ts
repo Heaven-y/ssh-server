@@ -69,6 +69,7 @@ export function createSftpReader(channel: SFTPWrapper) {
     close,
     realpath: (path: string) => call<string>((done) => channel.realpath(path, done)),
     lstat: (path: string) => call<Stats>((done) => channel.lstat(path, done)),
+    fstat: (handle: Buffer) => call<Stats>((done) => channel.fstat(handle, done)),
     opendir: (path: string) => call<Buffer>((done) => channel.opendir(path, done)),
     // 按句柄读取时 ssh2 返回 SFTP EOF(1)，统一转换为目录结束。
     readdir: (handle: Buffer) =>

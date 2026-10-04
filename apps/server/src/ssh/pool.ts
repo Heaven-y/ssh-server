@@ -28,6 +28,8 @@ export type ConnectInput = {
 };
 export type SshPool = {
   fingerprint(alias: string): Promise<string>;
+  identity(alias: string): Promise<string>;
+  openExec(target: SshTarget, command: string, signal?: AbortSignal): Promise<ClientChannel>;
   openSftp(target: SshTarget): Promise<SFTPWrapper>;
   exec(target: SshTarget, cmd: string, opts: ExecOptions): Promise<ExecResult>;
   resolveConnection(target: SshTarget): Promise<ResolvedConnection>;
@@ -290,6 +292,30 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
   }
   return {
     fingerprint: (alias) => resolver.fingerprint(alias),
+    identity: (alias) => resolver.identity(alias),
+    async openExec(target, command, signal) {
+      const alias = targetAlias(target);
+      const generation = epoch(alias);
+      signal?.throwIfAborted();
+      const client = await getClient(target);
+      assertCurrent(alias, generation);
+      signal?.throwIfAborted();
+      return new Promise<ClientChannel>((resolve, reject) => {
+        const cancelled = () => reject(signal?.reason instanceof Error ? signal.reason : new Error('执行已取消'));
+        signal?.addEventListener('abort', cancelled, { once: true });
+        client.exec(command, (error, channel) => {
+          signal?.removeEventListener('abort', cancelled);
+          if (error) return reject(error);
+          if (signal?.aborted || generation !== epoch(alias)) {
+            channel.on('error', () => undefined);
+            channel.close();
+            reject(signal?.reason instanceof Error ? signal.reason : new Error('SSH 认证已变化'));
+            return;
+          }
+          resolve(channel);
+        });
+      });
+    },
     generation: epoch,
     onCredentialsChanged(alias, notify) {
       const callbacks = listeners.get(alias) ?? new Set<() => void>();
