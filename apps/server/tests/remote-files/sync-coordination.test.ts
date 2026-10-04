@@ -272,6 +272,42 @@ it('取消单独的同步恢复保留阻断，再次恢复不重放', async () =
   expect(fixture.executions()).toBe(1);
 });
 
+it('正常同步拉取仍在进行时恢复立即返回状态，不等待或重复启动恢复', async () => {
+  const fixture = await setup();
+  const source = path.posix.join(fixture.first.remoteDir, 'old.py');
+  fixture.remote.set(source, 'code');
+  await fixture.sync().sync(fixture.first);
+  let releasePull: (() => void) | undefined;
+  fixture.controls.pull = () =>
+    fixture.executions() === 0
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => {
+          releasePull = resolve;
+        });
+  const task = await fixture.submit(source, path.posix.join(path.posix.sep, 'outside', 'new.py'));
+  await vi.waitFor(() => expect(releasePull).toBeDefined());
+  let returned = false;
+  const recovery = fixture
+    .tasks()
+    .recover(fixture.first.id, task.id)
+    .then((result) => {
+      returned = true;
+      return result;
+    });
+  try {
+    await vi.waitFor(() => expect(returned).toBe(true));
+    expect((await recovery).phase).toBe('sync_pending');
+  } finally {
+    fixture.controls.pull = undefined;
+    releasePull!();
+    await recovery;
+  }
+  await vi.waitFor(async () =>
+    expect((await fixture.tasks().status(fixture.first.id, task.id)).phase).toBe('completed'),
+  );
+  expect(fixture.executions()).toBe(1);
+});
+
 it('恢复初始化持久化期间退出，会等待恢复收尾，退出返回后任务记录不再变化', async () => {
   const fixture = await setup();
   const source = path.posix.join(fixture.first.remoteDir, 'old.py');
