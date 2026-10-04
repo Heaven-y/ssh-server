@@ -1,5 +1,6 @@
 // 远程命令黑名单：在执行前检查 Agent 发来的命令
 import { DEFAULT_RULES, type PolicyContext, type Rule } from './default-rules';
+import { WorkspacePolicySchema, type CustomPolicyRule } from '@ssh-server/shared';
 import { splitSegments } from './shell';
 
 export type { PolicyContext, Rule } from './default-rules';
@@ -108,7 +109,20 @@ function check(command: string, ctx: PolicyContext, rules: Rule[], depth: number
 
 /** 检查一条命令是否命中黑名单 */
 export function checkCommand(command: string, ctx: PolicyContext): PolicyDecision {
-  const disabled = new Set(ctx.disabledRules ?? []);
-  const rules = DEFAULT_RULES.filter((r) => !disabled.has(r.id));
+  const parsed = WorkspacePolicySchema.safeParse({ disabledRules: ctx.disabledRules, customRules: ctx.customRules });
+  if (!parsed.success)
+    return { allowed: false, ruleId: 'policy-invalid', reason: '工作区命令规则不合法，请先修复配置' };
+  const disabled = new Set<string>(parsed.data.disabledRules ?? []);
+  const rules = [
+    ...DEFAULT_RULES.filter((r) => !disabled.has(r.id)),
+    ...(parsed.data.customRules ?? []).map(customRule),
+  ];
   return check(command, ctx, rules, 0);
+}
+
+function customRule(rule: CustomPolicyRule): Rule {
+  const { id, reason, pattern } = rule;
+  return rule.kind === 'program'
+    ? { id, reason, match: ([program]) => programName(program!) === pattern }
+    : { id, reason, matchRaw: (command) => command.includes(pattern) };
 }

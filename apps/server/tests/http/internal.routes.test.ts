@@ -111,6 +111,32 @@ describe('POST /internal/remote-exec', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it('追加规则和损坏配置命中先于同步与SSH', async () => {
+    const blocked = setup({
+      workspace: {
+        ...ws,
+        policy: { customRules: [{ id: 'custom-marker', kind: 'contains', pattern: 'marker', reason: '禁止测试标记' }] },
+      },
+    });
+    expect((await blocked.post('/internal/remote-exec', { command: 'echo marker' })).json()).toEqual({
+      denied: { ruleId: 'custom-marker', reason: '禁止测试标记' },
+    });
+    expect(blocked.calls).toHaveLength(0);
+    expect(blocked.sync.execute).not.toHaveBeenCalled();
+    const invalid = setup({ workspace: { ...ws, policy: { extra: true } } as unknown as Workspace });
+    expect((await invalid.post('/internal/remote-exec', { command: 'echo ok' })).json()).toMatchObject({
+      denied: { ruleId: 'policy-invalid' },
+    });
+    expect(invalid.calls).toHaveLength(0);
+    expect(invalid.sync.execute).not.toHaveBeenCalled();
+    const nullPolicy = setup({ workspace: { ...ws, policy: null } as unknown as Workspace });
+    expect((await nullPolicy.post('/internal/remote-exec', { command: 'echo ok' })).json()).toMatchObject({
+      denied: { ruleId: 'policy-invalid' },
+    });
+    expect(nullPolicy.calls).toHaveLength(0);
+    expect(nullPolicy.sync.execute).not.toHaveBeenCalled();
+  });
+
   it('SSH 出错时返回 error 字段', async () => {
     const { post } = setup({ fail: true });
     const r = await post('/internal/remote-exec', { command: 'ls' });

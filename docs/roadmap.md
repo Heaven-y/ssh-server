@@ -114,7 +114,7 @@
 ### M6：设置、完整链路与并发验收
 
 - [x] 产品默认设置与环境检测入口：新会话 Agent/模型、同步默认值、可调同步间隔和资源刷新参数；历史清除默认来源，空值跟随原生；一次Review三项修复、真实版本/SSH缓存及三宽度网页通过，见[设置验收](guides/product-settings-acceptance.md)
-- [ ] 工作区默认黑名单的网页停用/恢复与自定义规则追加，规则存储、校验和执行贯通；现有实现只有默认规则及配置中的停用项
+- [x] 工作区黑名单网页停用/恢复与有界自定义规则追加，版本保存、校验及执行贯通；一次Review的null保护修复、核心回归、真实SSH标记与Edge三宽度通过，见[规则验收](guides/workspace-policy-acceptance.md)
 - [x] 工作区配置删除的网页入口及活动资源收尾：配置确认、活动/持久任务/离线编辑器阻断、所属PTY/SFTP关闭和迟到收尾；真实SSH与Edge三宽度通过，见[验收](guides/workspace-removal-acceptance.md)
 - [ ] 原界面目标收尾：侧栏折叠、可调分栏、亮色切换、网页命令面板、长会话虚拟列表/工具分组、本轮改动与 diff 行内反馈
 - [x] Claude/Codex 固定原生文件编辑、语法校验、外部修改检测、原子保存与关闭清理
@@ -131,6 +131,6 @@
 
 连接向导[PR #8](https://github.com/Heaven-y/ssh-server/pull/8)双平台CI37234735439成功，随后以两级--no-ff合入feat（5147dc0）与main（7845821）并推送；[main CI37235267430](https://github.com/Heaven-y/ssh-server/actions/runs/37235267430)双平台成功。工作区删除生命周期从最新feat创建codex/workspace-lifecycle继续实施。
 
-2026-10-05 状态核对：浏览和操作阶段已整合；Task 4 同步路径协调及编辑保护已接入，本机核心回归与网页证据见同步协调验收。A20–A23 的真实 SSH、实际 rclone 迁移、跨文件系统和浏览器磁盘保存仍不能标记为完整通过；终端本机基础及真实PTY全屏工具、资源详情与真实只读指标完成。五步连接向导已实现，一次Review的两项问题先复现后修复；真实SSH创建/初始化、三宽度网页、手动目标与Windows保存密码验收通过。产品设置与删除生命周期已完成核心范围；黑名单、界面和完整M6继续实施。
+2026-10-05 状态核对：浏览和操作阶段已整合；Task 4 同步路径协调及编辑保护已接入，本机核心回归与网页证据见同步协调验收。A20–A23 的真实 SSH、实际 rclone 迁移、跨文件系统和浏览器磁盘保存仍不能标记为完整通过；终端本机基础及真实PTY全屏工具、资源详情与真实只读指标完成。五步连接向导已实现，一次Review的两项问题先复现后修复；真实SSH创建/初始化、三宽度网页、手动目标与Windows保存密码验收通过。产品设置、删除生命周期与工作区规则已完成核心范围；界面和完整M6继续实施。
 
 Task 4阶段已使用两级 `--no-ff` 合入 `feat/ssh-workflow` 和 `main`；[此前main CI](https://github.com/Heaven-y/ssh-server/actions/runs/37190899240)双平台成功。终端[PR#5](https://github.com/Heaven-y/ssh-server/pull/5)的[双平台CI](https://github.com/Heaven-y/ssh-server/actions/runs/37224820671)成功；随后Linux暴露的同步恢复收尾竞态已修复，[PR#6](https://github.com/Heaven-y/ssh-server/pull/6)与[main d0547e8 CI](https://github.com/Heaven-y/ssh-server/actions/runs/37226825812)双平台成功。资源详情一次Review及最少核心回归完成；真实工具浏览器画面、原生OS输入法和密码重启串联仍在A10/A12，整项目目标保持进行中。

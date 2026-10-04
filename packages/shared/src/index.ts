@@ -38,6 +38,21 @@ export { ClientMessageSchema } from './protocol';
 export type { ClientMessage, ServerMessage } from './protocol';
 export { SshAuthModeSchema, WorkspaceInputSchema } from './workspace';
 export type { SshAuthMode, SshHostInfo, Workspace, WorkspaceInput } from './workspace';
+export {
+  DEFAULT_POLICY_RULE_IDS,
+  DEFAULT_POLICY_RULE_REASONS,
+  MAX_CUSTOM_POLICY_RULES,
+  CustomPolicyRuleSchema,
+  WorkspacePolicySchema,
+  WorkspacePolicyInputSchema,
+} from './policy';
+export type {
+  DefaultPolicyRuleId,
+  CustomPolicyRule,
+  WorkspacePolicy,
+  WorkspacePolicyInput,
+  WorkspacePolicyDocument,
+} from './policy';
 export { SyncSettingsSchema, DEFAULT_EXCLUDED_EXTENSIONS } from './sync';
 export type { SyncSettings, SyncConflict, SyncStatus } from './sync';
 export type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from './settings';
