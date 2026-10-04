@@ -206,6 +206,9 @@ def plan(request):
                           sourceParent=list(facts(os.fstat(fd))[:3]), entries=len(rows),
                           files=sum(row[2] == "file" for row in rows),
                           bytes=sum(int(row[1][3]) for row in rows if row[2] == "file"))
+            if request.get("includeEntries"):
+                for relative, values, node_type, _link in rows:
+                    emit("entry", path=relative.lstrip("/"), type=node_type, size=int(values[3]))
         finally:
             os.close(fd)
     if destination:

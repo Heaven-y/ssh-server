@@ -1,4 +1,5 @@
 import { SshConnectionError } from '../ssh/connection';
+import { SyncError } from '../sync/errors';
 
 const failures = {
   cancelled: [499, '目录读取已取消'],
@@ -25,7 +26,12 @@ const failures = {
   scan_incomplete: [409, '目录扫描未完整完成，不能确认操作影响；请缩小操作范围'],
   verification_failed: [409, '服务器内复制核对失败，源文件已保留；请核对部分目标'],
   operation_failed: [502, '服务器文件操作未完整完成，请核对源与目标的实际结果'],
-  sync_pending: [409, '该操作涉及同步文件；同步路径协调接入后才能提交'],
+  sync_pending: [409, '相关同步尚未就绪，请处理冲突、待确认事项或恢复后重试'],
+  invalid_sync_path: [409, '目标中包含本地镜像无法表示的同步文件名，请改名或移到同步范围外'],
+  sync_case_collision: [409, '目标同步文件存在本地无法区分的大小写重名，请改名后重试'],
+  editor_dirty: [409, '相关文件有未保存编辑，请先保存或明确放弃修改，再重新预检'],
+  editor_locked: [409, '相关工作区正在协调服务器文件操作，请稍后编辑'],
+  editor_unavailable: [409, '相关编辑器状态尚未确认，请重连原页面，或确认放弃已断开页面的缓冲登记'],
   task_missing: [404, '文件任务不存在或不属于当前工作区'],
   too_many_tasks: [429, '待处理文件任务过多，请等待已有任务完成'],
 } as const;
@@ -44,9 +50,20 @@ export function fileOperationError(code: string | undefined): RemoteFilesError {
   );
 }
 
-export function remoteFilesError(error: unknown): { code: string; message: string; status: number } {
+function typedError(error: unknown) {
   if (error instanceof RemoteFilesError) return error;
+  if (error instanceof SyncError)
+    return {
+      code: error.code === 'case_collision' ? 'sync_case_collision' : 'sync_pending',
+      message: error.message,
+      status: 409,
+    };
   if (error instanceof SshConnectionError) return { ...error, message: error.message, status: 409 };
+  return undefined;
+}
+export function remoteFilesError(error: unknown): { code: string; message: string; status: number } {
+  const known = typedError(error);
+  if (known) return known;
   const code = (error as { code?: unknown } | undefined)?.code;
   if (code === 2 || code === 'ENOENT') return new RemoteFilesError('not_found');
   if (code === 3 || code === 'EACCES') return new RemoteFilesError('permission_denied');

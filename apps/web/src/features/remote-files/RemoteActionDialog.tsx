@@ -167,6 +167,8 @@ function ActionPreview({
       {preview.affectedWorkspaces.map((workspace) => (
         <p key={workspace.id}>
           涉及工作区：{workspace.name}（{workspace.remoteRoot}）
+          {workspace.sourceFiles !== undefined &&
+            `；源范围 ${workspace.sourceFiles} 个同步文件，目标范围 ${workspace.destinationFiles ?? 0} 个。`}
         </p>
       ))}
       {preview.warnings.map((warning) => (

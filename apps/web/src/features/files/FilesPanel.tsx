@@ -7,6 +7,7 @@ import { FileDirectory } from './FileDirectory';
 import { FilePanelFrame } from './FilePanelFrame';
 import { useFileEditor } from './use-file-editor';
 import { RemoteFilesPanel } from '../remote-files/RemoteFilesPanel';
+import { DisconnectedEditors } from './DisconnectedEditors';
 
 const FORMATS: Record<string, CodeFormat> = {
   py: 'python',
@@ -41,9 +42,10 @@ export default function FilesPanel({
   const [workspace] = useState(initialWorkspace);
   const [view, setView] = useState<'local' | 'remote'>('local');
   const editor = useFileEditor(workspace.id);
+  const editingDisabled = !!editor.busy || !!editor.protection;
   const [pathInput, setPathInput] = useState('');
   const close = () => {
-    if (editor.canLeave()) onClose();
+    if (editor.canClose()) onClose();
   };
   return (
     <FilePanelFrame close={close}>
@@ -72,7 +74,7 @@ export default function FilesPanel({
       >
         <FileDirectory
           workspaceId={workspace.id}
-          disabled={!!editor.busy}
+          disabled={editingDisabled}
           openFile={(relative) => {
             void editor.open(relative);
           }}
@@ -92,10 +94,10 @@ export default function FilesPanel({
               value={pathInput}
               onChange={(event) => setPathInput(event.target.value)}
               placeholder="src/train.py"
-              disabled={!!editor.busy}
+              disabled={editingDisabled}
             />
           </label>
-          <button type="submit" className={buttonClass('outline')} disabled={!!editor.busy || !pathInput.trim()}>
+          <button type="submit" className={buttonClass('outline')} disabled={editingDisabled || !pathInput.trim()}>
             打开
           </button>
         </form>
@@ -112,7 +114,7 @@ export default function FilesPanel({
                 <button
                   type="button"
                   className={buttonClass('ghost')}
-                  disabled={!!editor.busy}
+                  disabled={editingDisabled}
                   aria-label="重新读取文件"
                   onClick={() => {
                     void editor.open(editor.file!.path);
@@ -134,7 +136,7 @@ export default function FilesPanel({
                   format={formatOf(editor.file.path)}
                   label="项目文件内容"
                   height="100%"
-                  disabled={!!editor.busy}
+                  disabled={editingDisabled}
                   lineSeparator={editor.file.content.includes('\r\n') ? '\r\n' : '\n'}
                   onChange={editor.edit}
                 />
@@ -155,6 +157,7 @@ export default function FilesPanel({
       >
         <RemoteFilesPanel workspace={workspace} active={view === 'remote'} />
       </div>
+      <DisconnectedEditors workspaceId={workspace.id} />
     </FilePanelFrame>
   );
 }
@@ -200,6 +203,11 @@ function FileViewSelector({
 function EditorFooter({ editor }: { editor: ReturnType<typeof useFileEditor> }) {
   return (
     <footer className="shrink-0 border-t border-border p-3">
+      {editor.protection && (
+        <p role="status" className="mb-2 text-xs">
+          {editor.protection}
+        </p>
+      )}
       {editor.busy === 'loading' && (
         <p role="status" className="mb-2 text-xs">
           正在读取文件…
@@ -220,7 +228,7 @@ function EditorFooter({ editor }: { editor: ReturnType<typeof useFileEditor> }) 
         <button
           type="button"
           className={buttonClass('primary')}
-          disabled={!editor.dirty || !!editor.busy}
+          disabled={!editor.dirty || !!editor.busy || !!editor.protection}
           onClick={() => {
             void editor.save();
           }}

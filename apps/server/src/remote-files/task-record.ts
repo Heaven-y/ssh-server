@@ -43,6 +43,7 @@ export const TaskRecordSchema = z
       cancelRequested: z.boolean(),
       remoteCompleted: z.boolean(),
       syncCompleted: z.boolean(),
+      syncRequired: z.boolean().optional(),
       message: z.string().optional(),
       resultCheck: ResultCheckSchema.optional(),
     }),
@@ -73,6 +74,7 @@ export const TaskRecordSchema = z
       configurations: z.array(z.object({ id: text, key: text })),
     }),
     verified: digest.optional(),
+    dispatched: z.boolean().optional(),
   })
   .superRefine((value, context) => {
     if (

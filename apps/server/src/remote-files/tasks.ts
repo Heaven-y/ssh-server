@@ -8,12 +8,14 @@ import type { RemoteExecutor } from './executor';
 import { createPathLocks } from './path-locks';
 import type { FilePreflights, PreparedAction } from './preflight';
 import { confirmedResult, ResultCheckSchema, TaskRecordSchema } from './task-record';
+import type { FileSyncCoordinator } from './sync-coordinator';
 
-type Record = { task: RemoteFileTask; action: PreparedAction; verified?: string };
+type Record = { task: RemoteFileTask; action: PreparedAction; verified?: string; dispatched?: boolean };
 type Deps = {
   configDir: string;
   preflights: FilePreflights;
   executor: RemoteExecutor;
+  coordinator?: FileSyncCoordinator;
   onCorrupt?: (name: string) => void;
 };
 const runningPhases = new Set<RemoteFileTaskPhase>([
@@ -31,11 +33,19 @@ export function createFileTasks(deps: Deps) {
   const dir = path.join(deps.configDir, 'remote-file-tasks');
   const records = new Map<string, Record>();
   const controllers = new Map<string, AbortController>();
-  const executions = new Set<Promise<void>>();
+  const executions = new Map<string, Promise<unknown>>();
   const submissions = new Map<string, Promise<RemoteFileTask>>();
   const locks = createPathLocks();
   let disposed = false;
   let writes: Promise<unknown> = Promise.resolve();
+  function trackExecution(id: string, execution: Promise<unknown>) {
+    executions.set(id, execution);
+    void execution
+      .finally(() => {
+        if (executions.get(id) === execution) executions.delete(id);
+      })
+      .catch(() => undefined);
+  }
   async function persist(record: Record) {
     const contents = JSON.stringify(record) + '\n';
     const operation = async () => {
@@ -62,8 +72,11 @@ export function createFileTasks(deps: Deps) {
       }
       if (record.task.id + '.json' !== name) continue;
       if (runningPhases.has(record.task.phase)) {
-        record.task.phase = 'needs_check';
-        record.task.message = '本机服务已重新启动，旧操作不会重放；请核对实际结果。';
+        record.task.phase = record.dispatched === false ? 'cancelled' : 'needs_check';
+        record.task.message =
+          record.dispatched === false
+            ? '本机服务已重新启动，该操作未派发，不会重放；相关同步暂停可从任务恢复。'
+            : '本机服务已重新启动，旧操作不会重放；请核对实际结果。';
         record.task.updatedAt = Date.now();
         await persist(record);
       }
@@ -90,33 +103,67 @@ export function createFileTasks(deps: Deps) {
         await update(record, { phase: 'checking' });
         await deps.preflights.validate(action);
         controller.signal.throwIfAborted();
-        // 调用执行器后，即使尚未收到首条阶段消息，也不能断言远端没有修改。
-        dispatched = true;
-        await deps.executor.run(
-          workspaceTarget(action.context.workspace),
-          { ...action.public, action: 'execute', roots: action.roots, expected: action.plan },
-          {
-            signal: controller.signal,
-            timeoutMs: 60 * 60_000,
-            onPhase: async ({ phase, verified }) => {
-              if (verified) record.verified = verified;
-              await update(record, { phase });
+        const execute = async () => {
+          await deps.preflights.validate(action);
+          controller.signal.throwIfAborted();
+          await persist({ ...record, dispatched: true });
+          record.dispatched = true;
+          // 调用执行器后，即使尚未收到首条阶段消息，也不能断言远端没有修改。
+          dispatched = true;
+          await deps.executor.run(
+            workspaceTarget(action.context.workspace),
+            { ...action.public, action: 'execute', roots: action.roots, expected: action.plan },
+            {
+              signal: controller.signal,
+              timeoutMs: 60 * 60_000,
+              onPhase: async ({ phase, verified }) => {
+                if (verified) record.verified = verified;
+                await update(record, { phase });
+              },
             },
-          },
-        );
+          );
+        };
+        const remoteCompleted = () =>
+          update(record, {
+            remoteCompleted: true,
+            phase: action.public.affectedWorkspaces.length ? 'sync_pending' : 'completed',
+          });
+        let syncCompleted = true;
+        if (deps.coordinator) {
+          syncCompleted = await deps.coordinator.run(record.task.id, action, controller.signal, {
+            execute,
+            remoteCompleted,
+          });
+        } else {
+          if (action.public.affectedWorkspaces.length) throw new RemoteFilesError('sync_pending');
+          await execute();
+          await remoteCompleted();
+        }
         await update(record, {
-          phase: 'completed',
+          phase: syncCompleted ? 'completed' : 'sync_pending',
           remoteCompleted: true,
-          syncCompleted: true,
-          message: '服务器操作已完成；没有传输文件正文到本机。',
+          syncCompleted,
+          message: syncCompleted
+            ? action.public.affectedWorkspaces.length
+              ? '服务器操作与相关同步路径协调已完成；仅服务器文件正文未传输到本机。'
+              : '服务器操作已完成；没有传输文件正文到本机。'
+            : '服务器操作已完成，相关同步仍需处理冲突或恢复；不会重放服务器操作。',
         });
       });
     } catch (error) {
       const started = dispatched;
-      const phase = started ? 'needs_check' : controller.signal.aborted ? 'cancelled' : 'failed';
-      const message = started
-        ? '操作已中止或结果未确认，部分文件可能已改变；请核对源与目标。'
-        : remoteFilesError(error).message;
+      const phase = record.task.remoteCompleted
+        ? 'sync_pending'
+        : started
+          ? 'needs_check'
+          : controller.signal.aborted
+            ? 'cancelled'
+            : 'failed';
+      const message = record.task.remoteCompleted
+        ? '服务器操作已完成，同步协调未完成；请从文件任务恢复，不会重新执行服务器操作。'
+        : started
+          ? '操作已中止或结果未确认，部分文件可能已改变；请核对源与目标。'
+          : remoteFilesError(error).message;
       await update(record, { phase, message }).catch(() => {
         record.task.phase = 'needs_check';
         record.task.message = '任务状态无法保存，请恢复本机配置目录后核对远端结果。';
@@ -149,16 +196,50 @@ export function createFileTasks(deps: Deps) {
       cancelRequested: false,
       remoteCompleted: false,
       syncCompleted: false,
+      syncRequired: action.public.affectedWorkspaces.length > 0,
     };
-    const record: Record = { task, action };
+    const record: Record = { task, action, dispatched: false };
     await persist(record);
     records.set(task.id, record);
     const controller = new AbortController();
     controllers.set(task.id, controller);
     const execution = perform(record, controller);
-    executions.add(execution);
-    void execution.finally(() => executions.delete(execution)).catch(() => undefined);
+    trackExecution(task.id, execution);
     return { ...task };
+  }
+  async function restoreSync(record: Record, controller: AbortController) {
+    try {
+      controller.signal.throwIfAborted();
+      await deps.preflights.validate(record.action, false);
+      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(60 * 60_000)]);
+      const complete =
+        record.dispatched === false
+          ? await deps.coordinator!.abandon(record.task.id, record.action, signal)
+          : await deps.coordinator!.recover(record.task.id, record.action, signal);
+      await update(record, {
+        syncCompleted: complete,
+        phase:
+          record.dispatched === false && complete
+            ? 'cancelled'
+            : record.task.remoteCompleted
+              ? complete
+                ? 'completed'
+                : 'sync_pending'
+              : 'needs_check',
+        message: complete
+          ? '已按实际远端结果协调同步，服务器写操作没有重放；未确认的操作仍须核对。'
+          : '远端操作没有重放，相关工作区仍有同步冲突或待处理事项。',
+      });
+      return { ...record.task };
+    } catch (error) {
+      await update(record, {
+        phase: record.task.remoteCompleted ? 'sync_pending' : record.dispatched === false ? 'failed' : 'needs_check',
+        message: '同步恢复未完成，旧路径仍不会自动上传；请核对连接、编辑与冲突后重试。',
+      }).catch(() => undefined);
+      throw error;
+    } finally {
+      controllers.delete(record.task.id);
+    }
   }
   return {
     submit(workspaceId: string, preflightId: string) {
@@ -210,19 +291,44 @@ export function createFileTasks(deps: Deps) {
         ),
       );
       const complete = confirmedResult(record, result);
+      const requiresSync = complete && record.action.public.affectedWorkspaces.length > 0 && !record.task.syncCompleted;
       await update(record, {
         resultCheck: result,
-        ...(complete ? { phase: 'completed', remoteCompleted: true, syncCompleted: true } : {}),
+        ...(complete
+          ? { phase: requiresSync ? 'sync_pending' : 'completed', remoteCompleted: true, syncCompleted: !requiresSync }
+          : {}),
         message: complete
           ? '已核对并确认服务器操作结果。'
           : '已读取源与目标，但没有足够证据确认完整完成；请按实际结果处理部分产物。',
       });
       return { ...record.task };
     },
+    async recover(workspaceId: string, id: string) {
+      await ready;
+      // 取消请求返回后清理可能仍在进行；明确重试等待其结束，再启动一次恢复。
+      if (controllers.get(id)?.signal.aborted) await executions.get(id)?.catch(() => undefined);
+      if (controllers.has(id)) return { ...get(workspaceId, id).task };
+      const record = get(workspaceId, id);
+      if (!deps.coordinator || !record.action.public.affectedWorkspaces.length)
+        throw new RemoteFilesError('sync_pending');
+      if (disposed || controllers.size >= 64) throw new RemoteFilesError('too_many_tasks');
+      const controller = new AbortController();
+      controllers.set(id, controller);
+      const initialization = update(record, { phase: 'checking', cancelRequested: false });
+      // 初始化写盘也属于恢复生命周期，退出必须等待它及后续中止收尾。
+      const execution = initialization
+        .then(() => restoreSync(record, controller))
+        .finally(() => {
+          if (controllers.get(id) === controller) controllers.delete(id);
+        });
+      trackExecution(id, execution);
+      await initialization;
+      return { ...record.task };
+    },
     async dispose() {
       disposed = true;
       for (const controller of controllers.values()) controller.abort(new RemoteFilesError('cancelled'));
-      await Promise.allSettled([...executions]);
+      await Promise.allSettled(executions.values());
       await writes;
     },
   };

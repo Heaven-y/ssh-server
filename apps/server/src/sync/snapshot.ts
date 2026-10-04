@@ -1,25 +1,27 @@
 // rclone 只操作本机状态目录中的稳定镜像，回写前核对真实文件的内容与身份。
 import { randomUUID } from 'node:crypto';
 import { constants, type Stats } from 'node:fs';
-import { lstat, mkdir, open, readdir, rmdir, unlink, type FileHandle } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile, readdir, rmdir, unlink, writeFile, type FileHandle } from 'node:fs/promises';
 import path from 'node:path';
+import { z } from 'zod';
 import type { SyncConflict, SyncSettings, Workspace } from '@ssh-server/shared';
 import { SyncError } from './errors';
 import { eligibleFile, safeRelativePath } from './filters';
 import { hash, localInventory, workspaceStateDir, type FileEntry } from './inventory';
 
-type Original = { digest: string; stat: Stats };
-type Version = Original & { data: Buffer };
-type Input = { configDir: string; ws: Workspace; settings: SyncSettings };
+type FileIdentity = Pick<Stats, 'dev' | 'ino' | 'size' | 'mtimeMs' | 'ctimeMs' | 'birthtimeMs'>;
+type Original = { digest: string; stat: FileIdentity };
+type Version = { digest: string; stat: Stats; data: Buffer };
+type Input = { configDir: string; ws: Workspace; settings: SyncSettings; snapshotId?: string };
 export type StagedSnapshot = {
   localDir: string;
   inventory: FileEntry[];
   all: FileEntry[];
-  apply(): Promise<SyncConflict[]>;
+  apply(directory?: string): Promise<SyncConflict[]>;
 };
 const changed = () => new SyncError('snapshot_changed', '本地文件在建立镜像期间变化，已停止同步，请重试');
 const unsafe = () => new SyncError('unsafe_path', '同步路径经过符号链接或非普通目录，已停止');
-const statKey = (stat: Stats) =>
+const statKey = (stat: FileIdentity) =>
   [stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs, stat.birthtimeMs].join(':');
 function missing(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === 'ENOENT';
@@ -89,7 +91,11 @@ async function clearMirror(root: string): Promise<void> {
 async function mirrorDirectory(input: Input): Promise<string> {
   const stateDir = workspaceStateDir(input.configDir, input.ws.id);
   if (contains(input.ws.localDir, stateDir) || contains(stateDir, input.ws.localDir)) throw unsafe();
-  const mirror = path.join(stateDir, 'mirror');
+  const mirror = input.snapshotId
+    ? path.join(taskSnapshotDirectory(input, input.snapshotId), 'mirror')
+    : path.join(stateDir, 'mirror');
+  if (input.snapshotId && (await statIfPresent(path.join(path.dirname(mirror), 'snapshot.json'))))
+    throw new SyncError('snapshot_exists', '该任务快照已存在，请使用结果恢复入口');
   await checkedRoot(mirror, true);
   await clearMirror(mirror);
   return mirror;
@@ -206,7 +212,7 @@ async function keepConflict(input: ApplyFile, current: Version | undefined): Pro
   if (input.remote) await writeNew(input.root, conflict.remoteCopy, input.remote);
   return conflict;
 }
-async function applyFile(input: ApplyFile): Promise<SyncConflict | undefined> {
+async function applyEligibleFile(input: ApplyFile): Promise<SyncConflict | undefined> {
   if (sameContent(input.original, input.remote)) return undefined;
   let current = await readVersion(input.root, input.file, input.settings);
   if (input.original && unchanged(input.original, current)) {
@@ -217,6 +223,21 @@ async function applyFile(input: ApplyFile): Promise<SyncConflict | undefined> {
     current = await readVersion(input.root, input.file, input.settings);
   }
   return keepConflict(input, current);
+}
+async function applyFile(input: ApplyFile): Promise<SyncConflict | undefined> {
+  try {
+    return await applyEligibleFile(input);
+  } catch (error) {
+    if (!(error instanceof SyncError) || error.code !== 'filter_changed') throw error;
+    // 外部编辑超过上限时保留原文件作为本地版本，不读取或复制大文件正文。
+    const conflict = {
+      path: input.file,
+      localCopy: input.file,
+      remoteCopy: `${input.file}.ssh-remote-conflict-${randomUUID()}`,
+    };
+    if (input.remote) await writeNew(input.root, conflict.remoteCopy, input.remote);
+    return conflict;
+  }
 }
 async function applyMirror(input: Input, mirror: string, originals: Map<string, Original>): Promise<SyncConflict[]> {
   const inventory = await localInventory(mirror, input.settings);
@@ -258,10 +279,114 @@ export async function stageSnapshot(input: Input): Promise<StagedSnapshot> {
     await writeNew(mirror, file.path, version);
   }
   await verifySources(input, originals);
+  if (input.snapshotId) await persistTaskSnapshot(input, originals, source.all);
   return {
     localDir: mirror,
     inventory: (await localInventory(mirror, input.settings)).included,
     all: source.all,
-    apply: () => applyMirror(input, mirror, originals),
+    apply: (directory = mirror) => applyMirror(input, directory, originals),
   };
+}
+
+const relative = z.string().refine((value) => {
+  try {
+    safeRelativePath(value);
+    return true;
+  } catch {
+    return false;
+  }
+});
+const fileEntry = z.object({ path: relative, size: z.number().nonnegative(), modTime: z.string() });
+const identity = z.object({
+  dev: z.number().finite(),
+  ino: z.number().finite(),
+  size: z.number().nonnegative(),
+  mtimeMs: z.number().finite(),
+  ctimeMs: z.number().finite(),
+  birthtimeMs: z.number().finite(),
+});
+const TaskSnapshotSchema = z.object({
+  version: z.literal(1),
+  configuration: z.string().regex(/^[a-f0-9]{64}$/),
+  all: z.array(fileEntry).max(50_000),
+  originals: z
+    .array(z.object({ path: relative, digest: z.string().regex(/^[a-f0-9]{64}$/), stat: identity }))
+    .max(50_000),
+});
+const snapshotConfiguration = (input: Input) =>
+  hash(
+    JSON.stringify([
+      input.ws.id,
+      input.ws.sshHost,
+      input.ws.authMode,
+      input.ws.remoteDir,
+      path.resolve(input.ws.localDir),
+      input.settings,
+    ]),
+  );
+function taskSnapshotDirectory(input: Input, id: string): string {
+  if (!z.string().uuid().safeParse(id).success) throw unsafe();
+  return path.join(workspaceStateDir(input.configDir, input.ws.id), 'remote-file-snapshots', id);
+}
+async function persistTaskSnapshot(input: Input, originals: Map<string, Original>, all: FileEntry[]) {
+  const directory = taskSnapshotDirectory(input, input.snapshotId!);
+  const manifest = {
+    version: 1,
+    configuration: snapshotConfiguration(input),
+    all,
+    originals: [...originals].map(([file, original]) => ({
+      path: file,
+      digest: original.digest,
+      stat: {
+        dev: original.stat.dev,
+        ino: original.stat.ino,
+        size: original.stat.size,
+        mtimeMs: original.stat.mtimeMs,
+        ctimeMs: original.stat.ctimeMs,
+        birthtimeMs: original.stat.birthtimeMs,
+      },
+    })),
+  };
+  const body = JSON.stringify(manifest) + '\n';
+  if (Buffer.byteLength(body) > 4 * 1024 * 1024)
+    throw new SyncError('snapshot_limit', '任务快照清单过大，未执行服务器操作');
+  // 正文仅在独立受控镜像中；恢复清单只持久化摘要及原始文件身份。
+  await writeFile(path.join(directory, 'snapshot.json'), body, { flag: 'wx', mode: 0o600 });
+}
+
+export async function restoreTaskSnapshot(input: Input, id: string): Promise<StagedSnapshot> {
+  const directory = taskSnapshotDirectory(input, id);
+  await checkedRoot(directory);
+  const body = await readFile(path.join(directory, 'snapshot.json'), 'utf8');
+  if (Buffer.byteLength(body) > 4 * 1024 * 1024) throw unsafe();
+  const manifest = TaskSnapshotSchema.parse(JSON.parse(body));
+  if (manifest.configuration !== snapshotConfiguration(input))
+    throw new SyncError('target_changed', '工作区配置或过滤规则已改变，旧任务快照不能用于恢复');
+  const originals = new Map(manifest.originals.map((item) => [item.path, { digest: item.digest, stat: item.stat }]));
+  if (originals.size !== manifest.originals.length) throw unsafe();
+  const mirror = path.join(directory, 'mirror');
+  await checkedRoot(mirror);
+  return {
+    localDir: mirror,
+    all: manifest.all,
+    inventory: (await localInventory(mirror, input.settings)).included,
+    apply: (directory = mirror) => applyMirror(input, directory, originals),
+  };
+}
+
+/** bisync 清单绑定镜像路径；恢复必须重建普通同步继续使用的固定镜像基线。 */
+export async function stageRemoteBaseline(input: Input, taskMirror: string): Promise<string> {
+  const expected = path.relative(
+    path.join(workspaceStateDir(input.configDir, input.ws.id), 'remote-file-snapshots'),
+    taskMirror,
+  );
+  const parts = expected.split(path.sep);
+  if (parts.length !== 2 || !z.string().uuid().safeParse(parts[0]).success || parts[1] !== 'mirror') throw unsafe();
+  await checkedRoot(taskMirror);
+  const source = await localInventory(taskMirror, input.settings);
+  if (source.all.length !== source.included.length) throw unsafe();
+  const mirror = await mirrorDirectory({ ...input, snapshotId: undefined });
+  for (const file of source.included)
+    await writeNew(mirror, file.path, await requiredVersion(taskMirror, file, input.settings));
+  return mirror;
 }

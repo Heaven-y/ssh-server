@@ -18,6 +18,7 @@ const ConflictSchema = z.object({ path: RelativePath, localCopy: RelativePath, r
 const StateSchema = z.object({
   version: z.literal(1),
   signature: z.string().optional(),
+  remoteTask: z.string().uuid().optional(),
   configuration: z.string().optional(),
   filters: z.string(),
   baseline: z.array(z.object({ path: RelativePath, size: z.number().nonnegative(), modTime: z.string() })),
@@ -43,9 +44,9 @@ export const settingsDigest = (settings: SyncSettings): string => hash(JSON.stri
 export function publicStatus(state: SyncState, settings: SyncSettings): SyncStatus {
   const { phase, reason, message, lastSuccessAt, deletions, conflicts } = state;
   return {
-    phase,
-    reason,
-    message,
+    phase: state.remoteTask ? 'confirmation_required' : phase,
+    reason: state.remoteTask ? 'recovery' : reason,
+    message: state.remoteTask ? '服务器文件任务尚未完成同步协调，请在文件任务中核对或恢复；普通同步已暂停。' : message,
     lastSuccessAt,
     deletions: [...deletions],
     conflicts: conflicts.map((item) => ({ ...item })),
