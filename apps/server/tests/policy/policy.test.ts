@@ -92,3 +92,39 @@ describe('checkCommand 停用规则', () => {
     expect(r.allowed).toBe(false);
   });
 });
+
+it('自定义程序命中包装、路径、嵌套和替换；参数中的程序文字不命中', () => {
+  const context = {
+    remoteRoot: '~',
+    customRules: [{ id: 'custom-python', kind: 'program' as const, pattern: 'python', reason: '暂不运行分析' }],
+  };
+  for (const command of [
+    'python a.py',
+    'env X=1 nohup /usr/bin/python a.py',
+    'bash -c "python a.py"',
+    'eval python a.py',
+    'echo $(python a.py)',
+  ])
+    expect(checkCommand(command, context)).toEqual({ allowed: false, ruleId: 'custom-python', reason: '暂不运行分析' });
+  expect(checkCommand('echo python', context)).toEqual({ allowed: true });
+  expect(checkCommand('Python a.py', context)).toEqual({ allowed: true });
+});
+it('自定义字符串按字面匹配；默认停用、恢复与坏规则均保留明确结果', () => {
+  const customRules = [{ id: 'custom-text', kind: 'contains' as const, pattern: 'a.*(x)', reason: '禁止这个参数' }];
+  expect(checkCommand('echo "a.*(x)"', { remoteRoot: '~', customRules })).toMatchObject({
+    allowed: false,
+    ruleId: 'custom-text',
+  });
+  expect(checkCommand('echo ax', { remoteRoot: '~', customRules })).toEqual({ allowed: true });
+  expect(checkCommand('sudo echo ok', { remoteRoot: '~', disabledRules: ['privilege'], customRules })).toEqual({
+    allowed: true,
+  });
+  expect(checkCommand('sudo echo ok', { remoteRoot: '~', disabledRules: [], customRules })).toMatchObject({
+    allowed: false,
+    ruleId: 'privilege',
+  });
+  expect(checkCommand('echo ok', { remoteRoot: '~', disabledRules: ['unknown'] })).toMatchObject({
+    allowed: false,
+    ruleId: 'policy-invalid',
+  });
+});

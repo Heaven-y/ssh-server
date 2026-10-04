@@ -67,7 +67,7 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
     const body = ExecBody.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ message: '参数不合法：需要 command' });
 
-    const policy = WorkspacePolicySchema.safeParse(ws.policy ?? {});
+    const policy = WorkspacePolicySchema.safeParse(ws.policy === undefined ? {} : ws.policy);
     if (!policy.success) return { denied: { ruleId: 'policy-invalid', reason: '工作区命令规则不合法，请先修复配置' } };
     const decision = checkCommand(body.data.command, {
       remoteRoot: ws.remoteDir,

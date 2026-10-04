@@ -18,7 +18,7 @@ export class WorkspacePolicyError extends Error {
 }
 const revision = (workspace: Workspace) => createHash('sha256').update(JSON.stringify(workspace)).digest('hex');
 function document(workspace: Workspace): WorkspacePolicyDocument {
-  const parsed = WorkspacePolicySchema.safeParse(workspace.policy ?? {});
+  const parsed = WorkspacePolicySchema.safeParse(workspace.policy === undefined ? {} : workspace.policy);
   if (!parsed.success)
     throw new WorkspacePolicyError(503, 'policy_invalid', '工作区命令规则损坏，请检查本机配置文件；原配置已保留');
   return { policy: parsed.data, revision: revision(workspace) };

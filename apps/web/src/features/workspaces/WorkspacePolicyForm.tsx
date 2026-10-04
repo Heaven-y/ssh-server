@@ -35,8 +35,10 @@ function RuleField({
   const error = errors.find((item) => item.path === key);
   const id = `${prefix}-${key}`;
   return (
-    <label htmlFor={id} className="flex flex-col gap-1.5 text-sm">
-      {field === 'reason' ? '拒绝原因' : rule.kind === 'program' ? '程序名' : '命令包含的字符串'}
+    <div className="flex flex-col gap-1.5 text-sm">
+      <label htmlFor={id}>
+        {field === 'reason' ? '拒绝原因' : rule.kind === 'program' ? '程序名' : '命令包含的字符串'}
+      </label>
       <input
         id={id}
         value={rule[field]}
@@ -51,7 +53,7 @@ function RuleField({
           {error.message}
         </span>
       )}
-    </label>
+    </div>
   );
 }
 
@@ -145,7 +147,7 @@ export function WorkspacePolicyForm({ draft, setDraft, errors, prefix }: Props) 
           <div key={rule.id} className="flex flex-col gap-3 rounded-lg border border-border p-4">
             <div className="flex items-center justify-between gap-3">
               <label className="flex min-w-0 flex-1 items-center gap-3 text-sm">
-                匹配方式
+                <span className="shrink-0 whitespace-nowrap">匹配方式</span>
                 <select
                   aria-label={`规则${index + 1}匹配方式`}
                   className={inputClass}
