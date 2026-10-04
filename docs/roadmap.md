@@ -131,4 +131,4 @@
 
 2026-10-04 状态核对：浏览和操作阶段已整合；Task 4 同步路径协调及编辑保护已接入，本机核心回归与网页证据见同步协调验收。A20–A23 的真实 SSH、实际 rclone 迁移、跨文件系统和浏览器磁盘保存仍不能标记为完整通过；终端本机基础完成，向导及资源面板继续实施。
 
-Task 4 阶段已使用两级 `--no-ff` 合入 `feat/ssh-workflow` 和 `main`；[main 整合后 CI](https://github.com/Heaven-y/ssh-server/actions/runs/37190899240)的 Windows、Linux 均成功。`codex/ssh-workflow-terminal` 的终端设计已获用户确认，实施计划已自查已获自主实施授权；终端本机基础验收及核心回归完成，阶段整合中；真实A10/A12及整项目目标继续保持进行中。
+Task 4阶段已使用两级 `--no-ff` 合入 `feat/ssh-workflow` 和 `main`；[此前main CI](https://github.com/Heaven-y/ssh-server/actions/runs/37190899240)双平台成功。终端[PR#5](https://github.com/Heaven-y/ssh-server/pull/5)的[双平台CI](https://github.com/Heaven-y/ssh-server/actions/runs/37224820671)成功，已按两级 `--no-ff` 整合并推送（大分支7d0bf33、main9dfaacc）。本机基础及真实htop/nvitop PTY检查完成，真实工具浏览器画面、原生OS输入法及密码重启串联保留在A10/A12；main整合CI继续核对，资源面板进入实施，整项目目标保持进行中。
