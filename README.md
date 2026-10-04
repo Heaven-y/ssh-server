@@ -36,7 +36,7 @@
 - 终端视觉与交互参考 Pebrel，手动编辑复用 CodeMirror，支持常用脚本与配置文件。
 - 对话、终端、资源刷新与同步通过异步 I/O 协调；同一会话单轮运行，同一工作区同步串行。当前沿用 Node.js 本地启动，独立 `.exe` 打包或 Go 迁移未加入交付范围。
 
-当前已接入 Claude/Codex 对话、SSH 认证、rclone 双向同步、原生配置编辑、网页文件编辑和本地版本记录。版本保存、历史、差异与恢复按工作区限定范围；恢复保留 HEAD 和暂存区，再进入同步流程。删除确认、冲突保留与执行前后同步已实现；终端、资源面板及其余原生 Agent 能力仍在路线图中。
+当前已接入 Claude/Codex 对话、SSH 认证、rclone 双向同步、原生配置编辑、网页文件编辑和本地版本记录。版本保存、历史、差异与恢复按工作区限定范围；恢复保留 HEAD 和暂存区，再进入同步流程。删除确认、冲突保留与执行前后同步已实现；网页终端及原生Agent能力已接入；终端本机验收见[记录](docs/guides/web-terminal-acceptance.md)，资源面板和完整向导继续实施。
 
 远端文件管理已补入需求，尚未实现。文件区将提供“本地代码 / 服务器文件”双视图，支持右键菜单、目标选择和拖动操作；涉及已同步代码时协调两端路径，仅服务器文件不要求先同步到本机，也不调用模型。范围与验收见 [需求 F10](docs/product/requirements.md#f10-远端文件管理) 和 [文件区布局](docs/product/ui-layout.md#54-服务器文件视图待实现)。
 
@@ -82,4 +82,4 @@
 
 原生会话管理已接入，并使用临时合成记录通过真实 SDK/app-server 与网页验收，见[会话管理验收](docs/guides/session-management-acceptance.md)。A8 已验证网页及原生存储/API，VS Code 插件界面与 CLI 交互列表的刷新仍待独立验证。
 
-[文件编辑](docs/guides/workspace-files-acceptance.md)与[本地版本记录](docs/guides/local-versions-acceptance.md)已有受控验收。本阶段 Codex 的 SSH/同步也使用受控替身；A5、A13、A7 实际 SSH 串联仍待指定 Host 与允许测试的目录，终端、资源面板和完整并发验证亦未完成，见[路线图](docs/roadmap.md)。
+[文件编辑](docs/guides/workspace-files-acceptance.md)与[本地版本记录](docs/guides/local-versions-acceptance.md)已有受控验收。本阶段 Codex 的 SSH/同步也使用受控替身；A5、A13、A7 实际 SSH 串联仍待指定 Host 与允许测试的目录，终端本机基础已验收，实际全屏工具、资源面板和完整并发验证仍待完成，见[路线图](docs/roadmap.md)。

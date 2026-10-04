@@ -7,6 +7,17 @@ export class SftpChannelError extends Error {
   }
 }
 
+const channelFailures = new WeakMap<SFTPWrapper, SftpChannelError | undefined>();
+/** 在回调内立即保护error事件，并把移交前的结束状态交给reader。 */
+export function protectSftpChannel(channel: SFTPWrapper): void {
+  if (channelFailures.has(channel)) return;
+  channelFailures.set(channel, undefined);
+  const failed = () => channelFailures.set(channel, new SftpChannelError('sftp_closed'));
+  channel.on('error', failed);
+  channel.once('end', failed);
+  channel.once('close', failed);
+}
+
 export function openSftpChannel(client: Pick<Client, 'sftp'>): Promise<SFTPWrapper> {
   return new Promise((resolve, reject) => {
     let finished = false;
@@ -24,13 +35,14 @@ export function openSftpChannel(client: Pick<Client, 'sftp'>): Promise<SFTPWrapp
       finished = true;
       clearTimeout(timer);
       if (error) return reject(error);
-      channel.on('error', () => undefined);
+      protectSftpChannel(channel);
       resolve(channel);
     });
   });
 }
 
 export function createSftpReader(channel: SFTPWrapper) {
+  protectSftpChannel(channel);
   const controller = new AbortController();
   const close = (reason: Error = new SftpChannelError('sftp_closed')) => {
     if (controller.signal.aborted) return;
@@ -40,6 +52,8 @@ export function createSftpReader(channel: SFTPWrapper) {
   channel.once('close', () => close());
   channel.once('end', () => close());
   channel.once('error', () => close());
+  const failure = channelFailures.get(channel);
+  if (failure) close(failure);
 
   function call<T>(invoke: (done: (error: Error | undefined | null, value: T) => void) => void): Promise<T> {
     return new Promise((resolve, reject) => {

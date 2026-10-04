@@ -31,6 +31,8 @@ import type {
   SyncStatus,
   Workspace,
   WorkspaceInput,
+  TerminalTarget,
+  TerminalBinding,
 } from '@ssh-server/shared';
 
 export type { SessionSummary } from '@ssh-server/shared';
@@ -89,6 +91,13 @@ const postSync = (id: string, suffix = '', body: unknown = {}) =>
   request<SyncStatus>(syncUrl(id) + suffix, { method: 'POST', body: JSON.stringify(body) });
 
 export const api = {
+  bindTerminalTarget: (target: TerminalTarget, options: { signal?: AbortSignal; previousBinding?: string } = {}) =>
+    request<TerminalBinding>(`/api/workspaces/${encodeURIComponent(target.workspaceId)}/terminal-binding`, {
+      method: 'POST',
+      cache: 'no-store',
+      signal: options.signal,
+      body: JSON.stringify({ target, previousBinding: options.previousBinding }),
+    }),
   preflightRemoteFile: (id: string, sessionId: string, input: RemoteFileActionInput, signal?: AbortSignal) =>
     request<RemoteFilePreflight>(`${remoteSessionsUrl(id)}/${encodeURIComponent(sessionId)}/preflights`, {
       method: 'POST',
