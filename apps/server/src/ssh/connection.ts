@@ -44,7 +44,11 @@ export type ResolvedConnection = {
   password?: string;
 };
 
-export type ConnectionDeps = { homeDir?: string; readFile?: (file: string) => Promise<Buffer> };
+export type ConnectionDeps = {
+  homeDir?: string;
+  readFile?: (file: string) => Promise<Buffer>;
+  lookupHost?: (alias: string) => Promise<SshHostConfig | undefined>;
+};
 export const workspaceTarget = (ws: Workspace): SshTarget =>
   ws.authMode ? { alias: ws.sshHost, authMode: ws.authMode } : ws.sshHost;
 export const targetAlias = (target: SshTarget): string => (typeof target === 'string' ? target : target.alias);
@@ -64,6 +68,8 @@ export function createConnectionResolver(deps: ConnectionDeps = {}) {
   let resetGeneration = 0;
 
   async function loadHost(alias: string): Promise<SshHostConfig> {
+    const managed = await deps.lookupHost?.(alias);
+    if (managed) return managed;
     const text = (await readFile(path.join(sshDir, 'config')).catch(() => Buffer.alloc(0))).toString('utf8');
     const host = resolveHost(parseSshConfig(text, homeDir), alias);
     if (!host) throw new SshConnectionError('unsupported_config', 'SSH config 中没有指定 Host');
