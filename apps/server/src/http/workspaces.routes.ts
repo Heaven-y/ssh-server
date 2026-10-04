@@ -38,6 +38,8 @@ export function registerWorkspaceRoutes(app: FastifyInstance, deps: WorkspaceRou
 
   app.patch<{ Params: { id: string }; Body: Partial<WorkspaceInput> }>('/api/workspaces/:id', async (req, reply) =>
     withValidation(reply, async () => {
+      if (req.body && Object.hasOwn(req.body, 'policy'))
+        return reply.code(400).send({ field: 'policy', message: '请通过命令规则接口读取当前版本后保存' });
       const ws = await store.update(req.params.id, req.body ?? {});
       return ws ? ws : reply.code(404).send({ message: '工作区不存在' });
     }),

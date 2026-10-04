@@ -53,6 +53,8 @@ import { createHostTrust } from './ssh/host-trust';
 import { createPasswordStore } from './ssh/password-store';
 import { listHosts, parseSshConfig } from './ssh/ssh-config';
 import { createWorkspaceStore } from './workspaces/store';
+import { createWorkspacePolicy } from './workspaces/policy';
+import { registerWorkspacePolicyRoutes } from './http/workspace-policy.routes';
 import { createWorkspaceActivity } from './workspaces/activity';
 import { createWorkspaceRemoval } from './workspaces/removal';
 import { createWorkspaceRemovalResources } from './workspaces/removal-resources';
@@ -210,6 +212,7 @@ async function main(): Promise<void> {
       registerHostTrustRoutes(a, createHostTrust({ pool }));
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
       registerProductSettingsRoutes(a, productSettings);
+      registerWorkspacePolicyRoutes(a, createWorkspacePolicy(store));
       registerFileRoutes(a, { store, files: createWorkspaceFilesService(), sync });
       registerFileEditorRoutes(a, { store, editors, acquireWorkspace });
       registerRemoteFileRoutes(a, browse);
