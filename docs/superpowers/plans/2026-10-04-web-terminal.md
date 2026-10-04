@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node.js ≥22、TypeScript、Fastify、ssh2、ws、Zod、React 19；实施时精确锁定 `@xterm/xterm@6.0.0`、`@xterm/addon-fit@0.11.0`、`react-resizable-panels@4.14.2`。
 
-**Spec:** [已确认的网页终端设计](../specs/2026-10-04-web-terminal-design.md)。设计于 2026-10-04 经用户“确认 继续”认可；本计划已自查，已获自主实施授权，尚未实施产品代码或安装依赖。
+**Spec:** [已确认的网页终端设计](../specs/2026-10-04-web-terminal-design.md)。设计于 2026-10-04 经用户“确认 继续”认可；本计划已自查，已获自主实施授权，后端任务1–3已实施，前端和验收继续推进，决策见[实施记录](../../engineering/web-terminal-decisions.md)。
 
 ## Global Constraints
 
@@ -76,11 +76,11 @@ type TerminalServerMessage =
 
 **接口：** `TerminalTargetSchema`、`TerminalSizeSchema`、`TerminalClientMessageSchema`、`TerminalServerMessageSchema` 产生上述类型。`createTerminalBindings({ store, pool })` 返回 `issue(target: TerminalTarget, options: { signal: AbortSignal; previousBinding?: string }): Promise<TerminalBinding>` 与 `verify(target: TerminalTarget, binding: string, signal: AbortSignal): Promise<{ workspace: Workspace; generation: number; fingerprint: string }>`；issue 只读取工作区、配置指纹和代次，不读凭据或连接服务器。
 
-- [ ] 实现共享协议与限制常量；规范化未声明的工作区 `authMode` 为 `key`，目标相等只比较工作区 ID、Host、认证方式和远端目录。
-- [ ] 实现进程内随机密钥签名的版本/随机值/到期时间令牌，签名绑定固定目标、配置指纹和认证代次；校验到期时间与常量时间签名，不用无界令牌 Map。令牌只携带版本、随机值、到期时间和 MAC，不嵌入目标/配置指纹或实际连接配置。
-- [ ] 为既有标签签发新令牌时要求 previousBinding；可忽略旧令牌的到期时间，但须核对其签名仍绑定当前固定目标、指纹和代次。只有身份未变化才刷新，不能用“重新 issue 当前配置”让旧标签悄然连到新服务器；verify 开启 PTY 时仍严格检查 5 分钟期限。
-- [ ] 自查已删除工作区、目标变化、代次变化、过期、篡改及重启后旧令牌的拒绝路径；错误使用固定中文分类，不回显原始异常中的配置或正文。
-- [ ] 运行 `npx tsc -p packages/shared/tsconfig.json` 及相关文件 ESLint/Prettier、`git diff --check`，通过后提交协议与绑定阶段；本阶段不安装前端依赖。
+- [x] 实现共享协议与限制常量；规范化未声明的工作区 `authMode` 为 `key`，目标相等只比较工作区 ID、Host、认证方式和远端目录。
+- [x] 实现进程内随机密钥签名的版本/随机值/到期时间令牌，签名绑定固定目标、配置指纹和认证代次；校验到期时间与常量时间签名，不用无界令牌 Map。令牌只携带版本、随机值、到期时间和 MAC，不嵌入目标/配置指纹或实际连接配置。
+- [x] 为既有标签签发新令牌时要求 previousBinding；可忽略旧令牌的到期时间，但须核对其签名仍绑定当前固定目标、指纹和代次。只有身份未变化才刷新，不能用“重新 issue 当前配置”让旧标签悄然连到新服务器；verify 开启 PTY 时仍严格检查 5 分钟期限。
+- [x] 自查已删除工作区、目标变化、代次变化、过期、篡改及重启后旧令牌的拒绝路径；错误使用固定中文分类，不回显原始异常中的配置或正文。
+- [x] 运行 `npx tsc -p packages/shared/tsconfig.json` 及相关文件 ESLint/Prettier、`git diff --check`，通过后提交协议与绑定阶段；本阶段不安装前端依赖。
 
 ### 任务 2：受保护的 PTY 开启与目录确认
 
@@ -88,11 +88,11 @@ type TerminalServerMessage =
 
 **接口：** 池导出 `SshChannelGuard = { generation: number; cacheKey: string; signal: AbortSignal }`；`openSftp(target: SshTarget, guard?: SshChannelGuard): Promise<SFTPWrapper>` 保持旧调用兼容；新增 `openShell(target: SshTarget, options: TerminalSize & { guard: SshChannelGuard }): Promise<ClientChannel>`。`resolveTerminalDirectory({ workspace, pool, guard }): Promise<string>`；`initializeTerminal({ channel, startDir, signal }): Promise<{ trailing: Buffer[] }>`。
 
-- [ ] 在池的实际连接解析处比较 guard 的 `cacheKey` 与代次，再复验取消状态；SFTP/PTY 回调晚到时关闭通道。PTY 使用 `term: 'xterm-256color'`；不使用 `exec()` 的运行时限，不创建第二套连接池。
-- [ ] 用受 guard 保护的 SFTP 解析 `.` 为 home，再以 `remotePath()` 解析工作区目录并 realpath/lstat；绝对路径必须以 `/` 开头且无 CR/LF/NUL，结果须为目录，`finally` 释放 reader。启动取消后才返回的 SFTP 同样释放。
-- [ ] 用 `sq(startDir)` 和随机确认标记生成唯一 POSIX 初始化语句，成功/失败标记通过 `printf` 输出；匹配实际控制字节，不能把 shell 回显中的转义文本当成功。解析器最多保留 128 KiB，10 秒或父级 30 秒超时关闭通道，失败绝不开放家目录输入。
-- [ ] 跨 chunk 找到成功标记后保留其后所有原始字节；初始化期间输入不进入通道，stdout/stderr 的监听交接无丢失窗口。错误、自然退出、abort 的收尾幂等。
-- [ ] 自查 guard 与通道取消路径，运行 server 类型检查和相关文件静态检查，增量运行既有 `npm test -- apps/server/tests/ssh/pool.test.ts apps/server/tests/ssh/sftp.test.ts`；通过后提交通道初始化阶段。
+- [x] 在池的实际连接解析处比较 guard 的 `cacheKey` 与代次，再复验取消状态；SFTP/PTY 回调晚到时关闭通道。PTY 使用 `term: 'xterm-256color'`；不使用 `exec()` 的运行时限，不创建第二套连接池。
+- [x] 用受 guard 保护的 SFTP 解析 `.` 为 home，再以 `remotePath()` 解析工作区目录并 realpath/lstat；绝对路径必须以 `/` 开头且无 CR/LF/NUL，结果须为目录，`finally` 释放 reader。启动取消后才返回的 SFTP 同样释放。
+- [x] 用 `sq(startDir)` 和随机确认标记生成唯一 POSIX 初始化语句，成功/失败标记通过 `printf` 输出；匹配实际控制字节，不能把 shell 回显中的转义文本当成功。解析器最多保留 128 KiB，10 秒或父级 30 秒超时关闭通道，失败绝不开放家目录输入。
+- [x] 跨 chunk 找到成功标记后保留其后所有原始字节；初始化期间输入不进入通道，stdout/stderr 的监听交接无丢失窗口。错误、自然退出、abort 的收尾幂等。
+- [x] 自查 guard 与通道取消路径，运行 server 类型检查和相关文件静态检查，增量运行既有 `npm test -- apps/server/tests/ssh/pool.test.ts apps/server/tests/ssh/sftp.test.ts`；通过后提交通道初始化阶段。
 
 ### 任务 3：独立终端会话、流量控制与 HTTP/WS 接线
 
@@ -100,12 +100,12 @@ type TerminalServerMessage =
 
 **接口：** `createTerminalManager({ store, pool, bindings })` 返回 `attach(workspaceId: string, socket: WebSocket): void`、`dispose(): void`。`createTerminalInput({ channel, notify, fail })` 返回 `enqueue(bytes: Buffer): void`、`dispose(): void`；`createTerminalOutput({ channel, socket, fail })` 返回 `push(bytes: Buffer): void`、`ack(bytes: number): void`、`finish(result: { exitCode: number | null; signal: string | null }): void`、`dispose(): void`。`registerTerminalRoutes(app, { terminals, bindings }): void`。
 
-- [ ] 实现输入队列及 drain 门禁，32 KiB 解码限制、256 KiB 待写上限和暂停通知；超限结束本窗格，不截断后继续执行。所有关闭路径清理输入和 drain 监听。
-- [ ] 实现 stdout/stderr 的统一输出队列、32 KiB 分帧、消费确认与共享限制；维护待发、未确认、send 进行中的字节计数，达到阈值暂停两种流。定时复查 WS 缓冲下降以恢复，send 失败和过量 ack 明确结束；1 MiB 上限只描述应用队列。
-- [ ] 实现会话状态 `waiting-open → starting → ready → draining → ended`，首帧前禁止其他输入，重复 open 拒绝；30 秒覆盖等待首帧和启动。预留工作区/全局名额后才 await，凭据变更、取消及后端 dispose 释放名额和监听。验证绑定后捕获连接 `cacheKey`，SFTP/PTY 都用同一 guard，ready 前复验目标与指纹。
-- [ ] 实现 20 秒 ping/60 秒无 pong、60 秒慢消费者检查；自然退出先排空待发输出及 send 回调，再发实际 exit（未知值为 null）。draining 仍受队列/消费时限约束，发送失败时 `outputComplete: false`；不能生成假 exit 0。
-- [ ] 注册 `POST /api/workspaces/:id/terminal-binding`（body 为 `{ target: TerminalTarget; previousBinding?: string }`）、`GET /api/workspaces/:id/terminal` WS，URL ID 必须与目标一致，返回 `no-store`；沿用现有 Cookie/Host/Origin。仅协议错误/状态可记录，禁记令牌、输入输出及凭据；后端退出先 dispose 终端再 dispose 池。
-- [ ] 自查无启动/收尾竞态、单窗格关闭不 disconnect 池；运行 server 类型/相关文件静态检查和既有 `npm test -- apps/server/tests/http/security.test.ts apps/server/tests/ssh/pool.test.ts`，通过后提交后端阶段。
+- [x] 实现输入队列及 drain 门禁，32 KiB 解码限制、256 KiB 待写上限和暂停通知；超限结束本窗格，不截断后继续执行。所有关闭路径清理输入和 drain 监听。
+- [x] 实现 stdout/stderr 的统一输出队列、32 KiB 分帧、消费确认与共享限制；维护待发、未确认、send 进行中的字节计数，达到阈值暂停两种流。定时复查 WS 缓冲下降以恢复，send 失败和过量 ack 明确结束；1 MiB 上限只描述应用队列。
+- [x] 实现会话状态 `waiting-open → starting → ready → draining → ended`，首帧前禁止其他输入，重复 open 拒绝；30 秒覆盖等待首帧和启动。预留工作区/全局名额后才 await，凭据变更、取消及后端 dispose 释放名额和监听。验证绑定后捕获连接 `cacheKey`，SFTP/PTY 都用同一 guard，ready 前复验目标与指纹。
+- [x] 实现 20 秒 ping/60 秒无 pong、60 秒慢消费者检查；自然退出先排空待发输出及 send 回调，再发实际 exit（未知值为 null）。draining 仍受队列/消费时限约束，发送失败时 `outputComplete: false`；不能生成假 exit 0。
+- [x] 注册 `POST /api/workspaces/:id/terminal-binding`（body 为 `{ target: TerminalTarget; previousBinding?: string }`）、`GET /api/workspaces/:id/terminal` WS，URL ID 必须与目标一致，返回 `no-store`；沿用现有 Cookie/Host/Origin。仅协议错误/状态可记录，禁记令牌、输入输出及凭据；后端退出先 dispose 终端再 dispose 池。
+- [x] 自查无启动/收尾竞态、单窗格关闭不 disconnect 池；运行 server 类型/相关文件静态检查和既有 `npm test -- apps/server/tests/http/security.test.ts apps/server/tests/ssh/pool.test.ts`，通过后提交后端阶段。
 
 ### 任务 4：浏览器连接、xterm 与复制粘贴
 

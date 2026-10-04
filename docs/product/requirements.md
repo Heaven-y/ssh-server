@@ -63,7 +63,7 @@
 - F4.3 终端是用户本人操作，不受命令黑名单限制。
 - F4.4 终端是通用 SSH shell，不绑定 `nvitop`，资源概览可以直接使用 F9 面板。
 
-F4 的[网页终端书面设计](../superpowers/specs/2026-10-04-web-terminal-design.md)已获用户确认，固定目标、目录确认、独立通道、分屏和断线行为见设计；[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)已自查，已获自主实施授权。当前尚未实现终端入口，A10/A12 的终端验收仍待完成。
+F4 的[网页终端书面设计](../superpowers/specs/2026-10-04-web-terminal-design.md)已获用户确认，固定目标、目录确认、独立通道、分屏和断线行为见设计；[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)已自查，已获自主实施授权。后端终端协议、绑定与 PTY 路由已接入，网页入口尚未完成，A10/A12 的终端验收仍待完成。
 
 ### F5 同步
 

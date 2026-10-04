@@ -1,6 +1,6 @@
 # 网页 SSH 终端设计
 
-日期：2026-10-04。状态：已自查，用户已以“确认 继续”认可；[实施计划](../plans/2026-10-04-web-terminal.md)已编写并自查，已获自主实施授权。尚未安装依赖或实现产品代码。
+日期：2026-10-04。状态：已自查，用户已以“确认 继续”认可；[实施计划](../plans/2026-10-04-web-terminal.md)已编写并自查，已获自主实施授权。后端协议、绑定、PTY 目录确认和独立会话已接入；前端和验收继续实施。
 
 依据：[需求 F4、A10、A12、A18](../../product/requirements.md)、[界面布局 5.3](../../product/ui-layout.md)、[架构 2.2、5.4](../../engineering/architecture.md)及设计决策 D19、D20。所属大分支为 `feat/ssh-workflow`，本阶段小分支为 `codex/ssh-workflow-terminal`。
 

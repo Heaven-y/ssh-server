@@ -40,6 +40,9 @@ import { createWorkspaceFilesService } from './files/service';
 import { createVersionsService } from './vcs/service';
 import { registerSyncRoutes } from './http/sync.routes';
 import { registerWsRoutes } from './http/ws.routes';
+import { registerTerminalRoutes } from './http/terminal.routes';
+import { createTerminalBindings } from './terminal/binding';
+import { createTerminalManager } from './terminal/manager';
 import { createSshPool } from './ssh/pool';
 import { createPasswordStore } from './ssh/password-store';
 import { listHosts, parseSshConfig } from './ssh/ssh-config';
@@ -81,6 +84,8 @@ async function main(): Promise<void> {
     knownHosts: async () => (await listSshHosts()).map((h) => h.alias),
   });
   const pool = createSshPool({ passwordStore: createPasswordStore({ configDir: config.configDir }) });
+  const terminalBindings = createTerminalBindings({ store, pool });
+  const terminals = createTerminalManager({ store, pool, bindings: terminalBindings });
   const sync = createSyncManager({
     configDir: config.configDir,
     driver: createRcloneDriver({ configDir: config.configDir, pool }),
@@ -151,6 +156,7 @@ async function main(): Promise<void> {
       registerVersionRoutes(a, { store, versions: createVersionsService(), sync });
       registerSyncRoutes(a, { store, sync });
       registerWsRoutes(a, { turns });
+      registerTerminalRoutes(a, { terminals, bindings: terminalBindings });
     },
   });
 
@@ -161,6 +167,7 @@ async function main(): Promise<void> {
   console.log(`访问地址：${accessUrl(config.host, port, config.token, config.devOrigin)}`);
 
   const shutdown = () => {
+    terminals.dispose();
     sync.dispose();
     pool.dispose();
     void turns.dispose().finally(() => app.close().finally(() => process.exit(0)));
