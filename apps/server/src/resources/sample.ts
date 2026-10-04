@@ -8,8 +8,10 @@ export async function sampleResourceCommand(
   pool: SshPool,
   target: SshTarget,
   command: string,
-  signal: AbortSignal,
+  options: AbortSignal | { signal: AbortSignal; timeoutMs: number },
 ): Promise<string> {
+  const signal = 'signal' in options ? options.signal : options;
+  const timeoutMs = 'signal' in options ? options.timeoutMs : RESOURCE_LIMITS.timeoutMs;
   let channel: Awaited<ReturnType<SshPool['openExec']>> | undefined;
   const close = () => channel?.close();
   signal.addEventListener('abort', close, { once: true });
@@ -26,7 +28,7 @@ export async function sampleResourceCommand(
         return channel;
       },
       command,
-      { localTimeoutMs: RESOURCE_LIMITS.timeoutMs, outputCap: RESOURCE_LIMITS.outputBytes },
+      { localTimeoutMs: timeoutMs, outputCap: RESOURCE_LIMITS.outputBytes },
     );
     signal.throwIfAborted();
     if (result.exitCode !== 0 || result.timedOut || result.truncated) throw new Error('资源采样未完成');

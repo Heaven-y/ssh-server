@@ -13,6 +13,7 @@ import {
 import { api, queryKeys } from '../../../lib/api';
 import { useSshConnection } from '../../ssh/use-ssh-connection';
 import { useCancelableRequest } from './use-cancelable-request';
+import { useProductSettings } from '../../settings/use-product-settings';
 
 export const SETUP_STEPS = ['本地副本', '服务器认证', '远端目录', '同步规则', '确认创建'] as const;
 const EMPTY: WorkspaceInput = {
@@ -33,7 +34,16 @@ export function useWorkspaceSetup({
   onBusyChange?(busy: boolean): void;
 }) {
   const qc = useQueryClient();
+  const defaults = useProductSettings();
+  const defaultsCopied = useRef(false);
+  const [defaultsReady, setDefaultsReady] = useState(false);
   const [input, setInput] = useState(EMPTY);
+  useEffect(() => {
+    if (defaultsCopied.current || !defaults.isSuccess) return;
+    defaultsCopied.current = true;
+    setInput((current) => ({ ...current, sync: structuredClone(defaults.data.settings.syncDefaults) }));
+    setDefaultsReady(true);
+  }, [defaults.isSuccess, defaults.data]);
   const [step, setStep] = useState(0);
   const [message, setMessage] = useState<string>();
   const [ticket, setTicket] = useState<WorkspaceSetupVerification>();
@@ -86,6 +96,7 @@ export function useWorkspaceSetup({
     setConfirmed(false);
   };
   const change = (patch: Partial<WorkspaceInput>) => {
+    if ('sync' in patch && !defaultsReady) return;
     request.abort();
     revoke();
     setPreview(undefined);
@@ -95,6 +106,10 @@ export function useWorkspaceSetup({
   };
   const navigate = (next: number) => {
     if (create.isPending) return;
+    if (next >= 3 && !defaultsReady) {
+      setMessage('请先读取产品同步默认设置');
+      return;
+    }
     if (next > step) {
       const error = stepError(step, input, connection.verified, syncDirty);
       if (error) {
@@ -110,6 +125,7 @@ export function useWorkspaceSetup({
     setStep(next);
   };
   const verify = async () => {
+    if (!defaultsReady) return;
     revoke();
     setMessage(undefined);
     const checked = WorkspaceSetupInputSchema.safeParse(input);
@@ -128,12 +144,13 @@ export function useWorkspaceSetup({
     }
   };
   const previewFiles = async () => {
+    if (!defaultsReady) return;
     setPreview(undefined);
     const value = await request.run((signal) => api.previewWorkspace(input, signal));
     if (value) setPreview(value);
   };
   const submit = () => {
-    if (create.isPending || !ticket || !confirmed) return;
+    if (create.isPending || !defaultsReady || !ticket || !confirmed) return;
     if (ticket.expiresAt <= Date.now()) {
       revoke();
       setMessage('验证已过期，请重新验证');
@@ -172,6 +189,9 @@ export function useWorkspaceSetup({
     message: message ?? request.error,
     syncDirty,
     setSyncDirty,
+    defaultsReady,
+    defaultsError: defaultsReady ? null : defaults.error,
+    retryDefaults: defaults.refetch,
   };
 }
 function stepError(step: number, input: WorkspaceInput, verified: boolean, syncDirty: boolean) {

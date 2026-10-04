@@ -11,12 +11,18 @@ import { VersionsPanel } from '../features/versions/VersionsPanel';
 import { api, queryKeys } from '../lib/api';
 import { TopBar } from './TopBar';
 import { WorkspaceArea } from './WorkspaceArea';
+import { useProductSettings } from '../features/settings/use-product-settings';
 
 const SettingsDialog = lazy(() => import('../features/settings/SettingsDialog'));
 const FilesPanel = lazy(() => import('../features/files/FilesPanel'));
 
 /** 对话保持主区，文件面板按需打开；窄窗口以覆盖层承载编辑。 */
 export function App() {
+  const productSettings = useProductSettings();
+  const setDefaults = useChat((s) => s.setDefaults);
+  useEffect(() => {
+    if (productSettings.data) setDefaults(productSettings.data.settings);
+  }, [productSettings.data, setDefaults]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [filesWorkspace, setFilesWorkspace] = useState<Workspace>();
   const [terminalLoaded, setTerminalLoaded] = useState(false);

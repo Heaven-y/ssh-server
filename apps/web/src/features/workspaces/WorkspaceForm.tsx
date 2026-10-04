@@ -8,6 +8,7 @@ import { SyncStep } from './setup/SyncStep';
 import { ConfirmStep } from './setup/ConfirmStep';
 import { SETUP_STEPS, useWorkspaceSetup } from './setup/use-workspace-setup';
 import { SetupError } from './setup/SetupError';
+import { SettingsLoadError } from '../settings/SettingsLoadError';
 
 type Setup = ReturnType<typeof useWorkspaceSetup>;
 function Step({ setup }: { setup: Setup }) {
@@ -25,7 +26,7 @@ function Step({ setup }: { setup: Setup }) {
           input={input}
           change={change}
           preview={setup.preview}
-          busy={setup.busy}
+          busy={setup.busy || !setup.defaultsReady}
           previewFiles={() => void setup.previewFiles()}
           dirty={setup.syncDirty}
           setDirty={setup.setSyncDirty}
@@ -90,6 +91,10 @@ export function WorkspaceForm(props: {
           </li>
         ))}
       </ol>
+      <div role="status" className="text-xs text-muted-foreground">
+        {setup.defaultsReady ? '已读取产品同步默认值；本次草稿独立保存。' : '正在读取产品同步默认值…'}
+        <SettingsLoadError error={setup.defaultsError} retry={setup.retryDefaults} message="同步默认值读取失败" />
+      </div>
       <h3
         ref={heading}
         tabIndex={-1}

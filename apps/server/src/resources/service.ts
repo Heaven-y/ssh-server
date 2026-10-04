@@ -1,11 +1,14 @@
 import {
   RESOURCE_LIMITS,
+  resourceTiming,
   terminalTargetKey,
   workspaceTerminalTarget,
   type ResourceHost,
   type ResourceDisk,
   type ResourceSnapshot,
   type TerminalTarget,
+  type ResourceTiming,
+  type ProductSettings,
 } from '@ssh-server/shared';
 import { createHash } from 'node:crypto';
 import { workspaceTarget, type ResolvedConnection } from '../ssh/connection';
@@ -37,7 +40,15 @@ function samplingKey(connection: ResolvedConnection): string {
     ]),
   );
 }
-export function createResourcesService({ store, pool }: { store: Pick<WorkspaceStore, 'get'>; pool: SshPool }) {
+export function createResourcesService({
+  store,
+  pool,
+  settings,
+}: {
+  store: Pick<WorkspaceStore, 'get'>;
+  pool: SshPool;
+  settings?: () => Promise<ProductSettings>;
+}) {
   const hosts = new ResourceCache<HostSample>(RESOURCE_LIMITS.hostEntries);
   const disks = new ResourceCache<ResourceDisk>(RESOURCE_LIMITS.diskEntries);
   async function checkedWorkspace(target: TerminalTarget) {
@@ -62,14 +73,22 @@ export function createResourcesService({ store, pool }: { store: Pick<WorkspaceS
       generation,
     };
   }
-  async function sample(target: TerminalTarget, key: string, command: string, signal: AbortSignal) {
+  async function sample(
+    target: TerminalTarget,
+    key: string,
+    command: string,
+    options: { signal: AbortSignal; timing: ResourceTiming },
+  ) {
     const controller = new AbortController();
     const detach = pool.onCredentialsChanged(target.sshHost, () => controller.abort());
-    const combined = AbortSignal.any([signal, controller.signal]);
+    const combined = AbortSignal.any([options.signal, controller.signal]);
     try {
       const checked = await context(target, key);
       combined.throwIfAborted();
-      const text = await sampleResourceCommand(pool, workspaceTarget(checked.workspace), command, combined);
+      const text = await sampleResourceCommand(pool, workspaceTarget(checked.workspace), command, {
+        signal: combined,
+        timeoutMs: options.timing.timeoutMs,
+      });
       await context(target, key);
       combined.throwIfAborted();
       if (pool.generation(target.sshHost) !== checked.generation) throw new ResourceTargetError('target_changed');
@@ -80,13 +99,20 @@ export function createResourcesService({ store, pool }: { store: Pick<WorkspaceS
   }
   return {
     async get(target: TerminalTarget): Promise<ResourceSnapshot> {
+      const timing = settings ? resourceTiming((await settings()).resources) : RESOURCE_LIMITS;
       const { key, samplingKey } = await context(target);
       const [host, disk] = await Promise.all([
-        hosts.get(samplingKey, async (previous, signal) =>
-          parseHostResources(await sample(target, key, HOST_RESOURCE_COMMAND, signal), previous?.cpu),
+        hosts.get(
+          samplingKey,
+          async (previous, signal) =>
+            parseHostResources(await sample(target, key, HOST_RESOURCE_COMMAND, { signal, timing }), previous?.cpu),
+          timing,
         ),
-        disks.get(JSON.stringify([samplingKey, target.remoteDir]), async (_previous, signal) =>
-          parseDiskResources(await sample(target, key, diskResourceCommand(target.remoteDir), signal)),
+        disks.get(
+          JSON.stringify([samplingKey, target.remoteDir]),
+          async (_previous, signal) =>
+            parseDiskResources(await sample(target, key, diskResourceCommand(target.remoteDir), { signal, timing })),
+          timing,
         ),
       ]);
       await context(target, key);

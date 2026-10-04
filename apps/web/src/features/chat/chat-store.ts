@@ -9,6 +9,7 @@ import type {
   ServerMessage,
   SessionActionInput,
   SessionRef,
+  ProductSettings,
 } from '@ssh-server/shared';
 import { api, queryKeys } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
@@ -26,6 +27,9 @@ type ChatState = {
   agent: AgentKind;
   sessionId?: string;
   modelOverrides: Record<AgentKind, string>;
+  modelSources: Record<AgentKind, 'default' | 'explicit'>;
+  defaults: Pick<ProductSettings, 'defaultAgent' | 'defaultModels'>;
+  initialDefaultsEligible: boolean;
   reasoningEffort: string;
   actualModel?: string;
   selectedCapability?: AgentCapability;
@@ -46,6 +50,8 @@ type ChatState = {
   setAgent(agent: AgentKind): void;
   openSession(session: SessionRef): Promise<void>;
   setModel(model: string): void;
+  setDefaults(settings: ProductSettings): void;
+  touchDraft(): void;
   setReasoningEffort(effort: string): void;
   selectCapability(capability?: AgentCapability): void;
   send(text: string): boolean;
@@ -113,12 +119,31 @@ function nativeStatus(event: AgentEvent): { contextUsage?: ContextUsage | null; 
   if (event.type === 'compaction') return { compaction: event.state };
   return {};
 }
+function newDefaults(current: ChatState) {
+  return {
+    agent: current.defaults.defaultAgent,
+    modelOverrides: { ...current.defaults.defaultModels },
+    modelSources: { claude: 'default', codex: 'default' } as const,
+    reasoningEffort: '',
+  };
+}
+function historicalModels(current: ChatState) {
+  return Object.fromEntries(
+    (['claude', 'codex'] as const).map((agent) => [
+      agent,
+      current.modelSources[agent] === 'explicit' ? current.modelOverrides[agent] : '',
+    ]),
+  ) as Record<AgentKind, string>;
+}
 export const lastWorkspaceId = () => localStorage.getItem(LAST_WORKSPACE_KEY) ?? undefined;
 
 export const useChat = create<ChatState>()((set, get) => ({
   connection: 'connecting',
   agent: 'claude',
   modelOverrides: { claude: '', codex: '' },
+  modelSources: { claude: 'default', codex: 'default' },
+  defaults: { defaultAgent: 'claude', defaultModels: { claude: '', codex: '' } },
+  initialDefaultsEligible: true,
   reasoningEffort: '',
   sessionOperations: {},
   ...emptyConversation,
@@ -127,7 +152,7 @@ export const useChat = create<ChatState>()((set, get) => ({
     changeSelection();
     if (id) localStorage.setItem(LAST_WORKSPACE_KEY, id);
     else localStorage.removeItem(LAST_WORKSPACE_KEY);
-    set({ workspaceId: id, ...emptyConversation });
+    set({ workspaceId: id, ...emptyConversation, ...newDefaults(get()) });
   },
   removeWorkspace(id, nextId) {
     const prefix = JSON.stringify([id]).slice(0, -1) + ',';
@@ -139,14 +164,18 @@ export const useChat = create<ChatState>()((set, get) => ({
     if (get().workspaceId === id) get().selectWorkspace(nextId);
     set({ sessionOperations });
   },
-  newSession(agent = get().agent) {
+  newSession(agent = get().defaults.defaultAgent) {
     changeSelection();
-    set({ ...emptyConversation, agent });
+    set({ ...emptyConversation, ...newDefaults(get()), agent, initialDefaultsEligible: false });
   },
   setAgent(agent) {
     const current = get();
     if (current.sessionId || current.running || current.loadingHistory || current.pendingClientTurnId) return;
-    if (current.agent !== agent) get().newSession(agent);
+    set({ initialDefaultsEligible: false });
+    if (current.agent !== agent) {
+      changeSelection();
+      set({ ...emptyConversation, agent });
+    }
   },
   async openSession(session) {
     const { workspaceId } = get();
@@ -154,7 +183,14 @@ export const useChat = create<ChatState>()((set, get) => ({
     const generation = changeSelection();
     const controller = new AbortController();
     historyRequest = controller;
-    set({ ...emptyConversation, agent: session.agent, sessionId: session.sessionId, loadingHistory: true });
+    set({
+      ...emptyConversation,
+      agent: session.agent,
+      sessionId: session.sessionId,
+      loadingHistory: true,
+      modelOverrides: historicalModels(get()),
+      initialDefaultsEligible: false,
+    });
     try {
       const history = await api.sessionEvents(workspaceId, session.sessionId, session.agent, controller.signal);
       if (!historyIsCurrent(controller, generation, workspaceId, session)) return;
@@ -170,13 +206,34 @@ export const useChat = create<ChatState>()((set, get) => ({
       if (historyRequest === controller) historyRequest = undefined;
     }
   },
-  setModel: (model) => set((current) => ({ modelOverrides: { ...current.modelOverrides, [current.agent]: model } })),
-  setReasoningEffort: (reasoningEffort) => set({ reasoningEffort }),
+  setDefaults(settings) {
+    const current = get();
+    const defaults = { defaultAgent: settings.defaultAgent, defaultModels: { ...settings.defaultModels } };
+    set({ defaults });
+    if (
+      current.initialDefaultsEligible &&
+      !current.sessionId &&
+      !current.running &&
+      !current.loadingHistory &&
+      !current.pendingClientTurnId &&
+      !current.items.length
+    ) {
+      set({ ...newDefaults(get()), initialDefaultsEligible: false });
+    }
+  },
+  touchDraft: () => set({ initialDefaultsEligible: false }),
+  setModel: (model) =>
+    set((current) => ({
+      modelOverrides: { ...current.modelOverrides, [current.agent]: model },
+      modelSources: { ...current.modelSources, [current.agent]: 'explicit' },
+      initialDefaultsEligible: false,
+    })),
+  setReasoningEffort: (reasoningEffort) => set({ reasoningEffort, initialDefaultsEligible: false }),
   selectCapability(capability) {
     const current = get();
     if (current.running || current.loadingHistory || managementPending(current)) return;
     if (capability && capabilityRestriction(capability, current.sessionId)) return;
-    set({ selectedCapability: capability });
+    set({ selectedCapability: capability, initialDefaultsEligible: false });
   },
   async manageSession(workspaceId, session, input) {
     const key = sessionActionKey(workspaceId, session);

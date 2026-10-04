@@ -5,6 +5,7 @@ import { buttonClass } from '../../ui/styles';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { SyncSettingsForm } from './SyncSettingsForm';
 import { useWorkspaceSync, type SyncAction } from './use-workspace-sync';
+import { SettingsLoadError } from '../settings/SettingsLoadError';
 
 type Actions = { busy: boolean; act(action: SyncAction): void };
 const LABELS: Record<SyncStatus['phase'], string> = {
@@ -90,7 +91,15 @@ function Decisions({ status, ...actions }: { status: SyncStatus } & Actions) {
   if (['confirmation_required', 'error'].includes(status.phase)) return <Initialization {...actions} />;
   return null;
 }
-function StatusSummary({ status, busy }: { status: SyncStatus; busy: boolean }) {
+function StatusSummary({
+  status,
+  busy,
+  intervalSeconds,
+}: {
+  status: SyncStatus;
+  busy: boolean;
+  intervalSeconds: number;
+}) {
   const Icon = status.phase === 'ready' ? CheckCircle2 : AlertCircle;
   return (
     <div className="min-w-0">
@@ -99,8 +108,8 @@ function StatusSummary({ status, busy }: { status: SyncStatus; busy: boolean }) 
         {busy ? '正在处理同步请求…' : LABELS[status.phase]}
       </p>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">
-        只同步代码与小文件（≤ {status.settings.maxFileBytes / 1024 / 1024} MiB）。页面可见时每 15 秒同步，不触发 AI
-        分析。
+        只同步代码与小文件（≤ {status.settings.maxFileBytes / 1024 / 1024} MiB）。页面可见时每 {intervalSeconds}{' '}
+        秒同步，不触发 AI 分析。
       </p>
       {status.lastSuccessAt && (
         <p className="text-xs leading-5 text-muted-foreground">
@@ -133,8 +142,12 @@ function syncTone(status: SyncStatus | undefined, attention: boolean) {
   if (attention) return 'text-warning';
   return status?.phase === 'ready' ? 'text-success' : 'text-muted-foreground';
 }
-function presentation({ query, status, busy, error }: SyncController) {
-  const errorMessage = error?.message ?? query.error?.message;
+function controllerError({ query, error, settingsError }: SyncController) {
+  return error?.message ?? query.error?.message ?? settingsError?.message;
+}
+function presentation(controller: SyncController) {
+  const { status, busy } = controller;
+  const errorMessage = controllerError(controller);
   const attention =
     !!errorMessage || (!!status && ['confirmation_required', 'conflicts', 'error'].includes(status.phase));
   return {
@@ -145,7 +158,7 @@ function presentation({ query, status, busy, error }: SyncController) {
   };
 }
 function SyncDetails({ controller }: { controller: SyncController }) {
-  const { query, status, busy, error, perform } = controller;
+  const { query, status, busy, error, perform, intervalSeconds, settingsError, retrySettings } = controller;
   const errorMessage = error?.message ?? query.error?.message;
   const act = (action: SyncAction) => {
     void perform(action);
@@ -155,7 +168,7 @@ function SyncDetails({ controller }: { controller: SyncController }) {
       {status ? (
         <>
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <StatusSummary status={status} busy={busy} />
+            <StatusSummary status={status} busy={busy} intervalSeconds={intervalSeconds} />
             <button className={buttonClass('primary')} disabled={busy} onClick={() => act('sync')}>
               <RefreshCw aria-hidden className={`size-4 ${busy ? 'motion-safe:animate-spin' : ''}`} />
               立即同步
@@ -173,6 +186,7 @@ function SyncDetails({ controller }: { controller: SyncController }) {
           {errorMessage}
         </p>
       )}
+      <SettingsLoadError error={settingsError} retry={retrySettings} message="产品设置读取失败，自动同步已暂停" />
       {query.isError && (
         <button
           className={`${buttonClass('outline')} mt-3`}

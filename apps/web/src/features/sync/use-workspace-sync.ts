@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SyncSettings, SyncStatus } from '@ssh-server/shared';
 import { api, queryKeys } from '../../lib/api';
 import { scheduleVisibleSync } from './scheduler';
+import { useProductSettings } from '../settings/use-product-settings';
 
 export type SyncAction = 'sync' | 'initialize' | 'confirm' | 'reject' | 'ack' | SyncSettings;
 function apply(id: string, action: SyncAction): Promise<SyncStatus> {
@@ -29,6 +30,8 @@ function usePageVisible() {
   return visible;
 }
 export function useWorkspaceSync(id: string) {
+  const settings = useProductSettings();
+  const intervalMs = (settings.data?.settings.syncIntervalSeconds ?? 15) * 1000;
   const client = useQueryClient();
   const visible = usePageVisible();
   const query = useQuery({
@@ -46,6 +49,7 @@ export function useWorkspaceSync(id: string) {
     },
   });
   const inFlight = useRef(false);
+  const scheduledWorkspace = useRef<string | undefined>(undefined);
   const perform = useCallback(
     async (action: SyncAction) => {
       if (inFlight.current) return;
@@ -65,15 +69,28 @@ export function useWorkspaceSync(id: string) {
     current.current = { status: query.data, failed: !!error };
   }, [query.data, error]);
   useEffect(() => {
-    if (!query.isSuccess) return;
+    if (!query.isSuccess || !settings.isSuccess) return;
+    const immediate = scheduledWorkspace.current !== id;
+    scheduledWorkspace.current = id;
     return scheduleVisibleSync({
       page: document,
+      intervalMs,
+      immediate,
       sync: () => perform('sync'),
       shouldSync: () =>
         !inFlight.current &&
         !current.current.failed &&
         ['ready', 'uninitialized'].includes(current.current.status?.phase ?? ''),
     });
-  }, [id, query.isSuccess, perform]);
-  return { query, status: query.data, busy: isPending || query.data?.phase === 'syncing', error, perform };
+  }, [id, query.isSuccess, settings.isSuccess, intervalMs, perform]);
+  return {
+    query,
+    status: query.data,
+    busy: isPending || query.data?.phase === 'syncing',
+    error,
+    perform,
+    intervalSeconds: intervalMs / 1000,
+    settingsError: settings.error,
+    retrySettings: settings.refetch,
+  };
 }
