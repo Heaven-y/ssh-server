@@ -13,6 +13,31 @@ const respond = (status: number, body?: unknown) =>
 afterEach(() => vi.unstubAllGlobals());
 
 describe('api', () => {
+  it('服务器浏览请求保留绑定令牌并正确传递工作区、目录和游标', async () => {
+    const target = { sshHost: 'my-server', remoteDir: '~/projects/demo', localDir };
+    respond(200, { binding: 'fixture-binding' });
+    const identity = await api.bindRemoteBrowseTarget('w/1', target);
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('/api/workspaces/w%2F1/remote-files/bindings');
+    respond(200, { id: 'session/one' });
+    const controller = new AbortController();
+    await api.createRemoteBrowseSession('w/1', target, identity.binding, controller.signal);
+    const created = vi.mocked(fetch).mock.calls[0]?.[1];
+    expect(JSON.parse(created?.body as string)).toMatchObject({ ...target, binding: identity.binding });
+    expect(created?.signal).toBe(controller.signal);
+    const remote = path.posix.join(path.posix.sep, 'fixture-home', 'data & weights');
+    respond(200, { path: remote, entries: [] });
+    await api.listRemoteFiles('w/1', 'session/one', { path: remote, cursor: 'next-page' }, controller.signal);
+    const [url, options] = vi.mocked(fetch).mock.calls[0]!;
+    const parsed = new URL(url as string, 'https://example.invalid');
+    expect(parsed.pathname).toBe('/api/workspaces/w%2F1/remote-files/sessions/session%2Fone');
+    expect(parsed.searchParams.get('path')).toBe(remote);
+    expect(parsed.searchParams.get('cursor')).toBe('next-page');
+    expect(options).toMatchObject({ signal: controller.signal, cache: 'no-store' });
+    respond(204);
+    await api.closeRemoteBrowseSession('w/1', 'session/one');
+    expect(vi.mocked(fetch).mock.calls[0]?.[1]).toMatchObject({ method: 'DELETE', keepalive: true });
+  });
+
   it('能力请求按工作区与 Agent 隔离缓存键，并传递取消信号和 no-store', async () => {
     const result = { agent: 'codex', entries: [], models: [], warnings: ['部分能力不可用'] };
     respond(200, result);

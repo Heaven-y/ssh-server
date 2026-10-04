@@ -92,10 +92,11 @@ export const api = {
       cache: 'no-store',
       body: JSON.stringify(target),
     }),
-  createRemoteBrowseSession: (id: string, target: RemoteBrowseTarget, binding: string) =>
+  createRemoteBrowseSession: (id: string, target: RemoteBrowseTarget, binding: string, signal?: AbortSignal) =>
     request<RemoteBrowseSession>(remoteSessionsUrl(id), {
       method: 'POST',
       cache: 'no-store',
+      signal,
       body: JSON.stringify({ ...target, binding }),
     }),
   listRemoteFiles: (id: string, sessionId: string, input: { path: string; cursor?: string }, signal?: AbortSignal) => {
