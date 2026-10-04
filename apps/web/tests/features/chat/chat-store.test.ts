@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ProductSettingsSchema } from '@ssh-server/shared';
 import type {
   AgentCapability,
   AgentKind,
@@ -52,6 +53,9 @@ beforeEach(() => {
     modelOverrides: { claude: '', codex: '' },
     reasoningEffort: '',
     sessionOperations: {},
+    defaults: { defaultAgent: 'claude', defaultModels: { claude: '', codex: '' } },
+    modelSources: { claude: 'default', codex: 'default' },
+    initialDefaultsEligible: false,
   });
   useChat.getState().selectWorkspace('w1');
 });
@@ -291,6 +295,38 @@ describe('原生能力状态', () => {
 });
 
 describe('chat-store', () => {
+  it('新会话应用产品默认，迟到偏好保护操作草稿，历史只保留显式模型', async () => {
+    const defaults = ProductSettingsSchema.parse({
+      defaultAgent: 'codex',
+      defaultModels: { claude: 'example-claude', codex: 'example-codex' },
+    });
+    useChat.setState({ initialDefaultsEligible: true });
+    useChat.getState().setDefaults(defaults);
+    expect(useChat.getState()).toMatchObject({ agent: 'codex', modelOverrides: defaults.defaultModels });
+    useChat.getState().touchDraft();
+    useChat.getState().setDefaults({ ...defaults, defaultAgent: 'claude' });
+    expect(useChat.getState().agent).toBe('codex');
+    vi.spyOn(api, 'sessionEvents').mockResolvedValue({
+      session: { agent: 'codex', sessionId: 'history', summary: '历史', lastModified: 1 },
+      events: [],
+      actualModel: 'historical-model',
+    });
+    await useChat.getState().openSession({ agent: 'codex', sessionId: 'history' });
+    expect(useChat.getState()).toMatchObject({
+      actualModel: 'historical-model',
+      modelOverrides: { claude: '', codex: '' },
+    });
+    useChat.getState().setModel('explicit-model');
+    await useChat.getState().openSession({ agent: 'codex', sessionId: 'history' });
+    expect(useChat.getState().modelOverrides.codex).toBe('explicit-model');
+    useChat.getState().newSession();
+    expect(useChat.getState()).toMatchObject({ agent: 'claude', modelOverrides: defaults.defaultModels });
+    useChat.getState().touchDraft();
+    useChat.setState({ initialDefaultsEligible: true, items: [], sessionId: undefined });
+    useChat.getState().touchDraft();
+    useChat.getState().setDefaults({ ...defaults, defaultModels: { claude: '', codex: '' } });
+    expect(useChat.getState().modelOverrides.claude).toBe('example-claude');
+  });
   it('选择工作区时记住它，并清空当前会话', () => {
     expect(lastWorkspaceId()).toBe('w1');
     expect(useChat.getState()).toMatchObject({ workspaceId: 'w1', items: [], running: false });

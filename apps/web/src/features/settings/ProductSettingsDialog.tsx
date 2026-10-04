@@ -91,6 +91,7 @@ export default function ProductSettingsDialog({ onClose, onNative }: { onClose()
         controller.signal,
       );
       if (controller.signal.aborted) return;
+      await queryClient.cancelQueries({ queryKey: queryKeys.productSettings });
       setDocument(result);
       setDraft(settingsDraft(result.settings));
       setPhase('ready');

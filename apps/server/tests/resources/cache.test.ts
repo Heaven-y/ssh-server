@@ -1,8 +1,27 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { ResourceCache } from '../../src/resources/cache';
 import { RESOURCE_LIMITS } from '@ssh-server/shared';
+import { resourceTiming } from '@ssh-server/shared';
 
 afterEach(() => vi.useRealTimers());
+it('动态缩短成功间隔立即生效，参数变化不拆key或重叠首次采样', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(0);
+  const cache = new ResourceCache<number>(1);
+  const slow = resourceTiming({ intervalSeconds: 60, timeoutSeconds: 8 });
+  const fast = resourceTiming({ intervalSeconds: 2, timeoutSeconds: 3 });
+  const load = vi.fn(async (previous: number | null) => (previous ?? 0) + 1);
+  try {
+    expect((await cache.get('node', load, slow)).data).toBe(1);
+    await vi.advanceTimersByTimeAsync(2100);
+    expect((await cache.get('node', load, slow)).data).toBe(1);
+    const reads = await Promise.all([cache.get('node', load, fast), cache.get('node', load, slow)]);
+    expect(reads.map((reading) => reading.data)).toEqual([2, 2]);
+    expect(load).toHaveBeenCalledTimes(2);
+  } finally {
+    cache.dispose();
+  }
+});
 it('并发singleflight、成功5秒缓存及容量忙时拒绝；空闲后重新采样', async () => {
   vi.useFakeTimers();
   const cache = new ResourceCache<number>(1);

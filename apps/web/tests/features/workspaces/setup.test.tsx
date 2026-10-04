@@ -41,10 +41,11 @@ function deferred<T>() {
   return { promise, resolve };
 }
 const clients: QueryClient[] = [];
-function setup() {
+function setup(seedDefaults = true) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   clients.push(client);
-  client.setQueryData(queryKeys.productSettings, { settings: ProductSettingsSchema.parse({}), revision: 'missing' });
+  if (seedDefaults)
+    client.setQueryData(queryKeys.productSettings, { settings: ProductSettingsSchema.parse({}), revision: 'missing' });
   const callbacks = { onCreated: vi.fn(), onCancel: vi.fn(), onBusyChange: vi.fn() };
   const wrapper = ({ children }: { children: ReactNode }) => (
     <StrictMode>
@@ -71,6 +72,32 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 describe('向导Hook的生命周期', () => {
+  it('没有可用默认快照时失败阻止验证，重读复制一次后全局刷新不覆盖草稿', async () => {
+    vi.mocked(api.readProductSettings).mockRejectedValueOnce(new Error('偏好读取失败'));
+    const f = setup(false);
+    await waitFor(() => expect(f.result.current.defaultsError?.message).toBe('偏好读取失败'));
+    act(() => f.result.current.change(input));
+    await act(() => f.result.current.verify());
+    expect(api.verifyWorkspace).not.toHaveBeenCalled();
+    await act(async () => {
+      await f.result.current.retryDefaults();
+    });
+    await waitFor(() => expect(f.result.current.defaultsReady).toBe(true));
+    const edited = SyncSettingsSchema.parse({ maxFileBytes: 1024 });
+    act(() => f.result.current.change({ sync: edited }));
+    act(() => {
+      f.client.setQueryData(queryKeys.productSettings, {
+        settings: ProductSettingsSchema.parse({ syncDefaults: { maxFileBytes: 2048 } }),
+        revision: 'a'.repeat(64),
+      });
+    });
+    expect(f.result.current.input.sync).toEqual(edited);
+    await act(() => f.result.current.verify());
+    expect(api.verifyWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({ sync: edited }),
+      expect.any(AbortSignal),
+    );
+  });
   it('步骤校验、未应用规则、返回撤票及取消均执行各自边界', async () => {
     const f = setup();
     act(() => f.result.current.navigate(1));

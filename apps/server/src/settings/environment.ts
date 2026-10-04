@@ -1,12 +1,10 @@
-import { createRequire } from 'node:module';
-import path from 'node:path';
 import type { EnvironmentReport, EnvironmentTool } from '@ssh-server/shared';
 import { resolveCodexCommand } from '../agents/codex/launch';
 import { runProcess, type ProcessRunner } from '../sync/process';
+import { resolveClaudeExecutable } from '../agents/claude-launch';
 
 type Command = { command: string; args: string[] };
 type Probe = { name: EnvironmentTool['name']; command(): Command | Promise<Command>; args: string[]; version: RegExp };
-const require = createRequire(import.meta.url);
 const missing = (name: EnvironmentTool['name']): EnvironmentTool => ({
   name,
   available: false,
@@ -36,8 +34,8 @@ export async function detectEnvironment(
     {
       name: 'Claude Code',
       command: () => ({
-        command: process.execPath,
-        args: [path.join(path.dirname(require.resolve('@anthropic-ai/claude-agent-sdk')), 'cli.js')],
+        command: resolveClaudeExecutable(),
+        args: [],
       }),
       args: ['--version'],
       version: /^(\d+\.\d+\.\d+)\s+\(Claude Code\)\s*$/m,

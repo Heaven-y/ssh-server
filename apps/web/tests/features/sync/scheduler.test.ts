@@ -18,6 +18,27 @@ function fixture() {
   };
 }
 describe('可见页面同步调度', () => {
+  it('更换间隔先销毁旧调度，不增加即时同步；隐藏恢复沿用门禁', async () => {
+    vi.useFakeTimers();
+    const { page, change } = fixture();
+    const sync = vi.fn(async () => undefined);
+    const previous = scheduleVisibleSync({ page, sync, shouldSync: () => true, intervalMs: 15000 });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sync).toHaveBeenCalledTimes(1);
+    previous();
+    const stop = scheduleVisibleSync({ page, sync, shouldSync: () => true, intervalMs: 5000, immediate: false });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sync).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(sync).toHaveBeenCalledTimes(2);
+    change('hidden');
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(sync).toHaveBeenCalledTimes(2);
+    change('visible');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sync).toHaveBeenCalledTimes(3);
+    stop();
+  });
   it('隐藏页面停止，恢复可见才继续；销毁后无请求', async () => {
     vi.useFakeTimers();
     const { page, change } = fixture();

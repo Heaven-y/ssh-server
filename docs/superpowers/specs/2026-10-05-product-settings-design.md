@@ -6,7 +6,7 @@
 
 选择本机后端JSON保存产品偏好，沿用既有配置目录及Fastify访问控制。仅浏览器localStorage会让多窗口/重启设置不同；改写原生配置会混淆产品默认与Agent模型语义。产品设置与原生配置分开入口，保留既有原子原生配置编辑器。工作区黑名单作为下一独立子功能，顶栏概览随界面阶段接入，本阶段使已有资源详情消费参数。
 
-## 决策P01–P08
+## 决策P01–P11
 
 P01：产品偏好包括defaultAgent（默认claude）、按Agent分别保存defaultModels（默认空字符串，跟随本机原生配置）、syncDefaults（现有10MiB/排除规则）、syncIntervalSeconds（15，范围5–300）、resources.intervalSeconds（5，范围2–60）、timeoutSeconds（8，范围2–30）。staleMs按max(15秒,3倍间隔)衍生，不新增独立误配项。
 
@@ -23,6 +23,14 @@ P06：产品配置GET返回{settings,revision}；PUT接收严格{settings,revisi
 P07：环境检测仅在用户点击时并行检查当前Node及实际解析路径的git/rclone/Claude/Codex版本，单工具5秒/输出2KiB。复用既有启动路径解析，不执行模型、SSH连接、安装或初始化；输出仅工具、可用状态、版本与通用错误，不返回环境变量/密钥/私有路径。非零/超时/格式异常不能当可用。
 
 P08：网页加载失败可重读，保存单次、忙时禁止关闭；未保存离开提示放弃，409保留草稿供核对。资源及同步参数保存后取消旧调度，通过共享query settings同步其他当前窗口；跨独立客户端通过窗口focus重读设置，不要求后台高频轮询配置。
+
+## 核心审查后的裁定
+
+P09：向导可以采用App已读取且校验成功的产品快照；复制后不跟随后台刷新漂移。没有有效快照时读取失败阻止继续，重读后才能复制。该快照可能早于另一个客户端最近保存；返回实际窗口焦点时共享重读改善此情况，已经打开的向导保持自己的草稿。
+
+P10：TanStack Query当前版本默认只监听visibilitychange，因此产品设置另按QueryClient共享实际window focus监听；可见时重读，已有请求去重，最后消费者卸载后移除监听。保存成功在发布共享document前取消先前GET，防止迟到旧结果回退偏好。
+
+P11：固定Claude SDK 0.3.286没有旧cli.js；用SDK自身模块作为require基准，沿用平台/架构、Linux glibc/musl候选顺序及现有程序检查。对话query的pathToClaudeCodeExecutable与环境检测共用解析，显式原生入口仍优先。不调用模型或初始化来探测版本。
 
 ## 模块
 
