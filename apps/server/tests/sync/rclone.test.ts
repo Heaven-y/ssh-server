@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -6,6 +7,7 @@ import { SyncSettingsSchema, type Workspace } from '@ssh-server/shared';
 import type { ResolvedConnection } from '../../src/ssh/connection';
 import type { ProcessOptions, ProcessResult } from '../../src/sync/process';
 import { createRcloneDriver } from '../../src/sync/rclone';
+import { workspaceStateDir } from '../../src/sync/inventory';
 
 const temps: string[] = [];
 afterEach(async () => {
@@ -72,6 +74,7 @@ async function setup(version = 'rclone v1.75.1\n') {
     }),
   };
   return {
+    configDir,
     driver: createRcloneDriver({ configDir, pool, run, executable: 'fixture-rclone' }),
     calls,
     run,
@@ -80,6 +83,51 @@ async function setup(version = 'rclone v1.75.1\n') {
   };
 }
 describe('rclone 隔离 SFTP 驱动', () => {
+  it('任务恢复只拉取受控镜像，固定镜像基线必须按远端优先重建', async () => {
+    const { driver, calls, configDir } = await setup();
+    const context = await driver.open(ws, SyncSettingsSchema.parse({ maxFileBytes: 64 }));
+    try {
+      const stateDir = workspaceStateDir(configDir, ws.id);
+      const fixedMirror = path.join(stateDir, 'mirror');
+      const taskMirror = path.join(stateDir, 'remote-file-snapshots', randomUUID(), 'mirror');
+      const before = calls.length;
+      await expect(context.pullMirror!(ws.localDir)).rejects.toMatchObject({ code: 'unsafe_path' });
+      await expect(context.pullMirror!(fixedMirror)).rejects.toMatchObject({ code: 'unsafe_path' });
+      await expect(
+        context.bisync({
+          resync: true,
+          allowAllDeletes: true,
+          remoteAuthoritative: true,
+          localDir: ws.localDir,
+        }),
+      ).rejects.toMatchObject({ code: 'unsafe_path' });
+      expect(calls).toHaveLength(before);
+      await context.pullMirror!(taskMirror);
+      const pulling = calls.at(-1)!.args;
+      expect(pulling.slice(0, 3)).toEqual(['sync', 'workspace:/projects/demo', taskMirror]);
+      expect(pulling).toContain('--delete-excluded');
+      expect(pulling.slice(pulling.indexOf('--max-size'), pulling.indexOf('--max-size') + 2)).toEqual([
+        '--max-size',
+        '64B',
+      ]);
+      await context.bisync({
+        resync: true,
+        allowAllDeletes: true,
+        allowAllChanges: true,
+        remoteAuthoritative: true,
+        localDir: fixedMirror,
+      });
+      const rebuilding = calls.at(-1)!.args;
+      expect(rebuilding.slice(0, 3)).toEqual(['bisync', fixedMirror, 'workspace:/projects/demo']);
+      expect(rebuilding.slice(rebuilding.indexOf('--resync-mode'), rebuilding.indexOf('--resync-mode') + 2)).toEqual([
+        '--resync-mode',
+        'path2',
+      ]);
+      expect(rebuilding).toContain('--force');
+    } finally {
+      context.close();
+    }
+  });
   it('密码经 stdin 混淆，只留子进程环境；不信任未知主机或降级私钥', async () => {
     const { driver, calls } = await setup();
     const context = await driver.open(ws, SyncSettingsSchema.parse({}));
