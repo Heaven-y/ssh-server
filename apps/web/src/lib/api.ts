@@ -109,8 +109,8 @@ const postSync = (id: string, suffix = '', body: unknown = {}) =>
 export const api = {
   readProductSettings: (signal?: AbortSignal) =>
     request<ProductSettingsDocument>('/api/settings/product', { signal, cache: 'no-store' }),
-  saveProductSettings: (input: ProductSettingsInput) =>
-    request<ProductSettingsDocument>('/api/settings/product', { method: 'PUT', body: JSON.stringify(input) }),
+  saveProductSettings: (input: ProductSettingsInput, signal?: AbortSignal) =>
+    request<ProductSettingsDocument>('/api/settings/product', { method: 'PUT', body: JSON.stringify(input), signal }),
   detectEnvironment: (signal?: AbortSignal) =>
     request<EnvironmentReport>('/api/settings/environment', { method: 'POST', body: '{}', signal }),
   readResources: (target: TerminalTarget, signal?: AbortSignal) =>

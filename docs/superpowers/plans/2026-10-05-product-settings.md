@@ -39,9 +39,9 @@
 
 文件：settings/{SettingsDialog,ProductSettingsDialog,NativeConfigDialog,EnvironmentReport}.tsx、App.tsx、lib/api.ts。
 
-- [ ] 产品偏好与原生配置入口分开，保留现有原生编辑保存/dirty保护。
-- [ ] 默认Agent/按Agent模型、同步默认过滤/大小/间隔与资源参数；校验、单次保存、失败保留、未保存离开提示及环境按钮。
-- [ ] 网页相关类型/lint/build及已有原生设置回归，提交。
+- [x] 产品偏好与原生配置入口分开，保留现有原生编辑保存/dirty保护。
+- [x] 默认Agent/按Agent模型、同步默认过滤/大小/间隔与资源参数；校验、单次保存、失败保留、未保存离开提示及环境按钮。
+- [x] 网页相关类型/lint/build及已有原生设置回归，提交。
 
 ## 任务4：一次Review、核心验证与整合
 
