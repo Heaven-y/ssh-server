@@ -53,6 +53,8 @@ import { createHostTrust } from './ssh/host-trust';
 import { createPasswordStore } from './ssh/password-store';
 import { listHosts, parseSshConfig } from './ssh/ssh-config';
 import { createWorkspaceStore } from './workspaces/store';
+import { createWorkspaceSetup } from './workspaces/setup/service';
+import { registerWorkspaceSetupRoutes } from './http/workspace-setup.routes';
 import { createRcloneDriver } from './sync/rclone';
 import { createSyncManager } from './sync/manager';
 import { createNativeConfigService } from './settings/native-config';
@@ -118,6 +120,7 @@ async function main(): Promise<void> {
     driver: createRcloneDriver({ configDir: config.configDir, pool }),
   });
   const registry = createSessionRegistry();
+  const setup = createWorkspaceSetup({ store, pool, sync, configDir: config.configDir });
   const capabilities = createCapabilitiesService({
     claude: (dir, signal) => discoverClaudeCapabilities(dir, { signal }),
     codex: (dir, signal) => discoverCodexCapabilities(dir, { signal }),
@@ -151,6 +154,7 @@ async function main(): Promise<void> {
     devOrigin: config.devOrigin,
     store,
     listSshHosts,
+    setup,
     webDir: WEB_DIST,
     routes: (a) => {
       registerInternalRoutes(a, { registry, getWorkspace: (id) => store.get(id), pool, sync });
@@ -158,6 +162,7 @@ async function main(): Promise<void> {
       registerCapabilityRoutes(a, { store, capabilities });
       registerSshRoutes(a, { pool });
       registerSshTargetRoutes(a, targets);
+      registerWorkspaceSetupRoutes(a, setup);
       registerHostTrustRoutes(a, createHostTrust({ pool }));
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
       registerFileRoutes(a, { store, files: createWorkspaceFilesService(), sync });

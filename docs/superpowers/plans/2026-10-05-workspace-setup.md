@@ -24,18 +24,18 @@
 文件：shared/src/setup.ts；server/src/ssh/targets.ts、connection.ts、main.ts；http/ssh-targets.routes.ts；shared/workspace.ts与index.ts。
 产生接口：ManualServerInputSchema；ManagedServer={alias,name,hostname,port,username,keyFile?}；createServerTargets({configDir}).list()/get(alias)/save(input)。ConnectionDeps.lookupHost?(alias):Promise<SshHostConfig|undefined>；SshHostInfo可选source/name。GET/POST /api/ssh-targets，列表合并已有Host。
 
-- [ ] 定义严格协议、目标表串行原子保存及字段校验；内部别名managed-ssh-UUID，完全相同连接复用。
-- [ ] resolver的loadHost接入lookupHost，keyFile规范化后沿用loadKey；main统一目标列表及workspaceStore/pool依赖。
-- [ ] shared/server类型、相关ESLint/Prettier预期exit0；提交本阶段和设计。
+- [x] 定义严格协议、目标表串行原子保存及字段校验；内部别名managed-ssh-UUID，完全相同连接复用。
+- [x] resolver的loadHost接入lookupHost，keyFile规范化后沿用loadKey；main统一目标列表及workspaceStore/pool依赖。
+- [x] shared/server类型、相关ESLint/Prettier预期exit0；提交本阶段和设计。
 
 ## 任务2：实际主机指纹与显式信任
 
 文件：ssh/host-trust.ts、known-hosts.ts；http/ssh-host-trust.routes.ts；web/features/ssh/HostKeyConfirmation.tsx及api.ts。
 接口：HostTrustStatus={status:'trusted'|'unknown',alias,algorithm,fingerprint,challenge?}；createHostTrust({pool,homeDir?,readFile?,append?,probe?}).probe(alias,signal)/confirm({challenge,fingerprint,confirmed:true},signal)/dispose()。probeSshHostKey(identity,knownHosts,signal)返回SSH线格式Buffer。
 
-- [ ] 实现无认证8秒握手、已登记算法、SHA256指纹、unknown挑战与有界存储；变化/吊销保持拒绝。
-- [ ] 确认前重新读取身份/信任并握手，拒绝旧挑战；只追加具体公钥，不重写known_hosts；HTTP沿用Cookie/Host/Origin。
-- [ ] 指纹组件复用至新建及已有SSH详情，明确勾选；类型/相关静态检查预期exit0，提交。
+- [x] 实现无认证8秒握手、已登记算法、SHA256指纹、unknown挑战与有界存储；变化/吊销保持拒绝。
+- [x] 确认前重新读取身份/信任并握手，拒绝旧挑战；只追加具体公钥，不重写known_hosts；HTTP沿用Cookie/Host/Origin。
+- [x] 指纹组件复用至新建及已有SSH详情，明确勾选；类型/相关静态检查预期exit0，提交。
 
 ## 任务3：草稿目录、预览与创建服务
 
@@ -43,10 +43,10 @@
 接口：createWorkspaceSetup({store,pool,sync,configDir}).localDirectory({path?,cursor?},signal)/openRemote(target,signal)/readRemote(sessionId,{path?,cursor?},signal)/closeRemote(sessionId)/remoteSize(target,path,signal)/preview(input,signal)/verify(input,signal)/create({input,verification,initializationConfirmed:true},signal)/dispose()。
 verify返回{verification,expiresAt,local:{empty,git},target}；create返回{workspace,sync}。旧生产POST工作区创建回调也强制验证；测试/夹具可显式提供仅存储依赖，不冒充完整生产。
 
-- [ ] 本地元数据浏览与普通根校验；远端内存草稿接入现有RemoteFilesService，只开放浏览/关闭；按需du20秒上限、独立通道。
-- [ ] localInventory可选signal/maxEntries；预览使用独立临时rclone状态和既有过滤，只读取清单，30秒取消、20000项限制和20例子，不运行bisync。
-- [ ] 验证票固定规范化创建快照、cacheKey/代次/根身份，创建时重验且一次消费；保存后初始化，失败结果与配置分别返回。
-- [ ] 注册严格HTTP、请求关闭/服务退出取消；类型、相关静态检查预期exit0，提交。
+- [x] 本地元数据浏览与普通根校验；远端内存草稿接入现有RemoteFilesService，只开放浏览/关闭；按需du20秒上限、独立通道。
+- [x] localInventory可选signal/maxEntries；预览使用独立临时rclone状态和既有过滤，只读取清单，30秒取消、20000项限制和20例子，不运行bisync。
+- [x] 验证票固定规范化创建快照、cacheKey/代次/根身份，创建时重验且一次消费；保存后初始化，失败结果与配置分别返回。
+- [x] 注册严格HTTP、请求关闭/服务退出取消；类型、相关静态检查预期exit0，提交。
 
 ## 任务4：五步网页向导
 

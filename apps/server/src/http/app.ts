@@ -8,6 +8,7 @@ import type { WorkspaceStore } from '../workspaces/store';
 import { registerAuthRoute } from './auth';
 import { registerSecurity } from './security';
 import { registerWorkspaceRoutes } from './workspaces.routes';
+import type { WorkspaceSetup } from '../workspaces/setup/service';
 
 export type AppDeps = {
   token: string;
@@ -15,6 +16,7 @@ export type AppDeps = {
   devOrigin?: string;
   store: WorkspaceStore;
   listSshHosts(): Promise<SshHostInfo[]>;
+  setup?: WorkspaceSetup;
   /** 前端构建产物目录，存在时托管静态文件 */
   webDir?: string;
   /** 注册其余路由（内部接口、会话接口、/ws） */
@@ -29,7 +31,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   registerSecurity(app, { token: deps.token, port: deps.port, devOrigin: deps.devOrigin });
   registerAuthRoute(app, deps.token);
-  registerWorkspaceRoutes(app, { store: deps.store, listSshHosts: () => deps.listSshHosts() });
+  registerWorkspaceRoutes(app, { store: deps.store, listSshHosts: () => deps.listSshHosts(), setup: deps.setup });
   await deps.routes?.(app);
 
   if (deps.webDir && existsSync(deps.webDir)) {

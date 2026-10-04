@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { WorkspaceInputSchema, type Workspace } from './workspace';
+import type { SyncStatus } from './sync';
 
 const text = (max: number) =>
   z
@@ -41,3 +43,38 @@ export const HostTrustConfirmationSchema = z
   })
   .strict();
 export type HostTrustConfirmation = z.infer<typeof HostTrustConfirmationSchema>;
+
+export const WorkspaceSetupInputSchema = WorkspaceInputSchema.extend({
+  localDir: z.string().min(1).max(4096),
+  sshHost: z.string().min(1).max(200),
+  remoteDir: WorkspaceInputSchema.shape.remoteDir.max(4096),
+}).strict();
+export const WorkspaceSetupCreateSchema = z
+  .object({
+    input: WorkspaceSetupInputSchema,
+    verification: z.string().uuid(),
+    initializationConfirmed: z.literal(true),
+  })
+  .strict();
+export type WorkspaceSetupCreate = z.infer<typeof WorkspaceSetupCreateSchema>;
+export type LocalDirectory = {
+  path: string;
+  parent: string;
+  roots: string[];
+  entries: Array<{ name: string; path: string; type: 'directory' | 'file' | 'link' | 'other' }>;
+  nextCursor?: string;
+};
+export type SetupDirectoryInfo = { path: string; empty: boolean; git: boolean };
+export type WorkspaceSetupVerification = {
+  verification: string;
+  expiresAt: number;
+  local: SetupDirectoryInfo;
+  remote: SetupDirectoryInfo;
+  target: { sshHost: string; authMode: 'key' | 'password' };
+};
+export type SetupInventory = {
+  included: { files: number; bytes: number };
+  excluded: { files: number; bytes: number; examples: string[] };
+};
+export type WorkspaceSetupPreview = { local: SetupInventory; remote: SetupInventory; sampledAt: number };
+export type WorkspaceSetupResult = { workspace: Workspace; sync: SyncStatus };
