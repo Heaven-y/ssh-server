@@ -5,7 +5,7 @@ import {
   type RemoteBrowseTarget,
   type Workspace,
 } from '@ssh-server/shared';
-import { workspaceTarget } from '../ssh/connection';
+import { connectionIdentity, workspaceTarget } from '../ssh/connection';
 import type { SshPool } from '../ssh/pool';
 import { createSftpReader, type SftpReader } from '../ssh/sftp';
 import type { WorkspaceStore } from '../workspaces/store';
@@ -26,6 +26,7 @@ type Session = {
   workspace: Workspace;
   binding: string;
   key: string;
+  identity: string;
   generation: number;
   lifetime: AbortController;
   timer?: ReturnType<typeof setTimeout>;
@@ -117,6 +118,7 @@ export function createRemoteFilesService(deps: Deps) {
         workspace,
         binding: current.binding,
         key: connection.cacheKey,
+        identity: connectionIdentity(connection),
         generation,
         lifetime: new AbortController(),
         unsubscribe: () => undefined,
@@ -205,6 +207,22 @@ export function createRemoteFilesService(deps: Deps) {
       });
       session.queue = run.catch(() => undefined);
       return run;
+    },
+    context(workspaceId: string, sessionId: string, signal?: AbortSignal) {
+      const session = sessions.get(sessionId);
+      if (!session || session.info.workspaceId !== workspaceId)
+        return Promise.reject(new RemoteFilesError('session_expired'));
+      return remoteOperation(parentSignal(signal, session), async (active) => {
+        await validate(session, active);
+        touch(session);
+        return {
+          workspace: { ...session.workspace },
+          info: { ...session.info },
+          identity: session.identity,
+          key: session.key,
+          generation: session.generation,
+        };
+      });
     },
     close(workspaceId: string, sessionId: string) {
       const session = sessions.get(sessionId);

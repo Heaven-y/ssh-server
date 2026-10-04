@@ -19,6 +19,11 @@ export type {
   RemoteFileScope,
   RemoteFileEntry,
   RemoteDirectory,
+  RemoteFileActionKind,
+  RemoteFileActionInput,
+  RemoteFilePreflight,
+  RemoteFileTaskPhase,
+  RemoteFileTask,
 } from './remote-files';
 export type {
   VersionChange,

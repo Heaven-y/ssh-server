@@ -14,6 +14,20 @@ const failures = {
   permission_denied: [403, '当前 SSH 账号无权读取该目录'],
   connection_failed: [502, '无法读取服务器目录，请检查连接后重试'],
   timeout: [504, '服务器目录读取超时，请重新连接文件视图'],
+  operation_unavailable: [409, '服务器缺少所需文件操作能力；目录浏览与下载仍可使用'],
+  unsupported_file: [400, '该对象不是普通文件、目录或符号链接，不能直接操作'],
+  destination_exists: [409, '目标已存在；不会覆盖或合并，请选择另一目标'],
+  invalid_destination: [400, '目标位置不适用于该操作，不能复制或移动到源目录内部'],
+  protected_root: [409, '不能移动、删除或覆盖已配置的工作区根及其祖先目录'],
+  linked_parent: [409, '父路径包含符号链接或不是目录，请使用实际目录路径'],
+  stale_preflight: [409, '文件、目标或配置已变化，请重新预检后确认'],
+  preflight_expired: [410, '操作预检已过期，请重新选择源和目标'],
+  scan_incomplete: [409, '目录扫描未完整完成，不能确认操作影响；请缩小操作范围'],
+  verification_failed: [409, '服务器内复制核对失败，源文件已保留；请核对部分目标'],
+  operation_failed: [502, '服务器文件操作未完整完成，请核对源与目标的实际结果'],
+  sync_pending: [409, '该操作涉及同步文件；同步路径协调接入后才能提交'],
+  task_missing: [404, '文件任务不存在或不属于当前工作区'],
+  too_many_tasks: [429, '待处理文件任务过多，请等待已有任务完成'],
 } as const;
 
 export class RemoteFilesError extends Error {
@@ -22,6 +36,12 @@ export class RemoteFilesError extends Error {
     super(failures[code][1]);
     this.status = failures[code][0];
   }
+}
+
+export function fileOperationError(code: string | undefined): RemoteFilesError {
+  return new RemoteFilesError(
+    code && Object.hasOwn(failures, code) ? (code as keyof typeof failures) : 'operation_failed',
+  );
 }
 
 export function remoteFilesError(error: unknown): { code: string; message: string; status: number } {

@@ -14,6 +14,9 @@ import type {
   RemoteBrowseTarget,
   RemoteBrowseSession,
   RemoteDirectory,
+  RemoteFileActionInput,
+  RemoteFilePreflight,
+  RemoteFileTask,
   VersionStatus,
   VersionHistory,
   VersionDiff,
@@ -86,6 +89,30 @@ const postSync = (id: string, suffix = '', body: unknown = {}) =>
   request<SyncStatus>(syncUrl(id) + suffix, { method: 'POST', body: JSON.stringify(body) });
 
 export const api = {
+  preflightRemoteFile: (id: string, sessionId: string, input: RemoteFileActionInput, signal?: AbortSignal) =>
+    request<RemoteFilePreflight>(`${remoteSessionsUrl(id)}/${encodeURIComponent(sessionId)}/preflights`, {
+      method: 'POST',
+      cache: 'no-store',
+      body: JSON.stringify(input),
+      signal,
+    }),
+  submitRemoteFileTask: (id: string, preflightId: string) =>
+    request<RemoteFileTask>(`/api/workspaces/${encodeURIComponent(id)}/remote-files/tasks`, {
+      method: 'POST',
+      body: JSON.stringify({ preflightId, confirmed: true }),
+    }),
+  remoteFileTasks: (id: string, signal?: AbortSignal) =>
+    request<{ tasks: RemoteFileTask[] }>(`/api/workspaces/${encodeURIComponent(id)}/remote-files/tasks`, {
+      signal,
+      cache: 'no-store',
+    }),
+  remoteFileTaskAction: (id: string, taskId: string, action: 'cancel' | 'check') =>
+    request<RemoteFileTask>(
+      `/api/workspaces/${encodeURIComponent(id)}/remote-files/tasks/${encodeURIComponent(taskId)}/${action}`,
+      { method: 'POST', body: '{}' },
+    ),
+  remoteFileDownloadUrl: (id: string, sessionId: string, path: string) =>
+    `${remoteSessionsUrl(id)}/${encodeURIComponent(sessionId)}/download?${new URLSearchParams({ path })}`,
   bindRemoteBrowseTarget: (id: string, target: RemoteBrowseTarget) =>
     request<{ binding: string }>(`/api/workspaces/${encodeURIComponent(id)}/remote-files/bindings`, {
       method: 'POST',

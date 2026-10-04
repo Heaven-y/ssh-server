@@ -6,7 +6,7 @@ import type { Attributes, Connection, FileEntry, SFTPWrapper } from 'ssh2';
 import type { RemoteBrowseTarget, Workspace } from '@ssh-server/shared';
 import { createSshPool } from '../../src/ssh/pool';
 
-type Operation = 'READDIR' | 'REALPATH' | 'SFTP';
+type Operation = 'READDIR' | 'REALPATH' | 'SFTP' | 'READ';
 type Gate = { entered(): void; action?: () => void };
 const REMOTE_HOME = path.posix.join(path.posix.sep, 'fixture-home');
 const PASSWORD = 'fixture-secret';
@@ -20,7 +20,7 @@ function entry(filename: string, mode = 0o100644, size = 12): FileEntry {
 }
 
 /** 真实 ssh2 协议替身，只提供内存元数据；不访问远端或开发机项目文件。 */
-export async function startRemoteSftpFixture() {
+export async function startRemoteSftpFixture(options: { downloads?: boolean } = {}) {
   const home = REMOTE_HOME;
   const root = path.posix.join(home, 'projects', 'demo');
   const outside = path.posix.join(home, 'datasets');
@@ -44,6 +44,12 @@ export async function startRemoteSftpFixture() {
     Array.from({ length: 237 }, (_, index) => entry(`sample-${String(index).padStart(3, '0')}.bin`)),
   );
   nodes.set(slow, [entry('delayed.py')]);
+  const bodies = options.downloads
+    ? new Map([
+        [path.posix.join(root, 'train.py'), Buffer.from('print(1)\nabc')],
+        [path.posix.join(root, 'weights.bin'), Buffer.alloc(4 * 1024 ** 2, 42)],
+      ])
+    : new Map<string, Buffer>();
   const peers = new Set<Connection>();
   const channels = new Set<SFTPWrapper>();
   const handles = new Set<string>();
@@ -57,6 +63,7 @@ export async function startRemoteSftpFixture() {
     handlesOpened: 0,
     handlesClosed: 0,
     bodyReads: 0,
+    bytesRead: 0,
     commands: 0,
     requests: [] as string[],
   };
@@ -90,9 +97,11 @@ export async function startRemoteSftpFixture() {
     channels.add(channel);
     audit.channelsOpened++;
     const cursors = new Map<string, { path: string; offset: number }>();
+    const files = new Map<string, string>();
     const dropHandle = (id: string) => {
       if (handles.delete(id)) audit.handlesClosed++;
       cursors.delete(id);
+      files.delete(id);
     };
     const status = (id: number, code: number) => channel.status(id, code, PRIVATE_DIAGNOSTIC);
     channel.on('error', () => undefined);
@@ -100,6 +109,7 @@ export async function startRemoteSftpFixture() {
       channels.delete(channel);
       audit.channelsClosed++;
       for (const id of cursors.keys()) dropHandle(id);
+      for (const id of files.keys()) dropHandle(id);
     });
     channel.on('REALPATH', (id, requested) =>
       dispatch('REALPATH', () => {
@@ -144,14 +154,33 @@ export async function startRemoteSftpFixture() {
       dropHandle(handle.toString());
       status(id, 0);
     });
-    channel.on('OPEN', (id) => {
+    channel.on('OPEN', (id, requested, flags) => {
       audit.bodyReads++;
-      status(id, 4);
+      if (flags !== 1 || !bodies.has(requested)) return status(id, 4);
+      const key = String(++handleId);
+      files.set(key, requested);
+      handles.add(key);
+      audit.handlesOpened++;
+      channel.handle(id, Buffer.from(key));
     });
-    channel.on('READ', (id) => {
-      audit.bodyReads++;
-      status(id, 4);
+    channel.on('FSTAT', (id, handle) => {
+      const file = files.get(handle.toString());
+      if (!file) return status(id, 4);
+      channel.attrs(id, attributes(0o100644, bodies.get(file)!.length));
     });
+    channel.on('READ', (id, handle, offset, length) =>
+      dispatch('READ', () => {
+        if (!channels.has(channel)) return;
+        audit.bodyReads++;
+        const file = files.get(handle.toString());
+        if (!file) return status(id, 4);
+        const body = bodies.get(file)!;
+        if (offset >= body.length) return status(id, 1);
+        const chunk = body.subarray(offset, offset + length);
+        audit.bytesRead += chunk.length;
+        channel.data(id, chunk);
+      }),
+    );
   }
 
   // 与现有真实握手测试一致，ECDSA 避开 ssh2 的 Ed25519 生成边界。
@@ -226,6 +255,7 @@ export async function startRemoteSftpFixture() {
     denied,
     slow,
     audit,
+    nodes,
     holdNext,
     privateDiagnostic: PRIVATE_DIAGNOSTIC,
     resources: () => ({ peers: peers.size, channels: channels.size, handles: handles.size }),
