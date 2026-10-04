@@ -1,7 +1,15 @@
-import { useState } from 'react';
-import { File, Folder, Link, Shapes, X } from 'lucide-react';
-import type { RemoteDirectory, RemoteFileEntry, RemoteFileScope } from '@ssh-server/shared';
+import { useState, type DragEvent, type KeyboardEvent } from 'react';
+import { Menu, MenuItem, useMenuStore } from '@ariakit/react';
+import { Ellipsis, File, Folder, Link, Shapes, X } from 'lucide-react';
+import type {
+  RemoteDirectory,
+  RemoteFileActionInput,
+  RemoteFileActionKind,
+  RemoteFileEntry,
+  RemoteFileScope,
+} from '@ssh-server/shared';
 import { buttonClass } from '../../ui/styles';
+import { ACTION_LABELS } from './RemoteActionDialog';
 
 const TYPE_LABELS = { file: '文件', directory: '目录', link: '符号链接', other: '其他类型' };
 const TYPE_ICONS = { file: File, directory: Folder, link: Link, other: Shapes };
@@ -39,18 +47,84 @@ export function RemoteDirectoryList({
   showHidden,
   loading,
   navigate,
+  selectedPath,
+  select,
+  action,
+  download,
+  sessionId,
 }: {
   directory: RemoteDirectory;
   showHidden: boolean;
   loading: boolean;
   navigate(path: string): void;
+  selectedPath?: string;
+  select(path?: string): void;
+  action(input: RemoteFileActionInput): void;
+  download(entry: RemoteFileEntry): void;
+  sessionId: string;
 }) {
-  const [selectedPath, setSelectedPath] = useState<string>();
+  const menu = useMenuStore({ placement: 'bottom-start' });
+  const [menuEntry, setMenuEntry] = useState<RemoteFileEntry>();
+  const [dropPath, setDropPath] = useState<string>();
   const entries = showHidden ? directory.entries : directory.entries.filter((entry) => !entry.name.startsWith('.'));
   const selected = entries.find((entry) => entry.path === selectedPath);
+  const request = (kind: RemoteFileActionKind, entry = selected) => {
+    if (kind === 'mkdir') action({ kind, destination: `${directory.path.replace(/\/$/, '')}/` });
+    else if (entry && entry.type !== 'other')
+      action({ kind, source: entry.path, destination: kind === 'rename' ? entry.path : undefined });
+  };
+  const shortcut = (event: KeyboardEvent, entry?: RemoteFileEntry) => {
+    if (loading) return;
+    const kind = shortcutAction(event);
+    if (kind) {
+      event.preventDefault();
+      request(kind, entry);
+    }
+    if (event.key === 'Enter' && entry?.type === 'directory') {
+      event.preventDefault();
+      navigate(entry.path);
+    }
+    if (event.shiftKey && event.key === 'F10' && entry) {
+      event.preventDefault();
+      openMenu(entry, event.currentTarget as HTMLElement);
+    }
+  };
+  function openMenu(entry: RemoteFileEntry, anchor: HTMLElement) {
+    select(entry.path);
+    setMenuEntry(entry);
+    menu.setAnchorElement(anchor);
+    menu.show();
+  }
+  const dropped = (event: DragEvent, target: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDropPath(undefined);
+    if (loading) return;
+    try {
+      const data = JSON.parse(event.dataTransfer.getData('application/x-ssh-server-remote-file')) as {
+        sessionId?: unknown;
+        path?: unknown;
+      };
+      if (data.sessionId !== sessionId || typeof data.path !== 'string') return;
+      action({
+        kind: event.altKey ? 'copy' : 'move',
+        source: data.path,
+        destination: `${target.replace(/\/$/, '')}/${data.path.split('/').at(-1)}`,
+      });
+    } catch {
+      /* 外部拖放不提交服务器操作。 */
+    }
+  };
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-auto px-2 py-2" aria-busy={loading}>
+    <div className="flex min-h-32 min-w-0 flex-1 flex-col">
+      <div
+        className="min-h-0 flex-1 overflow-auto px-2 py-2"
+        aria-busy={loading}
+        onDragOver={(event) => {
+          if (event.dataTransfer.types.includes('application/x-ssh-server-remote-file')) event.preventDefault();
+        }}
+        onDrop={(event) => dropped(event, directory.path)}
+      >
         <ul aria-label="服务器目录条目" className="space-y-1">
           {entries.map((entry) => (
             <RemoteEntryRow
@@ -58,7 +132,32 @@ export function RemoteDirectoryList({
               entry={entry}
               selected={selected?.path === entry.path}
               loading={loading}
-              onClick={() => (entry.type === 'directory' ? navigate(entry.path) : setSelectedPath(entry.path))}
+              onClick={() => select(entry.path)}
+              open={() => {
+                if (entry.type === 'directory') navigate(entry.path);
+              }}
+              shortcut={(event) => shortcut(event, entry)}
+              menu={(anchor) => openMenu(entry, anchor)}
+              drag={(event) => {
+                event.dataTransfer.setData(
+                  'application/x-ssh-server-remote-file',
+                  JSON.stringify({ sessionId, path: entry.path }),
+                );
+                event.dataTransfer.effectAllowed = 'copyMove';
+              }}
+              drop={entry.type === 'directory' ? (event) => dropped(event, entry.path) : undefined}
+              draggedOver={dropPath === entry.path}
+              dragOver={(event) => {
+                if (
+                  entry.type === 'directory' &&
+                  event.dataTransfer.types.includes('application/x-ssh-server-remote-file')
+                ) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setDropPath(entry.path);
+                }
+              }}
+              dragLeave={() => setDropPath(undefined)}
             />
           ))}
         </ul>
@@ -69,7 +168,49 @@ export function RemoteDirectoryList({
           </p>
         )}
       </div>
-      {selected && <EntryDetails entry={selected} close={() => setSelectedPath(undefined)} />}
+      {selected && <EntryDetails entry={selected} close={() => select(undefined)} />}
+      <Menu
+        store={menu}
+        aria-label="服务器文件菜单"
+        gutter={4}
+        className="z-50 min-w-40 rounded-lg border border-border bg-card p-1 text-sm text-foreground shadow-xl"
+        unmountOnHide
+      >
+        {menuEntry?.type === 'directory' && (
+          <MenuItem
+            className={`${buttonClass('ghost')} w-full justify-start`}
+            onClick={() => {
+              menu.hide();
+              navigate(menuEntry.path);
+            }}
+          >
+            打开目录
+          </MenuItem>
+        )}
+        {(['rename', 'move', 'copy', 'delete'] as const).map((kind) => (
+          <MenuItem
+            key={kind}
+            disabled={loading || menuEntry?.type === 'other'}
+            className={`${buttonClass('ghost')} w-full justify-start`}
+            onClick={() => {
+              menu.hide();
+              request(kind, menuEntry);
+            }}
+          >
+            {ACTION_LABELS[kind]}
+          </MenuItem>
+        ))}
+        <MenuItem
+          disabled={loading || menuEntry?.type !== 'file'}
+          className={`${buttonClass('ghost')} w-full justify-start`}
+          onClick={() => {
+            menu.hide();
+            if (menuEntry) download(menuEntry);
+          }}
+        >
+          下载…
+        </MenuItem>
+      </Menu>
     </div>
   );
 }
@@ -79,20 +220,49 @@ function RemoteEntryRow({
   selected,
   loading,
   onClick,
+  open,
+  shortcut,
+  menu,
+  drag,
+  drop,
+  draggedOver,
+  dragOver,
+  dragLeave,
 }: {
   entry: RemoteFileEntry;
   selected: boolean;
   loading: boolean;
   onClick(): void;
+  open(): void;
+  shortcut(event: KeyboardEvent): void;
+  menu(anchor: HTMLElement): void;
+  drag(event: DragEvent): void;
+  drop?: (event: DragEvent) => void;
+  draggedOver: boolean;
+  dragOver(event: DragEvent): void;
+  dragLeave(): void;
 }) {
   const Icon = TYPE_ICONS[entry.type];
   return (
-    <li>
+    <li
+      className={`flex items-start rounded-lg ${draggedOver ? 'outline outline-primary' : ''}`}
+      onDragOver={dragOver}
+      onDragLeave={dragLeave}
+      onDrop={drop}
+    >
       <button
         type="button"
         onClick={onClick}
+        onDoubleClick={open}
+        onKeyDown={shortcut}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          if (!loading) menu(event.currentTarget);
+        }}
+        draggable={!loading && entry.type !== 'other'}
+        onDragStart={drag}
         disabled={loading}
-        aria-pressed={entry.type === 'directory' ? undefined : selected}
+        aria-pressed={selected}
         className={`flex w-full min-w-0 gap-2 rounded-lg px-2 py-2 text-left hover:bg-muted disabled:opacity-50 ${selected ? 'bg-muted' : ''}`}
       >
         <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -109,6 +279,15 @@ function RemoteEntryRow({
             <span>{modifiedLabel(entry.modifiedAt)}</span>
           </span>
         </span>
+      </button>
+      <button
+        type="button"
+        className={`${buttonClass('ghost')} mt-1 shrink-0`}
+        aria-label={`${entry.name}的操作菜单`}
+        disabled={loading}
+        onClick={(event) => menu(event.currentTarget)}
+      >
+        <Ellipsis aria-hidden className="size-4" />
       </button>
     </li>
   );
@@ -142,4 +321,11 @@ function EntryDetails({ entry, close }: { entry: RemoteFileEntry; close(): void 
       )}
     </section>
   );
+}
+
+function shortcutAction(event: KeyboardEvent): RemoteFileActionKind | undefined {
+  if (event.key === 'F2') return 'rename';
+  if (event.key === 'Delete') return 'delete';
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'n') return 'mkdir';
+  return undefined;
 }

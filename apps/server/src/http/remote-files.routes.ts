@@ -16,7 +16,7 @@ const Query = z.object({ path: z.string().max(4096).default(''), cursor: z.strin
 const Empty = z.object({}).strict();
 const OpenTarget = Target.extend({ binding: z.string().regex(/^[a-f0-9]{64}$/) });
 
-function requestSignal(request: FastifyRequest, reply: FastifyReply, onAbort?: () => void) {
+export function requestSignal(request: FastifyRequest, reply: FastifyReply, onAbort?: () => void) {
   const controller = new AbortController();
   const abort = () => {
     controller.abort(new RemoteFilesError('cancelled'));

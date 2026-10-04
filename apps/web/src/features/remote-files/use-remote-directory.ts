@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RemoteBrowseSession, RemoteBrowseTarget, RemoteDirectory, Workspace } from '@ssh-server/shared';
 import { api, ApiError } from '../../lib/api';
 import { createBrowseConnection } from './browse-connection';
@@ -80,6 +80,25 @@ export function useRemoteDirectory(workspace: Workspace, active: boolean) {
     const directory = result.directory;
     if (directory?.nextCursor) navigate(directory.path, directory.nextCursor, result.page + 1);
   };
+  const createSecondarySession = useCallback(
+    async (signal: AbortSignal) => {
+      const identity = await connection.bind();
+      signal.throwIfAborted();
+      if ('error' in identity) throw identity.error;
+      const created = await api.createRemoteBrowseSession(
+        binding.workspaceId,
+        binding.target,
+        identity.binding,
+        signal,
+      );
+      if (signal.aborted) {
+        void api.closeRemoteBrowseSession(binding.workspaceId, created.id).catch(() => undefined);
+        signal.throwIfAborted();
+      }
+      return created;
+    },
+    [binding, connection],
+  );
   return {
     session,
     directory: result.directory,
@@ -91,5 +110,6 @@ export function useRemoteDirectory(workspace: Workspace, active: boolean) {
     refresh,
     reconnect,
     nextPage,
+    createSecondarySession,
   };
 }

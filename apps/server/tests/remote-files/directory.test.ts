@@ -26,6 +26,7 @@ function fixture(batches: Array<FileEntryWithStats[] | false | Error>) {
     close: vi.fn(() => controller.abort()),
     realpath: vi.fn(),
     lstat: vi.fn(),
+    fstat: vi.fn(),
     opendir: vi.fn(),
     readdir: vi.fn(async () => {
       const next = batches.shift() ?? false;
