@@ -45,7 +45,7 @@
 | `apps/web/src/features/terminal/{connection,paste}.ts` | 原生 WS、发送门禁、粘贴确认后的分块与取消 |
 | `apps/web/src/features/terminal/{layout,terminal-store}.ts` | 纯布局树操作、内存标签与固定目标，不持有输出正文 |
 | `apps/web/src/features/terminal/{TerminalDock,TerminalFrame,TerminalLayout,TerminalPane,TerminalDialogs}.tsx` | 操作区、呈现容器、可拖动布局、稳定 xterm 宿主、确认对话框 |
-| `apps/web/src/app/{App,TopBar}.tsx`、`lib/api.ts`、`index.css` | 顶栏入口、主区接线、绑定 API、限定终端样式 |
+| `apps/web/src/app/{App,TopBar}.tsx`、`lib/api.ts`、`styles.css` | 顶栏入口、主区接线、绑定 API、限定终端样式 |
 | `scripts/dev/{terminal-fixture,e2e-terminal}.ts` | 本机 ssh2 PTY fixture、终端实际网页验收准备及收尾 |
 | `docs/guides/web-terminal-acceptance.md` | 实际运行证据、限制和未完成的真实 SSH 验收 |
 
@@ -122,7 +122,7 @@ type TerminalServerMessage =
 
 ### 任务 5：稳定实例的多标签、分屏和可调主区
 
-**文件：** 新增 `layout.ts`、`terminal-store.ts`、`TerminalDock.tsx`、`TerminalFrame.tsx`、`TerminalLayout.tsx`；修改 `App.tsx`、`TopBar.tsx`、`index.css`。核心回归路径：`apps/web/tests/features/terminal/layout.test.ts`，任务 6 再补；视觉由任务 6 实际网页验收。
+**文件：** 新增 `layout.ts`、`terminal-store.ts`、`TerminalDock.tsx`、`TerminalFrame.tsx`、`TerminalLayout.tsx`；修改 `App.tsx`、`TopBar.tsx`、`styles.css`。核心回归路径：`apps/web/tests/features/terminal/layout.test.ts`，任务 6 再补；视觉由任务 6 实际网页验收。
 
 **接口：** `TerminalLayoutNode = { kind: 'pane'; paneId: string } | { kind: 'split'; id: string; orientation: 'horizontal' | 'vertical'; children: [TerminalLayoutNode, TerminalLayoutNode] }`。`splitPane(tree, paneId, nextPaneId, orientation): TerminalLayoutNode`、`removePane(tree, paneId): TerminalLayoutNode | undefined`、`paneIds(tree): string[]`。`TerminalDock({ workspace, visible, onHide }): ReactNode` 只在明确创建入口使用当前 workspace；标签保存固定 target/binding，不订阅当前聊天来改写已有标签。
 
