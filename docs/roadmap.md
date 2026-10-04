@@ -74,7 +74,7 @@
 
 实施与边界见 [文件编辑设计](superpowers/specs/2026-10-03-workspace-files-design.md)、[实施计划](superpowers/plans/2026-10-03-workspace-files.md) 和 [文件验收记录](guides/workspace-files-acceptance.md)。
 
-版本实现与验证见 [版本设计](superpowers/specs/2026-10-03-local-versions-design.md)、[版本计划](superpowers/plans/2026-10-03-local-versions.md) 和 [版本验收记录](guides/local-versions-acceptance.md)。真实 SSH 串联复验仍需用户指定已配置的 Host 别名和允许创建临时子目录的服务器位置；本机尚无可复用的工作区配置，不自行猜测测试目标。
+版本实现与验证见 [版本设计](superpowers/specs/2026-10-03-local-versions-design.md)、[版本计划](superpowers/plans/2026-10-03-local-versions.md) 和 [版本验收记录](guides/local-versions-acceptance.md)。真实目标与允许创建临时子目录的位置已恢复到本机ignored配置，后续串联使用该目标；A5/A13仍待实际验收。
 
 ### M4：两类原生 Agent 能力
 
@@ -85,7 +85,7 @@
 - [x] Claude/Codex 原生重命名/删除及 Codex 归档列表/归档/恢复；运行与管理按 Agent/ID 互斥，锁覆盖同步收尾
 - [x] 临时合成记录的真实 SDK/app-server 与网页管理链路通过；删除明确勾选，等待/失败/重试、后台运行锁及三种宽度完成验收
 - [ ] A8 独立客户端刷新：已验证网页与原生存储/API，尚未观察 VS Code 插件界面及 CLI 交互列表，不标整项完成
-- [ ] A7 实际 SSH 重复 A1/A2；当前 MCP 后的 SSH/同步使用受控替身，仍需指定 Host 与服务器测试目录
+- [ ] A7 实际SSH重复A1/A2；目标已恢复，按ignored运行时参数继续验收，不把受控替身视为真实链路
 - [x] 按工作区/Agent 发现 skills、模型和命令；按钮搜索选择及直接 `/name` 解析，同一原生实例调用前复验，禁用/过期/歧义项明确拒绝
 - [x] 两类 compact、Claude context 与 CLI-only 限制提示；纯上下文/压缩命令不触发轮次后同步，普通消息及技能仍沿用同步
 - [x] 原生模型/推理强度候选并保留手动输入；目录默认项和历史实际模型不自动变为覆盖参数
@@ -115,7 +115,7 @@
 
 - [ ] 产品默认设置与环境检测入口：新会话 Agent/模型、同步默认值、可调同步间隔和资源刷新参数；“跟随本地配置”不被隐式改为模型覆盖
 - [ ] 工作区默认黑名单的网页停用/恢复与自定义规则追加，规则存储、校验和执行贯通；现有实现只有默认规则及配置中的停用项
-- [ ] 工作区配置删除的网页入口及活动资源收尾，保留本地/服务器文件，不能把原生会话删除当作工作区删除
+- [x] 工作区配置删除的网页入口及活动资源收尾：配置确认、活动/持久任务/离线编辑器阻断、所属PTY/SFTP关闭和迟到收尾；真实SSH与Edge三宽度通过，见[验收](guides/workspace-removal-acceptance.md)
 - [ ] 原界面目标收尾：侧栏折叠、可调分栏、亮色切换、网页命令面板、长会话虚拟列表/工具分组、本轮改动与 diff 行内反馈
 - [x] Claude/Codex 固定原生文件编辑、语法校验、外部修改检测、原子保存与关闭清理
 - [x] Claude 真实 SDK 的两次 query 读取新配置；Codex 官方 config/read 重读隔离配置
@@ -128,6 +128,8 @@
 - [ ] 验证对话、终端、资源采样与同步同时运行的响应，单会话单轮、同工作区同步串行、超时和输出限制，记录架构 V16、V17 的真实结论
 
 尚未完成的项目按相应里程碑继续设计、实施和验证，不把需求归档当作实施完成。详细待验证事项见 [架构第 8 节](engineering/architecture.md#8-待验证事项)。
+
+连接向导[PR #8](https://github.com/Heaven-y/ssh-server/pull/8)双平台CI37234735439成功，随后以两级--no-ff合入feat（5147dc0）与main（7845821）并推送；[main CI37235267430](https://github.com/Heaven-y/ssh-server/actions/runs/37235267430)双平台成功。工作区删除生命周期从最新feat创建codex/workspace-lifecycle继续实施。
 
 2026-10-05 状态核对：浏览和操作阶段已整合；Task 4 同步路径协调及编辑保护已接入，本机核心回归与网页证据见同步协调验收。A20–A23 的真实 SSH、实际 rclone 迁移、跨文件系统和浏览器磁盘保存仍不能标记为完整通过；终端本机基础及真实PTY全屏工具、资源详情与真实只读指标完成。五步连接向导已实现，一次Review的两项问题先复现后修复；真实SSH创建/初始化、三宽度网页、手动目标与Windows保存密码验收通过。产品设置/删除/界面和完整M6继续实施。
 

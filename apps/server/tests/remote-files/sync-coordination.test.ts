@@ -260,8 +260,15 @@ it('取消单独的同步恢复保留阻断，再次恢复不重放', async () =
         { once: true },
       );
     });
-  await fixture.tasks().recover(fixture.first.id, task.id);
-  await vi.waitFor(() => expect(pulling).toBe(true));
+  // sync_pending也表示远端完成后的传输中间阶段；原失败收尾前恢复只返回状态。
+  // 等待明确恢复真正进入拉取，避免把中间状态当作可恢复终态。
+  await vi.waitFor(
+    async () => {
+      await fixture.tasks().recover(fixture.first.id, task.id);
+      expect(pulling).toBe(true);
+    },
+    { timeout: 5000 },
+  );
   await fixture.tasks().cancel(fixture.first.id, task.id);
   // 在取消仍清理传输时立即重试，不能把这次明确的恢复请求静默吞掉。
   const retry = fixture.tasks().recover(fixture.first.id, task.id);

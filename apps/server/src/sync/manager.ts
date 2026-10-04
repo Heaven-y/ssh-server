@@ -303,6 +303,17 @@ export function createSyncManager(deps: Deps) {
   }
   const remoteFiles = createRemoteFileChanges({ ...deps, active, get, save, settingsOf });
   return {
+    busy: (id: string) => queues.has(id),
+    async hasRemoteTask(id: string) {
+      // 删除存储回调只传id；这里不得通过工作区store查询以免队列重入。
+      let state = states.get(id);
+      if (!state) {
+        state = loadSyncState(deps.configDir, id);
+        states.set(id, state);
+      }
+      return !!(await state).remoteTask;
+    },
+    forget: (id: string) => states.delete(id),
     transaction,
     remoteFiles: {
       prepare: (ws: Workspace, id: string, signal?: AbortSignal) =>

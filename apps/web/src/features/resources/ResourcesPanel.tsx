@@ -35,7 +35,7 @@ function useResources(workspace: Workspace) {
   const target = workspaceTerminalTarget(workspace);
   const { visible, now } = usePageVisible();
   const query = useQuery({
-    queryKey: ['resources', terminalTargetKey(target)],
+    queryKey: ['resources', workspace.id, terminalTargetKey(target)],
     queryFn: ({ signal }) => api.readResources(target, signal),
     enabled: visible,
     staleTime: 0,

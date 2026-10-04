@@ -43,6 +43,9 @@ import type {
   WorkspaceSetupVerification,
   WorkspaceSetupPreview,
   WorkspaceSetupResult,
+  WorkspaceRemovalPreview,
+  WorkspaceRemovalInput,
+  WorkspaceRemovalResult,
 } from '@ssh-server/shared';
 
 export type { SessionSummary } from '@ssh-server/shared';
@@ -234,7 +237,18 @@ export const api = {
       cache: 'no-store',
       body: JSON.stringify({ content: input.content, revision: input.revision }),
     }),
-  listWorkspaces: () => request<Workspace[]>('/api/workspaces'),
+  listWorkspaces: (signal?: AbortSignal) => request<Workspace[]>('/api/workspaces', { signal }),
+  previewWorkspaceRemoval: (id: string, signal?: AbortSignal) =>
+    request<WorkspaceRemovalPreview>(`/api/workspaces/${encodeURIComponent(id)}/removal`, {
+      signal,
+      cache: 'no-store',
+    }),
+  removeWorkspace: (id: string, input: WorkspaceRemovalInput) =>
+    request<WorkspaceRemovalResult>(`/api/workspaces/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      cache: 'no-store',
+      body: JSON.stringify(input),
+    }),
   createWorkspace: (input: WorkspaceInput) =>
     request<Workspace>('/api/workspaces', {
       method: 'POST',
@@ -389,6 +403,7 @@ export const api = {
 export const queryKeys = {
   agentCapabilities: (workspaceId: string, agent: AgentKind) => ['agent-capabilities', workspaceId, agent] as const,
   workspaces: ['workspaces'] as const,
+  workspaceRemoval: (id: string) => ['workspace-removal', id] as const,
   sshHosts: ['ssh-hosts'] as const,
   sshCredentials: (sshHost: string) => ['ssh-credentials', sshHost] as const,
   sessions: (workspaceId: string, agent: AgentKind = 'claude', archived = false) =>
