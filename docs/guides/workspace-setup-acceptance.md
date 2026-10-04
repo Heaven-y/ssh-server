@@ -42,3 +42,5 @@ React测试使用Testing Library和jsdom实际挂载Hook，7条生命周期回�
 首次阶段门禁641项通过，但语句覆盖84.04%低于85%，补充实际Hook回归后复核。期间两项既有文件任务时序断言在覆盖率负载下失败，关联17项单独通过；正文证明核对等待活动控制器收尾，跨工作区迁移仅该用例允许5秒等待多轮原子写盘，保持锁序、实际结果和不重放断言，不改产品或全局超时。
 
 本阶段完成连接创建的范围；产品默认设置、删除生命周期、顶栏概览及完整M6并发继续实施。密码与实际rclone、终端的完整组合仍属A12后续验收，网页合成初始化不代替该证据。
+
+整合记录：[PR #8](https://github.com/Heaven-y/ssh-server/pull/8)在797a487上的[双平台CI 37234735439](https://github.com/Heaven-y/ssh-server/actions/runs/37234735439)通过；以--no-ff合入feat/ssh-workflow（5147dc0）及main（7845821），均已推送，[main双平台CI 37235267430](https://github.com/Heaven-y/ssh-server/actions/runs/37235267430)成功。已确认合并且无工作树占用的向导小分支在本地与远端删除，feat保留。

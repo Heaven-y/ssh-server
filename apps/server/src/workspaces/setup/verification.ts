@@ -32,6 +32,7 @@ type Deps = {
   sync: Pick<SyncManager, 'initialize' | 'status'>;
   inspectLocal?: typeof inspectLocalRoot;
   inspectRemote?: typeof inspectRemoteRoot;
+  acquireWorkspace?: (id: string) => () => void;
 };
 export function normalizeSetupInput(input: WorkspaceInput): WorkspaceInput {
   const parsed = WorkspaceSetupInputSchema.parse(input);
@@ -129,24 +130,30 @@ export function createSetupVerification(deps: Deps) {
       assertSame(current, prior);
       signal.throwIfAborted();
       // 保存是创建的提交点；之后初始化独立收尾，关闭网页不声称撤销文件变化。
-      const workspace = await deps.store.create(
-        { ...current.input, localDir: current.local.info.path, remoteDir: current.remote.path },
-        async () => {
-          assertSame(await check(request.input, signal), prior);
-          signal.throwIfAborted();
-        },
-      );
-      let sync;
+      let release: (() => void) | undefined;
       try {
-        sync = await deps.sync.initialize(workspace, true);
-      } catch {
-        sync = {
-          ...(await deps.sync.status(workspace)),
-          phase: 'error' as const,
-          message: '工作区已保存，但首次同步未完成，请从同步详情检查并恢复',
-        };
+        const workspace = await deps.store.create(
+          { ...current.input, localDir: current.local.info.path, remoteDir: current.remote.path },
+          async (created) => {
+            assertSame(await check(request.input, signal), prior);
+            signal.throwIfAborted();
+            release = deps.acquireWorkspace?.(created.id);
+          },
+        );
+        let sync;
+        try {
+          sync = await deps.sync.initialize(workspace, true);
+        } catch {
+          sync = {
+            ...(await deps.sync.status(workspace)),
+            phase: 'error' as const,
+            message: '工作区已保存，但首次同步未完成，请从同步详情检查并恢复',
+          };
+        }
+        return { workspace, sync };
+      } finally {
+        release?.();
       }
-      return { workspace, sync };
     },
     revoke(verification: string) {
       tickets.delete(verification);

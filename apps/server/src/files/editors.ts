@@ -8,7 +8,7 @@ export type EditorPeer = { send(message: FileEditorServerMessage): void };
 type Pending = { token: string; resolve(): void; reject(error: unknown): void };
 type Editor = { id: string; workspaceId: string; peer?: EditorPeer; state?: FileEditorState; pending?: Pending };
 
-export function createFileEditors(configDir: string) {
+export function createFileEditors(configDir: string, acquireWorkspace?: (id: string) => () => void) {
   const storage = createEditorRecords(configDir);
   const editors = new Map<string, Editor>();
   const reservations = new Map<string, string>();
@@ -26,19 +26,24 @@ export function createFileEditors(configDir: string) {
   }
 
   async function attach(id: string, workspaceId: string, peer: EditorPeer) {
-    await ready;
-    return change(async () => {
-      if (reservations.has(workspaceId)) throw new RemoteFilesError('editor_locked');
-      const existing = editors.get(id);
-      if (existing && (existing.peer || existing.workspaceId !== workspaceId))
-        throw new RemoteFilesError('editor_unavailable');
-      if (!existing && editors.size >= 64) throw new RemoteFilesError('too_many_tasks');
-      const editor: Editor = { id, workspaceId, peer };
-      editors.set(id, editor);
-      await storage.save(records());
-      // 登记持久化后才能允许客户端编辑。
-      peer.send({ type: 'ready' });
-    });
+    const release = acquireWorkspace?.(workspaceId);
+    try {
+      await ready;
+      return await change(async () => {
+        if (reservations.has(workspaceId)) throw new RemoteFilesError('editor_locked');
+        const existing = editors.get(id);
+        if (existing && (existing.peer || existing.workspaceId !== workspaceId))
+          throw new RemoteFilesError('editor_unavailable');
+        if (!existing && editors.size >= 64) throw new RemoteFilesError('too_many_tasks');
+        const editor: Editor = { id, workspaceId, peer };
+        editors.set(id, editor);
+        await storage.save(records());
+        // 登记持久化后才能允许客户端编辑。
+        peer.send({ type: 'ready' });
+      });
+    } finally {
+      release?.();
+    }
   }
   function detach(id: string, peer: EditorPeer) {
     const editor = editors.get(id);
@@ -124,6 +129,10 @@ export function createFileEditors(configDir: string) {
     detach,
     receive,
     reserve,
+    async hasWorkspace(workspaceId: string) {
+      await membership;
+      return [...editors.values()].some((editor) => editor.workspaceId === workspaceId);
+    },
     async disconnected(workspaceId: string) {
       await ready;
       return [...editors.values()].filter((item) => item.workspaceId === workspaceId && !item.peer).map(({ id }) => id);

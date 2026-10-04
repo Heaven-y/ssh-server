@@ -40,7 +40,8 @@ type ChatState = {
   banner?: string;
   sessionOperations: Record<string, SessionOperation>;
   manageSession(workspaceId: string, session: SessionRef, input: SessionActionInput): Promise<boolean>;
-  selectWorkspace(id: string): void;
+  selectWorkspace(id?: string): void;
+  removeWorkspace(id: string, nextId?: string): void;
   newSession(agent?: AgentKind): void;
   setAgent(agent: AgentKind): void;
   openSession(session: SessionRef): Promise<void>;
@@ -124,8 +125,19 @@ export const useChat = create<ChatState>()((set, get) => ({
   selectWorkspace(id) {
     if (get().workspaceId === id) return;
     changeSelection();
-    localStorage.setItem(LAST_WORKSPACE_KEY, id);
+    if (id) localStorage.setItem(LAST_WORKSPACE_KEY, id);
+    else localStorage.removeItem(LAST_WORKSPACE_KEY);
     set({ workspaceId: id, ...emptyConversation });
+  },
+  removeWorkspace(id, nextId) {
+    const prefix = JSON.stringify([id]).slice(0, -1) + ',';
+    const sessionOperations = Object.fromEntries(
+      Object.entries(get().sessionOperations).filter(([key]) => !key.startsWith(prefix)),
+    );
+    if (lastWorkspaceId() === id) localStorage.removeItem(LAST_WORKSPACE_KEY);
+    // 迟到的删除结果只清理所属状态，不能切走用户已经选择的其他工作区。
+    if (get().workspaceId === id) get().selectWorkspace(nextId);
+    set({ sessionOperations });
   },
   newSession(agent = get().agent) {
     changeSelection();

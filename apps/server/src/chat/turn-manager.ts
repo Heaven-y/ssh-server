@@ -7,6 +7,7 @@ import type { SessionRegistry } from './registry';
 import { SessionError, type SessionsService } from './sessions';
 import type { CapabilitiesService } from './capabilities';
 import type { SyncManager } from '../sync/manager';
+import { WorkspaceRemovalError } from '../workspaces/activity';
 
 export type Socket = { send(msg: ServerMessage): void; isOpen(): boolean };
 export type TurnManagerDeps = {
@@ -18,6 +19,7 @@ export type TurnManagerDeps = {
   sessions: Pick<SessionsService, 'assertBelongs'>;
   capabilities?: Pick<CapabilitiesService, 'prepare'>;
   sync: Pick<SyncManager, 'sync'>;
+  acquireWorkspace?: (id: string) => () => void;
 };
 type Turn = {
   id: string;
@@ -31,6 +33,7 @@ type Turn = {
   token?: string;
   finished: boolean;
   syncAfter?: boolean;
+  releaseWorkspace?: () => void;
 };
 type Pending = { turn: Turn; resolve(answer: PermissionAnswer): void };
 type Send = Extract<ClientMessage, { type: 'chat.send' }>;
@@ -170,6 +173,28 @@ export class TurnManager {
     return new Promise((resolve) => this.pending.set(req.requestId, { turn, resolve }));
   }
 
+  private acquireWorkspace(socket: Socket, msg: Send): { release?: () => void } | undefined {
+    try {
+      return { release: this.deps.acquireWorkspace?.(msg.workspaceId) };
+    } catch (error) {
+      this.send(socket, {
+        type: 'error',
+        clientTurnId: msg.clientTurnId,
+        message: error instanceof WorkspaceRemovalError ? error.message : '工作区当前不可用，请刷新后重试',
+      });
+      return;
+    }
+  }
+
+  private preparationFailed(turn: Turn, error: unknown) {
+    if (!turn.controller.signal.aborted)
+      this.send(turn.socket, {
+        type: 'error',
+        turnId: turn.id,
+        message: error instanceof SessionError ? error.message : 'Agent 调用失败，请检查本机运行时和配置',
+      });
+  }
+
   private async start(socket: Socket, msg: Send): Promise<void> {
     if (this.stopping) {
       this.send(socket, { type: 'error', clientTurnId: msg.clientTurnId, message: '后端正在关闭，请稍后重试' });
@@ -181,6 +206,8 @@ export class TurnManager {
       this.send(socket, { type: 'error', clientTurnId: msg.clientTurnId, message: '该会话正在运行' });
       return;
     }
+    const lease = this.acquireWorkspace(socket, msg);
+    if (!lease) return;
     const turn: Turn = {
       id: randomUUID(),
       socket,
@@ -189,6 +216,7 @@ export class TurnManager {
       sessionId: msg.sessionId,
       controller: new AbortController(),
       finished: false,
+      releaseWorkspace: lease.release,
     };
     this.turns.set(turn.id, turn);
     if (key) this.sessions.set(key, turn.id);
@@ -202,12 +230,7 @@ export class TurnManager {
     try {
       await this.prepare(turn, msg);
     } catch (error) {
-      if (!turn.controller.signal.aborted)
-        this.send(socket, {
-          type: 'error',
-          turnId: turn.id,
-          message: error instanceof SessionError ? error.message : 'Agent 调用失败，请检查本机运行时和配置',
-        });
+      this.preparationFailed(turn, error);
       await this.finish(turn);
     }
   }
@@ -273,15 +296,19 @@ export class TurnManager {
         pending.resolve({ allow: false, message: '本轮已结束' });
       }
     }
-    await this.synchronize(turn);
-    this.turns.delete(turn.id);
-    const key = turn.sessionId && sessionKey(turn.agent, turn.sessionId);
-    if (key && this.sessions.get(key) === turn.id) this.sessions.delete(key);
-    this.send(turn.socket, {
-      type: 'turn.finished',
-      turnId: turn.id,
-      workspaceId: turn.workspaceId,
-      agent: turn.agent,
-    });
+    try {
+      await this.synchronize(turn);
+    } finally {
+      this.turns.delete(turn.id);
+      const key = turn.sessionId && sessionKey(turn.agent, turn.sessionId);
+      if (key && this.sessions.get(key) === turn.id) this.sessions.delete(key);
+      turn.releaseWorkspace?.();
+      this.send(turn.socket, {
+        type: 'turn.finished',
+        turnId: turn.id,
+        workspaceId: turn.workspaceId,
+        agent: turn.agent,
+      });
+    }
   }
 }

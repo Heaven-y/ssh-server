@@ -53,6 +53,9 @@ import { createHostTrust } from './ssh/host-trust';
 import { createPasswordStore } from './ssh/password-store';
 import { listHosts, parseSshConfig } from './ssh/ssh-config';
 import { createWorkspaceStore } from './workspaces/store';
+import { createWorkspaceActivity } from './workspaces/activity';
+import { createWorkspaceRemoval } from './workspaces/removal';
+import { createWorkspaceRemovalResources } from './workspaces/removal-resources';
 import { createWorkspaceSetup } from './workspaces/setup/service';
 import { registerWorkspaceSetupRoutes } from './http/workspace-setup.routes';
 import { createRcloneDriver } from './sync/rclone';
@@ -113,14 +116,45 @@ async function main(): Promise<void> {
     },
   });
   const terminalBindings = createTerminalBindings({ store, pool });
-  const terminals = createTerminalManager({ store, pool, bindings: terminalBindings });
+  const activity = createWorkspaceActivity();
+  const acquireWorkspace = (id: string) => activity.acquire(id);
+  const terminals = createTerminalManager({
+    store,
+    pool,
+    bindings: terminalBindings,
+    assertWorkspaceOpen: activity.assertOpen,
+  });
   const resources = createResourcesService({ store, pool });
   const sync = createSyncManager({
     configDir: config.configDir,
     driver: createRcloneDriver({ configDir: config.configDir, pool }),
   });
   const registry = createSessionRegistry();
-  const setup = createWorkspaceSetup({ store, pool, sync, configDir: config.configDir });
+  const setup = createWorkspaceSetup({ store, pool, sync, configDir: config.configDir, acquireWorkspace });
+  const browse = createRemoteFilesService({ store, pool });
+  const executor = createRemoteExecutor(pool);
+  const editors = createFileEditors(config.configDir, acquireWorkspace);
+  const preflights = createFilePreflights({
+    store,
+    pool,
+    browse,
+    executor,
+    syncAvailable: true,
+    syncPaths: sync.remoteFiles.checkPaths,
+  });
+  const tasks = createFileTasks({
+    configDir: config.configDir,
+    preflights,
+    executor,
+    coordinator: createFileSyncCoordinator({ store, sync, editors }),
+    acquireWorkspace,
+    onCorrupt: (name) => console.warn('文件任务记录损坏，已保留原文件，未重放操作：', name),
+  });
+  const removal = createWorkspaceRemoval({
+    store,
+    activity,
+    ...createWorkspaceRemovalResources({ editors, browse, preflights, tasks, sync, terminals }),
+  });
   const capabilities = createCapabilitiesService({
     claude: (dir, signal) => discoverClaudeCapabilities(dir, { signal }),
     codex: (dir, signal) => discoverCodexCapabilities(dir, { signal }),
@@ -146,6 +180,7 @@ async function main(): Promise<void> {
     runners: { codex: runCodexTurn },
     internalUrl: () => `http://${hostForUrl(config.host)}:${port}`,
     sync,
+    acquireWorkspace,
   });
 
   const app = await buildApp({
@@ -155,6 +190,8 @@ async function main(): Promise<void> {
     store,
     listSshHosts,
     setup,
+    activity,
+    removal,
     webDir: WEB_DIST,
     routes: (a) => {
       registerInternalRoutes(a, { registry, getWorkspace: (id) => store.get(id), pool, sync });
@@ -166,25 +203,7 @@ async function main(): Promise<void> {
       registerHostTrustRoutes(a, createHostTrust({ pool }));
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
       registerFileRoutes(a, { store, files: createWorkspaceFilesService(), sync });
-      const browse = createRemoteFilesService({ store, pool });
-      const executor = createRemoteExecutor(pool);
-      const editors = createFileEditors(config.configDir);
-      registerFileEditorRoutes(a, { store, editors });
-      const preflights = createFilePreflights({
-        store,
-        pool,
-        browse,
-        executor,
-        syncAvailable: true,
-        syncPaths: sync.remoteFiles.checkPaths,
-      });
-      const tasks = createFileTasks({
-        configDir: config.configDir,
-        preflights,
-        executor,
-        coordinator: createFileSyncCoordinator({ store, sync, editors }),
-        onCorrupt: (name) => a.log.warn({ record: name }, '文件任务记录损坏，已保留原文件，未重放操作'),
-      });
+      registerFileEditorRoutes(a, { store, editors, acquireWorkspace });
       registerRemoteFileRoutes(a, browse);
       registerRemoteFileActionRoutes(a, { preflights, tasks, downloads: createFileDownloads({ pool, browse }) });
       registerVersionRoutes(a, { store, versions: createVersionsService(), sync });

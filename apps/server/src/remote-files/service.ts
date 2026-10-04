@@ -228,6 +228,9 @@ export function createRemoteFilesService(deps: Deps) {
       const session = sessions.get(sessionId);
       if (session?.info.workspaceId === workspaceId) close(session);
     },
+    closeWorkspace(workspaceId: string) {
+      for (const session of sessions.values()) if (session.info.workspaceId === workspaceId) close(session);
+    },
     dispose() {
       lifetime.abort(new RemoteFilesError('session_expired'));
       for (const session of sessions.values()) close(session);

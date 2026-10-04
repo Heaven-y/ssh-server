@@ -101,6 +101,10 @@ export function closeTerminalTab(id: string) {
     return { tabs, activeTabId: state.activeTabId === id ? tabs[Math.max(0, index - 1)]?.id : state.activeTabId };
   });
 }
+export function closeWorkspaceTerminals(workspaceId: string) {
+  const tabs = useTerminalStore.getState().tabs.filter((tab) => tab.target.workspaceId === workspaceId);
+  for (const tab of tabs) closeTerminalTab(tab.id);
+}
 export function closeTerminalPane(tabId: string, id: string) {
   const tab = useTerminalStore.getState().tabs.find((tab) => tab.id === tabId);
   if (!tab?.tree) return;
