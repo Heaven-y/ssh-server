@@ -1,6 +1,6 @@
 # 需求
 
-更新日期：2026-10-03。本文描述第一版的目标行为，不代表功能全部实现；实际进度见 [路线图](../roadmap.md)，选型与取舍见 [设计决策](../engineering/decisions.md)。
+更新日期：2026-10-04。本文描述第一版的目标行为，不代表功能全部实现；实际进度见 [路线图](../roadmap.md)，选型与取舍见 [设计决策](../engineering/decisions.md)。
 
 ## 1. 背景
 
@@ -62,6 +62,8 @@
 - F4.2 可同时打开多个终端标签，调整终端显示区域大小。终端外观与多标签、分屏等交互参考 [Pebrel](https://github.com/Kuddev/pebrel)，具体布局见界面文档。
 - F4.3 终端是用户本人操作，不受命令黑名单限制。
 - F4.4 终端是通用 SSH shell，不绑定 `nvitop`，资源概览可以直接使用 F9 面板。
+
+F4 的[网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.md)和[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)已实施。固定目标、目录确认、独立PTY、背压、标签/分屏、复制粘贴及稳定布局已通过核心回归与本机真实ssh2网页验收，见[验收记录](../guides/web-terminal-acceptance.md)。真实服务器全屏工具、原生OS输入法及密码重启串联尚未实测，A10/A12保持部分完成。
 
 ### F5 同步
 

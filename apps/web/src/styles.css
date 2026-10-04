@@ -29,6 +29,22 @@
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 
+/* 终端仅使用自己的宿主与分隔线样式，不影响聊天/文件编辑器。 */
+.terminal-separator {
+  flex-shrink: 0;
+  background: var(--color-border);
+}
+.terminal-separator:hover,
+.terminal-separator:focus-visible {
+  background: var(--color-accent);
+}
+.terminal-host .xterm {
+  height: 100%;
+}
+.terminal-host .xterm-viewport {
+  overscroll-behavior: contain;
+}
+
 @layer base {
   html,
   body,

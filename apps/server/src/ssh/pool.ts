@@ -1,6 +1,7 @@
 // SSH 连接、保存凭据与同步共用认证代次；主动断开后只能显式连接恢复。
 import type { Client, ClientChannel, SFTPWrapper } from 'ssh2';
-import type { SshAuthMode } from '@ssh-server/shared';
+import type { SshAuthMode, TerminalSize } from '@ssh-server/shared';
+import { openGuardedSshChannel } from './channel-open';
 import { connectSshClient } from './client';
 import {
   connectionIdentity,
@@ -16,7 +17,7 @@ import { CredentialStorageError } from './credential-storage-error';
 import { runExec, type ChannelLike, type ExecOptions, type ExecResult } from './exec';
 import type { PasswordStore } from './password-store';
 import { buildRemoteCommand } from './remote-command';
-import { openSftpChannel } from './sftp';
+import { openSftpChannel, protectSftpChannel } from './sftp';
 
 export type CredentialStatus = { saved: boolean; savingAvailable: boolean; paused: boolean };
 export type ConnectInput = {
@@ -27,10 +28,11 @@ export type ConnectInput = {
   savePassword?: boolean;
 };
 export type SshPool = {
-  fingerprint(alias: string): Promise<string>;
+  fingerprint(alias: string, authMode?: SshAuthMode): Promise<string>;
   identity(alias: string): Promise<string>;
   openExec(target: SshTarget, command: string, signal?: AbortSignal): Promise<ClientChannel>;
-  openSftp(target: SshTarget): Promise<SFTPWrapper>;
+  openSftp(target: SshTarget, guard?: SshChannelGuard): Promise<SFTPWrapper>;
+  openShell(target: SshTarget, options: TerminalSize & { guard: SshChannelGuard }): Promise<ClientChannel>;
   exec(target: SshTarget, cmd: string, opts: ExecOptions): Promise<ExecResult>;
   resolveConnection(target: SshTarget): Promise<ResolvedConnection>;
   connect(input: ConnectInput): Promise<CredentialStatus & { connected: true; authMode: SshAuthMode }>;
@@ -44,6 +46,7 @@ export type SshPool = {
   dispose(): void;
 };
 export type SshPoolDeps = ConnectionDeps & { resolver?: ConnectionResolver; passwordStore?: PasswordStore };
+export type SshChannelGuard = { generation: number; cacheKey: string; signal: AbortSignal };
 type Cached = { alias: string; key: string; pending: Promise<Client> };
 type CredentialAttempt = { generation: number; order: number };
 type CredentialChange = { order: number; owner?: string; generation?: number };
@@ -179,11 +182,15 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
       .catch(() => undefined);
     return pending;
   }
-  async function getClient(target: SshTarget): Promise<Client> {
+  async function getClient(target: SshTarget, guard?: SshChannelGuard): Promise<Client> {
     const alias = targetAlias(target);
     const generation = epoch(alias);
     const config = await resolveConnection(target);
     assertCurrent(alias, generation);
+    if (guard) {
+      guard.signal.throwIfAborted();
+      if (guard.generation !== generation || guard.cacheKey !== config.cacheKey) throw cancelled();
+    }
     const slot = JSON.stringify([alias, config.authMode]);
     const cached = clients.get(slot);
     if (cached?.key === config.cacheKey) return cached.pending;
@@ -291,7 +298,7 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
     }
   }
   return {
-    fingerprint: (alias) => resolver.fingerprint(alias),
+    fingerprint: (alias, authMode) => resolver.fingerprint(alias, authMode),
     identity: (alias) => resolver.identity(alias),
     async openExec(target, command, signal) {
       const alias = targetAlias(target);
@@ -327,12 +334,47 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
       };
     },
     resolveConnection,
-    async openSftp(target) {
+    async openShell(target, { cols, rows, guard }) {
+      const alias = targetAlias(target);
+      guard.signal.throwIfAborted();
+      const client = await getClient(target, guard);
+      assertCurrent(alias, guard.generation);
+      guard.signal.throwIfAborted();
+      return openGuardedSshChannel<ClientChannel>(
+        (done) => client.shell({ term: 'xterm-256color', cols, rows }, done),
+        {
+          signal: guard.signal,
+          current: () => !disposed && !guard.signal.aborted && epoch(alias) === guard.generation,
+          release: (channel) => {
+            channel.on('error', () => undefined);
+            channel.close();
+          },
+        },
+      );
+    },
+    async openSftp(target, guard) {
       const alias = targetAlias(target);
       const generation = epoch(alias);
-      const client = await getClient(target);
+      guard?.signal.throwIfAborted();
+      const client = await getClient(target, guard);
       assertCurrent(alias, generation);
-      const channel = await openSftpChannel(client);
+      const channel = await (guard
+        ? openGuardedSshChannel<SFTPWrapper>(
+            (done) =>
+              client.sftp((error, sftp) => {
+                if (sftp) protectSftpChannel(sftp);
+                done(error, sftp);
+              }),
+            {
+              signal: guard.signal,
+              current: () => !disposed && !guard.signal.aborted && epoch(alias) === guard.generation,
+              release: (late) => {
+                late.on('error', () => undefined);
+                late.end();
+              },
+            },
+          )
+        : openSftpChannel(client));
       try {
         assertCurrent(alias, generation);
         return channel;

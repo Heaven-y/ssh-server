@@ -3,6 +3,26 @@
 /** 前后端协议版本，协议出现不兼容变化时递增 */
 export const PROTOCOL_VERSION = 1;
 
+export {
+  TERMINAL_LIMITS,
+  TerminalTargetSchema,
+  TerminalSizeSchema,
+  TerminalTokenSchema,
+  TerminalBindingRequestSchema,
+  TerminalBindingSchema,
+  TerminalClientMessageSchema,
+  TerminalServerMessageSchema,
+  workspaceTerminalTarget,
+  terminalTargetKey,
+} from './terminal';
+export type {
+  TerminalTarget,
+  TerminalSize,
+  TerminalBinding,
+  TerminalClientMessage,
+  TerminalServerMessage,
+} from './terminal';
+
 export type { AgentEvent } from './events';
 export { ClientMessageSchema } from './protocol';
 export type { ClientMessage, ServerMessage } from './protocol';
