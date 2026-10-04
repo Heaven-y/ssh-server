@@ -1,5 +1,5 @@
 // SSH 连接、保存凭据与同步共用认证代次；主动断开后只能显式连接恢复。
-import type { Client, ClientChannel } from 'ssh2';
+import type { Client, ClientChannel, SFTPWrapper } from 'ssh2';
 import type { SshAuthMode } from '@ssh-server/shared';
 import { connectSshClient } from './client';
 import {
@@ -16,6 +16,7 @@ import { CredentialStorageError } from './credential-storage-error';
 import { runExec, type ChannelLike, type ExecOptions, type ExecResult } from './exec';
 import type { PasswordStore } from './password-store';
 import { buildRemoteCommand } from './remote-command';
+import { openSftpChannel } from './sftp';
 
 export type CredentialStatus = { saved: boolean; savingAvailable: boolean; paused: boolean };
 export type ConnectInput = {
@@ -26,6 +27,8 @@ export type ConnectInput = {
   savePassword?: boolean;
 };
 export type SshPool = {
+  fingerprint(alias: string): Promise<string>;
+  openSftp(target: SshTarget): Promise<SFTPWrapper>;
   exec(target: SshTarget, cmd: string, opts: ExecOptions): Promise<ExecResult>;
   resolveConnection(target: SshTarget): Promise<ResolvedConnection>;
   connect(input: ConnectInput): Promise<CredentialStatus & { connected: true; authMode: SshAuthMode }>;
@@ -286,6 +289,7 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
     }
   }
   return {
+    fingerprint: (alias) => resolver.fingerprint(alias),
     generation: epoch,
     onCredentialsChanged(alias, notify) {
       const callbacks = listeners.get(alias) ?? new Set<() => void>();
@@ -297,6 +301,20 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
       };
     },
     resolveConnection,
+    async openSftp(target) {
+      const alias = targetAlias(target);
+      const generation = epoch(alias);
+      const client = await getClient(target);
+      assertCurrent(alias, generation);
+      const channel = await openSftpChannel(client);
+      try {
+        assertCurrent(alias, generation);
+        return channel;
+      } catch (error) {
+        channel.end();
+        throw error;
+      }
+    },
     connect,
     exec,
     credentialStatus,

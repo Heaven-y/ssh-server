@@ -13,6 +13,9 @@ skills-lock.json
 # Claude Code 本地设置
 .claude/settings.local.json
 
+# 本机技能执行记录、临时验收配置与截图
+.superpowers/
+
 # 环境变量与本地数据
 .env
 .env.*
