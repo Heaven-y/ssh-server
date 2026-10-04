@@ -61,7 +61,6 @@ export function WorkspaceRemoveDialog({
   const client = useQueryClient();
   const [confirmed, setConfirmed] = useState(false);
   const submitting = useRef(false);
-  const mounted = useRef(false);
   const errorElement = useRef<HTMLParagraphElement>(null);
   const preview = useQuery({
     queryKey: queryKeys.workspaceRemoval(workspaceId),
@@ -69,17 +68,12 @@ export function WorkspaceRemoveDialog({
     retry: false,
     gcTime: 0,
   });
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
   const remove = useMutation({
     mutationFn: (input: WorkspaceRemovalInput) => api.removeWorkspace(workspaceId, input),
     onSuccess: async (result) => {
       await finishWorkspaceRemoval(client, workspaceId);
-      if (mounted.current) onRemoved(workspaceId, result);
+      // 宿主可能仍保留独立文件面板；业务收尾不能随弹窗卸载而跳过。
+      onRemoved(workspaceId, result);
     },
     onSettled: () => {
       submitting.current = false;

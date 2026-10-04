@@ -12,6 +12,7 @@ import type { AgentTurnInput } from '../../src/agents/types';
 import { createSessionRegistry } from '../../src/chat/registry';
 import { SessionError } from '../../src/chat/sessions';
 import { TurnManager, type Socket, type TurnManagerDeps } from '../../src/chat/turn-manager';
+import { createWorkspaceActivity } from '../../src/workspaces/activity';
 
 const ws: Workspace = {
   id: 'w1',
@@ -53,6 +54,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 function setup(
   syncOperation?: (workspace: Workspace) => Promise<SyncStatus>,
   capabilities?: TurnManagerDeps['capabilities'],
+  activity?: ReturnType<typeof createWorkspaceActivity>,
 ) {
   const registry = createSessionRegistry();
   const fake = fakeRunTurn();
@@ -78,6 +80,7 @@ function setup(
     sessions,
     capabilities,
     sync,
+    acquireWorkspace: activity?.acquire,
   });
   return { registry, fake, codex, sessions, turns, sync };
 }
@@ -91,6 +94,43 @@ const send = (extra: Record<string, unknown> = {}) => ({
 });
 
 describe('TurnManager', () => {
+  it('准备、运行与轮次同步收尾始终保护工作区，closing拒绝新轮次', async () => {
+    const activity = createWorkspaceActivity();
+    let prepare!: (value: { text: string }) => void;
+    let finishSync!: (value: SyncStatus) => void;
+    const fixture = setup(
+      () =>
+        new Promise((resolve) => {
+          finishSync = resolve;
+        }),
+      {
+        prepare: () =>
+          new Promise((resolve) => {
+            prepare = resolve;
+          }),
+      },
+      activity,
+    );
+    const socket = fakeSocket();
+    const pending = fixture.turns.handle(socket.socket, send());
+    await vi.waitFor(() => expect(prepare).toBeDefined());
+    expect(activity.active(ws.id)).toBe(1);
+    await expect(activity.exclusive(ws.id, async () => undefined)).rejects.toMatchObject({ code: 'workspace_busy' });
+    prepare({ text: 'hi' });
+    await pending;
+    expect(activity.active(ws.id)).toBe(1);
+    fixture.fake.turns[0]!.finish();
+    await vi.waitFor(() => expect(finishSync).toBeDefined());
+    expect(activity.active(ws.id)).toBe(1);
+    finishSync({ phase: 'ready', settings: SyncSettingsSchema.parse({}), deletions: [], conflicts: [] });
+    await vi.waitFor(() => expect(activity.active(ws.id)).toBe(0));
+    await activity.exclusive(ws.id, async () => {
+      await fixture.turns.handle(socket.socket, send({ clientTurnId: 'c2' }));
+      expect(fixture.fake.turns).toHaveLength(1);
+      expect(socket.sent.at(-1)).toMatchObject({ type: 'error' });
+    });
+    await fixture.turns.dispose();
+  });
   it('原生能力解析在启动前完成，纯上下文命令不触发服务器同步', async () => {
     const prepare = vi.fn(async () => ({
       text: '',

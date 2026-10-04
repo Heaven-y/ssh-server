@@ -15,6 +15,8 @@ function workspaceId(request: FastifyRequest): string | undefined {
 export function registerWorkspaceActivity(app: FastifyInstance, activity: WorkspaceActivity) {
   const leases = new WeakMap<FastifyRequest, Lease>();
   app.addHook('onRoute', (route) => {
+    // 静态插件使用回调发送文件；无租约的路由不能改为async并提前结束响应。
+    if (!route.url.startsWith('/api/workspaces/:id')) return;
     const handler = route.handler;
     route.handler = async function (request, reply) {
       try {
@@ -39,7 +41,8 @@ export function registerWorkspaceActivity(app: FastifyInstance, activity: Worksp
     }
     try {
       activity.assertOpen(id);
-      if (request.headers.upgrade?.toLowerCase() !== 'websocket') {
+      // 插件标记来自真实Node升级流程；普通HTTP可携带Upgrade头，仍须占租约。
+      if (request.ws !== true) {
         const release = activity.acquire(id);
         const lease: Lease = { release, handlerDone: false, closed: reply.raw.destroyed };
         leases.set(request, lease);
