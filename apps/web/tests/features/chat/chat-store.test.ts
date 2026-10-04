@@ -420,7 +420,7 @@ describe('chat-store', () => {
     useChat.getState().send('新会话');
     expect(sent.at(-1)).toMatchObject({
       agent: 'claude',
-      model: 'claude-model',
+      model: undefined,
       reasoningEffort: undefined,
       sessionId: undefined,
     });

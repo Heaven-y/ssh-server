@@ -5,11 +5,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   SyncSettingsSchema,
+  ProductSettingsSchema,
   type WorkspaceSetupVerification,
   type WorkspaceSetupResult,
   type WorkspaceInput,
 } from '@ssh-server/shared';
-import { api } from '../../../src/lib/api';
+import { api, queryKeys } from '../../../src/lib/api';
 import { useWorkspaceSetup } from '../../../src/features/workspaces/setup/use-workspace-setup';
 import { useCancelableRequest } from '../../../src/features/workspaces/setup/use-cancelable-request';
 
@@ -43,6 +44,7 @@ const clients: QueryClient[] = [];
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   clients.push(client);
+  client.setQueryData(queryKeys.productSettings, { settings: ProductSettingsSchema.parse({}), revision: 'missing' });
   const callbacks = { onCreated: vi.fn(), onCancel: vi.fn(), onBusyChange: vi.fn() };
   const wrapper = ({ children }: { children: ReactNode }) => (
     <StrictMode>
@@ -53,6 +55,10 @@ function setup() {
   return { ...hook, client, callbacks };
 }
 beforeEach(() => {
+  vi.spyOn(api, 'readProductSettings').mockResolvedValue({
+    settings: ProductSettingsSchema.parse({}),
+    revision: 'missing',
+  });
   connection.verified = true;
   vi.spyOn(api, 'revokeWorkspaceVerification').mockResolvedValue({ revoked: true });
   vi.spyOn(api, 'verifyWorkspace').mockResolvedValue({ ...ticket, expiresAt: Date.now() + 300000 });

@@ -127,7 +127,11 @@ async function main(): Promise<void> {
     bindings: terminalBindings,
     assertWorkspaceOpen: activity.assertOpen,
   });
-  const resources = createResourcesService({ store, pool });
+  const resources = createResourcesService({
+    store,
+    pool,
+    settings: async () => (await productSettings.read()).settings,
+  });
   const sync = createSyncManager({
     configDir: config.configDir,
     driver: createRcloneDriver({ configDir: config.configDir, pool }),

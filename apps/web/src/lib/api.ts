@@ -46,6 +46,9 @@ import type {
   WorkspaceRemovalPreview,
   WorkspaceRemovalInput,
   WorkspaceRemovalResult,
+  ProductSettingsDocument,
+  ProductSettingsInput,
+  EnvironmentReport,
 } from '@ssh-server/shared';
 
 export type { SessionSummary } from '@ssh-server/shared';
@@ -104,6 +107,12 @@ const postSync = (id: string, suffix = '', body: unknown = {}) =>
   request<SyncStatus>(syncUrl(id) + suffix, { method: 'POST', body: JSON.stringify(body) });
 
 export const api = {
+  readProductSettings: (signal?: AbortSignal) =>
+    request<ProductSettingsDocument>('/api/settings/product', { signal, cache: 'no-store' }),
+  saveProductSettings: (input: ProductSettingsInput) =>
+    request<ProductSettingsDocument>('/api/settings/product', { method: 'PUT', body: JSON.stringify(input) }),
+  detectEnvironment: (signal?: AbortSignal) =>
+    request<EnvironmentReport>('/api/settings/environment', { method: 'POST', body: '{}', signal }),
   readResources: (target: TerminalTarget, signal?: AbortSignal) =>
     request<ResourceSnapshot>(
       `/api/workspaces/${encodeURIComponent(target.workspaceId)}/resources?target=${encodeURIComponent(JSON.stringify(target))}`,
@@ -401,6 +410,7 @@ export const api = {
 
 /** react-query 的缓存键，集中定义便于失效刷新 */
 export const queryKeys = {
+  productSettings: ['product-settings'] as const,
   agentCapabilities: (workspaceId: string, agent: AgentKind) => ['agent-capabilities', workspaceId, agent] as const,
   workspaces: ['workspaces'] as const,
   workspaceRemoval: (id: string) => ['workspace-removal', id] as const,

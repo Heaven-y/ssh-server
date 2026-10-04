@@ -32,6 +32,7 @@ export const resourceTiming = (settings: ProductSettings['resources']) => ({
   timeoutMs: settings.timeoutSeconds * 1000,
   staleMs: Math.max(15000, settings.intervalSeconds * 3000),
 });
+export type ResourceTiming = ReturnType<typeof resourceTiming>;
 export type EnvironmentTool = {
   name: 'Node.js' | 'Claude Code' | 'Codex' | 'git' | 'rclone';
   available: boolean;

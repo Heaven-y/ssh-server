@@ -48,6 +48,7 @@ export type {
   ProductSettingsInput,
   EnvironmentTool,
   EnvironmentReport,
+  ResourceTiming,
 } from './product-settings';
 export { MAX_EDITABLE_FILE_BYTES } from './files';
 export type { WorkspaceDirectory, WorkspaceFileEntry, WorkspaceFile, WorkspaceFileInput } from './files';

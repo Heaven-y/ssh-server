@@ -21,19 +21,19 @@
 文件：shared/product-settings.ts/index.ts；server/settings/{product-settings,environment}.ts、http/product-settings.routes.ts、main.ts。
 接口：ProductSettingsSchema、ProductSettingsDocument={settings,revision}、ProductSettingsInput={settings,revision}；createProductSettings({configDir}).read()/save(input)；detectEnvironment(signal?)；GET/PUT /api/settings/product，POST /api/settings/environment。
 
-- [ ] 实现默认读取、严格校验、摘要复验、串行原子保存；缺失不落盘、坏文件不覆盖。
-- [ ] 有界工具检测并接线访问控制；每工具5秒/2KiB，只返回版本/通用失败。
-- [ ] shared/server类型、相关lint/格式及已有设置/访问控制回归通过，提交协议与设计/计划。
+- [x] 实现默认读取、严格校验、摘要复验、串行原子保存；缺失不落盘、坏文件不覆盖。
+- [x] 有界工具检测并接线访问控制；每工具5秒/2KiB，只返回版本/通用失败。
+- [x] shared/server类型、相关lint/格式及已有设置/访问控制回归通过，提交协议与设计/计划。
 
 ## 任务2：调度及新建默认接线
 
 文件：web/settings/use-product-settings.ts；chat/chat-store.ts、AgentControls.tsx；workspaces/setup/use-workspace-setup.ts；sync/{scheduler,use-workspace-sync,SyncPanel}.ts(x)；resources/ResourcesPanel.tsx；server/resources/{cache,service}.ts、main.ts。
 接口：useProductSettings查询产品document；chat.setDefaults(settings)、模型来源default/explicit；scheduleVisibleSync options.intervalMs/restart无重复即时tick；ResourceCache.get(...,timing)和service settings依赖。
 
-- [ ] 新会话与初始空白加载遵守迟到/来源规则，历史不接受隐式默认覆盖。
-- [ ] 新向导复制sync快照，加载失败可重试，编辑后不受迟到设置影响。
-- [ ] 动态同步调度及资源缓存/超时/过期，页面隐藏暂停且同key不重叠。
-- [ ] 相关类型/静态检查及既有chat/scheduler/resources/setup回归，提交。
+- [x] 新会话与初始空白加载遵守迟到/来源规则，历史不接受隐式默认覆盖。
+- [x] 新向导复制sync快照，加载失败可重试，编辑后不受迟到设置影响。
+- [x] 动态同步调度及资源缓存/超时/过期，页面隐藏暂停且同key不重叠。
+- [x] 相关类型/静态检查及既有chat/scheduler/resources/setup回归，提交。
 
 ## 任务3：设置界面与环境报告
 
