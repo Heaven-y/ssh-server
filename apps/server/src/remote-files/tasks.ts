@@ -33,6 +33,7 @@ export function createFileTasks(deps: Deps) {
   const dir = path.join(deps.configDir, 'remote-file-tasks');
   const records = new Map<string, Record>();
   const controllers = new Map<string, AbortController>();
+  const settling = new Set<string>();
   const executions = new Map<string, Promise<unknown>>();
   const submissions = new Map<string, Promise<RemoteFileTask>>();
   const locks = createPathLocks();
@@ -92,6 +93,10 @@ export function createFileTasks(deps: Deps) {
     Object.assign(record.task, values, { updatedAt: Date.now() });
     await persist(record);
   }
+  async function settle(record: Record, values: Partial<RemoteFileTask>) {
+    settling.add(record.task.id);
+    await update(record, values);
+  }
   async function perform(record: Record, controller: AbortController) {
     const { action } = record;
     const paths = [action.public.source, action.public.destination].filter((value): value is string => !!value);
@@ -139,7 +144,7 @@ export function createFileTasks(deps: Deps) {
           await execute();
           await remoteCompleted();
         }
-        await update(record, {
+        await settle(record, {
           phase: syncCompleted ? 'completed' : 'sync_pending',
           remoteCompleted: true,
           syncCompleted,
@@ -164,12 +169,13 @@ export function createFileTasks(deps: Deps) {
         : started
           ? '操作已中止或结果未确认，部分文件可能已改变；请核对源与目标。'
           : remoteFilesError(error).message;
-      await update(record, { phase, message }).catch(() => {
+      await settle(record, { phase, message }).catch(() => {
         record.task.phase = 'needs_check';
         record.task.message = '任务状态无法保存，请恢复本机配置目录后核对远端结果。';
       });
     } finally {
       controllers.delete(record.task.id);
+      settling.delete(record.task.id);
     }
   }
   async function submit(workspaceId: string, preflightId: string) {
@@ -216,7 +222,7 @@ export function createFileTasks(deps: Deps) {
         record.dispatched === false
           ? await deps.coordinator!.abandon(record.task.id, record.action, signal)
           : await deps.coordinator!.recover(record.task.id, record.action, signal);
-      await update(record, {
+      await settle(record, {
         syncCompleted: complete,
         phase:
           record.dispatched === false && complete
@@ -232,13 +238,14 @@ export function createFileTasks(deps: Deps) {
       });
       return { ...record.task };
     } catch (error) {
-      await update(record, {
+      await settle(record, {
         phase: record.task.remoteCompleted ? 'sync_pending' : record.dispatched === false ? 'failed' : 'needs_check',
         message: '同步恢复未完成，旧路径仍不会自动上传；请核对连接、编辑与冲突后重试。',
       }).catch(() => undefined);
       throw error;
     } finally {
       controllers.delete(record.task.id);
+      settling.delete(record.task.id);
     }
   }
   return {
@@ -305,10 +312,11 @@ export function createFileTasks(deps: Deps) {
     },
     async recover(workspaceId: string, id: string) {
       await ready;
-      // 取消请求返回后清理可能仍在进行；明确重试等待其结束，再启动一次恢复。
-      if (controllers.get(id)?.signal.aborted) await executions.get(id)?.catch(() => undefined);
-      if (controllers.has(id)) return { ...get(workspaceId, id).task };
       const record = get(workspaceId, id);
+      const active = controllers.get(id);
+      // 终态先更新内存再持久化；取消或失败的尾部清理均须等待，不能吞掉明确恢复。
+      if (active && (active.signal.aborted || settling.has(id))) await executions.get(id)?.catch(() => undefined);
+      if (controllers.has(id)) return { ...record.task };
       if (!deps.coordinator || !record.action.public.affectedWorkspaces.length)
         throw new RemoteFilesError('sync_pending');
       if (disposed || controllers.size >= 64) throw new RemoteFilesError('too_many_tasks');
