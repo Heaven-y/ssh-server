@@ -12,17 +12,31 @@ import { createTerminalBindings } from '../../apps/server/src/terminal/binding';
 import { createTerminalManager } from '../../apps/server/src/terminal/manager';
 import { resolveTerminalDirectory } from '../../apps/server/src/terminal/directory';
 import { startTerminalFixture } from './terminal-fixture';
+import { createResourceFixture } from './resource-fixture';
+import { createResourcesService } from '../../apps/server/src/resources/service';
+import { registerResourcesRoutes } from '../../apps/server/src/http/resources.routes';
 
 async function main() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'ssh-terminal-'));
+  const metrics = createResourceFixture();
   const fixture = await startTerminalFixture({
     configDir: path.join(root, 'config'),
     workspaceDir: path.join(root, 'workspace'),
+    exec: metrics.exec,
   });
   const { id: _id, ...workspaceInput } = fixture.workspace;
   await fixture.store.create({ ...workspaceInput, name: '另一个工作区' });
   const bindings = createTerminalBindings(fixture);
   const terminals = createTerminalManager({ ...fixture, bindings });
+  const resources = createResourcesService(fixture);
+  const syncStatus = () =>
+    Promise.resolve({
+      phase: 'uninitialized',
+      deletions: [],
+      conflicts: [],
+      settings: SyncSettingsSchema.parse({}),
+    });
+  const versionStatus = () => Promise.resolve({ initialized: false, revision: 'fixture', changes: [], excluded: [] });
   const token = randomBytes(24).toString('hex');
   const app = await buildApp({
     token,
@@ -33,19 +47,17 @@ async function main() {
     routes: (server) => {
       registerSshRoutes(server, fixture);
       registerTerminalRoutes(server, { terminals, bindings });
+      registerResourcesRoutes(server, resources);
       server.get('/api/workspaces/:id/sessions', () => Promise.resolve([]));
-      server.get('/api/workspaces/:id/sync', () =>
-        Promise.resolve({
-          phase: 'uninitialized',
-          deletions: [],
-          conflicts: [],
-          settings: SyncSettingsSchema.parse({}),
-        }),
-      );
-      server.get('/api/workspaces/:id/versions', () =>
-        Promise.resolve({ initialized: false, revision: 'fixture', changes: [], excluded: [] }),
-      );
-      server.get('/__fixture', () => Promise.resolve({ shells: fixture.shells }));
+      server.get('/api/workspaces/:id/sync', syncStatus);
+      server.post('/api/workspaces/:id/sync', syncStatus);
+      server.get('/api/workspaces/:id/versions', versionStatus);
+      server.post('/api/workspaces/:id/versions/initialize', versionStatus);
+      server.get('/__fixture', () => Promise.resolve({ shells: fixture.shells, resources: metrics.state }));
+      server.post<{ Body: { failure: boolean } }>('/__fixture/resource-failure', (req) => {
+        metrics.state.failure = req.body.failure;
+        return metrics.state;
+      });
       server.get('/__fixture/sftp', async () => {
         const connection = await fixture.pool.resolveConnection({
           alias: fixture.workspace.sshHost,

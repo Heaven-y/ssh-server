@@ -222,12 +222,19 @@ it('排队后配置改变会拒绝执行，不误标远端已经修改', async (
 });
 
 it('重启不重放未完成操作，损坏记录不遮蔽有效任务，目标存在不能冒充复制完成', async () => {
+  let dispatched!: () => void;
+  const started = new Promise<void>((resolve) => {
+    dispatched = resolve;
+  });
   const fixture = await tasksFixture(async () => {
+    dispatched();
     throw new Error('中断');
   });
   const task = await fixture.tasks.submit(ws.id, fixture.action.public.id);
-  await vi.waitFor(async () => expect((await fixture.tasks.status(ws.id, task.id)).phase).toBe('needs_check'));
+  // 等待实际派发和持久化收尾，不依赖Windows磁盘在默认1秒轮询内完成。
+  await started;
   await fixture.tasks.dispose();
+  expect((await fixture.tasks.status(ws.id, task.id)).phase).toBe('needs_check');
   const file = path.join(fixture.dir, task.id + '.json');
   const record = JSON.parse(await readFile(file, 'utf8'));
   record.task.phase = 'copying';
