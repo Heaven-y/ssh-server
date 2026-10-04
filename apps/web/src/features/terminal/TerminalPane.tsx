@@ -7,18 +7,20 @@ import { TerminalPasteDialog } from './TerminalDialogs';
 
 export type { TerminalPaneStatus } from './runtime';
 function PaneHeader({
+  name,
   target,
   status,
   copy,
   paste,
 }: {
+  name: string;
   target: TerminalTarget;
   status: TerminalPaneStatus;
   copy: () => void;
   paste: () => void;
 }) {
   const interactive = status.phase === 'ready' || status.phase === 'paused';
-  const label = `${target.sshHost} · ${target.authMode === 'password' ? '密码' : '私钥'} · 起始目录 ${status.startDir ?? target.remoteDir}`;
+  const label = `${name} · ${target.sshHost} · ${target.authMode === 'password' ? '密码' : '私钥'} · 起始目录 ${status.startDir ?? target.remoteDir}`;
   return (
     <header className="flex shrink-0 items-center gap-2 overflow-hidden border-b border-border px-2 py-1 text-xs">
       <span className="min-w-0 flex-1 truncate" title={label}>
@@ -41,6 +43,7 @@ function PaneHeader({
   );
 }
 export function TerminalPane({
+  label,
   paneId,
   target,
   binding,
@@ -50,6 +53,7 @@ export function TerminalPane({
   onState,
   onFocus,
 }: {
+  label: string;
   paneId: string;
   target: TerminalTarget;
   binding: string;
@@ -100,12 +104,13 @@ export function TerminalPane({
   return (
     <section
       data-terminal-pane={paneId}
-      aria-label={`终端 ${target.sshHost}`}
+      aria-label={`${label} · ${target.sshHost}`}
       style={{ ...style, display: visible ? undefined : 'none' }}
       className={`absolute flex min-h-0 min-w-0 flex-col bg-background ${active ? 'ring-1 ring-inset ring-accent' : ''}`}
       onFocusCapture={() => onFocus(paneId)}
     >
       <PaneHeader
+        name={label}
         target={target}
         status={status}
         copy={() => {
@@ -115,7 +120,7 @@ export function TerminalPane({
           void runtime.current?.readClipboard();
         }}
       />
-      <div ref={host} className="min-h-0 min-w-0 flex-1 overflow-hidden px-1 pt-1" />
+      <div ref={host} className="terminal-host min-h-0 min-w-0 flex-1 overflow-hidden px-1 pt-1" />
       {(notice || pending) && (
         <div role="status" className="flex shrink-0 items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
           <span className="min-w-0 flex-1 truncate">{pending ? '粘贴正在发送或等待缓冲恢复' : notice}</span>

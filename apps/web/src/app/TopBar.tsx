@@ -15,11 +15,15 @@ export function TopBar({
   onOpenSettings,
   onOpenFiles,
   filesOpen,
+  onOpenTerminal,
+  terminalOpen,
 }: {
   workspace?: Workspace;
   onOpenSettings(): void;
   onOpenFiles(): void;
   filesOpen: boolean;
+  onOpenTerminal(): void;
+  terminalOpen: boolean;
 }) {
   const connection = useChat((s) => s.connection);
   const st = STATUS[connection];
@@ -38,6 +42,16 @@ export function TopBar({
         </span>
       )}
       <div className="ml-auto flex shrink-0 items-center gap-1 pr-4">
+        <button
+          type="button"
+          className={buttonClass('ghost')}
+          disabled={!workspace && !terminalOpen}
+          aria-expanded={terminalOpen}
+          onClick={onOpenTerminal}
+        >
+          <TerminalSquare aria-hidden className="size-4" />
+          终端
+        </button>
         <button
           type="button"
           className={buttonClass('ghost')}

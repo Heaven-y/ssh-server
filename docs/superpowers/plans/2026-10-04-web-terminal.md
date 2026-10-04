@@ -113,12 +113,12 @@ type TerminalServerMessage =
 
 **接口：** API 新增 `bindTerminalTarget(target: TerminalTarget, options?: { signal?: AbortSignal; previousBinding?: string }): Promise<TerminalBinding>`。`createTerminalConnection({ target, binding, size, callbacks })` 返回 `input(bytes: Uint8Array): boolean`、`resize(size: TerminalSize): void`、`ack(bytes: number): void`、`close(): void`；callbacks 为 `output(bytes)`、`message(TerminalServerMessage)`、`closed()`，内部不自动重连。`TerminalPane({ paneId, target, binding, visible, active, onState }): ReactNode`。
 
-- [ ] 安装锁定依赖；连接用原生 WebSocket、`binaryType = 'arraybuffer'`，open 首帧后等待 ready。严格校验服务端控制消息，结束状态单向转换；明确新建连接创建新连接对象，旧关闭事件不能覆盖新实例状态。
-- [ ] xterm 每窗格只创建一次，加载 FitAddon、UTF-8 onData/原始 onBinary、输出 write 回调 ack；首次可见布局测量后才发送 open，未能测量用80列/24行。ResizeObserver/rAF 仅在可见且行列变更时发送最新有效尺寸，所有 disposer 随实际窗格关闭执行。
-- [ ] OSC 52 注册消费处理器禁止写剪贴板，不加载自动链接插件，不使用远端标题覆盖目标；设置语义色、JetBrains Mono、2,000 回滚行、屏幕阅读器模式。
-- [ ] 统一键盘和菜单粘贴入口：CR/LF 均弹出预览确认，确认后按原始字节分块且不追加 Enter；至多持有 256 KiB 未发送粘贴，超出时说明限制并要求缩小，不截断执行。暂停等待 drain/发送缓冲恢复；断线、新连接和取消清空未发送部分，说明已发送部分无法撤回。
-- [ ] 复制只取选择文本，`Ctrl+Shift+C/V` 及菜单触发权限调用；`Ctrl+C` 保留中断，输入法组字时不触发应用快捷键。粘贴事件先阻止 xterm 默认直传，避免跳过多行确认；权限失败显示普通粘贴提示。
-- [ ] 自查断线不重放、exit 不被 close 覆盖和浏览器发送缓冲门禁；运行 web 类型/相关文件静态检查、`npm run build -w @ssh-server/web`，通过后提交前端通道阶段。
+- [x] 安装锁定依赖；连接用原生 WebSocket、`binaryType = 'arraybuffer'`，open 首帧后等待 ready。严格校验服务端控制消息，结束状态单向转换；明确新建连接创建新连接对象，旧关闭事件不能覆盖新实例状态。
+- [x] xterm 每窗格只创建一次，加载 FitAddon、UTF-8 onData/原始 onBinary、输出 write 回调 ack；首次可见布局测量后才发送 open，未能测量用80列/24行。ResizeObserver/rAF 仅在可见且行列变更时发送最新有效尺寸，所有 disposer 随实际窗格关闭执行。
+- [x] OSC 52 注册消费处理器禁止写剪贴板，不加载自动链接插件，不使用远端标题覆盖目标；设置语义色、JetBrains Mono、2,000 回滚行、屏幕阅读器模式。
+- [x] 统一键盘和菜单粘贴入口：CR/LF 均弹出预览确认，确认后按原始字节分块且不追加 Enter；至多持有 256 KiB 未发送粘贴，超出时说明限制并要求缩小，不截断执行。暂停等待 drain/发送缓冲恢复；断线、新连接和取消清空未发送部分，说明已发送部分无法撤回。
+- [x] 复制只取选择文本，`Ctrl+Shift+C/V` 及菜单触发权限调用；`Ctrl+C` 保留中断，输入法组字时不触发应用快捷键。粘贴事件先阻止 xterm 默认直传，避免跳过多行确认；权限失败显示普通粘贴提示。
+- [x] 自查断线不重放、exit 不被 close 覆盖和浏览器发送缓冲门禁；运行 web 类型/相关文件静态检查、`npm run build -w @ssh-server/web`，通过后提交前端通道阶段。
 
 ### 任务 5：稳定实例的多标签、分屏和可调主区
 
@@ -126,12 +126,12 @@ type TerminalServerMessage =
 
 **接口：** `TerminalLayoutNode = { kind: 'pane'; paneId: string } | { kind: 'split'; id: string; orientation: 'horizontal' | 'vertical'; children: [TerminalLayoutNode, TerminalLayoutNode] }`。`splitPane(tree, paneId, nextPaneId, orientation): TerminalLayoutNode`、`removePane(tree, paneId): TerminalLayoutNode | undefined`、`paneIds(tree): string[]`。`TerminalDock({ workspace, visible, onHide }): ReactNode` 只在明确创建入口使用当前 workspace；标签保存固定 target/binding，不订阅当前聊天来改写已有标签。
 
-- [ ] 内存 store 管理标签、树、活动 paneId、打开时的工作区名称与状态；新标签请求绑定，新增分屏及“新建连接”用标签原目标和 previousBinding 刷新，目标/配置变化则拒绝沿用标签。已有窗格冻结开启时的 binding，刷新不修改它们的连接；新 shell 使用新 paneId，旧回调不能改写新实例。
-- [ ] 用 4.x `Group`、`Panel`、`Separator` 渲染布局槽位，行列方向分别为 horizontal/vertical；尺寸百分比写显式字符串，数值为像素。布局树只管理槽位，全部 `TerminalPane` 在稳定宿主下按 paneId 渲染为同级元素，根据槽位测量定位；新增/折叠嵌套 Group 不重挂原 xterm。
-- [ ] 标签/窗格关闭使用明确 shell 断开确认，已结束窗格直接关闭；叶子删除折叠树，恢复相邻窗格焦点。标签、操作菜单及分隔线键盘可用，控制区不截获终端普通按键。
-- [ ] App 左侧栏外的主区使用垂直分栏，上方保留聊天/文件，下方默认 40% 终端；至少各 240px，空间不足用覆盖层。收起、最大化与跨断点只改同一内容子树的样式/布局；顶栏首次打开才 lazy 加载，已开启 Dock 不随隐藏/聊天变化卸载。
-- [ ] 宽度不足时只显示活动窗格，其余保持挂载；隐藏时忽略零尺寸，恢复后 fit；标题固定显示工作区、Host、认证方式、“起始目录”和文字状态，`cd` 不伪造当前目录。
-- [ ] 自查 stable paneId/宿主、4 窗格限制及默认目录/焦点语义；运行 web 类型/相关文件静态检查和 web build，通过后提交布局及正式文档接线阶段，仍不标完整验收。
+- [x] 内存 store 管理标签、树、活动 paneId、打开时的工作区名称与状态；新标签请求绑定，新增分屏及“新建连接”用标签原目标和 previousBinding 刷新，目标/配置变化则拒绝沿用标签。已有窗格冻结开启时的 binding，刷新不修改它们的连接；新 shell 使用新 paneId，旧回调不能改写新实例。
+- [x] 用 4.x `Group`、`Panel`、`Separator` 渲染布局槽位，行列方向分别为 horizontal/vertical；尺寸百分比写显式字符串，数值为像素。布局树只管理槽位，全部 `TerminalPane` 在稳定宿主下按 paneId 渲染为同级元素，根据槽位测量定位；新增/折叠嵌套 Group 不重挂原 xterm。
+- [x] 标签/窗格关闭使用明确 shell 断开确认，已结束窗格直接关闭；叶子删除折叠树，恢复相邻窗格焦点。标签、操作菜单及分隔线键盘可用，控制区不截获终端普通按键。
+- [x] App 左侧栏外的主区使用垂直分栏，上方保留聊天/文件，下方默认 40% 终端；至少各 240px，空间不足用覆盖层。收起、最大化与跨断点只改同一内容子树的样式/布局；顶栏首次打开才 lazy 加载，已开启 Dock 不随隐藏/聊天变化卸载。
+- [x] 宽度不足时只显示活动窗格，其余保持挂载；隐藏时忽略零尺寸，恢复后 fit；标题固定显示工作区、Host、认证方式、“起始目录”和文字状态，`cd` 不伪造当前目录。
+- [x] 自查 stable paneId/宿主、4 窗格限制及默认目录/焦点语义；运行 web 类型/相关文件静态检查和 web build，通过后提交布局及正式文档接线阶段，仍不标完整验收。
 
 ### 任务 6：核心 Review、最少回归与网页验收
 
