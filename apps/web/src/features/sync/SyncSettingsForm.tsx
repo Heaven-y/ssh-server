@@ -6,10 +6,16 @@ export function SyncSettingsForm({
   settings,
   busy,
   save,
+  defaultOpen = false,
+  saveLabel = '保存规则',
+  onDirtyChange,
 }: {
   settings: SyncSettings;
   busy: boolean;
   save(settings: SyncSettings): void;
+  defaultOpen?: boolean;
+  saveLabel?: string;
+  onDirtyChange?(dirty: boolean): void;
 }) {
   const id = useId();
   const [size, setSize] = useState(String(settings.maxFileBytes / 1024 / 1024));
@@ -26,10 +32,11 @@ export function SyncSettingsForm({
       return;
     }
     setError('');
+    onDirtyChange?.(false);
     save(parsed.data);
   };
   return (
-    <details className="mt-2 text-xs">
+    <details open={defaultOpen || undefined} className="mt-2 text-xs">
       <summary className="w-fit cursor-pointer rounded px-1 py-2 text-muted-foreground">同步过滤设置</summary>
       <form
         aria-label="同步过滤设置"
@@ -49,7 +56,10 @@ export function SyncSettingsForm({
             step="any"
             value={size}
             disabled={busy}
-            onChange={(event) => setSize(event.target.value)}
+            onChange={(event) => {
+              setSize(event.target.value);
+              onDirtyChange?.(true);
+            }}
             required
           />
         </div>
@@ -62,7 +72,10 @@ export function SyncSettingsForm({
             className={inputClass}
             value={extensions}
             disabled={busy}
-            onChange={(event) => setExtensions(event.target.value)}
+            onChange={(event) => {
+              setExtensions(event.target.value);
+              onDirtyChange?.(true);
+            }}
           />
         </div>
         <p className="leading-5 text-muted-foreground sm:col-span-2">
@@ -74,7 +87,7 @@ export function SyncSettingsForm({
           </p>
         )}
         <button type="submit" disabled={busy} className={`${buttonClass('outline')} w-fit`}>
-          保存规则
+          {saveLabel}
         </button>
       </form>
     </details>
