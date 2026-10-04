@@ -7,6 +7,7 @@ import {
   type SlashCommand,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { ContextUsage } from '@ssh-server/shared';
+import { resolveClaudeExecutable } from './claude-launch';
 
 /** 控制能力可选，已有只提供迭代与中断的测试替身仍可运行普通对话。 */
 export type ClaudeQuery = AsyncIterable<unknown> & {
@@ -17,7 +18,14 @@ export type ClaudeQuery = AsyncIterable<unknown> & {
   getContextUsage?(options: { detail: 'summary' }): Promise<unknown>;
 };
 export type QueryFn = (params: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => ClaudeQuery;
-export const nativeClaudeQuery: QueryFn = (params) => query(params);
+export const nativeClaudeQuery: QueryFn = (params) =>
+  query({
+    ...params,
+    options: {
+      ...params.options,
+      pathToClaudeCodeExecutable: params.options.pathToClaudeCodeExecutable ?? resolveClaudeExecutable(),
+    },
+  });
 export const CLAUDE_CONTROL_TIMEOUT_MS = 10_000;
 export const CLAUDE_SUMMARY_TIMEOUT_MS = 3_000;
 

@@ -56,6 +56,7 @@ export function Composer() {
   const sessionId = useChat((s) => s.sessionId);
   const managing = useChat(managementPending);
   const send = useChat((s) => s.send);
+  const touchDraft = useChat((s) => s.touchDraft);
   const restriction = selectionRestriction(selection, sessionId, text);
   const busy = running || loading || managing;
   const empty = !text.trim() && !selection;
@@ -77,7 +78,10 @@ export function Composer() {
         <ComposerInput
           id={id}
           text={text}
-          onChange={setText}
+          onChange={(value) => {
+            touchDraft();
+            setText(value);
+          }}
           onSend={submit}
           busy={busy}
           placeholder={placeholder(connected, selection?.argumentHint)}

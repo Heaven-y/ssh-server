@@ -266,7 +266,7 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 
 ### 5.11 metrics：服务器资源采样
 
-本地后端复用 SSH 连接执行固定的只读采样命令，解析为结构化状态，通过工作区 WebSocket 事件推送前端；不经 Agent，不调用模型，不触发对话。
+本地后端复用 SSH 连接执行固定的只读采样命令，解析为结构化状态，通过固定工作区HTTP请求读取缓存/采样结果；不经 Agent，不调用模型，不触发对话。
 
 | 指标 | 数据来源 | 边界 |
 |---|---|---|
@@ -313,6 +313,16 @@ local/remote提供只读草稿目录浏览，每页200项、最多32组、15分�
 verification生成五分钟/64项一次性快照票，绑定配置、认证代次、连接cacheKey、本地根身份及远端规范路径。生产POST工作区要求该票及首次同步确认；创建开始和store串行队列写盘前均复验，每轮race截止可释放挂起resolver。远端检查结束重新lstat/realpath，rclone拒绝逻辑/物理根重定向。最后检查之后的任意外部修改不属于已锁定保证。
 
 保存是提交点，之后调用既有sync.initialize，真实失败/冲突保留工作区；不以HTTP30秒截止伪造首次同步失败。网页取消撤票、关闭草稿与清DOM密码；创建mutation完成后刷新列表，外部卸载不自动切换工作区。见[验收](../guides/workspace-setup-acceptance.md)和设计W01–W15。
+
+### 5.14 settings：产品偏好与环境检测
+
+`shared/product-settings`定义严格产品设置与衍生resourceTiming；`settings/product-settings`在既有配置目录独立保存JSON，复用safe-file目录/文件身份、内容摘要和原子替换，读写队列串行。GET/PUT返回document和revision，缺失默认只读，坏文件503、陈旧409，接口禁止缓存并沿用本机访问控制。
+
+网页共享query管理偏好，实际window focus监听按QueryClient去重；保存发布新document前取消旧GET。产品编辑器单独保留读取基线/草稿，不被后台刷新覆盖。产品/原生配置视图仅挂载一个dialog，原生编辑器按需加载，退出清理敏感内存。
+
+chat-store区分default/explicit模型来源，新会话复制默认，历史清除默认覆盖，首次迟到仅应用未操作空白。新向导复制一次有效sync快照，没有快照时设置读取失败阻止继续。同步调度替换旧计时器而不增加立即同步；资源后端和网页消费同一间隔/超时/过期参数，缓存键不包含参数，成功有效期按当前间隔重算，失败保留退避。
+
+环境POST仅在用户点击时并行执行现有版本参数，每工具5秒/2KiB；只回传版本或通用失败。Claude SDK 0.3.286平台原生路径在claude-launch统一，并传给query和检测；Codex沿用实际启动resolver，git/rclone沿用现有运行入口。不执行模型、SSH、安装或初始化。裁定见[D23](decisions.md)及[产品P01–P11](../superpowers/specs/2026-10-05-product-settings-design.md)，证据见[设置验收](../guides/product-settings-acceptance.md)。
 
 ## 6. 关键流程
 
