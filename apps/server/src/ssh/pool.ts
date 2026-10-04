@@ -17,7 +17,7 @@ import { CredentialStorageError } from './credential-storage-error';
 import { runExec, type ChannelLike, type ExecOptions, type ExecResult } from './exec';
 import type { PasswordStore } from './password-store';
 import { buildRemoteCommand } from './remote-command';
-import { openSftpChannel } from './sftp';
+import { openSftpChannel, protectSftpChannel } from './sftp';
 
 export type CredentialStatus = { saved: boolean; savingAvailable: boolean; paused: boolean };
 export type ConnectInput = {
@@ -28,7 +28,7 @@ export type ConnectInput = {
   savePassword?: boolean;
 };
 export type SshPool = {
-  fingerprint(alias: string): Promise<string>;
+  fingerprint(alias: string, authMode?: SshAuthMode): Promise<string>;
   identity(alias: string): Promise<string>;
   openExec(target: SshTarget, command: string, signal?: AbortSignal): Promise<ClientChannel>;
   openSftp(target: SshTarget, guard?: SshChannelGuard): Promise<SFTPWrapper>;
@@ -298,7 +298,7 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
     }
   }
   return {
-    fingerprint: (alias) => resolver.fingerprint(alias),
+    fingerprint: (alias, authMode) => resolver.fingerprint(alias, authMode),
     identity: (alias) => resolver.identity(alias),
     async openExec(target, command, signal) {
       const alias = targetAlias(target);
@@ -359,14 +359,21 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
       const client = await getClient(target, guard);
       assertCurrent(alias, generation);
       const channel = await (guard
-        ? openGuardedSshChannel<SFTPWrapper>((done) => client.sftp(done), {
-            signal: guard.signal,
-            current: () => !disposed && !guard.signal.aborted && epoch(alias) === guard.generation,
-            release: (late) => {
-              late.on('error', () => undefined);
-              late.end();
+        ? openGuardedSshChannel<SFTPWrapper>(
+            (done) =>
+              client.sftp((error, sftp) => {
+                if (sftp) protectSftpChannel(sftp);
+                done(error, sftp);
+              }),
+            {
+              signal: guard.signal,
+              current: () => !disposed && !guard.signal.aborted && epoch(alias) === guard.generation,
+              release: (late) => {
+                late.on('error', () => undefined);
+                late.end();
+              },
             },
-          })
+          )
         : openSftpChannel(client));
       try {
         assertCurrent(alias, generation);

@@ -31,6 +31,12 @@ export function createTerminalConnection(options: {
   let ended = false;
   let disposed = false;
   let available = false;
+  let pendingSize = size;
+  let sentSize = size;
+  function resizePending() {
+    if (!ready || ended || (pendingSize.cols === sentSize.cols && pendingSize.rows === sentSize.rows)) return;
+    if (send({ type: 'resize', size: pendingSize })) sentSize = pendingSize;
+  }
   function canInput() {
     return (
       ready &&
@@ -87,6 +93,7 @@ export function createTerminalConnection(options: {
         return;
       }
       ready = true;
+      resizePending();
     }
     if (message.type === 'input-flow') paused = message.paused;
     if (message.type === 'exit' || message.type === 'error') {
@@ -136,7 +143,8 @@ export function createTerminalConnection(options: {
       return sent;
     },
     resize(next: TerminalSize) {
-      if (ready && !ended) send({ type: 'resize', size: next });
+      pendingSize = next;
+      resizePending();
     },
     ack(bytes: number) {
       if (!disposed) send({ type: 'ack', bytes });

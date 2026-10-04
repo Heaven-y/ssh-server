@@ -11,6 +11,9 @@ export function createTerminalPaste(options: {
 }) {
   let content: Uint8Array | undefined;
   let offset = 0;
+  let bracketed = false;
+  let closingFrame = false;
+  const end = new TextEncoder().encode('\x1b[201~');
   function flush() {
     if (!content) return;
     while (offset < content.length) {
@@ -20,22 +23,44 @@ export function createTerminalPaste(options: {
     }
     content = undefined;
     offset = 0;
+    closingFrame = false;
     options.changed(false);
   }
   return {
-    enqueue(bytes: Uint8Array): boolean {
+    enqueue(bytes: Uint8Array, framed = false): boolean {
       if (content || bytes.length > TERMINAL_LIMITS.inputBytes) return false;
       if (!bytes.length) return true;
-      content = bytes;
+      bracketed = framed;
+      if (framed) {
+        const start = new TextEncoder().encode('\x1b[200~');
+        content = new Uint8Array(start.length + bytes.length + end.length);
+        content.set(start);
+        content.set(bytes, start.length);
+        content.set(end, start.length + bytes.length);
+      } else content = bytes;
       offset = 0;
       options.changed(true);
       flush();
       return true;
     },
     flush,
-    cancel() {
+    cancel(discard = false) {
+      // 已发送起始帧时，取消正文也必须闭合边界；断线/销毁则彻底丢弃。
+      if (closingFrame && !discard) {
+        flush();
+        return;
+      }
+      if (!discard && bracketed && content && offset > 0) {
+        content = end;
+        offset = 0;
+        bracketed = false;
+        closingFrame = true;
+        flush();
+        return;
+      }
       content = undefined;
       offset = 0;
+      closingFrame = false;
       options.changed(false);
     },
   };

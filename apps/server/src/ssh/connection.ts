@@ -132,10 +132,18 @@ export function createConnectionResolver(deps: ConnectionDeps = {}) {
 
   return {
     resolve,
-    async fingerprint(alias: string): Promise<string> {
+    async fingerprint(alias: string, authMode?: SshAuthMode): Promise<string> {
       const host = await loadHost(alias);
       const knownHosts = await readFile(path.join(sshDir, 'known_hosts')).catch(() => Buffer.alloc(0));
-      return digest(JSON.stringify([targetIdentity(host, host.user ?? os.userInfo().username), digest(knownHosts)]));
+      const key = authMode === 'key' ? await loadKey(host).catch(() => undefined) : undefined;
+      return digest(
+        JSON.stringify([
+          targetIdentity(host, host.user ?? os.userInfo().username),
+          host.identityFiles,
+          digest(knownHosts),
+          key ? [key.keyFile, digest(key.privateKey)] : null,
+        ]),
+      );
     },
     async identity(alias: string): Promise<string> {
       const host = await loadHost(alias);

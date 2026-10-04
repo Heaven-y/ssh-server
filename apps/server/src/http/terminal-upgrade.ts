@@ -11,7 +11,7 @@ export function registerTerminalUpgrade(app: FastifyInstance): void {
     if (/^\/api\/workspaces\/[^/]+\/terminal$/.test(path)) server.handleUpgrade(request, socket, head, done);
     else original(request, socket, head, done);
   };
-  app.addHook('onClose', (_instance, done) => {
+  app.addHook('preClose', (done) => {
     for (const socket of server.clients) socket.terminate();
     server.close(() => done());
   });

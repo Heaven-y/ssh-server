@@ -57,11 +57,11 @@ export function createTerminalRuntime(options: {
   function message(value: TerminalServerMessage) {
     if (value.type === 'ready') update({ phase: 'ready', message: '已连接', startDir: value.startDir });
     if (value.type === 'error') {
-      paste.cancel();
+      paste.cancel(true);
       update({ phase: 'error', message: value.message });
     }
     if (value.type === 'exit') {
-      paste.cancel();
+      paste.cancel(true);
       update({
         phase: 'exited',
         message: value.outputComplete
@@ -93,7 +93,7 @@ export function createTerminalRuntime(options: {
           message,
           availability,
           closed: () => {
-            paste.cancel();
+            paste.cancel(true);
             update({ phase: 'disconnected', message: '连接已断开，请新建连接；旧输入不会重发' });
           },
         },
@@ -183,7 +183,8 @@ export function createTerminalRuntime(options: {
     readClipboard,
     paste(text: string) {
       try {
-        if (!paste.enqueue(prepareTerminalPaste(text))) options.notice('仍有粘贴等待发送，请先等待或取消剩余内容');
+        if (!paste.enqueue(prepareTerminalPaste(text), terminal.modes.bracketedPasteMode))
+          options.notice('仍有粘贴等待发送，请先等待或取消剩余内容');
       } catch (error) {
         options.notice((error as Error).message);
       }
@@ -197,7 +198,7 @@ export function createTerminalRuntime(options: {
       lifetime.abort();
       observer.disconnect();
       cancelAnimationFrame(frame);
-      paste.cancel();
+      paste.cancel(true);
       connection?.close();
       data.dispose();
       binary.dispose();

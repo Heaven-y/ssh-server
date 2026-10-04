@@ -36,6 +36,8 @@ export function createTerminalSession(options: {
   let exitSignal: string | null = null;
   let stdoutEnded = false;
   let stderrEnded = false;
+  let exitReceived = false;
+  let channelWasClosed = false;
   let pongAt = Date.now();
   const startup = setTimeout(() => stop(new TerminalError('startup_failed')), TERMINAL_LIMITS.startupMs);
   const heartbeat = setInterval(() => {
@@ -90,13 +92,19 @@ export function createTerminalSession(options: {
   function stop(error: TerminalError) {
     if (state === 'ended') return;
     send({ type: 'error', code: error.code, message: error.message });
-    if (output) send({ type: 'exit', exitCode, signal: exitSignal, outputComplete: false });
+    if (channel) send({ type: 'exit', exitCode, signal: exitSignal, outputComplete: false });
     close();
   }
   const data = (bytes: Buffer) => output?.push(bytes);
   const channelError = () => stop(new TerminalError('connection_lost'));
   function drainExit() {
-    if (state === 'ended' || !stdoutEnded || !stderrEnded) return;
+    if (
+      (state !== 'ready' && state !== 'draining') ||
+      !stdoutEnded ||
+      !stderrEnded ||
+      (!exitReceived && !channelWasClosed)
+    )
+      return;
     state = 'draining';
     input?.dispose();
     output?.finish({ exitCode, signal: exitSignal });
@@ -112,23 +120,32 @@ export function createTerminalSession(options: {
   const exited = (code: number | null, signal?: string) => {
     exitCode = typeof code === 'number' ? code : null;
     exitSignal = signal ?? null;
+    exitReceived = true;
+    if (state === 'starting') return;
     state = 'draining';
     input?.dispose();
     send({ type: 'input-flow', paused: true });
+    drainExit();
   };
   const channelClosed = () => {
+    channelWasClosed = true;
     if (state === 'starting') stop(new TerminalError('startup_failed'));
-    else drainExit();
+    else {
+      state = 'draining';
+      input?.dispose();
+      drainExit();
+    }
   };
   function wireChannel() {
     stdoutEnded = channel!.readableEnded;
     stderrEnded = channel!.stderr.readableEnded;
-    channel!.on('data', data);
-    channel!.stderr.on('data', data);
     channel!.on('exit', exited);
     channel!.once('end', stdoutEnd);
     channel!.stderr.once('end', stderrEnd);
     channel!.once('close', channelClosed);
+  }
+  function assertChannelActive() {
+    if (channelWasClosed || channel!.closed || channel!.destroyed) throw new TerminalError('startup_failed');
   }
   async function open(request: Extract<TerminalClientMessage, { type: 'open' }>) {
     if (state !== 'waiting' || request.target.workspaceId !== workspaceId) throw new TerminalError('invalid_request');
@@ -143,18 +160,23 @@ export function createTerminalSession(options: {
     const startDir = await resolveTerminalDirectory({ workspace: checked.workspace, pool, guard });
     channel = await pool.openShell(workspaceTarget(checked.workspace), { ...request.size, guard });
     channel.on('error', channelError);
+    // 开启后立即收集退出/EOF，初始化至复验的await窗口也不能丢事件。
+    wireChannel();
     const initialized = await initializeTerminal({ channel, startDir, signal: controller.signal });
     await bindings.verify(request.target, request.binding, controller.signal);
     controller.signal.throwIfAborted();
-    if (channel.closed || channel.destroyed) throw new TerminalError('startup_failed');
+    assertChannelActive();
     clearTimeout(startup);
-    state = 'ready';
+    state = exitReceived ? 'draining' : 'ready';
     input = createTerminalInput({ channel, notify: (paused) => send({ type: 'input-flow', paused }), fail: stop });
     output = createTerminalOutput({ channel, socket, fail: stop, ended: close });
-    wireChannel();
+    channel.on('data', data);
+    channel.stderr.on('data', data);
     send({ type: 'ready', sessionId: randomUUID(), target: request.target, startDir });
     for (const tail of initialized.trailing) output.push(tail);
+    if (exitReceived) send({ type: 'input-flow', paused: true });
     output.push(Buffer.alloc(0));
+    drainExit();
   }
   function handle(request: TerminalClientMessage) {
     if (request.type === 'close') {
