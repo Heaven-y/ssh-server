@@ -35,9 +35,9 @@
 ## 任务2：共享缓存与安全HTTP
 
 文件：新增server/src/resources/service.ts、http/resources.routes.ts；修改main.ts。
-接口：createResourcesService({store,pool}).get(workspaceId):Promise<ResourceSnapshot>和dispose():void；GET /api/workspaces/:id/resources沿用Cookie/Host/Origin并no-store。
+接口：createResourcesService({store,pool}).get(target:TerminalTarget):Promise<ResourceSnapshot>和dispose():void；GET /api/workspaces/:id/resources通过target查询字段携带固定目标，沿用Cookie/Host/Origin并no-store。
 
-- [ ] 实现连接cacheKey共享与目录隔离、singleflight/退避/空闲淘汰；身份前后复验，取消不影响共享池。
+- [ ] 实现实际连接身份共享与目录隔离、singleflight/退避/空闲淘汰；身份前后复验，取消不影响共享池。
 - [ ] 路由结构化固定中文失败；主入口注册并在退出取消资源请求。类型、相关ESLint/格式与现有安全回归通过后提交。
 
 ## 任务3：资源入口与详情

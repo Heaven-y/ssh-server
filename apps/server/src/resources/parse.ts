@@ -57,15 +57,16 @@ function gpuMetrics(text: string): ResourceGpu[] | null {
   const rows = csv(text);
   if (!rows.length) return null;
   const result = rows
-    .filter((row) => row.length === 7 && row[0]!.startsWith('GPU-'))
+    .filter((row) => row.length === 8 && numeric(row[0], 0, 65535) !== null && row[1]!.startsWith('GPU-'))
     .map((row) => ({
-      uuid: clean(row[0]!, 200),
-      name: clean(row[1]!, 200),
-      utilization: numeric(row[2], 0, 100),
-      memoryUsed: bytes(row[3], 1024 * 1024),
-      memoryTotal: bytes(row[4], 1024 * 1024),
-      temperature: numeric(row[5], -100, 250),
-      power: numeric(row[6], 0, 10000),
+      index: Number(row[0]),
+      uuid: clean(row[1]!, 200),
+      name: clean(row[2]!, 200),
+      utilization: numeric(row[3], 0, 100),
+      memoryUsed: bytes(row[4], 1024 * 1024),
+      memoryTotal: bytes(row[5], 1024 * 1024),
+      temperature: numeric(row[6], -100, 250),
+      power: numeric(row[7], 0, 10000),
     }));
   return result.length ? result : null;
 }

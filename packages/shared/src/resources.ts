@@ -12,6 +12,7 @@ export const RESOURCE_LIMITS = {
 } as const;
 
 export type ResourceGpu = {
+  index: number;
   uuid: string;
   name: string;
   utilization: number | null;

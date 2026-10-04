@@ -11,7 +11,7 @@ export const HOST_RESOURCE_COMMAND =
     section('memory', 'cat /proc/meminfo'),
     section(
       'gpu',
-      'timeout 3 nvidia-smi --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw --format=csv,noheader,nounits',
+      'timeout 3 nvidia-smi --query-gpu=index,uuid,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw --format=csv,noheader,nounits',
     ),
     section(
       'gpuprocess',

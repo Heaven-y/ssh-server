@@ -7,7 +7,8 @@ import {
   type ResourceSnapshot,
   type TerminalTarget,
 } from '@ssh-server/shared';
-import { workspaceTarget } from '../ssh/connection';
+import { createHash } from 'node:crypto';
+import { workspaceTarget, type ResolvedConnection } from '../ssh/connection';
 import type { SshPool } from '../ssh/pool';
 import type { WorkspaceStore } from '../workspaces/store';
 import { ResourceCache } from './cache';
@@ -21,6 +22,21 @@ export class ResourceTargetError extends Error {
   }
 }
 type HostSample = { data: ResourceHost; cpu?: CpuCounters };
+const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
+/** pool的cacheKey保留alias；采样按实际目标与认证共享，不返回该摘要。 */
+function samplingKey(connection: ResolvedConnection): string {
+  const auth = connection.authMode === 'key' ? connection.privateKey : connection.password;
+  return digest(
+    JSON.stringify([
+      connection.hostname,
+      connection.port,
+      connection.username,
+      connection.authMode,
+      digest(auth ?? ''),
+      digest(connection.knownHosts),
+    ]),
+  );
+}
 export function createResourcesService({ store, pool }: { store: Pick<WorkspaceStore, 'get'>; pool: SshPool }) {
   const hosts = new ResourceCache<HostSample>(RESOURCE_LIMITS.hostEntries);
   const disks = new ResourceCache<ResourceDisk>(RESOURCE_LIMITS.diskEntries);
@@ -31,7 +47,12 @@ export function createResourcesService({ store, pool }: { store: Pick<WorkspaceS
       throw new ResourceTargetError('target_changed');
     const connection = await pool.resolveConnection(workspaceTarget(workspace));
     if (expectedKey && connection.cacheKey !== expectedKey) throw new ResourceTargetError('target_changed');
-    return { workspace, key: connection.cacheKey, generation: pool.generation(workspace.sshHost) };
+    return {
+      workspace,
+      key: connection.cacheKey,
+      samplingKey: samplingKey(connection),
+      generation: pool.generation(workspace.sshHost),
+    };
   }
   async function sample(target: TerminalTarget, key: string, command: string, signal: AbortSignal) {
     const controller = new AbortController();
@@ -51,12 +72,12 @@ export function createResourcesService({ store, pool }: { store: Pick<WorkspaceS
   }
   return {
     async get(target: TerminalTarget): Promise<ResourceSnapshot> {
-      const { key } = await context(target);
+      const { key, samplingKey } = await context(target);
       const [host, disk] = await Promise.all([
-        hosts.get(key, async (previous, signal) =>
+        hosts.get(samplingKey, async (previous, signal) =>
           parseHostResources(await sample(target, key, HOST_RESOURCE_COMMAND, signal), previous?.cpu),
         ),
-        disks.get(JSON.stringify([key, target.remoteDir]), async (_previous, signal) =>
+        disks.get(JSON.stringify([samplingKey, target.remoteDir]), async (_previous, signal) =>
           parseDiskResources(await sample(target, key, diskResourceCommand(target.remoteDir), signal)),
         ),
       ]);
