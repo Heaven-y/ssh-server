@@ -132,6 +132,11 @@ export function createConnectionResolver(deps: ConnectionDeps = {}) {
 
   return {
     resolve,
+    async fingerprint(alias: string): Promise<string> {
+      const host = await loadHost(alias);
+      const knownHosts = await readFile(path.join(sshDir, 'known_hosts')).catch(() => Buffer.alloc(0));
+      return digest(JSON.stringify([targetIdentity(host, host.user ?? os.userInfo().username), digest(knownHosts)]));
+    },
     async identity(alias: string): Promise<string> {
       const host = await loadHost(alias);
       return targetIdentity(host, host.user ?? os.userInfo().username);

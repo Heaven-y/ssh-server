@@ -14,6 +14,13 @@ export type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from 
 export { MAX_EDITABLE_FILE_BYTES } from './files';
 export type { WorkspaceDirectory, WorkspaceFileEntry, WorkspaceFile, WorkspaceFileInput } from './files';
 export type {
+  RemoteBrowseTarget,
+  RemoteBrowseSession,
+  RemoteFileScope,
+  RemoteFileEntry,
+  RemoteDirectory,
+} from './remote-files';
+export type {
   VersionChange,
   VersionExcluded,
   VersionStatus,

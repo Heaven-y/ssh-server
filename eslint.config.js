@@ -7,7 +7,17 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['**/node_modules/**', '**/dist/**', '**/coverage/**', '.agents/**', '.claude/**', '.pi/**'] },
+  {
+    ignores: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/coverage/**',
+      '.agents/**',
+      '.claude/**',
+      '.pi/**',
+      '.superpowers/**',
+    ],
+  },
 
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
