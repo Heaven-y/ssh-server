@@ -34,5 +34,5 @@
 ## 剩余范围
 
 - A8：独立观察 VS Code 插件界面和 CLI 交互列表中的删除结果。
-- M4：skills / `/` 命令、上下文状态与压缩、模型目录仍待后续实现；本阶段完成不代表整个 M4 完成。
-- M5/M6 与 A5/A13/A7：终端、资源面板、完整并发和原有真实 SSH 串联待办不变，仍需指定可验收的 Host 与目录。
+- 后续 M4 的技能/命令、模型目录、上下文与压缩已接入，见[原生能力](native-capabilities-acceptance.md)及[输入补全](slash-completion-acceptance.md)；真实长负载自动/手动压缩和续接见[完整链路](real-workflow-acceptance.md)。本页原生管理证据不扩大为这些功能的证据。
+- 后续 M5/M6、A5/A13/A7 的网页保存/恢复、实际 SSH/rclone、双 Agent 和多活动并发已有[独立证据](real-workflow-acceptance.md)，不再等待重复指定目标。A8 独立客户端、原生输入法和 Edge 系统选择器仍按[剩余范围](../engineering/remaining-scope-audit.md)保留。
