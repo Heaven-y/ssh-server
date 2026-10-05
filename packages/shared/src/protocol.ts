@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { AgentKindSchema, NativeSessionIdSchema, type AgentKind } from './agents';
 import { CapabilitySelectionSchema } from './capabilities';
 import type { AgentEvent } from './events';
+import type { TurnChangesRecord } from './turn-changes';
 
 // 前端 → 后端的 WebSocket 消息，后端用 schema 校验
 export const ClientMessageSchema = z.discriminatedUnion('type', [
@@ -44,5 +45,5 @@ export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 export type ServerMessage =
   | { type: 'turn.started'; turnId: string; clientTurnId: string; workspaceId: string; agent: AgentKind }
   | { type: 'agent.event'; turnId: string; event: AgentEvent }
-  | { type: 'turn.finished'; turnId: string; workspaceId: string; agent: AgentKind }
+  | { type: 'turn.finished'; turnId: string; workspaceId: string; agent: AgentKind; changes?: TurnChangesRecord }
   | { type: 'error'; turnId?: string; clientTurnId?: string; message: string };

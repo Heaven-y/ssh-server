@@ -55,6 +55,7 @@ function setup(
   syncOperation?: (workspace: Workspace) => Promise<SyncStatus>,
   capabilities?: TurnManagerDeps['capabilities'],
   activity?: ReturnType<typeof createWorkspaceActivity>,
+  changes?: TurnManagerDeps['changes'],
 ) {
   const registry = createSessionRegistry();
   const fake = fakeRunTurn();
@@ -81,6 +82,7 @@ function setup(
     capabilities,
     sync,
     acquireWorkspace: activity?.acquire,
+    changes,
   });
   return { registry, fake, codex, sessions, turns, sync };
 }
@@ -519,4 +521,77 @@ describe('TurnManager', () => {
     const secondToken = fake.turns[1]!.input.mcpEnv.SSH_SERVER_SESSION_TOKEN!;
     expect(registry.resolve(secondToken)).toBeUndefined();
   });
+});
+
+it('快照采集中取消等待收尾再释放租约，不启动runner或同步', async () => {
+  const activity = createWorkspaceActivity();
+  let release!: () => void;
+  const begin = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+  );
+  const finish = vi.fn(async () => {
+    expect(activity.active(ws.id)).toBe(1);
+    return undefined;
+  });
+  const f = setup(undefined, undefined, activity, { begin, finish });
+  const socket = fakeSocket();
+  const starting = f.turns.handle(socket.socket, send());
+  await vi.waitFor(() => expect(begin).toHaveBeenCalledOnce());
+  const first = socket.sent.find((message) => message.type === 'turn.started')!;
+  if (first.type !== 'turn.started') throw new Error('未开始轮次');
+  await f.turns.handle(socket.socket, { type: 'chat.interrupt', turnId: first.turnId });
+  expect(activity.active(ws.id)).toBe(1);
+  release();
+  await starting;
+  expect(f.fake.turns).toHaveLength(0);
+  expect(f.sync.sync).not.toHaveBeenCalled();
+  expect(finish).toHaveBeenCalledWith(ws, first.turnId, expect.objectContaining({ interrupted: true }));
+  expect(activity.active(ws.id)).toBe(0);
+  await f.turns.dispose();
+});
+it('基线失败仍运行并尝试终态收尾，纯压缩跳过采集和同步', async () => {
+  const activity = createWorkspaceActivity();
+  const changes = {
+    begin: vi.fn(async () => {
+      throw new Error('落盘失败');
+    }),
+    finish: vi.fn(async () => undefined),
+  };
+  const f = setup(
+    async () => {
+      throw new Error('同步失败');
+    },
+    undefined,
+    activity,
+    changes,
+  );
+  const socket = fakeSocket();
+  await f.turns.handle(socket.socket, send());
+  expect(f.fake.turns).toHaveLength(1);
+  f.fake.turns[0]!.finish();
+  await vi.waitFor(() => expect(activity.active(ws.id)).toBe(0));
+  expect(changes.finish).toHaveBeenCalledOnce();
+  expect(socket.sent.find((message) => message.type === 'turn.finished')).toMatchObject({
+    changes: { phase: 'unavailable' },
+  });
+  const pure = setup(
+    undefined,
+    { prepare: async () => ({ text: '', invocation: { kind: 'command', name: 'compact' } }) },
+    activity,
+    changes,
+  );
+  await pure.turns.handle(
+    fakeSocket().socket,
+    send({ agent: 'codex', sessionId: 'native', selection: { id: 'compact' }, text: '' }),
+  );
+  pure.codex.turns[0]!.finish();
+  await vi.waitFor(() => expect(activity.active(ws.id)).toBe(0));
+  expect(changes.begin).toHaveBeenCalledOnce();
+  expect(changes.finish).toHaveBeenCalledOnce();
+  expect(pure.sync.sync).not.toHaveBeenCalled();
+  await f.turns.dispose();
+  await pure.turns.dispose();
 });

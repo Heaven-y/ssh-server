@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { VersionStatus, Workspace } from '@ssh-server/shared';
 import { registerVersionRoutes } from '../../src/http/versions.routes';
 import { VersionError } from '../../src/vcs/errors';
-import type { VersionsService } from '../../src/vcs/service';
 
 const apps: FastifyInstance[] = [];
 afterEach(async () => {
@@ -25,7 +24,7 @@ const status: VersionStatus = { initialized: true, head: commit, revision, chang
 function setup() {
   const app = Fastify();
   apps.push(app);
-  const versions: VersionsService = {
+  const versions: Parameters<typeof registerVersionRoutes>[1]['versions'] = {
     initialize: vi.fn(async () => status),
     status: vi.fn(async () => status),
     history: vi.fn(async () => ({ commits: [], hasMore: false })),

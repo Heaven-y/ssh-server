@@ -1,6 +1,7 @@
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SyncSettingsSchema, type Workspace } from '@ssh-server/shared';
 import { assertGitVersion, git, gitText } from '../../src/vcs/git';
@@ -49,6 +50,67 @@ async function fixture() {
 }
 
 describe('本地 Git 版本服务', () => {
+  it('轮次仅记录真实净变化，保持HEAD和索引，并安全释放引用及放弃单文件', async () => {
+    const { ws, versions, write, commit } = await fixture();
+    await write('main.txt', 'base\n');
+    await write('staged.txt', 'base\n');
+    const head = await commit();
+    await write('main.txt', 'preexisting dirty\n');
+    await write('staged.txt', '独立暂存\n');
+    await git(ws.localDir, ['add', 'staged.txt']);
+    const index = await fs.readFile(path.join(ws.localDir, '.git', 'index'));
+    const id = randomUUID();
+    const base = await versions.captureTurn(ws, id, 'base');
+    await write('main.txt', 'during turn\n');
+    await write('新增 中文.txt', 'new\n');
+    const result = await versions.captureTurn(ws, id, 'result');
+    const diff = await versions.diffTurn(ws, base, result);
+    expect(diff.changes.map((item) => item.path).sort()).toEqual(['main.txt', '新增 中文.txt']);
+    expect(diff.text).toContain('-preexisting dirty');
+    expect(await gitText(ws.localDir, ['rev-parse', 'HEAD'])).toBe(head);
+    expect(await fs.readFile(path.join(ws.localDir, '.git', 'index'))).toEqual(index);
+    await expect(versions.previewDiscard(ws, 'staged.txt')).rejects.toMatchObject({ code: 'staged_changes' });
+    const old = await versions.previewDiscard(ws, '新增 中文.txt');
+    expect(old.changes).toEqual([{ path: '新增 中文.txt', kind: 'deleted' }]);
+    await write('新增 中文.txt', 'external\n');
+    await expect(versions.discard(ws, old)).rejects.toMatchObject({ code: 'stale_revision' });
+    await versions.discard(ws, await versions.previewDiscard(ws, '新增 中文.txt'));
+    await expect(fs.stat(path.join(ws.localDir, '新增 中文.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
+    await versions.releaseTurn(ws, [base, result]);
+    expect(await gitText(ws.localDir, ['for-each-ref', '--format=%(refname)', 'refs/ssh-server/turns/'])).toBe('');
+    const empty = path.join(ws.localDir, 'empty');
+    await fs.mkdir(empty);
+    await git(empty, ['init', '--quiet']);
+    const noHead = { ...ws, localDir: empty };
+    await fs.writeFile(path.join(empty, 'new.txt'), 'new\n');
+    const preview = await versions.previewDiscard(noHead, 'new.txt');
+    expect(preview.head).toBeUndefined();
+    await versions.discard(noHead, preview);
+    await expect(fs.stat(path.join(empty, 'new.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+  it('轮次净差异不将采集时超限的预存脏内容误报为回退或删除', async () => {
+    const { ws, versions, write, commit } = await fixture();
+    ws.sync = SyncSettingsSchema.parse({ maxFileBytes: 64 });
+    await write('main.txt', 'head\n');
+    await commit();
+    await write('main.txt', 'dirty\n');
+    await write('new.txt', 'untracked\n');
+    const id = randomUUID();
+    const base = await versions.captureTurn(ws, id, 'base');
+    await write('main.txt', 'x'.repeat(65));
+    await write('new.txt', 'y'.repeat(65));
+    const result = await versions.captureTurn(ws, id, 'result');
+    const diff = await versions.diffTurn(ws, base, result);
+    expect(diff.changes).toEqual([]);
+    expect(diff.files).toEqual([]);
+    expect(diff.excluded.map((item) => item.path).sort()).toEqual(['main.txt', 'new.txt']);
+    const reverseId = randomUUID();
+    const excludedBase = await versions.captureTurn(ws, reverseId, 'base');
+    await write('main.txt', 'small again\n');
+    await write('new.txt', 'small again\n');
+    const smallResult = await versions.captureTurn(ws, reverseId, 'result');
+    expect((await versions.diffTurn(ws, excludedBase, smallResult)).changes).toEqual([]);
+  });
   it('Git 版本检查接受 2.43/3.x，拒绝旧版本与无法解析的输出', () => {
     for (const version of ['git version 2.43.0', 'git version 2.46.0.windows.1', 'git version 3.0.0']) {
       expect(() => assertGitVersion(version)).not.toThrow();

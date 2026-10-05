@@ -25,6 +25,10 @@ import type {
   VersionRestoreInput,
   VersionRestorePreview,
   VersionRestoreResult,
+  VersionDiscardPreview,
+  VersionDiscardInput,
+  TurnChangesRecord,
+  TurnDiff,
   SshAuthMode,
   SshHostInfo,
   SyncSettings,
@@ -205,14 +209,15 @@ export const api = {
     }),
   initializeVersions: (id: string) =>
     request<VersionStatus>(versionsUrl(id) + '/initialize', { method: 'POST', body: '{}' }),
-  versionStatus: (id: string) => request<VersionStatus>(versionsUrl(id), { cache: 'no-store' }),
+  versionStatus: (id: string, signal?: AbortSignal) =>
+    request<VersionStatus>(versionsUrl(id), { signal, cache: 'no-store' }),
   versionHistory: (id: string, skip = 0) =>
     request<VersionHistory>(versionsUrl(id) + `/history?skip=${skip}`, { cache: 'no-store' }),
-  versionDiff: (id: string, input: { commit?: string; path?: string } = {}) => {
+  versionDiff: (id: string, input: { commit?: string; path?: string } = {}, signal?: AbortSignal) => {
     const query = new URLSearchParams();
     if (input.commit) query.set('commit', input.commit);
     if (input.path) query.set('path', input.path);
-    return request<VersionDiff>(versionsUrl(id) + '/diff?' + query.toString(), { cache: 'no-store' });
+    return request<VersionDiff>(versionsUrl(id) + '/diff?' + query.toString(), { signal, cache: 'no-store' });
   },
   saveVersion: (id: string, input: VersionSaveInput) =>
     request<VersionSaveResult>(versionsUrl(id) + '/save', { method: 'POST', body: JSON.stringify(input) }),
@@ -226,6 +231,37 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ ...input, confirmed: true }),
     }),
+  previewDiscard: (id: string, path: string) =>
+    request<VersionDiscardPreview>(versionsUrl(id) + '/discard/preview', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
+  discardFile: (id: string, input: VersionDiscardInput) =>
+    request<VersionRestoreResult>(versionsUrl(id) + '/discard', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  turnChanges: (id: string, target: { agent: AgentKind; sessionId?: string }, signal?: AbortSignal) => {
+    const query = new URLSearchParams({ agent: target.agent });
+    if (target.sessionId) query.set('sessionId', target.sessionId);
+    return request<{ records: TurnChangesRecord[] }>(
+      `/api/workspaces/${encodeURIComponent(id)}/turn-changes?${query}`,
+      { signal, cache: 'no-store' },
+    );
+  },
+  turnDiff: (
+    id: string,
+    input: { turnId: string; agent: AgentKind; sessionId?: string; path?: string },
+    signal?: AbortSignal,
+  ) => {
+    const query = new URLSearchParams({ agent: input.agent });
+    if (input.sessionId) query.set('sessionId', input.sessionId);
+    if (input.path) query.set('path', input.path);
+    return request<TurnDiff>(
+      `/api/workspaces/${encodeURIComponent(id)}/turn-changes/${encodeURIComponent(input.turnId)}/diff?${query}`,
+      { signal, cache: 'no-store' },
+    );
+  },
   listFiles: (id: string, relative = '', signal?: AbortSignal) =>
     request<WorkspaceDirectory>(fileUrl(id, 'files', relative), { signal, cache: 'no-store' }),
   readFile: (id: string, relative: string, signal?: AbortSignal) =>

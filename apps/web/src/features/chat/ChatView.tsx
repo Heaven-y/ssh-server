@@ -6,6 +6,7 @@ import { useChat } from './chat-store';
 import { Composer } from './Composer';
 import { ChatTimeline } from './ChatTimeline';
 import { AgentControls, AGENT_LABELS } from './AgentControls';
+import { TurnChangesCard } from '../changes/TurnChangesCard';
 
 function Banner() {
   const banner = useChat((s) => s.banner);
@@ -50,7 +51,7 @@ function Messages() {
   return <ChatTimeline key={version} items={items} running={running} />;
 }
 
-export function ChatView({ workspace }: { workspace: Workspace }) {
+export function ChatView({ workspace, onOpenChanges }: { workspace: Workspace; onOpenChanges?(turnId: string): void }) {
   const sessionId = useChat((s) => s.sessionId);
   const agent = useChat((s) => s.agent);
   // 与侧栏共享查询结果，使用已有会话标题，避免把不易辨认的 ID 当作标题。
@@ -76,6 +77,7 @@ export function ChatView({ workspace }: { workspace: Workspace }) {
       <div className="flex min-h-0 flex-1 flex-col">
         <Messages />
       </div>
+      {onOpenChanges && <TurnChangesCard workspaceId={workspace.id} open={onOpenChanges} />}
       <Composer />
     </>
   );

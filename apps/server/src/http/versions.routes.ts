@@ -6,7 +6,11 @@ import type { VersionsService } from '../vcs/service';
 import type { WorkspaceStore } from '../workspaces/store';
 import type { SyncManager } from '../sync/manager';
 
-type Deps = { store: Pick<WorkspaceStore, 'get'>; versions: VersionsService; sync: Pick<SyncManager, 'transaction'> };
+type Deps = {
+  store: Pick<WorkspaceStore, 'get'>;
+  versions: Pick<VersionsService, 'initialize' | 'status' | 'history' | 'diff' | 'save' | 'previewRestore' | 'restore'>;
+  sync: Pick<SyncManager, 'transaction'>;
+};
 const Path = z.string().min(1).max(4096);
 const Commit = z.string().regex(/^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/);
 const Revision = z.string().regex(/^[a-f0-9]{64}$/);
@@ -19,12 +23,42 @@ const Save = z
   .strict();
 const Preview = z.object({ commit: Commit, path: Path.optional() }).strict();
 const Restore = Preview.extend({ revision: Revision, confirmed: z.literal(true) });
+const DiscardPreview = z.object({ path: Path }).strict();
+const Discard = DiscardPreview.extend({ revision: Revision, confirmed: z.literal(true) });
 const BASE = '/api/workspaces/:id/versions';
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value);
   if (!result.success) throw new VersionError('invalid_request');
   return result.data;
+}
+
+export function registerDiscardRoutes(
+  app: FastifyInstance,
+  deps: Omit<Deps, 'versions'> & {
+    versions: Pick<VersionsService, 'previewDiscard' | 'discard'>;
+  },
+): void {
+  async function perform(req: FastifyRequest, reply: FastifyReply, write: boolean) {
+    reply.header('Cache-Control', 'no-store');
+    try {
+      const { id } = parse(Params, req.params);
+      parse(Empty, req.query);
+      const ws = await deps.store.get(id);
+      if (!ws) throw new VersionError('workspace_missing');
+      if (!write) return await deps.versions.previewDiscard(ws, parse(DiscardPreview, req.body).path);
+      const input = parse(Discard, req.body);
+      return await deps.sync.transaction(ws, async () => {
+        const current = await deps.store.get(id);
+        if (!current || current.localDir !== ws.localDir) throw new VersionError('stale_revision');
+        return deps.versions.discard(current, input);
+      });
+    } catch (error) {
+      return failure(reply, error);
+    }
+  }
+  app.post(`${BASE}/discard/preview`, { bodyLimit: 32 * 1024 }, (req, reply) => perform(req, reply, false));
+  app.post(`${BASE}/discard`, { bodyLimit: 32 * 1024 }, (req, reply) => perform(req, reply, true));
 }
 
 function failure(reply: FastifyReply, error: unknown) {

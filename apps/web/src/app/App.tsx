@@ -16,6 +16,7 @@ import { useUiPreferences } from '../ui/ui-preferences';
 import { WorkspaceColumns, WorkspaceLayout } from './WorkspaceLayout';
 import { useCommandPalette } from './use-command-palette';
 import type { PaletteActions } from './CommandPalette';
+import type { ChangesRequest } from '../features/changes/types';
 
 const SettingsDialog = lazy(() => import('../features/settings/SettingsDialog'));
 const FilesPanel = lazy(() => import('../features/files/FilesPanel'));
@@ -71,6 +72,7 @@ export function App() {
   }, [productSettings.data, setDefaults]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [filesWorkspace, setFilesWorkspace] = useState<Workspace>();
+  const [changesRequest, setChangesRequest] = useState<ChangesRequest>();
   const [terminalLoaded, setTerminalLoaded] = useState(false);
   const [terminalVisible, setTerminalVisible] = useState(false);
   const hideTerminal = useCallback(() => setTerminalVisible(false), []);
@@ -80,12 +82,29 @@ export function App() {
   const current = workspaces.data?.find((w) => w.id === workspaceId);
   const workspaceRemoved = useCallback((id: string) => {
     setFilesWorkspace((opened) => (opened?.id === id ? undefined : opened));
+    setChangesRequest((opened) => (opened?.workspaceId === id ? undefined : opened));
   }, []);
   const openTerminal = () => {
     setTerminalLoaded(true);
     setTerminalVisible(true);
   };
   const openFiles = () => setFilesWorkspace((opened) => opened ?? current);
+  const openChanges = (turnId: string) => {
+    const conversation = useChat.getState();
+    if (!current || conversation.workspaceId !== current.id) return;
+    if (filesWorkspace && filesWorkspace.id !== current.id) {
+      useChat.setState({ banner: '文件面板仍属于另一工作区，请先关闭该面板后查看此轮改动' });
+      return;
+    }
+    setChangesRequest({
+      workspaceId: current.id,
+      agent: conversation.agent,
+      conversationVersion: conversation.conversationVersion,
+      turnId,
+      nonce: crypto.randomUUID(),
+    });
+    setFilesWorkspace((opened) => opened ?? current);
+  };
 
   // 首次加载后恢复上次的工作区，否则选第一个
   useEffect(() => {
@@ -172,7 +191,14 @@ export function App() {
                     </p>
                   }
                 >
-                  <FilesPanel workspace={filesWorkspace} onClose={() => setFilesWorkspace(undefined)} />
+                  <FilesPanel
+                    workspace={filesWorkspace}
+                    changesRequest={changesRequest}
+                    onClose={() => {
+                      setFilesWorkspace(undefined);
+                      setChangesRequest(undefined);
+                    }}
+                  />
                 </Suspense>
               )
             }
@@ -191,7 +217,7 @@ export function App() {
                     <SyncPanel key={current.id} workspace={current} ref={sync} />
                     <VersionsPanel key={current.id} workspace={current} ref={versions} />
                   </div>
-                  <ChatView workspace={current} />
+                  <ChatView workspace={current} onOpenChanges={openChanges} />
                 </>
               ) : (
                 <div className="m-auto max-w-sm text-center text-sm text-muted-foreground">

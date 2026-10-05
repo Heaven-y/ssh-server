@@ -41,5 +41,5 @@ Files：核心tests/features/chat；正式验收、ui-layout、architecture、de
 
 - [x] 一次新独立Reviewer覆盖完整分支，按实际影响裁定，每项决定记录；Important/Critical一轮修复且RED→GREEN，不重复复审。
 - [x] Review后补核心投影与身份回归；必要虚拟滚动使用实际浏览器验证，不通过mock声称实际DOM性能。
-- [ ] 正式文档只记录实际证据，执行既有最终门禁与构建；中文提交和PR，双平台CI成功后两级--no-ff、核对树再推送。
-- [ ] 核对已合并且无工作树占用后删除小分支，保留feat。继续本轮改动/diff及完整M6。
+- [x] 正式文档只记录实际证据，执行既有最终门禁与构建；中文提交和PR，双平台CI成功后两级--no-ff、核对树再推送。
+- [x] 核对已合并且无工作树占用后删除小分支，保留feat。继续本轮改动/diff及完整M6。

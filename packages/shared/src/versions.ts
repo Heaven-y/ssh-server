@@ -18,7 +18,7 @@ export type VersionStatus = {
 /** timestamp 使用 Unix 毫秒，与网页其它时间字段一致。 */
 export type VersionCommit = { id: string; subject: string; timestamp: number };
 export type VersionHistory = { commits: VersionCommit[]; hasMore: boolean };
-export type VersionDiff = { text: string; files: string[]; truncated: boolean };
+export type VersionDiff = { text: string; files: string[]; truncated: boolean; revision?: string };
 export type VersionSaveInput = { message: string; revision: string };
 export type VersionSaveResult = { created: boolean; commit?: VersionCommit; status: VersionStatus };
 export type VersionRestoreInput = { commit: string; path?: string };
@@ -30,3 +30,6 @@ export type VersionRestorePreview = {
   excluded: VersionExcluded[];
 };
 export type VersionRestoreResult = { restored: string[]; status: VersionStatus };
+/** 放弃当前单文件差异，head 为空表示尚未创建首个提交。 */
+export type VersionDiscardPreview = Omit<VersionRestorePreview, 'commit' | 'path'> & { head?: string; path: string };
+export type VersionDiscardInput = { path: string; revision: string; confirmed: true };

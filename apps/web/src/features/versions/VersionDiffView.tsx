@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { VersionDiff, VersionRestorePreview } from '@ssh-server/shared';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { ChangeList, ExcludedList } from './VersionLists';
+import { DiffView } from '../changes/DiffView';
 
 export type VersionSelection = { commit?: string; path?: string };
 type DiffProps = {
@@ -68,13 +69,7 @@ export function VersionDiffView({ selection, files, diff, loading, error, busy, 
               差异较大，当前显示已截断。请选择单个文件缩小范围。
             </p>
           )}
-          <pre
-            tabIndex={0}
-            aria-label="文件差异内容"
-            className="max-h-80 overflow-auto rounded-lg border border-border bg-background p-3 font-mono text-xs leading-6 whitespace-pre"
-          >
-            {diff.text || '没有文本差异。二进制文件的变更以文件列表或 Git 提示为准。'}
-          </pre>
+          <DiffView diff={diff} path={selection.path} />
         </>
       )}
     </section>
