@@ -207,6 +207,8 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 ### 5.5 sync
 
 - 使用 `rclone bisync`，远端用连接参数临时定义的 SFTP 远程（不写入 rclone 全局配置），状态目录用 `--workdir` 指向该工作区的 `bisync\`。
+- bisync 通过固定版本自带 combine 将实际双端根映射为 `localview:root/`、`remoteview:root/`，每次绑定实际镜像，避免完整路径进入单文件名；其他读写沿用真实 workspace backend。upstreams 按空格分隔 CSV 编码。
+- 目标签名保持 mirror-v1，状态独立保存 baselineLayout=combine-v1。已有基线布局不匹配时，普通同步先进入 recovery；确认后沿用双方差异保留再重建。未完成服务器文件任务仍按目标签名恢复，成功后保存布局；旧清单不删除，见[D31](decisions.md)和[验收](../guides/sync-session-names-acceptance.md)。
 - ssh2 与 rclone 使用同一组连接参数和认证方式，均校验服务器主机密钥；仅转交运行需要的内存凭据，不写 rclone 全局配置。`rclone obscure` 只用于子进程环境转交，不视为加密保存。
 - 固定 rclone 1.75.1，通过 `SSH_SERVER_RCLONE` 指定本机程序；过滤固定排除任意深度的 `.git`，按扩展名与默认 10 MiB 上限选择小文件，符号链接或 Windows 大小写冲突停止同步。
 - 传输使用本机 `mirror\` 中的稳定小文件副本，复制期间发现源变化则暂停；同步后仅将未被用户再次修改的文件更新到项目。双方在此期间都修改时保留冲突版本，新的本地删除留到下一次确认，不随进行中的传输传播。
@@ -398,4 +400,4 @@ chat-store区分default/explicit模型来源，新会话复制默认，历史清
 | V17 | 使用服务器已有 Python / 项目环境执行用户要求的统计、绘图和结果处理；分析脚本先同步，必要小文件按需返回，不整份下载大数据或自动触发分析 |
 | V18 | 远端文件管理 A20–A23：同/跨文件系统移动与复制、路径/链接/覆盖边界、同步目录迁移、显式下载、断线及取消后的实际结果；验证移动/复制不经本机中转、无模型调用且其他活动可响应 |
 
-2026-10-05完整链路更新：A1/A2/A5/A7/A13的实际SSH/rclone、真实同/跨FS文件管理和混合目录迁移、Firefox磁盘下载、保存密码后端重建组合、多活动并发及真实长负载压缩通过；详见[完整链路验收](../guides/real-workflow-acceptance.md)。A8独立客户端、原生OS输入法和Edge系统选择器仍待验，Windows原生界面读取被自动策略检查中止，不绕过。Windows较长配置路径的rclone状态文件名限制保留为已知工具边界。
+2026-10-05完整链路更新：A1/A2/A5/A7/A13的实际SSH/rclone、真实同/跨FS文件管理和混合目录迁移、Firefox磁盘下载、保存密码后端重建组合、多活动并发及真实长负载压缩通过；详见[完整链路验收](../guides/real-workflow-acceptance.md)。A8独立客户端、原生OS输入法和Edge系统选择器仍待验，Windows原生界面读取被自动策略检查中止，不绕过。Windows较长配置路径的rclone状态文件名限制已通过combine短逻辑根修复，并实际验证旧基线及持久任务升级，见[验收](../guides/sync-session-names-acceptance.md)；Windows版rclone对远端反斜杠根的分隔符转换仍属工具边界。

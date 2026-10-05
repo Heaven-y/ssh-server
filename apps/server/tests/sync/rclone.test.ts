@@ -47,7 +47,7 @@ async function setup(version = 'rclone v1.75.1\n') {
   const calls: Array<{ args: string[]; options: ProcessOptions }> = [];
   const invalidations = new Set<() => void>();
   const run = vi.fn(async (_exe: string, args: string[], options: ProcessOptions) => {
-    calls.push({ args, options });
+    calls.push({ args, options: { ...options, env: { ...options.env } } });
     if (args[0] === 'version') return output(version);
     if (args[0] === 'obscure') return output('fixture-obscured\n');
     if (args[0] === 'lsjson') return output('[]');
@@ -83,6 +83,49 @@ async function setup(version = 'rclone v1.75.1\n') {
   };
 }
 describe('rclone 隔离 SFTP 驱动', () => {
+  it('短逻辑根保留实际CSV映射，子进程成功或异常后清除凭据副本', async () => {
+    const { driver, run, pool } = await setup();
+    const remoteRoot = path.posix.join(path.posix.sep, 'projects', 'demo "quoted" \\root');
+    pool.exec.mockResolvedValue({
+      stdout: remoteRoot + '\n',
+      stderr: '',
+      exitCode: 0,
+      timedOut: false,
+      truncated: false,
+      durationMs: 1,
+    });
+    const localDir = path.resolve('fixture local 中文');
+    const context = await driver.open(ws, SyncSettingsSchema.parse({}));
+    let liveEnv: NodeJS.ProcessEnv | undefined;
+    run.mockImplementationOnce(async (_exe, args, options) => {
+      expect(args.slice(0, 3)).toEqual(['bisync', 'localview:root/', 'remoteview:root/']);
+      liveEnv = options.env;
+      expect(liveEnv).toMatchObject({
+        RCLONE_CONFIG_WORKSPACE_PASS: 'fixture-obscured',
+        RCLONE_CONFIG_LOCALVIEW_TYPE: 'combine',
+        RCLONE_CONFIG_LOCALVIEW_UPSTREAMS: `"root=${localDir.split(path.sep).join('/')}"`,
+        RCLONE_CONFIG_REMOTEVIEW_TYPE: 'combine',
+        RCLONE_CONFIG_REMOTEVIEW_UPSTREAMS:
+          '"root=workspace:' + path.posix.join(path.posix.sep, 'projects', 'demo ""quoted"" \\root') + '"',
+      });
+      return output('');
+    });
+    try {
+      await context.bisync({ resync: true, allowAllDeletes: false, localDir });
+      expect(context.baselineLayout).toBe('combine-v1');
+      expect(liveEnv).not.toHaveProperty('RCLONE_CONFIG_WORKSPACE_PASS');
+      run.mockImplementationOnce(async (_exe, _args, options) => {
+        liveEnv = options.env;
+        expect(liveEnv!.RCLONE_CONFIG_WORKSPACE_PASS).toBe('fixture-obscured');
+        throw new Error('fixture interrupted');
+      });
+      await expect(context.bisync({ resync: false, allowAllDeletes: false })).rejects.toThrow('fixture interrupted');
+      expect(liveEnv).not.toHaveProperty('RCLONE_CONFIG_WORKSPACE_PASS');
+      expect(liveEnv).not.toHaveProperty('RCLONE_CONFIG_WORKSPACE_KEY_PEM');
+    } finally {
+      context.close();
+    }
+  });
   it('任务恢复只拉取受控镜像，固定镜像基线必须按远端优先重建', async () => {
     const { driver, calls, configDir } = await setup();
     const context = await driver.open(ws, SyncSettingsSchema.parse({ maxFileBytes: 64 }));
@@ -118,7 +161,10 @@ describe('rclone 隔离 SFTP 驱动', () => {
         localDir: fixedMirror,
       });
       const rebuilding = calls.at(-1)!.args;
-      expect(rebuilding.slice(0, 3)).toEqual(['bisync', fixedMirror, 'workspace:/projects/demo']);
+      expect(rebuilding.slice(0, 3)).toEqual(['bisync', 'localview:root/', 'remoteview:root/']);
+      expect(calls.at(-1)!.options.env!.RCLONE_CONFIG_LOCALVIEW_UPSTREAMS).toBe(
+        `"root=${fixedMirror.split(path.sep).join('/')}"`,
+      );
       expect(rebuilding.slice(rebuilding.indexOf('--resync-mode'), rebuilding.indexOf('--resync-mode') + 2)).toEqual([
         '--resync-mode',
         'path2',

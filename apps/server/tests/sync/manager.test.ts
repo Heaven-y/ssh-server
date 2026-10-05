@@ -1,9 +1,11 @@
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SyncSettingsSchema, type Workspace } from '@ssh-server/shared';
 import { createSyncManager } from '../../src/sync/manager';
+import { loadSyncState, saveSyncState } from '../../src/sync/state';
 import { localInventory, workspaceStateDir, type FileEntry } from '../../src/sync/inventory';
 import type { RcloneContext, SyncDriver } from '../../src/sync/rclone';
 
@@ -61,6 +63,104 @@ async function setup(local: Record<string, string> = {}, initial: Record<string,
 }
 
 describe('工作区同步状态与执行事务', () => {
+  it('待删除状态缺少目标签名时仍暂停，不读取或删除未绑定目标', async () => {
+    const { manager, ws, configDir, localDir, context, driver } = await setup({}, { 'keep.py': 'remote' });
+    await manager.sync(ws);
+    await rm(path.join(localDir, 'keep.py'));
+    await manager.sync(ws);
+    const state = await loadSyncState(configDir, ws.id);
+    delete state.signature;
+    await saveSyncState(configDir, ws.id, state);
+    const listing = vi.spyOn(context, 'listRemote');
+    const resumed = createSyncManager({ configDir, driver });
+    expect((await resumed.resolveDeletions(ws, 'confirm')).phase).toBe('confirmation_required');
+    expect(listing).not.toHaveBeenCalled();
+    expect(context.deleteRemote).not.toHaveBeenCalled();
+  });
+  it('旧布局在远端读取与执行前暂停；升级失败保留旧基线，确认成功才保存新布局', async () => {
+    const { manager, ws, configDir, context } = await setup({}, { 'keep.py': 'remote' });
+    await manager.sync(ws);
+    const previous = await loadSyncState(configDir, ws.id);
+    context.baselineLayout = 'combine-v1';
+    const listing = vi.spyOn(context, 'listRemote');
+    expect((await manager.sync(ws)).reason).toBe('recovery');
+    const command = vi.fn(async () => ({}));
+    await expect(manager.execute(ws, command)).rejects.toMatchObject({ code: 'sync_blocked' });
+    expect(command).not.toHaveBeenCalled();
+    expect(listing).not.toHaveBeenCalled();
+    vi.mocked(context.bisync).mockRejectedValueOnce(new Error('fixture interrupted'));
+    expect((await manager.initialize(ws, true)).phase).toBe('error');
+    const failed = await loadSyncState(configDir, ws.id);
+    expect(failed.baselineLayout).toBeUndefined();
+    expect(failed.baseline).toEqual(previous.baseline);
+    expect((await manager.initialize(ws, true)).phase).toBe('ready');
+    expect(await loadSyncState(configDir, ws.id)).toMatchObject({
+      signature: previous.signature,
+      baselineLayout: 'combine-v1',
+    });
+  });
+  it('旧持久文件任务允许布局升级，目标真的改变仍在拉取前拒绝', async () => {
+    const { manager, ws, configDir, context, driver, remote, localDir } = await setup({}, { 'old.py': 'remote' });
+    await manager.sync(ws);
+    const previous = await loadSyncState(configDir, ws.id);
+    const id = randomUUID();
+    await manager.remoteFiles.prepare(ws, id);
+    manager.dispose();
+    remote.delete('old.py');
+    remote.set('new.py', 'remote');
+    context.pullMirror = vi.fn(async (directory) => {
+      for (const file of await readdir(directory)) await rm(path.join(directory, file));
+      for (const [file, content] of remote) await writeFile(path.join(directory, file), content);
+    });
+    context.baselineLayout = 'combine-v1';
+    context.signature = 'fixture-changed-target';
+    const resumed = createSyncManager({ configDir, driver });
+    await expect(resumed.remoteFiles.finish(ws, id)).rejects.toMatchObject({ code: 'target_changed' });
+    expect(context.pullMirror).not.toHaveBeenCalled();
+    expect((await loadSyncState(configDir, ws.id)).remoteTask).toBe(id);
+    context.signature = previous.signature!;
+    expect((await resumed.remoteFiles.finish(ws, id)).phase).toBe('ready');
+    expect(await loadSyncState(configDir, ws.id)).toMatchObject({
+      signature: previous.signature,
+      baselineLayout: 'combine-v1',
+    });
+    expect((await loadSyncState(configDir, ws.id)).remoteTask).toBeUndefined();
+    expect(await readdir(localDir)).toEqual(['new.py']);
+    expect((await resumed.sync(ws)).phase).toBe('ready');
+  });
+  it.each(['confirm', 'reject'] as const)('旧布局的待删除%s先暂停升级，不接受删除决策或清空记录', async (decision) => {
+    const { manager, ws, localDir, configDir, context } = await setup({}, { 'keep.py': 'remote' });
+    await manager.sync(ws);
+    await rm(path.join(localDir, 'keep.py'));
+    expect((await manager.sync(ws)).reason).toBe('deletions');
+    const previous = await loadSyncState(configDir, ws.id);
+    context.baselineLayout = 'combine-v1';
+    const listing = vi.spyOn(context, 'listRemote');
+    vi.mocked(context.bisync).mockClear();
+    expect(await manager.resolveDeletions(ws, decision)).toMatchObject({
+      phase: 'confirmation_required',
+      reason: 'recovery',
+      deletions: ['keep.py'],
+    });
+    expect(listing).not.toHaveBeenCalled();
+    expect(context.restore).not.toHaveBeenCalled();
+    expect(context.deleteRemote).not.toHaveBeenCalled();
+    expect(context.bisync).not.toHaveBeenCalled();
+    expect(await loadSyncState(configDir, ws.id)).toMatchObject({
+      signature: previous.signature,
+      baseline: previous.baseline,
+      deletionHashes: previous.deletionHashes,
+      deletions: previous.deletions,
+    });
+    // 升级恢复不代表接受先前删除；明确恢复后重新产生正常删除确认。
+    expect((await manager.initialize(ws, true)).phase).toBe('ready');
+    expect(await readFile(path.join(localDir, 'keep.py'), 'utf8')).toBe('remote');
+    expect((await loadSyncState(configDir, ws.id)).baselineLayout).toBe('combine-v1');
+    await rm(path.join(localDir, 'keep.py'));
+    expect((await manager.sync(ws)).reason).toBe('deletions');
+    expect((await manager.resolveDeletions(ws, 'confirm')).phase).toBe('ready');
+    expect(context.deleteRemote).toHaveBeenCalledWith('keep.py');
+  });
   it('空本地首拉建立基线，配置状态留在项目外', async () => {
     const { manager, ws, localDir, configDir } = await setup({}, { 'result.txt': 'remote result' });
     expect((await manager.sync(ws)).phase).toBe('ready');

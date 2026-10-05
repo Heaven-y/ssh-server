@@ -26,7 +26,7 @@
 | A14–A16 与长会话体验 | 原生能力/补全网页与时间线负载基准保持；真实MCP长文本触发auto完成、原ID记忆续接和官方manual完成 | 采用隔离阈值14000而非修改产品默认；缺失比例仍不可用 |
 | A20–A23 远端文件管理 | 真实同/跨FS大文件、实际rclone混合迁移、冲突/链接/复制取消、Firefox独立磁盘下载及并发响应通过 | Edge系统保存选择器仍未验；真实断线证据不以受控故障替代，边界详见完整链路验收 |
 | A10、A18 与架构 V16 | 实际15秒Agent SSH期间双全屏PTY、资源两帧、远端任务响应；单PTY关闭、同步排队及重复轮次拒绝通过 | 原生OS输入法待验；超时/输出限制保留相关核心回归 |
-| Windows长配置路径 | 实际rclone文件名错误与固定版本源码确认，alias实验无效并撤回 | 保留工具限制，短配置根规避不算修复，不修改或删除同步基线 |
+| Windows长配置路径 | combine短逻辑根、长配置根六项真实SSH、特殊字符及旧基线/任务升级通过，见[验收](../guides/sync-session-names-acceptance.md) | 状态单文件名已修复；Windows rclone对反斜杠根的转换保留工具边界，旧清单不删除 |
 
 用户已授权自主完成及记录决策。Windows原生界面读取被自动策略检查拒绝后停止相应界面验收，不绕过；已完成的独立核心工作继续整合。真实连接不写公开仓库，临时原生副本仅ignored；被策略拒绝的本机目录清理保留并在最终交付单独说明。
 
@@ -34,7 +34,7 @@
 
 终端沿用认证池和访问控制，设计/计划、一次独立Review及本机基础验收已完成。完整向导已把手动目标和草稿连接贯通到现有resolver，保留已存工作区兼容；资源采样在同一目标身份上共享，同时将磁盘指标绑定实际目录，不能仅按Host别名合并所有结果。
 
-工作区删除、产品设置与命令规则已完成核心范围；布局与长会话改动已按实际影响完成视觉/负载验证，真实SSH与多活动并发已串联。原生界面策略拒绝、rclone长路径及未扩充的故障证据继续保留。各阶段从 `feat/ssh-workflow` 创建 `codex/` 小分支，代码和对应正式文档一起提交，验证后按两级 `--no-ff` 整合。
+工作区删除、产品设置与命令规则已完成核心范围；布局与长会话改动已按实际影响完成视觉/负载验证，真实SSH与多活动并发已串联。原生界面策略拒绝、Windows rclone反斜杠根及未扩充的故障证据继续保留；长状态文件名已有独立修复与真实升级证据。各阶段从 `feat/ssh-workflow` 创建 `codex/` 小分支，代码和对应正式文档一起提交，验证后按两级 `--no-ff` 整合。
 
 ## 4. 第一版需求总对照
 
@@ -46,7 +46,7 @@
 | F2 / A6、A7、A14–A16 | [原生配置](../guides/agent-config-acceptance.md)、[能力](../guides/native-capabilities-acceptance.md)、[补全](../guides/slash-completion-acceptance.md)、[真实长会话](../guides/real-workflow-acceptance.md) | 按官方运行时能力和版本显示限制，不估造缺失统计 |
 | F3 / A1、A2、A11、A17、A19 | 实际双Agent编辑、SSH/Python执行、小JSON返回及同步串行；[黑名单](../guides/workspace-policy-acceptance.md)和[同步门禁](../guides/m2-acceptance.md) | 阻断/故障边界保留核心回归；没有自动训练完成检测或自动分析 |
 | F4 / A10 | [网页终端](../guides/web-terminal-acceptance.md)、真实全屏PTY和独立关闭/并发组合 | 原生OS输入法未验 |
-| F5 / A3、A4、A9 | [实际过滤、删除和冲突](../guides/m2-acceptance.md)、[真实删确认和测试根收尾](../guides/real-workflow-acceptance.md) | rclone长Windows状态文件名限制；被拒绝清理的是本机ignored副本，不在服务器 |
+| F5 / A3、A4、A9 | [实际过滤、删除和冲突](../guides/m2-acceptance.md)、[真实删确认和测试根收尾](../guides/real-workflow-acceptance.md) | 长状态名及旧基线/任务升级已验；Windows rclone反斜杠根仍受工具约束，被拒绝清理的是本机ignored副本 |
 | F6 / A5 | [本地Git版本](../guides/local-versions-acceptance.md)与实际Edge/SSH/rclone单文件恢复 | HEAD/index和未保存缓冲边界保留 |
 | F7 / A8 | [原生会话管理](../guides/session-management-acceptance.md)，网页及官方API/存储已验 | 独立VS Code插件和CLI交互列表刷新未验 |
 | F8 / A13 | [文件编辑](../guides/workspace-files-acceptance.md)与实际Edge保存/同步 | 真实文件系统最后检查与写入间隙不承诺跨进程事务 |
