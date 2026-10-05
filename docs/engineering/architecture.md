@@ -202,7 +202,7 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 - 连接按解析后的地址、端口、账号、认证方式、可信记录与凭据代次复用；参数变化不能复用旧连接，工作目录由所属工作区决定。执行、同步和服务器目录已共用 resolver；终端已接入同一入口，资源采样继续复用。
 - 终端：`shell()` 打开 PTY，数据经 WebSocket 与 xterm.js 双向转发，支持窗口尺寸变化、多标签和可调整布局。视觉与分屏交互参考 Pebrel，仅参考设计。
 
-终端的目标绑定、目录确认、独立 WebSocket、背压与释放规则见[网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.md)；模块职责、连接 guard 和稳定窗格宿主见[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)。后端和网页已接入，核心回归、本机真实SSH通道和Chrome交互已通过；SFTP移交、EOF/退出、Fastify preClose和粘贴模式的修复见[实施决策](web-terminal-decisions.md)。实际服务器全屏工具和完整并发继续待验，见[验收记录](../guides/web-terminal-acceptance.md)。
+终端的目标绑定、目录确认、独立 WebSocket、背压与释放规则见[网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.md)；模块职责、连接 guard 和稳定窗格宿主见[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)。后端和网页已接入，核心回归、本机真实SSH通道和Chrome交互已通过；SFTP移交、EOF/退出、Fastify preClose和粘贴模式的修复见[实施决策](web-terminal-decisions.md)。实际服务器全屏工具、并发和密码后端重建组合通过[完整链路验收](../guides/real-workflow-acceptance.md)；原生OS输入法仍待验，早期证据见[终端验收](../guides/web-terminal-acceptance.md)。
 
 ### 5.5 sync
 
@@ -293,7 +293,7 @@ shared/policy提供严格规则目录/schema；policy支持工作区默认启停
 
 已实现部分：`remote-files` 的 binding、service、directory、operation 和 paths 负责目标签名、浏览会话、按句柄分页、截止时间及路径分类。面板打开时登记工作区配置、实际 SSH 身份与信任记录的签名，创建/重连会话均复验；登记不读取私钥/密码，也不连接 SSH。SFTP 通道由当前目录独占，刷新、取消、EOF 和过期会释放，不断开共享 SSH。HTTP 中断传递到服务，排队与配置读取也计入 30 秒总截止时间；迟到通道单独清理。
 
-操作阶段：`preflight` 生成两分钟有效的操作方案，复验实际 SSH 身份、对象和相关工作区配置；`executor` 通过独立 SSH exec 发送固定处理器与 base64 参数，接收有界 NDJSON 阶段事件。`tasks` / `task-record` 先原子持久化再派发，重复提交返回同一任务；`path-locks` 对相同身份的相交路径排队，最多四项并行。关闭面板不取消任务，后端重启不重放写操作；派发后的取消或断线标为 `needs_check`，只在对象身份或内容证明充分时确认结果。损坏任务记录保留并告警。同步协调现已接入，涉及同步范围的操作在下述保护与事务内执行；真实 SSH 与实际 rclone 路径迁移仍待验收。证据见[操作验收](../guides/remote-file-operations-acceptance.md)与[同步协调验收](../guides/remote-file-sync-acceptance.md)。
+操作阶段：`preflight` 生成两分钟有效的操作方案，复验实际 SSH 身份、对象和相关工作区配置；`executor` 通过独立 SSH exec 发送固定处理器与 base64 参数，接收有界 NDJSON 阶段事件。`tasks` / `task-record` 先原子持久化再派发，重复提交返回同一任务；`path-locks` 对相同身份的相交路径排队，最多四项并行。关闭面板不取消任务，后端重启不重放写操作；派发后的取消或断线标为 `needs_check`，只在对象身份或内容证明充分时确认结果。损坏任务记录保留并告警。同步协调已接入，涉及同步范围的操作在下述保护与事务内执行；真实SSH与实际rclone混合目录迁移通过[完整链路验收](../guides/real-workflow-acceptance.md)。受控故障范围见[操作验收](../guides/remote-file-operations-acceptance.md)与[同步协调验收](../guides/remote-file-sync-acceptance.md)。
 
 - `sync-impact` 使用最多 50000 项、2 MiB 的目录元数据清单，逐项按各工作区的大小、排除和名称规则分类；NDJSON 单行不超过 64 KiB，最终数量必须匹配。完整路径的目录分量、既有远端文件及本地空目录均参与大小写/文件目录碰撞核对，不完整清单不能派发。
 - `file-editors` 独立 WebSocket 只登记路径、dirty/busy，不发送正文。同步准备影响整个工作区，因此预留相关工作区全部已知编辑器；客户端同步锁定后返回最新状态，存在未保存或忙状态则阻止派发。登记存在性持久化，断线或重启后按未知状态阻断；同 ID 重连或明确确认放弃断开登记才解除。
@@ -393,7 +393,7 @@ chat-store区分default/explicit模型来源，新会话复制默认，历史清
 | V12 | 两类技能/模型目录、按钮选择、直接 slash 解析及限制提示已接入；输入 `/` 自动补全和键盘边界通过网页验收，见原生能力及补全验收记录 |
 | V13 | 原生上下文和压缩事件已展示，成功/失败/取消及不触发同步的边界已验证；真实长负载auto完成、原ID记忆续接及manual完成通过，隔离阈值14000，见完整链路验收 |
 | V14 | 轻量编辑器选型、按需加载、保存后同步、未保存内容与 AI / 同步改动的冲突处理 |
-| V15 | 真实SSH资源service两帧及独立exec并发通过，GPU/CPU/内存/进程/磁盘可用；共享、退避、空值和网页故障已验，原生页面隐藏与完整组合仍待M6，见资源验收 |
+| V15 | 真实SSH资源service两帧及独立exec并发通过，GPU/CPU/内存/进程/磁盘可用；共享、退避、空值和网页故障已验，实际Agent/双PTY/任务组合已补齐；原生OS隐藏操作未新增证据 |
 | V16 | 实际15秒Agent SSH执行期间双全屏PTY、两帧资源、仅远端文件任务响应；同步串行排队、重复轮次拒绝、单PTY关闭独立通过；超时/输出限制沿用相关核心回归 |
 | V17 | 使用服务器已有 Python / 项目环境执行用户要求的统计、绘图和结果处理；分析脚本先同步，必要小文件按需返回，不整份下载大数据或自动触发分析 |
 | V18 | 远端文件管理 A20–A23：同/跨文件系统移动与复制、路径/链接/覆盖边界、同步目录迁移、显式下载、断线及取消后的实际结果；验证移动/复制不经本机中转、无模型调用且其他活动可响应 |
