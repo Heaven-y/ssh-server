@@ -18,7 +18,11 @@ export type WorkspaceStore = {
   list(): Promise<Workspace[]>;
   get(id: string): Promise<Workspace | undefined>;
   create(input: WorkspaceInput, beforePersist?: (workspace: Workspace) => Promise<void>): Promise<Workspace>;
-  update(id: string, patch: Partial<WorkspaceInput>): Promise<Workspace | undefined>;
+  update(
+    id: string,
+    patch: Partial<WorkspaceInput>,
+    beforePersist?: (current: Workspace) => void | Promise<void>,
+  ): Promise<Workspace | undefined>;
   remove(id: string, beforeRemove?: (current: Workspace) => Promise<void>): Promise<boolean>;
 };
 
@@ -96,13 +100,14 @@ export function createWorkspaceStore(deps: WorkspaceStoreDeps): WorkspaceStore {
         await save([...list, ws]);
         return ws;
       }),
-    update: (id, patch) =>
+    update: (id, patch, beforePersist) =>
       serial(async () => {
         const list = await load();
         const idx = list.findIndex((w) => w.id === id);
         if (idx === -1) return undefined;
         const { id: _id, ...current } = list[idx]!;
         const next: Workspace = { ...(await validate({ ...current, ...patch })), id };
+        await beforePersist?.(list[idx]!);
         list[idx] = next;
         await save(list);
         return next;

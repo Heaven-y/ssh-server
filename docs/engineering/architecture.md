@@ -246,7 +246,7 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 - 只是防误操作的字符串匹配，不能防有意绕过（编码、写进脚本再执行等）。
 - 网页终端不经过黑名单。
 
-当前实现已接入默认规则和工作区 `disabledRules`，追加规则及网页规则管理仍待实施，具体源码缺口见[剩余范围核对](remaining-scope-audit.md)。上面的可追加行为是完整产品目标，不能据此宣称自定义规则已接入。
+shared/policy提供严格规则目录/schema；policy支持工作区默认启停及20条有界自定义字面规则。独立GET/PUT使用完整工作区摘要，在store.update串行写盘内核对并只patch policy；通用PATCH拒绝policy。缺省undefined兼容旧配置，显式坏值（包括null）拒绝读取/执行。每次remote-exec读取最新配置，命中先于同步/SSH；已检查在途命令继续。网页按需dialog绑定工作区和独立草稿，409保留，成功取消旧列表查询再刷新。实际范围见[规则验收](../guides/workspace-policy-acceptance.md)和[D24](decisions.md)。
 
 ### 5.9 http：访问控制
 

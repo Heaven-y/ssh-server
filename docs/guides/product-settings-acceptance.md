@@ -33,4 +33,6 @@
 
 ## 工程与整合
 
-npm run check通过：98文件通过、1跳过，678项通过、5跳过；语句85.64%、分支78.85%、函数86.25%、行89.31%。类型、ESLint、格式和重复率0.40%通过，网页build通过。PR双平台CI、两级--no-ff及main CI在实际通过后记录。整个项目目标继续推进，产品设置阶段不代替黑名单、界面及真实并发验收。
+npm run check通过：98文件通过、1跳过，678项通过、5跳过；语句85.64%、分支78.85%、函数86.25%、行89.31%。类型、ESLint、格式和重复率0.40%通过，网页build通过。
+
+[PR10](https://github.com/Heaven-y/ssh-server/pull/10)已合并。[双平台CI37243239854](https://github.com/Heaven-y/ssh-server/actions/runs/37243239854)最终成功，attempt2；首次Windows失败为既有Codex子进程测试500ms请求超时，相同文件本机21项通过，同SHA失败作业重跑通过，没有改变断言、超时或覆盖率门槛。先本地--no-ff进入feat 8cd346e，等待双平台结果后--no-ff进入main 7102522并推送；两级合并代码树等同已验证309803c。[main CI37244336101](https://github.com/Heaven-y/ssh-server/actions/runs/37244336101)成功，attempt1。确认已合并且无工作树占用后删除产品设置小分支，保留feat及实施工作树继续黑名单。整个项目目标继续推进，产品设置阶段不代替黑名单、界面及真实并发验收。

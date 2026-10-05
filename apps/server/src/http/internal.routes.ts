@@ -1,7 +1,7 @@
 // 内部接口：只给 remote-tools MCP 子进程调用，用会话令牌鉴权
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import type { Workspace } from '@ssh-server/shared';
+import { WorkspacePolicySchema, type Workspace } from '@ssh-server/shared';
 import type { SessionRegistry } from '../chat/registry';
 import { checkCommand } from '../policy/policy';
 import type { SshPool } from '../ssh/pool';
@@ -67,9 +67,11 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
     const body = ExecBody.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ message: '参数不合法：需要 command' });
 
+    const policy = WorkspacePolicySchema.safeParse(ws.policy === undefined ? {} : ws.policy);
+    if (!policy.success) return { denied: { ruleId: 'policy-invalid', reason: '工作区命令规则不合法，请先修复配置' } };
     const decision = checkCommand(body.data.command, {
       remoteRoot: ws.remoteDir,
-      disabledRules: ws.policy?.disabledRules,
+      ...policy.data,
     });
     if (!decision.allowed) return { denied: { ruleId: decision.ruleId, reason: decision.reason } };
 

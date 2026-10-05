@@ -1,10 +1,12 @@
 // 默认命令黑名单规则。只防误操作，不能防有意绕过（编码、写进脚本再执行等）。
+import { DEFAULT_POLICY_RULE_REASONS, type CustomPolicyRule } from '@ssh-server/shared';
 
 export type PolicyContext = {
   /** 工作区服务器目录，如 ~/projects/demo */
   remoteRoot: string;
   /** 工作区停用的规则 id */
   disabledRules?: string[];
+  customRules?: CustomPolicyRule[];
 };
 
 export type Rule = {
@@ -69,54 +71,54 @@ function writesAuthorizedKeys(argv: string[]): boolean {
 export const DEFAULT_RULES: Rule[] = [
   {
     id: 'privilege',
-    reason: '禁止提权命令（sudo、su、doas、pkexec）',
+    reason: DEFAULT_POLICY_RULE_REASONS.privilege,
     match: ([p]) => ['sudo', 'su', 'doas', 'pkexec'].includes(base(p!)),
   },
   {
     id: 'rm-dangerous',
-    reason: '禁止递归删除根目录、家目录、当前目录、上级目录或工作区目录本身',
+    reason: DEFAULT_POLICY_RULE_REASONS['rm-dangerous'],
     match: ([p, ...args], ctx) =>
       base(p!) === 'rm' && hasRecursive(args) && rmTargets(args).some((t) => isDangerousRmTarget(t, ctx.remoteRoot)),
   },
   {
     id: 'mkfs',
-    reason: '禁止格式化文件系统',
+    reason: DEFAULT_POLICY_RULE_REASONS.mkfs,
     match: ([p]) => base(p!) === 'mkfs' || base(p!).startsWith('mkfs.'),
   },
   {
     id: 'dd-device',
-    reason: '禁止用 dd 写入设备文件',
+    reason: DEFAULT_POLICY_RULE_REASONS['dd-device'],
     match: ([p, ...args]) => base(p!) === 'dd' && args.some((a) => a.startsWith('of=/dev/') && a !== 'of=/dev/null'),
   },
   {
     id: 'power',
-    reason: '禁止关机或重启服务器',
+    reason: DEFAULT_POLICY_RULE_REASONS.power,
     match: ([p]) => ['shutdown', 'reboot', 'poweroff', 'halt'].includes(base(p!)),
   },
   {
     id: 'kill-all',
-    reason: '禁止向所有进程发送信号（目标为 -1）',
+    reason: DEFAULT_POLICY_RULE_REASONS['kill-all'],
     match: ([p, ...args]) => ['kill', 'pkill', 'killall'].includes(base(p!)) && args.at(-1) === '-1',
   },
   {
     id: 'chmod-777-recursive',
-    reason: '禁止递归设置 777 权限',
+    reason: DEFAULT_POLICY_RULE_REASONS['chmod-777-recursive'],
     match: ([p, ...args]) => base(p!) === 'chmod' && hasRecursive(args) && args.includes('777'),
   },
   {
     id: 'authorized-keys',
-    reason: '禁止写入、移动或删除 SSH 授权密钥文件 authorized_keys',
+    reason: DEFAULT_POLICY_RULE_REASONS['authorized-keys'],
     match: (argv) => writesAuthorizedKeys(argv),
   },
   {
     id: 'fork-bomb',
-    reason: '禁止 fork 炸弹',
+    reason: DEFAULT_POLICY_RULE_REASONS['fork-bomb'],
     // 形如 name(){ name|name& };name：函数体内把自己管道给自己
     matchRaw: (command) => /([\w:]+)\(\)\{\1\|\1&?\}/.test(command.replace(/\s+/g, '')),
   },
   {
     id: 'crontab-remove',
-    reason: '禁止删除全部定时任务（crontab -r）',
+    reason: DEFAULT_POLICY_RULE_REASONS['crontab-remove'],
     match: ([p, ...args]) => base(p!) === 'crontab' && args.some((a) => isShortOpt(a) && a.includes('r')),
   },
 ];

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { SyncSettingsSchema } from './sync';
+import { WorkspacePolicySchema } from './policy';
 
 // 服务器目录：以 / 或 ~ 开头，不能含换行和 NUL（会破坏远程命令拼装）
 const remoteDirSchema = z
@@ -20,12 +21,7 @@ export const WorkspaceInputSchema = z.object({
   authMode: SshAuthModeSchema.optional(),
   remoteDir: remoteDirSchema,
   sync: SyncSettingsSchema.optional(),
-  policy: z
-    .object({
-      /** 按 ruleId 停用的默认黑名单规则 */
-      disabledRules: z.array(z.string()).optional(),
-    })
-    .optional(),
+  policy: WorkspacePolicySchema.optional(),
 });
 
 export type WorkspaceInput = z.infer<typeof WorkspaceInputSchema>;
