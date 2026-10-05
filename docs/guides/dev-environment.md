@@ -249,6 +249,12 @@ skills-lock.json              # 记录每个 skill 的来源和内容哈希
 - Windows CI 中，原环境白名单使 PowerShell 停在 `Add-Type -AssemblyName System.Security`，达到 10 秒限制后保存密码失败。同一虚拟机补充 `USERPROFILE`、`APPDATA`、`LOCALAPPDATA`、`PSModulePath` 后，对照探针在约 460 毫秒内完成加解密；尚不能归因到某一个变量。
 - 加密子进程保留显式环境白名单，只补齐上述四项路径。凭据仍经标准输入传递，保留 10 秒超时和输出上限，不继承其他服务凭据；临时 CI 诊断步骤和脚本已移除。
 
+### 4.13 Windows bisync 状态文件名过长
+
+真实rclone 1.75.1验收在较长配置目录下出现状态锁文件名错误。其[固定版本源码](https://github.com/rclone/rclone/blob/v1.75.1/cmd/bisync/bilib/canonical.go)把两端规范化完整路径拼成一个文件名，再添加清单/锁后缀；alias会展开真实路径，实际实验不能解决此限制。
+
+可使用较短的本机 `SSH_SERVER_CONFIG_DIR` 减少镜像绝对路径长度；远端目录自身过长时仍可能触发文件名限制。调整已有配置位置前保留完整配置与同步状态，不能删除基线来规避。验收采用短独立根继续其他链路，没有把该规避说成产品修复，也没有修改同步签名。真实触发与证据边界见[完整链路验收](real-workflow-acceptance.md)。
+
 ## 5. 开发运行与验收说明
 
 - Windows PowerShell 可用 `npm.cmd run dev` 启动后端与 Vite，或用 `npm.cmd start` 构建前端后启动本地服务；访问控制和启动参数见 [M1 设计](../superpowers/specs/2026-10-01-m1-minimal-chain-design.md)。

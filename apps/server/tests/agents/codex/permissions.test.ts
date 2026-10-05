@@ -37,6 +37,80 @@ const request = (method: string, id: string | number = 'native-request'): Server
   },
 });
 
+const mcpRequest = (): ServerRequest => ({
+  id: 'mcp-request',
+  method: 'mcpServer/elicitation/request',
+  params: {
+    serverName: 'ssh-server',
+    mode: 'form',
+    requestedSchema: { type: 'object', properties: {} },
+    _meta: { codex_approval_kind: 'mcp_tool_call', persist: ['session', 'always'], tool_params: { command: 'pwd' } },
+  },
+});
+
+describe('当前原生 MCP 单次工具确认', () => {
+  it.each([true, false])('网页允许=%s 时仅返回一次决定，不携带持久授权', async (allow) => {
+    const { permissions, events, client } = setup(async () => ({ allow }));
+    permissions.request(mcpRequest());
+    await Promise.resolve();
+    expect(events[0]).toMatchObject({
+      type: 'permission_request',
+      toolName: 'mcp__ssh-server',
+      input: { server: 'ssh-server', arguments: { command: 'pwd' } },
+    });
+    expect(client.respond.mock.calls).toEqual([
+      ['mcp-request', allow ? { action: 'accept', content: {} } : { action: 'decline' }],
+    ]);
+    permissions.resolved('mcp-request');
+    expect(client.respond).toHaveBeenCalledTimes(1);
+  });
+
+  it('普通表单、其他服务器、无工具标记和URL均不进入网页审批', () => {
+    const answer = vi.fn<AgentTurnInput['requestPermission']>();
+    const { permissions, client, events } = setup(answer);
+    const variations = [
+      { serverName: 'other-server' },
+      { mode: 'url' },
+      { _meta: {} },
+      { requestedSchema: { type: 'object', properties: { input: { type: 'string' } } } },
+      { requestedSchema: { type: 'object', properties: {}, required: ['input'] } },
+      { requestedSchema: { type: 'object', properties: {}, additionalProperties: true } },
+    ];
+    for (const [index, params] of variations.entries()) {
+      const original = mcpRequest();
+      permissions.request({ ...original, id: index, params: { ...original.params, ...params } });
+    }
+    expect(client.rejectRequest).toHaveBeenCalledTimes(variations.length);
+    expect(answer).not.toHaveBeenCalled();
+    expect(client.respond).not.toHaveBeenCalled();
+    expect(events.every((event) => event.type === 'error')).toBe(true);
+  });
+
+  it.each(['timeout', 'native', 'turn'] as const)('%s 后迟到允许无法恢复 MCP 工具执行', async (ending) => {
+    vi.useFakeTimers();
+    let answer!: (value: PermissionAnswer) => void;
+    const { permissions, client, events } = setup(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    permissions.request(mcpRequest());
+    if (ending === 'timeout') await vi.advanceTimersByTimeAsync(CODEX_PERMISSION_TIMEOUT_MS);
+    else if (ending === 'native') permissions.resolved('mcp-request');
+    else permissions.cancel();
+    answer({ allow: true });
+    await Promise.resolve();
+    expect(client.respond.mock.calls).toEqual(
+      ending === 'native' ? [] : [['mcp-request', { action: ending === 'timeout' ? 'decline' : 'cancel' }]],
+    );
+    expect(events.filter((event) => event.type === 'permission_resolved')).toMatchObject([
+      { decision: ending === 'timeout' ? 'denied' : 'cancelled' },
+    ]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
 describe('Codex 审批失效与拒绝', () => {
   it('文件审批展示原生 diff，并把网页拒绝按原始数字 ID 仅回答一次', async () => {
     const { permissions, events, client, mapper } = setup(async () => ({ allow: false }));

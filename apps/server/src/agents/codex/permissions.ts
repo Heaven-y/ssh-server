@@ -3,6 +3,7 @@ import type { AgentTurnInput, PermissionAnswer } from '../types';
 import type { CodexClient } from './client';
 import type { CodexEventMapper } from './mapper';
 import { record, text, type RecordValue, type RpcId, type ServerRequest } from './types';
+import { MCP_SERVER_NAME } from '../../remote-tools/launch';
 
 export const CODEX_PERMISSION_TIMEOUT_MS = 300_000;
 const METHODS = new Map([
@@ -13,6 +14,30 @@ const METHODS = new Map([
 type Decision = 'allowed' | 'denied' | 'cancelled';
 type PendingApproval = { request: ServerRequest; appId: string; timer: NodeJS.Timeout };
 
+/** 0.160.0 将 MCP 工具确认作为空表单请求；普通表单和 URL 交互仍不支持。 */
+function emptyObjectSchema(schema: RecordValue): boolean {
+  const properties = schema.properties;
+  return (
+    schema.type === 'object' &&
+    !!properties &&
+    typeof properties === 'object' &&
+    !Array.isArray(properties) &&
+    Object.keys(properties).length === 0 &&
+    (schema.required === undefined || (Array.isArray(schema.required) && schema.required.length === 0)) &&
+    (schema.additionalProperties === undefined || schema.additionalProperties === false)
+  );
+}
+function mcpToolApproval(request: ServerRequest): boolean {
+  const params = request.params;
+  return (
+    request.method === 'mcpServer/elicitation/request' &&
+    params.serverName === MCP_SERVER_NAME &&
+    params.mode === 'form' &&
+    record(params._meta).codex_approval_kind === 'mcp_tool_call' &&
+    emptyObjectSchema(record(params.requestedSchema))
+  );
+}
+
 function grantedPermissions(params: RecordValue): RecordValue {
   const requested = record(params.permissions);
   const permissions: RecordValue = {};
@@ -22,6 +47,12 @@ function grantedPermissions(params: RecordValue): RecordValue {
   return permissions;
 }
 function responseFor(request: ServerRequest, decision: Decision): RecordValue {
+  if (request.method === 'mcpServer/elicitation/request') {
+    return {
+      action: { allowed: 'accept', denied: 'decline', cancelled: 'cancel' }[decision],
+      ...(decision === 'allowed' ? { content: {} } : {}),
+    };
+  }
   if (request.method === 'item/permissions/requestApproval') {
     return { permissions: decision === 'allowed' ? grantedPermissions(request.params) : {}, scope: 'turn' };
   }
@@ -40,7 +71,7 @@ export class CodexPermissions {
   ) {}
 
   request(request: ServerRequest): void {
-    const toolName = METHODS.get(request.method);
+    const toolName = mcpToolApproval(request) ? `mcp__${MCP_SERVER_NAME}` : METHODS.get(request.method);
     if (!toolName) {
       this.client.rejectRequest(request.id);
       this.input.emit({ type: 'error', message: 'Codex 请求了暂不支持的交互操作，已拒绝。' });
@@ -59,12 +90,16 @@ export class CodexPermissions {
       requestId: appId,
       toolName,
       input: toolInput,
-      description: text(request.params.reason),
+      description: text(request.params.reason) || text(request.params.message),
     });
     void this.answer(request.id, appId, toolName, toolInput);
   }
 
   private toolInput(toolName: string, params: RecordValue): RecordValue {
+    if (toolName === `mcp__${MCP_SERVER_NAME}`) {
+      const meta = record(params._meta);
+      return { server: params.serverName, arguments: meta.tool_params, description: meta.tool_description };
+    }
     if (toolName === 'commandExecution') return { command: params.command, cwd: params.cwd, reason: params.reason };
     if (toolName === 'permissions') return { permissions: params.permissions, cwd: params.cwd, reason: params.reason };
     return {
