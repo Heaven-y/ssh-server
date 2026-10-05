@@ -30,6 +30,7 @@
 | D22 | 工作区五步向导使用独立服务器表、实际指纹挑战和快照验证票 | 复用全部SSH消费者，防止创建前草稿污染配置、陈旧认证或目录换向 | 手动目标不改SSH config；预览只读；创建写盘前复验，保存后保留真实初始化结果；细则见[向导W01–W15](../superpowers/specs/2026-10-05-workspace-setup-design.md) |
 | D23 | 产品偏好独立本机JSON，默认值有明确生效点，版本检测共用实际启动入口 | 区分产品默认、历史原生模型及显式覆盖，避免迟到设置或旧GET改写已操作草稿 | 摘要原子保存；向导一次同步快照；同步与资源共享动态参数；真实focus重读；细则见[产品P01–P11](../superpowers/specs/2026-10-05-product-settings-design.md)和[验收](../guides/product-settings-acceptance.md) |
 | D24 | 工作区黑名单使用有界字面规则，保存版本在串行队列内核对 | 防误操作需要可解释匹配，避免用户正则回溯与并发覆盖；坏值不能静默降低保护 | 程序名/字符串两种匹配、最多20条；只更新policy，缺省undefined兼容、null拒绝；网页终端/在途已检查命令沿用边界；细则见[W01–W10](../superpowers/specs/2026-10-05-workspace-policy-design.md)及[验收](../guides/workspace-policy-acceptance.md) |
+| D25 | 浏览器有界UI偏好、官方分栏、cmdk委托入口及持续资源单controller | 布局变化保留编辑/PTY实例；复用原有动作与缓存，避免重复采样和确认分支 | 各浏览器分别记忆；暗色默认、亮色语义变量；原生modal/IME/xterm门禁；同步和版本确认保持；全部裁定见[N01–N14](../superpowers/specs/2026-10-05-workspace-navigation-design.md)及[验收](../guides/workspace-navigation-acceptance.md) |
 
 ## 2. 对话、skills 与命令的接入边界
 

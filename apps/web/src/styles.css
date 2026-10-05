@@ -29,6 +29,40 @@
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 
+:root {
+  color-scheme: dark;
+}
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-background: #f5f6f8;
+  --color-card: #ffffff;
+  --color-muted: #e5e8ee;
+  --color-muted-foreground: #505968;
+  --color-foreground: #1b2230;
+  --color-border: #d4d9e2;
+  --color-border-strong: #788294;
+  --color-accent: #254dc6;
+  --color-accent-foreground: #ffffff;
+  --color-success: #23613e;
+  --color-warning: #805100;
+  --color-destructive: #b6273f;
+  --color-destructive-foreground: #a51c34;
+}
+
+[cmdk-group-heading] {
+  padding: 0.75rem 0.75rem 0.375rem;
+  font-size: 0.75rem;
+  color: var(--color-muted-foreground);
+}
+.workspace-separator {
+  flex-shrink: 0;
+  background: var(--color-border);
+}
+.workspace-separator:hover,
+.workspace-separator:focus-visible {
+  background: var(--color-accent);
+}
+
 /* 终端仅使用自己的宿主与分隔线样式，不影响聊天/文件编辑器。 */
 .terminal-separator {
   flex-shrink: 0;

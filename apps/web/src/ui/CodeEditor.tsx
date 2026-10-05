@@ -8,17 +8,19 @@ import { javascript, typescript } from '@codemirror/legacy-modes/mode/javascript
 import { shell } from '@codemirror/legacy-modes/mode/shell';
 import { yaml } from '@codemirror/legacy-modes/mode/yaml';
 import { markdown } from '@codemirror/lang-markdown';
+import { useUiPreferences } from './ui-preferences';
 
-const theme = EditorView.theme(
-  {
-    '&': { backgroundColor: 'var(--color-background)', color: 'var(--color-foreground)' },
-    '.cm-gutters': { backgroundColor: 'var(--color-card)', color: 'var(--color-muted-foreground)', border: 'none' },
-    '.cm-content': { fontFamily: 'var(--font-mono)', fontSize: '13px' },
-    '.cm-scroller': { overflow: 'auto' },
-    '&.cm-focused': { outline: '2px solid var(--color-accent)', outlineOffset: '-2px' },
-  },
-  { dark: true },
-);
+const themeStyle = {
+  '&': { backgroundColor: 'var(--color-background)', color: 'var(--color-foreground)' },
+  '.cm-gutters': { backgroundColor: 'var(--color-card)', color: 'var(--color-muted-foreground)', border: 'none' },
+  '.cm-content': { fontFamily: 'var(--font-mono)', fontSize: '13px' },
+  '.cm-scroller': { overflow: 'auto' },
+  '&.cm-focused': { outline: '2px solid var(--color-accent)', outlineOffset: '-2px' },
+};
+const editorThemes = {
+  dark: EditorView.theme(themeStyle, { dark: true }),
+  light: EditorView.theme(themeStyle, { dark: false }),
+};
 const extensions = {
   json: [json()],
   toml: [StreamLanguage.define(toml)],
@@ -51,13 +53,14 @@ export function CodeEditor({
   height?: string;
   onChange(value: string): void;
 }) {
+  const theme = useUiPreferences((state) => state.theme);
   const configured = useMemo(
     () => [
       ...extensions[format],
-      Prec.high(theme),
+      Prec.high(editorThemes[theme]),
       EditorView.contentAttributes.of({ 'aria-label': label, spellcheck: 'false', 'data-gramm': 'false' }),
     ],
-    [format, label],
+    [format, label, theme],
   );
   const changed = useCallback(
     (text: string) => onChange(lineSeparator === '\r\n' ? text.replace(/\n/g, '\r\n') : text),
@@ -66,7 +69,7 @@ export function CodeEditor({
   return (
     <CodeMirror
       value={value.replace(/\r\n/g, '\n')}
-      theme="dark"
+      theme={theme}
       extensions={configured}
       height={height}
       style={height === '100%' ? { height: '100%' } : undefined}

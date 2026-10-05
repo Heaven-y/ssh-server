@@ -25,6 +25,28 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it('浏览器存储不可用时仍能恢复缺省、切换和移除内存工作区', () => {
+  const failed = () => {
+    throw new Error('存储不可用');
+  };
+  vi.stubGlobal('localStorage', { getItem: failed, setItem: failed, removeItem: failed });
+  try {
+    expect(lastWorkspaceId()).toBeUndefined();
+    useChat.getState().selectWorkspace('first');
+    expect(useChat.getState().workspaceId).toBe('first');
+    useChat.getState().removeWorkspace('first', 'second');
+    expect(useChat.getState().workspaceId).toBe('second');
+    useChat.getState().selectWorkspace(undefined);
+    expect(useChat.getState().workspaceId).toBeUndefined();
+  } finally {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => void storage.set(key, value),
+      removeItem: (key: string) => void storage.delete(key),
+    });
+  }
+});
+
 /** 假连接：记录发出的消息，测试通过 emit / status 模拟后端 */
 const sent: ClientMessage[] = [];
 let open = true;

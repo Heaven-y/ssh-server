@@ -135,7 +135,21 @@ function historicalModels(current: ChatState) {
     ]),
   ) as Record<AgentKind, string>;
 }
-export const lastWorkspaceId = () => localStorage.getItem(LAST_WORKSPACE_KEY) ?? undefined;
+export function lastWorkspaceId(): string | undefined {
+  try {
+    return localStorage.getItem(LAST_WORKSPACE_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+function persistWorkspace(id?: string): void {
+  try {
+    if (id) localStorage.setItem(LAST_WORKSPACE_KEY, id);
+    else localStorage.removeItem(LAST_WORKSPACE_KEY);
+  } catch {
+    /* 浏览器存储不可用时继续当前页面的内存选择。 */
+  }
+}
 
 export const useChat = create<ChatState>()((set, get) => ({
   connection: 'connecting',
@@ -150,8 +164,7 @@ export const useChat = create<ChatState>()((set, get) => ({
   selectWorkspace(id) {
     if (get().workspaceId === id) return;
     changeSelection();
-    if (id) localStorage.setItem(LAST_WORKSPACE_KEY, id);
-    else localStorage.removeItem(LAST_WORKSPACE_KEY);
+    persistWorkspace(id);
     set({ workspaceId: id, ...emptyConversation, ...newDefaults(get()) });
   },
   removeWorkspace(id, nextId) {
@@ -159,7 +172,7 @@ export const useChat = create<ChatState>()((set, get) => ({
     const sessionOperations = Object.fromEntries(
       Object.entries(get().sessionOperations).filter(([key]) => !key.startsWith(prefix)),
     );
-    if (lastWorkspaceId() === id) localStorage.removeItem(LAST_WORKSPACE_KEY);
+    if (lastWorkspaceId() === id) persistWorkspace();
     // 迟到的删除结果只清理所属状态，不能切走用户已经选择的其他工作区。
     if (get().workspaceId === id) get().selectWorkspace(nextId);
     set({ sessionOperations });
