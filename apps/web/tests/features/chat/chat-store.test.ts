@@ -82,6 +82,73 @@ beforeEach(() => {
   useChat.getState().selectWorkspace('w1');
 });
 
+const lineFeedback = {
+  path: 'main.py',
+  side: 'old' as const,
+  line: 2,
+  comment: '解释旧值',
+  source: { kind: 'turn' as const, id: '所属轮次', label: '本轮本地净差异' },
+};
+const feedbackScope = () => ({
+  workspaceId: 'w1',
+  agent: 'claude' as const,
+  conversationVersion: useChat.getState().conversationVersion,
+});
+it('行反馈绑定选择代次，能力和断线失败保留，普通成功发送附来源后消费', () => {
+  expect(useChat.getState().addFeedback(lineFeedback, { ...feedbackScope(), workspaceId: 'other' })).toBe(false);
+  expect(useChat.getState().addFeedback(lineFeedback, feedbackScope())).toBe(true);
+  useChat.getState().selectCapability({
+    id: 'skill',
+    source: '项目',
+    kind: 'skill',
+    name: 'skill',
+    description: '',
+    available: true,
+    supportsArguments: true,
+    requiresSession: false,
+  });
+  expect(useChat.getState().send('保留正文')).toBe(false);
+  expect(useChat.getState().feedback).toHaveLength(1);
+  useChat.getState().selectCapability(undefined);
+  open = false;
+  expect(useChat.getState().send('保留正文')).toBe(false);
+  expect(useChat.getState().feedback).toHaveLength(1);
+  open = true;
+  expect(useChat.getState().send('保留正文')).toBe(true);
+  expect(sent.at(-1)).toMatchObject({ text: expect.stringContaining('保留正文\n\n行内反馈：') });
+  expect(sent.at(-1)).toMatchObject({ text: expect.stringContaining('旧侧第2行') });
+  expect(sent.at(-1)).toMatchObject({ text: expect.stringContaining('所属轮次') });
+  expect(useChat.getState().feedback).toEqual([]);
+});
+it('反馈数量/字符门禁和移除有效，首次原生id保持、切换清理且旧scope不能追加', () => {
+  expect(useChat.getState().addFeedback({ ...lineFeedback, line: 0 }, feedbackScope())).toBe(false);
+  expect(useChat.getState().addFeedback({ ...lineFeedback, comment: ' ' }, feedbackScope())).toBe(false);
+  expect(useChat.getState().addFeedback({ ...lineFeedback, comment: 'x'.repeat(3001) }, feedbackScope())).toBe(false);
+  for (let i = 0; i < 4; i++)
+    expect(useChat.getState().addFeedback({ ...lineFeedback, comment: 'x'.repeat(3000) }, feedbackScope())).toBe(true);
+  expect(useChat.getState().addFeedback(lineFeedback, feedbackScope())).toBe(false);
+  useChat.getState().removeFeedback(useChat.getState().feedback[0]!.id);
+  expect(useChat.getState().feedback).toHaveLength(3);
+  useChat.setState({ feedback: [] });
+  for (let i = 0; i < 20; i++) expect(useChat.getState().addFeedback(lineFeedback, feedbackScope())).toBe(true);
+  expect(useChat.getState().addFeedback(lineFeedback, feedbackScope())).toBe(false);
+  useChat.setState({ feedback: [] });
+  expect(useChat.getState().send('启动')).toBe(true);
+  const clientTurnId = useChat.getState().pendingClientTurnId!;
+  emit({ type: 'turn.started', workspaceId: 'w1', agent: 'claude', clientTurnId, turnId: 'running' });
+  const scope = feedbackScope();
+  expect(useChat.getState().addFeedback(lineFeedback, scope)).toBe(true);
+  emit({
+    type: 'agent.event',
+    turnId: 'running',
+    event: { type: 'session', agent: 'claude', sessionId: 'native', cwd: '.', model: 'model' },
+  });
+  expect(useChat.getState().feedback).toHaveLength(1);
+  useChat.getState().newSession();
+  expect(useChat.getState().feedback).toEqual([]);
+  expect(useChat.getState().addFeedback(lineFeedback, scope)).toBe(false);
+});
+
 it('视图代次只随选择变化，首次原生会话id不重置；重开同一历史仍新建视图', async () => {
   const selected = useChat.getState().conversationVersion;
   useChat.getState().selectWorkspace('w1');

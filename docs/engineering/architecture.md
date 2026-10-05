@@ -44,7 +44,7 @@
 | 版本记录 | 本机 git（外部命令） | |
 | 前端 | React 19 + Vite + Tailwind CSS 4 | |
 | 前端组件 | Base UI（无样式组件）、react-resizable-panels（分栏）、cmdk（命令面板）、lucide-react（图标）、sonner（提示） | 选型参考 t3code、vibe-kanban 等项目，见 ui-layout 第 0 节 |
-| 消息渲染 | streamdown（流式 Markdown）+ shiki（代码高亮）、react-virtuoso4.18.16（动态长列表） | 时间线投影合并明确读取工具；展开状态留在列表父层，选择代次重置视图。diff沿用现有Git文本，下一阶段接入成熟diff组件 |
+| 消息渲染 | streamdown（流式 Markdown）+ shiki（代码高亮）、react-virtuoso4.18.16（动态长列表） | 时间线投影合并明确读取工具；展开状态留在列表父层，选择代次重置视图。diff使用按需加载的@pierre/diffs1.5.1及GitHub高对比双主题，解析和组件失败降级为有界原文本 |
 | 前端状态与接口数据 | zustand、`@tanstack/react-query`、partysocket | zustand 管流式状态，react-query 管接口加载与刷新，partysocket 管 WebSocket 重连 |
 | 终端 | @xterm/xterm + @xterm/addon-fit | |
 | 文件编辑 | `@uiw/react-codemirror` / CodeMirror 6 | 原生配置和轻量脚本编辑共用，按需加载，不引入完整 IDE |
@@ -86,7 +86,7 @@ ssh-server/
 │  └─ web/
 │     ├─ src/
 │     │  ├─ app/              # 页面外壳与顶栏
-│     │  ├─ features/         # chat、workspaces、ssh、sync、files、versions、settings
+│     │  ├─ features/         # chat、changes、workspaces、ssh、sync、files、versions、settings
 │     │  ├─ ui/               # 通用控件样式、CodeMirror 编辑组件
 │     │  └─ lib/              # 接口客户端、查询与 WebSocket
 │     └─ tests/               # lib 与 features 下对应测试
@@ -229,6 +229,12 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 - 恢复预览绑定目标提交、单文件或整区范围、过滤规则及当前文件/索引状态；明确标注同名未跟踪覆盖，旧确认失效。执行只修改工作树，HEAD 和实际索引不变，失败尽量回滚，无法回滚时列出受影响路径。
 - 写入复用同步事务，并按实际仓库串行；恢复成功后由网页调用同步，单独显示成功、失败、冲突或删除待确认，不能绕过删除确认。
 - 编辑器“保存文件”只写入本地副本并触发同步，不创建提交；界面分别显示文件未保存、未记录版本和同步状态。
+
+普通轮次快照：`vcs/turn-snapshots.ts`通过隔离索引生成树，写入`refs/ssh-server/turns`专用引用，不创建提交、不安装索引。范围摘要绑定工作区、仓库/目录身份与同步规则；读取前后核对所属引用和树，禁止外部diff/textconv，文件清单最多10000项、patch最多512KiB。清理使用期望旧树，目录换向或外部改写时保留引用。
+
+`chat/turn-changes.ts`和原子元数据存储接入TurnManager：runner前采集基线，已有同步后采集结果，故障只影响改动状态；已开始的采集取消须等待收尾后释放租约，纯上下文命令跳过。每工作区最多20轮（包含运行中），优先淘汰最早已结束；全运行则新采集不可用，Agent继续。先原子移除元数据再清引用；重启running标为incomplete，不重放。HTTP列表/diff验证工作区、Agent、原生会话所属，不接受任意OID，无原生id的历史查询返回空。
+
+单文件放弃复用原恢复原子写入和同步事务，目标为当前HEAD或空树；预览绑定磁盘、HEAD、索引与过滤，所选文件独立暂存内容/模式/删除差异则拒绝。前端changes查询按工作区、Agent、原生id、选择代次隔离并消费AbortSignal；反馈仅内存，普通socket发送成功才清空。细则见[改动设计](../superpowers/specs/2026-10-05-conversation-changes-design.md)及[验收](../guides/conversation-changes-acceptance.md)。
 
 ### 5.7 sessions
 

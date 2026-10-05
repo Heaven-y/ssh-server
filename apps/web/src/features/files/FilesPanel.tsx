@@ -1,5 +1,5 @@
-import { useId, useState } from 'react';
-import { CircleAlert, FileCode2, RefreshCw, Save, Server, X } from 'lucide-react';
+import { lazy, Suspense, useId, useState } from 'react';
+import { CircleAlert, FileCode2, FileDiff, RefreshCw, Save, Server, X } from 'lucide-react';
 import type { Workspace } from '@ssh-server/shared';
 import { CodeEditor, type CodeFormat } from '../../ui/CodeEditor';
 import { buttonClass, inputClass } from '../../ui/styles';
@@ -8,6 +8,11 @@ import { FilePanelFrame } from './FilePanelFrame';
 import { useFileEditor } from './use-file-editor';
 import { RemoteFilesPanel } from '../remote-files/RemoteFilesPanel';
 import { DisconnectedEditors } from './DisconnectedEditors';
+import { useChat } from '../chat/chat-store';
+import type { ChangesRequest } from '../changes/types';
+
+const ChangesPanel = lazy(() => import('../changes/ChangesPanel'));
+type FileView = 'local' | 'remote' | 'changes';
 
 const FORMATS: Record<string, CodeFormat> = {
   py: 'python',
@@ -30,17 +35,79 @@ function formatOf(file: string): CodeFormat {
   return FORMATS[file.split('.').at(-1)?.toLowerCase() ?? ''] ?? 'text';
 }
 
+function useFileView(workspace: Workspace, changesRequest?: ChangesRequest) {
+  const conversationVersion = useChat((state) => state.conversationVersion);
+  const workspaceId = useChat((state) => state.workspaceId);
+  const agent = useChat((state) => state.agent);
+  const request =
+    changesRequest?.workspaceId === workspace.id &&
+    workspaceId === workspace.id &&
+    changesRequest.agent === agent &&
+    changesRequest.conversationVersion === conversationVersion
+      ? changesRequest
+      : undefined;
+  const [chosen, choose] = useState<{ view: FileView; nonce?: string }>({ view: 'local' });
+  const [loaded, setLoaded] = useState(false);
+  const view = request && request.nonce !== chosen.nonce ? 'changes' : chosen.view;
+  const setView = (next: FileView) => {
+    choose({ view: next, nonce: request?.nonce });
+    if (next === 'changes') setLoaded(true);
+  };
+  return { view, setView, loaded, request, conversationVersion };
+}
+
+function ChangesArea({
+  id,
+  workspace,
+  fileView,
+  dirty,
+}: {
+  id: string;
+  workspace: Workspace;
+  fileView: ReturnType<typeof useFileView>;
+  dirty: boolean;
+}) {
+  return (
+    <div
+      id={`${id}-changes`}
+      hidden={fileView.view !== 'changes'}
+      className={fileView.view === 'changes' ? 'flex min-h-0 min-w-0 flex-1 flex-col' : 'hidden'}
+    >
+      {(fileView.loaded || fileView.request) && (
+        <Suspense
+          fallback={
+            <p role="status" className="p-3 text-xs">
+              正在打开改动…
+            </p>
+          }
+        >
+          <ChangesPanel
+            key={fileView.conversationVersion}
+            workspace={workspace}
+            active={fileView.view === 'changes'}
+            request={fileView.request}
+            dirty={dirty}
+          />
+        </Suspense>
+      )}
+    </div>
+  );
+}
+
 /** 面板绑定打开时的工作区；切换对话工作区不会迁移或丢弃编辑缓冲。 */
 export default function FilesPanel({
   workspace: initialWorkspace,
   onClose,
+  changesRequest,
 }: {
   workspace: Workspace;
   onClose(): void;
+  changesRequest?: ChangesRequest;
 }) {
   const id = useId();
   const [workspace] = useState(initialWorkspace);
-  const [view, setView] = useState<'local' | 'remote'>('local');
+  const fileView = useFileView(workspace, changesRequest);
+  const { view, setView } = fileView;
   const editor = useFileEditor(workspace.id);
   const editingDisabled = !!editor.busy || !!editor.protection;
   const [pathInput, setPathInput] = useState('');
@@ -157,6 +224,7 @@ export default function FilesPanel({
       >
         <RemoteFilesPanel workspace={workspace} active={view === 'remote'} />
       </div>
+      <ChangesArea id={id} workspace={workspace} fileView={fileView} dirty={editor.dirty} />
       <DisconnectedEditors workspaceId={workspace.id} />
     </FilePanelFrame>
   );
@@ -169,12 +237,12 @@ function FileViewSelector({
   setView,
 }: {
   id: string;
-  view: 'local' | 'remote';
+  view: FileView;
   dirty: boolean;
-  setView(view: 'local' | 'remote'): void;
+  setView(view: FileView): void;
 }) {
   return (
-    <div role="group" aria-label="文件视图" className="flex shrink-0 gap-2 border-b border-border px-3 py-2">
+    <div role="group" aria-label="文件视图" className="flex shrink-0 flex-wrap gap-1 border-b border-border px-3 py-2">
       <button
         type="button"
         className={buttonClass(view === 'local' ? 'primary' : 'ghost')}
@@ -185,6 +253,16 @@ function FileViewSelector({
         <FileCode2 aria-hidden className="size-4" />
         本地代码
         {dirty && <span className="text-xs">· 未保存</span>}
+      </button>
+      <button
+        type="button"
+        className={buttonClass(view === 'changes' ? 'primary' : 'ghost')}
+        aria-pressed={view === 'changes'}
+        aria-controls={`${id}-changes`}
+        onClick={() => setView('changes')}
+      >
+        <FileDiff aria-hidden className="size-4" />
+        改动
       </button>
       <button
         type="button"

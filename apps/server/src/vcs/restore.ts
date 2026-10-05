@@ -1,9 +1,9 @@
 import type { VersionChange, VersionExcluded, VersionRestorePreview } from '@ssh-server/shared';
 import { assertAllowedPath } from '../files/paths';
 import { VersionError } from './errors';
-import { git } from './git';
+import { git, gitText } from './git';
 import { withIndexLock } from './index';
-import { assertWritable, repoPath, sha256, type Repository } from './repository';
+import { assertWritable, headState, repoPath, sha256, type Repository } from './repository';
 import { applyRestore, directoryContainsOnly, type RestoreFile } from './restore-files';
 import {
   fingerprint,
@@ -127,7 +127,12 @@ function exclusion(repo: Repository, current: WorkingFile, ignored: boolean, ent
   );
 }
 
-async function collectOperations(state: Snapshot, target: Map<string, TreeEntry>, paths: string[], commit: string) {
+async function collectOperations(
+  state: Snapshot,
+  target: Map<string, TreeEntry>,
+  paths: string[],
+  input: { commit: string; discard: boolean },
+) {
   const repo = state.repo;
   const ignored = await ignoredPaths(repo, paths);
   const excluded: VersionExcluded[] = [];
@@ -141,8 +146,8 @@ async function collectOperations(state: Snapshot, target: Map<string, TreeEntry>
       excluded.push({ path: file, reason });
       continue;
     }
-    if (!entry && !state.tree.has(file) && !state.staged.has(file)) continue;
-    const operation = await operationFor(repo, { commit, relative: file, current, target: entry });
+    if (!included(state, file, entry, input.discard)) continue;
+    const operation = await operationFor(repo, { commit: input.commit, relative: file, current, target: entry });
     if (operation) {
       if (operation.data) bytes += operation.data.length;
       if (bytes > 128 * 1024 * 1024) throw new VersionError('limit_exceeded');
@@ -152,14 +157,31 @@ async function collectOperations(state: Snapshot, target: Map<string, TreeEntry>
   return { operations, excluded };
 }
 
-export async function restorePlan(repo: Repository, commit: string, relative?: string): Promise<RestorePlan> {
+function included(state: Snapshot, file: string, entry: TreeEntry | undefined, discard: boolean): boolean {
+  return discard || !!entry || state.tree.has(file) || state.staged.has(file);
+}
+
+function assertNoStagedChange(state: Snapshot, relative: string): void {
+  const recorded = state.tree.get(relative);
+  const staged = state.staged.get(relative);
+  if (recorded?.oid !== staged?.oid || recorded?.mode !== staged?.mode || (staged && staged.stage !== '0'))
+    throw new VersionError('staged_changes');
+}
+
+export async function restorePlan(
+  repo: Repository,
+  commit: string,
+  relative?: string,
+  discard = false,
+): Promise<RestorePlan> {
   validatePath(repo, relative);
   const target = await treeEntries(repo, commit);
   const state = await snapshot(repo, [...target.keys()]);
+  if (discard && relative) assertNoStagedChange(state, relative);
   const paths = relative
     ? [relative]
     : [...new Set([...state.tree.keys(), ...state.staged.keys(), ...target.keys()])].sort();
-  const { operations, excluded } = await collectOperations(state, target, paths, commit);
+  const { operations, excluded } = await collectOperations(state, target, paths, { commit, discard });
   const safe = await resolveStructural(operations, state, excluded);
   // 确认令牌同时绑定最终计划；被忽略的目录内容也可能改变安全恢复范围。
   const revision = sha256(
@@ -178,14 +200,25 @@ export async function restorePlan(repo: Repository, commit: string, relative?: s
   };
 }
 
-export async function restoreWorkspace(repo: Repository, input: { commit: string; path?: string; revision: string }) {
+export async function discardPlan(repo: Repository, relative: string): Promise<RestorePlan> {
+  validatePath(repo, relative);
+  const { head } = await headState(repo);
+  const target = head ?? (await gitText(repo.root, ['hash-object', '-w', '-t', 'tree', '--stdin'], { input: '' }));
+  const plan = await restorePlan(repo, target, relative, true);
+  if (plan.state.head !== head) throw new VersionError('stale_revision');
+  return plan;
+}
+
+async function applyPlan(repo: Repository, input: { commit?: string; path?: string; revision: string }) {
   return withIndexLock(repo, async () => {
     await assertWritable(repo);
-    const plan = await restorePlan(repo, input.commit, input.path);
+    const plan = input.commit
+      ? await restorePlan(repo, input.commit, input.path)
+      : await discardPlan(repo, input.path!);
     if (plan.state.conflicted) throw new VersionError('repository_busy');
     if (plan.preview.revision !== input.revision) throw new VersionError('stale_revision');
     // blob 准备期间仍可能有外部编辑，落盘前再核对整个确认范围。
-    const latest = await snapshot(repo, [...(await treeEntries(repo, input.commit)).keys()]);
+    const latest = await snapshot(repo, [...plan.state.files.keys()]);
     if (latest.status.revision !== plan.state.status.revision) throw new VersionError('stale_revision');
     const restored = await applyRestore(repo, plan.operations);
     try {
@@ -194,4 +227,12 @@ export async function restoreWorkspace(repo: Repository, input: { commit: string
       throw new VersionError('partial_restore', restored);
     }
   });
+}
+
+export function restoreWorkspace(repo: Repository, input: { commit: string; path?: string; revision: string }) {
+  return applyPlan(repo, input);
+}
+
+export function discardWorkspace(repo: Repository, input: { path: string; revision: string }) {
+  return applyPlan(repo, input);
 }

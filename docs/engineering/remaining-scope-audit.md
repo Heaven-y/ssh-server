@@ -15,7 +15,7 @@
 | F9 / A18 资源面板 | [资源服务](../../apps/server/src/resources/service.ts)及HTTP已接入；[资源详情](../../apps/web/src/features/resources/ResourcesPanel.tsx)支持固定目标、空值/时间/过期和可见性；真实SSH、核心回归及网页证据见[验收](../guides/resources-acceptance.md) | 产品参数和顶栏单controller概览已贯通，真实SSH入口与共享详情复验见[导航验收](../guides/workspace-navigation-acceptance.md)；原生页面隐藏及完整多活动组合仍待验，不调用模型 |
 | 界面第 7 节产品设置 | 独立本机偏好、产品/原生视图、手动版本检测、新会话默认与向导快照已贯通；一次Review三项修复和真实/网页证据见[设置验收](../guides/product-settings-acceptance.md) | 工作区黑名单已独立贯通；产品默认空值保持跟随原生，历史只保留显式覆盖 |
 | 可调定时同步间隔 | [调度](../../apps/web/src/features/sync/scheduler.ts)默认15秒、可配置5–300秒；替换旧计时器不增加立即同步，保留隐藏/忙/待确认门禁 | 核心范围完成；完整对话/PTY/同步/资源并发继续按M6验收 |
-| 界面第 1/3/4/5 节目标 | [布局/导航](../guides/workspace-navigation-acceptance.md)已完成侧栏折叠、可调分栏、亮色与cmdk；[时间线](../guides/conversation-timeline-acceptance.md)已接入动态虚拟列表及明确读取工具分组；文件/版本页提供已有diff | 本轮改动聚合和diff行内反馈；实际原生长负载仍按A14–A16验收，不以受控显示或单次界面改版作为全部完成 |
+| 界面第 1/3/4/5 节目标 | [布局/导航](../guides/workspace-navigation-acceptance.md)已完成侧栏折叠、可调分栏、亮色与cmdk；[时间线](../guides/conversation-timeline-acceptance.md)已接入动态虚拟列表及明确读取工具分组；文件/版本页提供已有diff | [本轮净差异/行反馈/单文件放弃](../guides/conversation-changes-acceptance.md)已接入真实本地快照；实际原生长负载仍按A14–A16验收，不以受控显示作为全部完成 |
 
 ## 2. 验收缺口与证据边界
 

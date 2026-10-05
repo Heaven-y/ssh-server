@@ -2,7 +2,7 @@
 
 本文档说明开发这个仓库所需的本机环境、代码规范、项目 skill 的管理方式，以及已经发现并处理的问题。
 
-需求与实现进度更新于 2026-10-04，见 [需求](../product/requirements.md)、[设计决策](../engineering/decisions.md) 和 [路线图](../roadmap.md)。认证同步、Claude/Codex 对话与原生能力、原生配置、文件编辑、本地版本记录及服务器目录浏览已接入；远端写操作、下载、同步协调、终端和资源面板待后续实施。
+需求与实现进度更新于 2026-10-05，见 [需求](../product/requirements.md)、[设计决策](../engineering/decisions.md) 和 [路线图](../roadmap.md)。认证同步、Claude/Codex 对话与原生能力、原生配置、文件编辑、本地版本记录及服务器目录浏览已接入；远端写操作、下载、同步协调、终端、资源、布局与本轮改动已接入；真实SSH/原生长负载和多活动完整M6继续验收。
 
 ## 1. 本机环境
 
@@ -42,6 +42,7 @@
 | 前端接口数据（加载、错误、刷新） | `@tanstack/react-query` | 替代手写的 loading / error 状态与刷新逻辑 |
 | 前端 WebSocket 断线重连 | `partysocket` | 自带退避重连与发送缓冲 |
 | 对话长列表与贴底 | `react-virtuoso` 4.18.16（MIT） | 动态高度虚拟列表、流式贴底与用户上翻停止，取代早期use-stick-to-bottom；采用官方跟随/定位API，展开状态保存在列表外 |
+| Git差异与行反馈 | `@pierre/diffs` 1.5.1（Apache-2.0） | React19兼容，官方patch解析与侧别行号、按需加载；GitHub高对比双主题实测，失败保留有界原文本 |
 | Markdown 流式渲染 | `streamdown` | 处理未闭合的 Markdown |
 | 原生配置语法校验 | `smol-toml` 1.9.0（BSD-3-Clause）与原生 JSON 解析 | 校验语法后保存原文，保留未知字段、注释和格式，不自行实现 TOML |
 | 轻量编辑组件 | `@uiw/react-codemirror` 4.25.12、CodeMirror 6 JSON / TOML / 脚本语言扩展、`@codemirror/lang-markdown` 6.5.2（MIT） | 按需加载，原生配置与项目文件共用；支持 Python、JS/TS、Shell、YAML、Markdown 高亮及搜索 |

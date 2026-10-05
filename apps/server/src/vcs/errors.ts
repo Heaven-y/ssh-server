@@ -6,6 +6,7 @@ const failures = {
   not_initialized: { status: 409, message: '请先初始化本地版本记录' },
   repository_busy: { status: 409, message: '仓库正被其他 Git 操作使用，或有未完成的合并、变基，请先处理后重试' },
   stale_revision: { status: 409, message: '文件、暂存区或当前提交已变化，请刷新后重新确认' },
+  staged_changes: { status: 409, message: '该文件有独立暂存改动，请先在本机处理暂存区后再放弃' },
   hierarchy_conflict: {
     status: 409,
     message: '文件与目录替换会影响工作区外或已排除的暂存内容，请先在本机处理路径冲突',
