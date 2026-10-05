@@ -1,6 +1,6 @@
 # 服务器文件管理设计
 
-日期：2026-10-03，状态更新：2026-10-04。依据：[F10 与 A20–A23](../../product/requirements.md)、[架构 5.12](../../engineering/architecture.md)、D21。本文细化既定需求；目录浏览、操作任务、显式下载及同步路径协调已接入。同步协调的本机证据见[验收记录](../../guides/remote-file-sync-acceptance.md)，真实 SSH 与实际 rclone 完整验收仍未完成。
+日期：2026-10-03，状态更新：2026-10-05。依据：[F10 与 A20–A23](../../product/requirements.md)、[架构 5.12](../../engineering/architecture.md)、D21。本文细化既定需求；目录浏览、操作任务、显式下载及同步路径协调已接入。同步协调的本机证据见[验收记录](../../guides/remote-file-sync-acceptance.md)，后续实际SSH/rclone、同/跨文件系统、混合目录迁移与Firefox下载见[完整链路验收](../../guides/real-workflow-acceptance.md)，真实权限/对象变化/独立连接中断见[失败验收](../../guides/remote-file-failure-acceptance.md)。Edge系统选择器仍未验，独立连接不扩大为共享池或全网络故障。
 
 ## 1. 目标与范围
 

@@ -151,10 +151,12 @@ type TerminalServerMessage =
 ### 任务 7：阶段验证与两级 Git 整合
 
 - [x] 核心实现、Review、网页证据完成后执行一次 `npm run check` 和 web build；若覆盖率暴露核心路径缺口，补对应断言，不为了过门禁写镜像实现的测试、不降低门槛。记录结果，通过后提交完整阶段。
-- [ ] 刷新远端与工作树状态，推送 `codex/ssh-workflow-terminal`，核对 Windows/Linux CI 终态；失败仅复验相关变更，未通过不合并。
-- [ ] 从无冲突且无他人改动的大分支用 `git merge --no-ff codex/ssh-workflow-terminal` 整合并正常推送；达到可用终端阶段基线后，在占用 main 的工作树以 `--no-ff` 合入 `feat/ssh-workflow`，正常推送并核对双平台 CI。合并树相同沿用已通过基准，有冲突解决则验证实际受影响部分，不反复跑相同全量测试。
-- [ ] 若采用 PR，标题/正文描述最终交付行为与验证范围，使用普通 merge 保留历史，创建后附加到当前任务。核对小分支 tip 被大分支和 main 包含且无工作树占用后，才清理已合并小分支；保留 `feat/ssh-workflow`，不 squash/rebase/强推。
-- [ ] 更新路线图的终端实施状态和真实验收边界；接着推进整项目剩余范围中的向导、资源面板、设置及 M6，不能将本计划完成视为整项目 goal 完成。
+- [x] 刷新远端与工作树状态，推送 `codex/ssh-workflow-terminal`，核对 Windows/Linux CI 终态；失败仅复验相关变更，未通过不合并。
+- [x] 从无冲突且无他人改动的大分支用 `git merge --no-ff codex/ssh-workflow-terminal` 整合并正常推送；达到可用终端阶段基线后，在占用 main 的工作树以 `--no-ff` 合入 `feat/ssh-workflow`，正常推送并核对双平台 CI。合并树相同沿用已通过基准，有冲突解决则验证实际受影响部分，不反复跑相同全量测试。
+- [x] 若采用 PR，标题/正文描述最终交付行为与验证范围，使用普通 merge 保留历史，创建后附加到当前任务。核对小分支 tip 被大分支和 main 包含且无工作树占用后，才清理已合并小分支；保留 `feat/ssh-workflow`，不 squash/rebase/强推。
+- [x] 更新路线图的终端实施状态和真实验收边界；接着推进整项目剩余范围中的向导、资源面板、设置及 M6，不能将本计划完成视为整项目 goal 完成。
+
+阶段事实：终端 [PR #5](https://github.com/Heaven-y/ssh-server/pull/5) 已合入 feat `7d0bf33`，main 阶段整合为 `9dfaacc`；后续 [PR #6](https://github.com/Heaven-y/ssh-server/pull/6) 是文件任务恢复修复，不能算作第二个终端功能 PR。双平台整合及后续真实全屏/密码/并发证据见[路线图](../../roadmap.md)与[完整链路验收](../../guides/real-workflow-acceptance.md)。原生 OS 输入法仍未验。
 
 ## 自查结论
 
