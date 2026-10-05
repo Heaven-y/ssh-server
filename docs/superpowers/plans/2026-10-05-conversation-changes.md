@@ -1,7 +1,7 @@
 # 本轮改动与行内反馈实施计划
 
 **Goal：** 真实轮次快照、改动视图、成熟diff渲染、待发送行反馈及有确认的单文件放弃。
-**Spec：** [C01–C11](../specs/2026-10-05-conversation-changes-design.md)
+**Spec：** [C01–C12](../specs/2026-10-05-conversation-changes-design.md)
 **方式：** Native，用户授权自主记录；一次阶段核心Review后补最少回归。
 
 ## 全局约束
@@ -41,11 +41,11 @@ Interfaces：TurnChanges.begin(ws,turnId,{agent,sessionId?})、finish(ws,turnId,
 Files：新增web/features/changes；修改FilePanel/视图、ChatView/Timeline聚合入口、Composer、chat-store、VersionDiffView、package/lock。
 Interfaces：ChangesPanel接收固定workspace/会话身份；DiffView({patch,source,onFeedback})用@pierre/diffs；useChat.addFeedback/removeFeedback仅内存、绑定conversationVersion，send普通消息时合并成功才清空。
 
-- [ ] 安装固定diff组件；按需单文件加载/主题、增删行/二进制、错误/截断及有界原文本降级；文件三视图保持原子树。
-- [ ] 所属轮次聚合卡片/入口及相对上次保存视图，异步目标校验与取消，旧结果不替换新会话。
-- [ ] 行点击与键盘等价入口、待发反馈列表/移除，正文保留、连接失败保留、普通发送成功消费；能力选择与目标切换门禁。
-- [ ] 单文件放弃预览与显式确认，反馈本地结果和同步待确认，不自动提交/覆盖编辑缓冲。
-- [ ] 类型/相关lint、构建及相关回归；Edge两主题三宽度、同编辑DOM/草稿、反馈与放弃入口。提交feat(changes)。
+- [x] 安装固定diff组件；按需单文件加载/主题、增删行/二进制、错误/截断及有界原文本降级；文件三视图保持原子树。
+- [x] 所属轮次聚合卡片/入口及相对上次保存视图，异步目标校验与取消，旧结果不替换新会话。
+- [x] 行点击与键盘等价入口、待发反馈列表/移除，正文保留、连接失败保留、普通发送成功消费；能力选择与目标切换门禁。
+- [x] 单文件放弃预览与显式确认，反馈本地结果和同步待确认，不自动提交/覆盖编辑缓冲。
+- [x] 类型/相关lint、构建及相关回归；Edge两主题三宽度、同编辑DOM/草稿、反馈与放弃入口。提交feat(changes)。
 
 ## Task 4：核心Review与整合
 

@@ -116,7 +116,7 @@ export async function diff(repo: Repository, input: { commit?: string; path?: st
       const files = state.status.changes
         .map((change) => change.path)
         .filter((file) => !input.path || input.path === file);
-      return patch(repo, ['diff', base, tree], files);
+      return { ...(await patch(repo, ['diff', base, tree], files)), revision: state.status.revision };
     });
   }
   const commit = await commitId(repo, input.commit);

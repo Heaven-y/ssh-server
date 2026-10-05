@@ -209,14 +209,15 @@ export const api = {
     }),
   initializeVersions: (id: string) =>
     request<VersionStatus>(versionsUrl(id) + '/initialize', { method: 'POST', body: '{}' }),
-  versionStatus: (id: string) => request<VersionStatus>(versionsUrl(id), { cache: 'no-store' }),
+  versionStatus: (id: string, signal?: AbortSignal) =>
+    request<VersionStatus>(versionsUrl(id), { signal, cache: 'no-store' }),
   versionHistory: (id: string, skip = 0) =>
     request<VersionHistory>(versionsUrl(id) + `/history?skip=${skip}`, { cache: 'no-store' }),
-  versionDiff: (id: string, input: { commit?: string; path?: string } = {}) => {
+  versionDiff: (id: string, input: { commit?: string; path?: string } = {}, signal?: AbortSignal) => {
     const query = new URLSearchParams();
     if (input.commit) query.set('commit', input.commit);
     if (input.path) query.set('path', input.path);
-    return request<VersionDiff>(versionsUrl(id) + '/diff?' + query.toString(), { cache: 'no-store' });
+    return request<VersionDiff>(versionsUrl(id) + '/diff?' + query.toString(), { signal, cache: 'no-store' });
   },
   saveVersion: (id: string, input: VersionSaveInput) =>
     request<VersionSaveResult>(versionsUrl(id) + '/save', { method: 'POST', body: JSON.stringify(input) }),
