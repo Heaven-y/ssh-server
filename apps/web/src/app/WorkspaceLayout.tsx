@@ -65,9 +65,11 @@ export function WorkspaceColumns({
   const wide = useWideWorkspace();
   const width = useUiPreferences((state) => state.fileWidth);
   const visible = opened && wide;
-  useLayoutEffect(() => {
-    if (visible) panel.current?.resize(width);
-    else panel.current?.collapse();
+  // 以有界尺寸切换分栏；关闭和窄窗时上下限均为零，文件子树仍可作为原生覆盖层显示。
+  useEffect(() => {
+    // Group应用新上下限后再恢复偏好，避免打开时resize被上一轮maxSize=0截断。
+    const frame = requestAnimationFrame(() => panel.current?.resize(visible ? width : 0));
+    return () => cancelAnimationFrame(frame);
   }, [visible, width, panel]);
   return (
     <Group
@@ -85,11 +87,10 @@ export function WorkspaceColumns({
       <Panel
         id="workspace-files"
         panelRef={panel}
-        collapsible
-        collapsedSize={0}
+        // 用户拖动保留最小可用宽度；关闭仍经过文件面板已有的未保存确认。
         defaultSize={0}
-        minSize={360}
-        maxSize={520}
+        minSize={visible ? 360 : 0}
+        maxSize={visible ? 520 : 0}
       >
         <div className="h-full">{files}</div>
       </Panel>

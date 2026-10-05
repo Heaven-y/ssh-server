@@ -108,7 +108,7 @@
 - [x] 与同步范围内源/目标及混合目录协调，保留编辑缓冲和冲突，防止旧路径重新生成；仅服务器操作不依赖无关同步或模型。本机受控传输与网页证据见[同步协调验收](guides/remote-file-sync-acceptance.md)，实际 rclone 与真实 SSH 保留在 M6
 - [x] xterm.js SSH终端基础：固定目标、目录确认、独立PTY、复制粘贴、稳定多标签/分屏和可调主区；一次核心Review及本机真实ssh2/Chrome验收完成，见[记录](guides/web-terminal-acceptance.md)。真实htop/nvitop PTY已复验，原生OS输入法与密码串联仍待验，A10/A12保持部分完成
 - [x] 基于已有 `nvidia-smi` / Linux 信息的 GPU、CPU、内存、磁盘与进程详情，标注采集主机、独立时间和不可用状态；真实SSH和网页证据见[资源验收](guides/resources-acceptance.md)
-- [x] 资源采样与 AI 对话独立，按实际认证身份共享并控制刷新开销；不依赖 `nvitop` 或服务器新装软件；顶栏概览和可调参数继续收尾
+- [x] 资源采样与 AI 对话独立，按实际认证身份共享并控制刷新开销；不依赖 `nvitop` 或服务器新装软件；顶栏单controller概览与可调参数已接入，见[导航验收](guides/workspace-navigation-acceptance.md)
 - [ ] 对话、终端、资源采样和同步分别反馈状态；对话 / 终端运行期间资源仍刷新，不以整页加载阻塞其他入口
 
 ### M6：设置、完整链路与并发验收
@@ -116,7 +116,8 @@
 - [x] 产品默认设置与环境检测入口：新会话 Agent/模型、同步默认值、可调同步间隔和资源刷新参数；历史清除默认来源，空值跟随原生；一次Review三项修复、真实版本/SSH缓存及三宽度网页通过，见[设置验收](guides/product-settings-acceptance.md)
 - [x] 工作区黑名单网页停用/恢复与有界自定义规则追加，版本保存、校验及执行贯通；一次Review的null保护修复、核心回归、真实SSH标记与Edge三宽度通过，见[规则验收](guides/workspace-policy-acceptance.md)
 - [x] 工作区配置删除的网页入口及活动资源收尾：配置确认、活动/持久任务/离线编辑器阻断、所属PTY/SFTP关闭和迟到收尾；真实SSH与Edge三宽度通过，见[验收](guides/workspace-removal-acceptance.md)
-- [ ] 原界面目标收尾：侧栏折叠、可调分栏、亮色切换、网页命令面板、长会话虚拟列表/工具分组、本轮改动与 diff 行内反馈
+- [x] 侧栏折叠、有界分栏与亮色切换、网页cmdk命令面板、持续资源概览；一次Review三项修复与Edge两主题三宽度/真实资源PTY通过，见[验收](guides/workspace-navigation-acceptance.md)
+- [ ] 长会话虚拟列表/工具分组、本轮改动聚合与diff行内反馈
 - [x] Claude/Codex 固定原生文件编辑、语法校验、外部修改检测、原子保存与关闭清理
 - [x] Claude 真实 SDK 的两次 query 读取新配置；Codex 官方 config/read 重读隔离配置
 - [x] Codex 隔离原生运行时真实下一次调用：更新后的 GLM 配置通过，源配置保持不变

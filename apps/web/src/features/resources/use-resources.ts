@@ -31,7 +31,7 @@ function usePageVisible(intervalMs: number) {
   return { visible, now };
 }
 
-/** 概览和详情只持有一个查询；禁用时取消仍在途的采样，不追加服务器操作。 */
+/** 概览和详情只持有一个查询；禁用时取消在途网页请求，停止后续检查。 */
 export function useResources(workspace: Workspace) {
   const settings = useProductSettings();
   const connection = useChat((state) => state.connection);

@@ -42,10 +42,7 @@ export function WorkspaceSidebar({ workspaces, currentId, onRemoved }: Props) {
   };
 
   return (
-    <aside
-      aria-label="工作区与会话"
-      className="flex h-full min-h-0 w-full flex-col border-r border-border bg-card/70"
-    >
+    <aside aria-label="工作区与会话" className="flex h-full min-h-0 w-full flex-col border-r border-border bg-card/70">
       <section aria-labelledby="ws-heading" className="flex shrink-0 flex-col gap-2 px-3 pb-4 pt-3">
         <div className="flex min-h-11 items-center justify-between gap-2 px-1">
           <h2 id="ws-heading" className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
