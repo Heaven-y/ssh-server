@@ -235,6 +235,7 @@ skills-lock.json              # 记录每个 skill 的来源和内容哈希
 
 ### 4.10 真实验收与外部同步工具
 
+- 两类Agent真实网页hostname和黑名单拒绝工具卡已补齐，见[验收](policy-web-acceptance.md)。Codex核心通过但夹具附加瞬时同步断言失败，保留原报告；Claude使用有界等待的完整夹具通过，产品不改。
 - 已有 `scripts/dev/e2e-m1.ts` 和 `e2e-m2.ts`；网页联动、双Agent编辑/SSH/rclone、版本恢复和多活动组合已补齐[完整链路验收](real-workflow-acceptance.md)。单元测试不代替真实传输或模型证据。
 - rclone 要求 1.75.1；驱动拒绝其他版本或缺失的可执行文件，并暂停远端执行。从官方版本目录下载并核对 SHA-256；不自动安装到服务器。
 - rclone 的 obscure 仅是传输编码；明文密码不落盘，可选保存使用 Windows 当前用户系统加密，与 rclone 的传输编码分开。

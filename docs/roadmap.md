@@ -14,7 +14,7 @@
 
 技术方向已确认：本地后端继续 Node.js + TypeScript + Fastify，异步协调 Agent、SSH、子进程、同步和网页状态；Python 分析默认在服务器已有环境执行。独立 `.exe` / 安装器、Go 迁移与外部工具打包只属于比较话题，不增加相应里程碑。并发与远端分析验证分别见架构 V16、V17。
 
-2026-10-04 已按当前源码补充[剩余范围核对](engineering/remaining-scope-audit.md)：当时核对的向导、终端、资源、工作区删除和产品设置已完成核心范围；当前仍有追加黑名单规则、原界面目标及完整真实串联缺口；已有后端接口或原生配置编辑不等于这些入口已经完成。
+2026-10-05按当前源码及真实证据核对[剩余范围](engineering/remaining-scope-audit.md)：向导、终端、资源、工作区删除、产品设置、自定义规则、界面目标和完整真实串联已完成核心范围；原生客户端刷新、OS输入法、Edge系统选择器与外部工具限制保留，不把旧“待实施”状态沿用为当前缺口。
 
 用户新增界面优化优先项：已核对 UI UX Pro Max 与三个开源项目，以 T3 Code 的简洁对话工作区为主完成中性深色改版。SSH/同步收为状态摘要，详情与新建表单按需展开，导航、对话、输入和审批层级统一；24 项前端测试及受控浏览器回归通过，见 [界面验收](guides/workspace-ui-acceptance.md) 和 [参考依据](product/ui-reference-review.md)。
 
@@ -38,7 +38,7 @@
 - [x] 复用成熟库：规范写入开发环境 1.1、1.2；`ssh-config.ts` 改用 `ssh-config` 库；前端使用 react-query、partysocket；长列表由react-virtuoso统一动态测量与贴底
 - [x] 工程检查：接入 `npm run check`（类型、ESLint 与复杂度、Prettier、jscpd 重复率、Vitest 覆盖率）与 GitHub Actions；此前记录补测试后的行覆盖率约 92%（见开发环境 1.3）
 - [x] 创建 `scripts/dev/e2e-m1.ts`：真实 Claude → MCP → SSH hostname 比对和原生历史可见性通过
-- [x] 接入同步后的双Agent实际SSH/rclone复验见[完整链路验收](guides/real-workflow-acceptance.md)；工具卡与原ID续接见[对话验收](guides/codex-conversation-acceptance.md)，网页审批/中断保留受控证据；规则拒绝及真实无副作用SSH接线见[规则验收](guides/workspace-policy-acceptance.md)，不扩大为真实危险命令执行
+- [x] 接入同步后的双Agent实际SSH/rclone见[完整链路验收](guides/real-workflow-acceptance.md)；网页hostname及实际sudo whoami→privilege拒绝、原ID续接、工具卡原因见[真实网页黑名单验收](guides/policy-web-acceptance.md)。Claude完整夹具通过，Codex核心通过但附加瞬时同步断言失败的原报告保留；网页审批/中断受控证据仍见对话验收
 
 当前实现边界：Claude/Codex 对话及原生会话管理、原生配置、网页文件编辑与本地版本记录已接入；原生能力目录、按钮选择、输入 `/` 自动补全、模型候选与上下文/压缩均已接入。服务器文件视图已支持分页浏览、操作任务、下载与同步协调；终端、资源详情和完整向导已接入。产品设置、删除生命周期、工作区规则和界面核心范围已完成，实际M6链路已有证据；剩余原生界面验收和工具边界见[范围核对](engineering/remaining-scope-audit.md)。
 
@@ -128,6 +128,7 @@
 - [x] A5/A13/A7实际SSH/rclone完整串联；真实密码DPAPI保存/断开重连/后端重建、浏览/同步/Python/PTY组合通过，边界见[完整链路验收](guides/real-workflow-acceptance.md)
 - [x] A20/A21真实大文件同/跨FS、混合目录实际rclone迁移；A22目标冲突/链接/实际取消，源和部分目标核对；Firefox独立磁盘下载通过
 - [x] A22真实权限拒绝、预检后源移动/内容变化/同名目标出现、独立SSH连接中断后的持久重开与核对；写操作不重放、独立活动响应、镜像为空且随机根清理，见[失败验收](guides/remote-file-failure-acceptance.md)。共享池/全网络与完整网页故障未扩大范围
+- [x] A17真实网页提交有限后台任务，原轮次结束后等待150秒无新AI轮次；用户再发消息同ID通过远端Python读取小结果，16MiB数据留远端，见[验收](guides/background-result-acceptance.md)
 - [x] V16/V17实际多活动组合、Python小结果、同步串行和单轮门禁通过；超时/输出限制保留既有核心回归
 - [ ] A8独立VS Code/CLI刷新、原生OS输入法、Edge系统保存选择器；Windows界面读取被自动策略检查中止，未绕过，不标通过
 - [x] rclone较长Windows配置路径状态文件名：combine短逻辑根修复，长根真实SSH、中文/空格/引号、旧基线及持久任务升级通过；Windows反斜杠根转换仍受工具约束，见[验收](guides/sync-session-names-acceptance.md)
@@ -138,8 +139,10 @@
 
 2026-10-05完整链路更新：真实SSH/rclone、网页保存/版本恢复、双Agent编辑执行、同/跨FS文件管理/混合迁移、Firefox磁盘下载、并发与保存密码后端重建及真实长负载压缩均有新证据，见[验收](guides/real-workflow-acceptance.md)。本轮一次新Review无阻断项；A8、OS输入法、Edge系统选择器保留；rclone长状态文件名在后续独立阶段已修复并验证旧状态升级。整项目Goal仍进行中。
 
-此前Task 4以两级 `--no-ff` 整合，[main CI](https://github.com/Heaven-y/ssh-server/actions/runs/37190899240)成功。终端[PR#5](https://github.com/Heaven-y/ssh-server/pull/5)及[PR#6](https://github.com/Heaven-y/ssh-server/pull/6)的双平台修复记录保留；本轮密码重建与全屏PTY组合证据已补齐。净差异[PR#14](https://github.com/Heaven-y/ssh-server/pull/14)及[main 13a3287 CI](https://github.com/Heaven-y/ssh-server/actions/runs/37258824743)成功并安全清理小分支。
+此前Task 4以两级 `--no-ff` 整合，[main CI](https://github.com/Heaven-y/ssh-server/actions/runs/37190899240)成功。终端[PR#5](https://github.com/Heaven-y/ssh-server/pull/5)的整合及[PR#6](https://github.com/Heaven-y/ssh-server/pull/6)文件任务恢复修复的双平台记录保留；本轮密码重建与全屏PTY组合证据已补齐。净差异[PR#14](https://github.com/Heaven-y/ssh-server/pull/14)及[main 13a3287 CI](https://github.com/Heaven-y/ssh-server/actions/runs/37258824743)成功并安全清理小分支。
 
 完整链路[PR#15](https://github.com/Heaven-y/ssh-server/pull/15)与[PR CI37266496269](https://github.com/Heaven-y/ssh-server/actions/runs/37266496269)双平台成功；两级no-ff为feat `68d356e`、main `740e804`，两树与产品提交 `c23489d` 相同，均已推送。[main CI37267005186](https://github.com/Heaven-y/ssh-server/actions/runs/37267005186)双平台成功后原小分支已安全删除。最终文档核对及F1–F10/A1–A23总对照已随778a178提交，两级no-ff为feat f9302aa、main 1f7402f，均已推送；[最终main CI37267832300](https://github.com/Heaven-y/ssh-server/actions/runs/37267832300)双平台成功，原文档小分支已安全删除；既有未验项目保持。
 
 同步清单短名称[PR#16](https://github.com/Heaven-y/ssh-server/pull/16)已合入feat，产品提交8041919及[PRCI37272167070](https://github.com/Heaven-y/ssh-server/actions/runs/37272167070)双平台成功。产品no-ff为feat ca8aa06、本地main 58f5a36，两树相同；整合记录仅文档收尾后统一推送最终main，精确发布核验见任务交付与[验收](guides/sync-session-names-acceptance.md)。核心实现、真实升级和六项新增核心回归完成，整项目Goal仍保留未验界面及工具边界。
+
+2026-10-05验收总核对：两类Agent真实网页hostname与A11拒绝工具卡、A17后台等待与手动结果读取已补齐；README、M1/终端/文件计划及架构旧状态按实际Git和证据更正，D33/D34记录取舍。产品源码保持8041919，既有[main b0ea782双平台CI](https://github.com/Heaven-y/ssh-server/actions/runs/37276617302)成功。本次纯验收/文档从feat创建codex/acceptance-final-audit，检查文档和源码不变后两级no-ff并推送；最终整合CI以精确main head另核对，未验原生界面仍保留。
