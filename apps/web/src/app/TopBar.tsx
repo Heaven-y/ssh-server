@@ -1,5 +1,6 @@
 import {
   FileCode2,
+  Command as CommandIcon,
   FolderOpen,
   LoaderCircle,
   Moon,
@@ -63,6 +64,7 @@ export function TopBar({
   onOpenTerminal,
   terminalOpen,
   resources,
+  onOpenCommands,
 }: {
   workspace?: Workspace;
   onOpenSettings(): void;
@@ -71,6 +73,7 @@ export function TopBar({
   onOpenTerminal(): void;
   terminalOpen: boolean;
   resources?: ReactNode;
+  onOpenCommands(): void;
 }) {
   const connection = useChat((s) => s.connection);
   const st = STATUS[connection];
@@ -98,6 +101,16 @@ export function TopBar({
         </div>
       )}
       <div className="ml-auto flex h-14 shrink-0 items-center gap-1 pr-4">
+        <button
+          type="button"
+          className={buttonClass('ghost')}
+          aria-label="打开网页命令面板"
+          title="网页命令面板 · Ctrl+K / Cmd+K"
+          aria-haspopup="dialog"
+          onClick={onOpenCommands}
+        >
+          <CommandIcon aria-hidden className="size-4" />
+        </button>
         <button
           type="button"
           className={buttonClass('ghost')}

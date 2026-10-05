@@ -48,6 +48,12 @@
   --color-destructive: #b6273f;
   --color-destructive-foreground: #a51c34;
 }
+
+[cmdk-group-heading] {
+  padding: 0.75rem 0.75rem 0.375rem;
+  font-size: 0.75rem;
+  color: var(--color-muted-foreground);
+}
 .workspace-separator {
   flex-shrink: 0;
   background: var(--color-border);

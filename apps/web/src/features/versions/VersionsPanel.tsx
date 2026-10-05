@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CircleAlert, GitBranch, LoaderCircle } from 'lucide-react';
 import type { VersionStatus, Workspace } from '@ssh-server/shared';
@@ -46,12 +46,26 @@ function summaryText(status: ReturnType<typeof useVersionStatus>) {
   return status.data.head ? '版本已记录' : '尚无版本记录';
 }
 
-function WorkspaceVersions({ workspace }: { workspace: Workspace }) {
+export type VersionsActions = { open(workspaceId: string): boolean };
+type PanelProps = { workspace: Workspace; ref?: Ref<VersionsActions> };
+function WorkspaceVersions({ workspace, ref }: PanelProps) {
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
   const query = useVersionStatus(workspace.id, busy);
   const Icon = query.isError ? CircleAlert : GitBranch;
   const refresh = query.reload;
+  useImperativeHandle(
+    ref,
+    () => ({
+      open(id) {
+        if (id !== workspace.id) return false;
+        setExpanded(true);
+        if (!query.isFetching && !busy) refresh();
+        return true;
+      },
+    }),
+    [workspace.id, query.isFetching, busy, refresh],
+  );
   return (
     <>
       <button
@@ -93,6 +107,6 @@ function WorkspaceVersions({ workspace }: { workspace: Workspace }) {
 }
 
 /** 工作区打开时初始化一次，收起详情后仅保留可见页面的轻量状态刷新。 */
-export function VersionsPanel({ workspace }: { workspace: Workspace }) {
-  return <WorkspaceVersions key={JSON.stringify([workspace.id, workspace.localDir])} workspace={workspace} />;
+export function VersionsPanel({ workspace, ref }: PanelProps) {
+  return <WorkspaceVersions key={JSON.stringify([workspace.id, workspace.localDir])} workspace={workspace} ref={ref} />;
 }

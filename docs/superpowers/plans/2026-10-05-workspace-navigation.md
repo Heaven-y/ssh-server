@@ -40,9 +40,9 @@
 文件：app/{CommandPalette,use-command-palette}.tsx/ts；SyncPanel、VersionsPanel类型化动作ref；package.json/package-lock.json。
 接口：CommandPalette接收workspaces/current及既有UI动作；cmdk1.1.1；SyncActions.run()与VersionActions.open()复用原动作，ResourcesActions来自T2。
 
-- [ ] 依赖固定，工作区/当前两Agent会话与常用操作分组、错误独立反馈。
-- [ ] 全局快捷键门禁、模态焦点/恢复及提交时目标复验，版本/同步原有边界。
-- [ ] 相关类型/lint/build与既有会话/同步回归通过，提交。
+- [x] 依赖固定，工作区/当前两Agent会话与常用操作分组、错误独立反馈。
+- [x] 全局快捷键门禁、模态焦点/恢复及提交时目标复验，版本/同步原有边界。
+- [x] 相关类型/lint/build与既有会话/同步回归通过，提交。
 
 ## 任务4：一次Review、核心与全局视觉验收
 

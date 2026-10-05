@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useImperativeHandle, useState, type Ref } from 'react';
 import { AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import type { SyncStatus, Workspace } from '@ssh-server/shared';
 import { buttonClass } from '../../ui/styles';
@@ -202,11 +202,26 @@ function SyncDetails({ controller }: { controller: SyncController }) {
 }
 
 /** 只隐藏详情内容，调度 Hook 始终挂载，防止收起面板后停止自动同步。 */
-export function SyncPanel({ workspace }: { workspace: Workspace }) {
+export type SyncActions = { run(workspaceId: string): boolean };
+export function SyncPanel({ workspace, ref }: { workspace: Workspace; ref?: Ref<SyncActions> }) {
   const controller = useWorkspaceSync(workspace.id);
   const [expanded, setExpanded] = useState(false);
   const summary = presentation(controller);
   const Icon = summary.attention ? AlertCircle : RefreshCw;
+  useImperativeHandle(
+    ref,
+    () => ({
+      run(id) {
+        if (id !== workspace.id) return false;
+        setExpanded(true);
+        // 确认/冲突/初始化仍由原详情处理；快捷入口不能自动确认或重复请求。
+        if (!controller.busy && !summary.attention && controller.status?.phase === 'ready')
+          void controller.perform('sync');
+        return true;
+      },
+    }),
+    [workspace.id, controller, summary.attention],
+  );
   return (
     <>
       <button
