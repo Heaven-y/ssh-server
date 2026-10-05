@@ -2,7 +2,7 @@
 
 > 实施此计划时使用项目的 `subagent-driven-development` 或 `executing-plans` 技能。本文保留 M1 的原步骤供追溯，当前状态以以下注记和路线图为准。
 
-**状态（2026-10-02）：** Task 1–10 的功能代码已实现，`scripts/dev/e2e-m1.ts` 已创建并通过真实 Claude → MCP → SSH hostname 与原生历史验收；Task 11 的浏览器交互和记录继续收尾。后续新增功能以[需求](../../product/requirements.md)、[设计决策](../../engineering/decisions.md)和[路线图](../../roadmap.md)为准。
+**状态（2026-10-05）：** Task 1–10 的功能代码已实现，`scripts/dev/e2e-m1.ts` 已通过真实 Claude → MCP → SSH hostname 与原生历史验收；Task 11 的两类 Agent 真实网页 hostname 与黑名单工具卡已补齐，见[网页黑名单验收](../../guides/policy-web-acceptance.md)。原始步骤保留供追溯，不重跑旧测试路径。后续新增功能以[需求](../../product/requirements.md)、[设计决策](../../engineering/decisions.md)和[路线图](../../roadmap.md)为准。
 
 **范围更新：** 密码认证与同步在 M2，轻量编辑与版本记录在 M3，Codex / 固定 Agent / skills / 命令 / 上下文状态在 M4，完整向导 / Pebrel 终端参考 / 资源面板在 M5。本计划仅覆盖 M1；不增加任务完成自动检测，训练结果由用户手动要求查看。
 
@@ -456,7 +456,7 @@ export function resolvePermission(items: ChatItem[], requestId: string, allow: b
 
 ### Task 11: M1 验收与文档
 
-2026-10-02 状态：真实模型 / SSH 脚本已通过，浏览器交互和文档收尾继续推进；直接 SSH 冒烟或单元测试不替代网页验收。
+2026-10-05 状态：真实模型 / SSH、两类 Agent 网页工具卡和黑名单拒绝已验。Codex 核心通过但夹具末尾附加瞬时同步断言失败，原报告保持；Claude 完整夹具通过。网页沿用生产向导验证后 API 创建的独立工作区，向导创建交互另见[向导验收](../../guides/workspace-setup-acceptance.md)。
 
 **Files:**
 - Create: `scripts/dev/e2e-m1.ts`
@@ -469,7 +469,7 @@ export function resolvePermission(items: ChatItem[], requestId: string, allow: b
   - 断言：存在 `tool_call` 且 `name` 以 `remote_exec` 结尾；对应 `tool_result` 含 `createSshPool().exec(host, 'hostname')` 的输出（去首尾空白）；`session.model` 非空。
   - 打印 `PASS` / `FAIL`、首个事件耗时、总耗时；结束时关闭子进程、删除临时目录。
 - [x] **Step 2: 运行验收**：使用显式指定的专用目录通过真实 Claude → MCP → SSH 与原生历史比对；耗时和模型身份只写私有报告。
-- [ ] **Step 3: 浏览器验收**（webapp-testing 或内置浏览器）：`npm start` 后打开访问地址，在界面中创建工作区，发送同一句话，确认出现 `remote_exec` 卡片且结果为服务器主机名；再发送 `请用 remote_exec 执行 sudo whoami`，确认卡片显示 `命令被拒绝`（规则 privilege）。截图保存到会话临时目录，不进仓库。
-- [ ] **Step 4: 更新文档**：真实验收通过后将路线图 M1 标记完成并写验收记录；架构文档第 8 节写入 V1（本地配置是否生效）、V2（会话列表与历史）、V10（访问控制）的结论；开发环境文档补充运行用法和新发现的问题；README 更新当前实现范围。保留 2026-10-02 已确认的 M2–M5 需求，不把待实现能力标为完成。
-- [ ] **Step 5: 验证** `npm test`、`npm run typecheck`；文档链接与敏感信息检查（同首次提交时的检查）。
-- [ ] **Step 6: 阶段提交**：用户已明确要求在完成阶段时提交，认证/同步与验收记录一同提交；不推送。
+- [x] **Step 3: 浏览器验收**：生产向导验证/API创建独立工作区后，Edge实际网页选择工作区和Agent并发送hostname；工具卡结果与独立SSH比对。第二轮精确调用sudo whoami，工具卡显示命令被拒绝及privilege原因；同原生ID和清理通过。向导交互另有验收，截图和原始报告仅保留ignored；Codex附加断言失败边界见上述状态。
+- [x] **Step 4: 更新文档**：真实验收通过后将路线图 M1 标记完成并写验收记录；架构文档第 8 节写入 V1（本地配置是否生效）、V2（会话列表与历史）、V10（访问控制）的结论；开发环境文档补充运行用法和新发现的问题；README 更新当前实现范围。保留 2026-10-02 已确认的 M2–M5 需求，不把待实现能力标为完成。
+- [x] **Step 5: 验证**：产品门禁沿用当前已通过的双平台源码基准；本轮只有验收和文档，检查编码、链接、脱敏和源码不变，不重复本机全量测试。原测试命令保留于工程规范。
+- [x] **Step 6: 阶段提交**：产品阶段已整合并推送；用户后续已授权自主提交、推送和两级 `--no-ff`。本次验收文档按同一流程成组提交，整合结果见路线图和任务交付，不沿用早期“不推送”的阶段限制。
