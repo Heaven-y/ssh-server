@@ -15,6 +15,7 @@ import { executeMetadataCommand } from '../ssh/metadata-exec';
 
 export type RcloneContext = {
   signature: string;
+  baselineLayout?: string;
   listRemote(includeLarge?: boolean): Promise<FileEntry[]>;
   readRemote(file: string): Promise<Buffer>;
   restore(file: string): Promise<void>;
@@ -41,6 +42,8 @@ const ListSchema = z.array(
 );
 const RCLONE_VERSION = '1.75.1';
 const PROCESS_CAP = 4 * 1024 * 1024;
+// rclone upstreams 使用空格分隔 CSV；反斜杠不是转义符。
+const combineUpstream = (root: string) => `"root=${root.replaceAll('"', '""')}"`;
 const ENV_KEYS = [
   'PATH',
   'PATHEXT',
@@ -302,14 +305,23 @@ export function createRcloneDriver(deps: Deps): SyncDriver {
       if (current.cacheKey !== config.cacheKey || generation !== deps.pool.generation(ws.sshHost))
         throw new SyncError('credentials_changed', 'SSH 认证周期已结束，请重新连接');
     }
-    async function invoke(args: string[], cap = PROCESS_CAP): Promise<Buffer> {
+    async function invoke(args: string[], cap = PROCESS_CAP, extraEnv?: NodeJS.ProcessEnv): Promise<Buffer> {
       await assertCurrent();
-      const result = await run(executable, [...args, ...common], {
-        env,
-        timeoutMs: 180_000,
-        outputCap: cap,
-        signal: abort.signal,
-      });
+      const processEnv = extraEnv ? { ...env, ...extraEnv } : env;
+      let result;
+      try {
+        result = await run(executable, [...args, ...common], {
+          env: processEnv,
+          timeoutMs: 180_000,
+          outputCap: cap,
+          signal: abort.signal,
+        });
+      } finally {
+        if (extraEnv) {
+          delete processEnv.RCLONE_CONFIG_WORKSPACE_PASS;
+          delete processEnv.RCLONE_CONFIG_WORKSPACE_KEY_PEM;
+        }
+      }
       await assertCurrent();
       if (result.exitCode !== 0) {
         if (/unable to authenticate|authentication failed/i.test(result.stderr.toString())) {
@@ -338,6 +350,7 @@ export function createRcloneDriver(deps: Deps): SyncDriver {
       return data;
     }
     return {
+      baselineLayout: 'combine-v1',
       signature: hash(
         JSON.stringify([config.hostname, config.port, config.username, root, path.resolve(ws.localDir), 'mirror-v1']),
       ),
@@ -397,8 +410,8 @@ export function createRcloneDriver(deps: Deps): SyncDriver {
       async bisync(options) {
         const args = [
           'bisync',
-          options.localDir ?? ws.localDir,
-          remote,
+          'localview:root/',
+          'remoteview:root/',
           '--workdir',
           workDir,
           '--filters-file',
@@ -420,7 +433,18 @@ export function createRcloneDriver(deps: Deps): SyncDriver {
         if (options.allowAllDeletes) args.push('--max-delete', '100');
         // 状态机已核对目标、范围和删除决策；允许单文件工作区的全部内容变化。
         if (options.allowAllChanges) args.push('--force');
-        await invoke(args);
+        // 固定逻辑根避免把双端完整路径拼进状态文件名；每次绑定实际镜像。
+        await invoke(args, PROCESS_CAP, {
+          RCLONE_CONFIG_LOCALVIEW_TYPE: 'combine',
+          RCLONE_CONFIG_LOCALVIEW_UPSTREAMS: combineUpstream(
+            path
+              .resolve(options.localDir ?? ws.localDir)
+              .split(path.sep)
+              .join('/'),
+          ),
+          RCLONE_CONFIG_REMOTEVIEW_TYPE: 'combine',
+          RCLONE_CONFIG_REMOTEVIEW_UPSTREAMS: combineUpstream(remote),
+        });
       },
       close() {
         unsubscribe();
