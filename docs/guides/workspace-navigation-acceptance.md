@@ -35,3 +35,5 @@ Edge960/1280/1920两主题验证：无横向溢出或pageerror；主题/折叠�
 ## 工程门禁与整合
 
 最终类型、静态检查、格式、重复代码和覆盖率门禁均通过；格式检查发现的一处侧栏缩进已修正，随后只继续未完成门禁。104个测试文件、700项通过，1文件/5项平台相关跳过；覆盖率Statements85.79%、Branches79.24%、Functions86.31%、Lines89.43%，重复行0.38%，未降低既有门槛。网页构建及相关浏览器增量通过。PR双平台CI和两级合并按实际结果补记。下一阶段继续长会话/diff，之后真实SSH文件操作、实际同步和多活动并发。
+
+[PR12](https://github.com/Heaven-y/ssh-server/pull/12)的[双平台CI37249422601](https://github.com/Heaven-y/ssh-server/actions/runs/37249422601)通过后，已按两级--no-ff整合并推送feat8a18738与main a01cd4a；两次合并树等同已验证f6e3542。[main CI37249948237](https://github.com/Heaven-y/ssh-server/actions/runs/37249948237)双平台成功，PR已merged。小分支确认合入main且无工作树占用后已删除本地/远端；保留feat，现有实施树继续codex/conversation-timeline。

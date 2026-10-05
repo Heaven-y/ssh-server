@@ -1,12 +1,10 @@
-import { ArrowDown, CircleAlert, X } from 'lucide-react';
+import { CircleAlert, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom';
 import type { Workspace } from '@ssh-server/shared';
-import { buttonClass } from '../../ui/styles';
 import { api, queryKeys } from '../../lib/api';
 import { useChat } from './chat-store';
 import { Composer } from './Composer';
-import { MessageItem } from './MessageItem';
+import { ChatTimeline } from './ChatTimeline';
 import { AgentControls, AGENT_LABELS } from './AgentControls';
 
 function Banner() {
@@ -32,26 +30,11 @@ function Banner() {
   );
 }
 
-/** 用户上翻离开底部时显示"回到底部" */
-function ScrollToBottomButton() {
-  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
-  if (isAtBottom) return null;
-  return (
-    <button
-      type="button"
-      className={`${buttonClass('outline')} absolute bottom-4 left-1/2 -translate-x-1/2 whitespace-nowrap bg-card shadow-sm`}
-      onClick={() => void scrollToBottom()}
-    >
-      <ArrowDown aria-hidden className="size-4" />
-      回到底部
-    </button>
-  );
-}
-
 function Messages() {
   const items = useChat((s) => s.items);
   const running = useChat((s) => s.running);
   const loading = useChat((s) => s.loadingHistory);
+  const version = useChat((s) => s.conversationVersion);
 
   if (loading) return <p className="m-auto text-sm text-muted-foreground">正在加载会话…</p>;
   if (items.length === 0)
@@ -64,23 +47,7 @@ function Messages() {
       </div>
     );
 
-  return (
-    <StickToBottom className="relative min-h-0 flex-1" resize="smooth" initial="instant">
-      {/* 流式输出期间 aria-busy，结束后读屏器再播报整段内容，避免逐字打断 */}
-      <StickToBottom.Content
-        className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8"
-        aria-live="polite"
-        aria-busy={running}
-        aria-label="对话内容"
-        role="log"
-      >
-        {items.map((item) => (
-          <MessageItem key={item.id} item={item} />
-        ))}
-      </StickToBottom.Content>
-      <ScrollToBottomButton />
-    </StickToBottom>
-  );
+  return <ChatTimeline key={version} items={items} running={running} />;
 }
 
 export function ChatView({ workspace }: { workspace: Workspace }) {

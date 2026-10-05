@@ -82,6 +82,32 @@ beforeEach(() => {
   useChat.getState().selectWorkspace('w1');
 });
 
+it('视图代次只随选择变化，首次原生会话id不重置；重开同一历史仍新建视图', async () => {
+  const selected = useChat.getState().conversationVersion;
+  useChat.getState().selectWorkspace('w1');
+  expect(useChat.getState().conversationVersion).toBe(selected);
+  useChat.getState().newSession('claude');
+  expect(useChat.getState().conversationVersion).toBeGreaterThan(selected);
+  const fresh = useChat.getState().conversationVersion;
+  useChat.getState().setAgent('codex');
+  expect(useChat.getState().conversationVersion).toBeGreaterThan(fresh);
+  vi.spyOn(api, 'sessionEvents').mockResolvedValue(history('codex', '历史'));
+  await useChat.getState().openSession({ agent: 'codex', sessionId: 'same-id' });
+  const firstOpen = useChat.getState().conversationVersion;
+  await useChat.getState().openSession({ agent: 'codex', sessionId: 'same-id' });
+  expect(useChat.getState().conversationVersion).toBeGreaterThan(firstOpen);
+  useChat.getState().newSession('claude');
+  const live = useChat.getState().conversationVersion;
+  const turnId = startTurn();
+  emit({
+    type: 'agent.event',
+    turnId,
+    event: { type: 'session', sessionId: 'first-native', model: 'example', cwd: 'project' },
+  });
+  expect(useChat.getState().sessionId).toBe('first-native');
+  expect(useChat.getState().conversationVersion).toBe(live);
+});
+
 describe('原生会话管理状态', () => {
   const session = { agent: 'codex', sessionId: 'same-id' } as const;
   const key = sessionActionKey('w1', session);
