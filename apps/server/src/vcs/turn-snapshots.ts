@@ -11,7 +11,7 @@ const UUID = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
 const HASH = /^[a-f0-9]{64}$/;
 const OID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 
-function identity(repo: Repository): { repositoryId: string; scope: string } {
+export function turnScope(repo: Repository): { repositoryId: string; scope: string } {
   const directories = [...repo.location.directories, ...repo.adminLocation.directories].map(({ path, stat }) => [
     path,
     stat.dev,
@@ -36,7 +36,7 @@ function validate(value: TurnSnapshot): void {
 
 async function verify(repo: Repository, value: TurnSnapshot): Promise<void> {
   validate(value);
-  if (identity(repo).scope !== value.scope) throw new VersionError('stale_revision');
+  if (turnScope(repo).scope !== value.scope) throw new VersionError('stale_revision');
   const current = await gitText(repo.root, ['rev-parse', '--verify', reference(value)]);
   if (current !== value.tree || (await gitText(repo.root, ['cat-file', '-t', value.tree])) !== 'tree')
     throw new VersionError('stale_revision');
@@ -54,7 +54,7 @@ export async function captureTurn(repo: Repository, turnId: string, edge: TurnSn
       turnId,
       edge,
       tree,
-      ...identity(repo),
+      ...turnScope(repo),
       revision: state.status.revision,
       createdAt: Date.now(),
     };
@@ -70,7 +70,7 @@ export async function releaseTurn(repo: Repository, values: TurnSnapshot[]): Pro
   await assertDirectoriesUnchanged(repo.adminLocation);
   for (const value of values) {
     validate(value);
-    if (identity(repo).repositoryId !== value.repositoryId) throw new VersionError('stale_revision');
+    if (turnScope(repo).repositoryId !== value.repositoryId) throw new VersionError('stale_revision');
     const result = await git(repo.root, ['update-ref', '-d', reference(value), value.tree], { allowFailure: true });
     if (result.exitCode !== 0) throw new VersionError('stale_revision');
   }

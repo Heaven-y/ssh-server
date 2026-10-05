@@ -12,7 +12,7 @@ import { commitWorkspace } from './index';
 import { commitId, repository, sha256, type Repository } from './repository';
 import { discardPlan, discardWorkspace, restorePlan, restoreWorkspace } from './restore';
 import { snapshot } from './snapshot';
-import { captureTurn, diffTurn, releaseTurn } from './turn-snapshots';
+import { captureTurn, diffTurn, releaseTurn, turnScope } from './turn-snapshots';
 
 export function createVersionsService() {
   const queues = new Map<string, Promise<unknown>>();
@@ -33,6 +33,9 @@ export function createVersionsService() {
     return repo;
   }
   return {
+    turnScope(ws: Workspace) {
+      return versionOperation(async () => turnScope(await required(ws)));
+    },
     previewDiscard(ws: Workspace, path: string) {
       return versionOperation(async () => {
         const repo = await required(ws);

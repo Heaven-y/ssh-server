@@ -8,6 +8,8 @@ import { SessionError, type SessionsService } from './sessions';
 import type { CapabilitiesService } from './capabilities';
 import type { SyncManager } from '../sync/manager';
 import { WorkspaceRemovalError } from '../workspaces/activity';
+import type { TurnChanges } from './turn-changes';
+import type { TurnChangesRecord } from '@ssh-server/shared';
 
 export type Socket = { send(msg: ServerMessage): void; isOpen(): boolean };
 export type TurnManagerDeps = {
@@ -20,6 +22,7 @@ export type TurnManagerDeps = {
   capabilities?: Pick<CapabilitiesService, 'prepare'>;
   sync: Pick<SyncManager, 'sync'>;
   acquireWorkspace?: (id: string) => () => void;
+  changes?: Pick<TurnChanges, 'begin' | 'finish'>;
 };
 type Turn = {
   id: string;
@@ -34,6 +37,10 @@ type Turn = {
   finished: boolean;
   syncAfter?: boolean;
   releaseWorkspace?: () => void;
+  changesStarted?: boolean;
+  changesUnavailable?: string;
+  failed?: boolean;
+  startedAt: number;
 };
 type Pending = { turn: Turn; resolve(answer: PermissionAnswer): void };
 type Send = Extract<ClientMessage, { type: 'chat.send' }>;
@@ -216,6 +223,7 @@ export class TurnManager {
       sessionId: msg.sessionId,
       controller: new AbortController(),
       finished: false,
+      startedAt: Date.now(),
       releaseWorkspace: lease.release,
     };
     this.turns.set(turn.id, turn);
@@ -249,9 +257,11 @@ export class TurnManager {
     signal.throwIfAborted();
     const runner = this.runners[turn.agent];
     if (!runner) throw new SessionError(503, 'agent_unavailable', '当前 Agent 适配器不可用');
-    turn.token = this.deps.registry.register(ws.id);
     // 纯上下文查询/压缩不编辑项目文件，也不触发服务器同步。
     turn.syncAfter = prepared.invocation?.kind !== 'command';
+    await this.beginChanges(turn);
+    signal.throwIfAborted();
+    turn.token = this.deps.registry.register(ws.id);
     turn.handle = runner({
       workspace: ws,
       sessionId: msg.sessionId,
@@ -266,9 +276,49 @@ export class TurnManager {
     if (signal.aborted) void turn.handle.interrupt();
     void turn.handle.done
       .catch(() => {
+        turn.failed = true;
         this.send(turn.socket, { type: 'error', turnId: turn.id, message: 'Agent 运行失败，请检查本机运行时和配置' });
       })
       .then(() => this.finish(turn));
+  }
+
+  private async beginChanges(turn: Turn): Promise<void> {
+    if (turn.syncAfter && this.deps.changes && turn.workspace) {
+      try {
+        // 已开始的采集先收尾；准备取消不能提前释放工作区租约。
+        await this.deps.changes.begin(turn.workspace, turn.id, { agent: turn.agent, sessionId: turn.sessionId });
+        turn.changesStarted = true;
+      } catch {
+        turn.changesUnavailable = '本轮改动采集不可用，Agent仍可继续';
+      }
+    }
+  }
+
+  private async finishChanges(turn: Turn): Promise<TurnChangesRecord | undefined> {
+    if (!this.deps.changes || !turn.workspace || turn.syncAfter === false) return undefined;
+    if (turn.changesStarted) {
+      try {
+        const current = await this.deps.getWorkspace(turn.workspaceId);
+        if (current)
+          return await this.deps.changes.finish(current, turn.id, {
+            sessionId: turn.sessionId,
+            interrupted: turn.controller.signal.aborted || turn.failed === true || !turn.handle,
+          });
+      } catch {
+        turn.changesUnavailable = '本轮结束后的文件快照不可用；未改变Agent或同步结果';
+      }
+    }
+    if (!turn.changesUnavailable) return undefined;
+    return {
+      turnId: turn.id,
+      agent: turn.agent,
+      sessionId: turn.sessionId,
+      startedAt: turn.startedAt,
+      completedAt: Date.now(),
+      phase: 'unavailable',
+      message: turn.changesUnavailable,
+      changes: [],
+    };
   }
 
   private async synchronize(turn: Turn): Promise<void> {
@@ -296,8 +346,10 @@ export class TurnManager {
         pending.resolve({ allow: false, message: '本轮已结束' });
       }
     }
+    let changes: TurnChangesRecord | undefined;
     try {
       await this.synchronize(turn);
+      changes = await this.finishChanges(turn);
     } finally {
       this.turns.delete(turn.id);
       const key = turn.sessionId && sessionKey(turn.agent, turn.sessionId);
@@ -308,6 +360,7 @@ export class TurnManager {
         turnId: turn.id,
         workspaceId: turn.workspaceId,
         agent: turn.agent,
+        changes,
       });
     }
   }

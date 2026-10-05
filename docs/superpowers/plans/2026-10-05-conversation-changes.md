@@ -1,7 +1,7 @@
 # 本轮改动与行内反馈实施计划
 
 **Goal：** 真实轮次快照、改动视图、成熟diff渲染、待发送行反馈及有确认的单文件放弃。
-**Spec：** [C01–C10](../specs/2026-10-05-conversation-changes-design.md)
+**Spec：** [C01–C11](../specs/2026-10-05-conversation-changes-design.md)
 **方式：** Native，用户授权自主记录；一次阶段核心Review后补最少回归。
 
 ## 全局约束
@@ -31,10 +31,10 @@ Interfaces：VersionsService.captureTurn(ws,turnId,edge:'base'|'result')返回Tu
 Files：新增chat/turn-changes.ts、http/turn-changes.routes.ts；修改turn-manager、main、shared/protocol、versions.routes与web/lib/api。
 Interfaces：TurnChanges.begin(ws,turnId,{agent,sessionId?})、finish(ws,turnId,{sessionId?,interrupted})、list(ws,{agent,sessionId?})、diff(ws,turnId,path?)；记录状态preparing/running/complete/incomplete/unavailable。TurnManagerDeps.changes为可选。
 
-- [ ] 有界元数据原子保存、20轮保留，重启未完成记录标不完整，查询验证会话和目录/规则身份。
-- [ ] 普通runner前开始、既有同步后结束；纯上下文命令跳过，错误/取消不影响原有Agent/同步结果，租约最后释放。
-- [ ] HTTP只开放绑定工作区/会话的记录和diff；放弃复用已有同步transaction；完成事件只通知所属网页刷新。
-- [ ] 类型/相关lint及既有turn/session/HTTP回归；受控轮次验证准备取消、失败和同步收尾。提交feat(chat)。
+- [x] 有界元数据原子保存、20轮保留，重启未完成记录标不完整，查询验证会话和目录/规则身份。
+- [x] 普通runner前开始、既有同步后结束；纯上下文命令跳过，错误/取消不影响原有Agent/同步结果，租约最后释放。
+- [x] HTTP只开放绑定工作区/会话的记录和diff；放弃复用已有同步transaction；完成事件只通知所属网页刷新。
+- [x] 类型/相关lint及既有turn/session/HTTP3文件31项回归；真实Git保留与重启、受控轮次取消/失败/同步收尾通过。提交feat(chat)。
 
 ## Task 3：改动面板与行反馈
 

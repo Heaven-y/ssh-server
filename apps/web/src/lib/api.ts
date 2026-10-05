@@ -25,6 +25,10 @@ import type {
   VersionRestoreInput,
   VersionRestorePreview,
   VersionRestoreResult,
+  VersionDiscardPreview,
+  VersionDiscardInput,
+  TurnChangesRecord,
+  TurnDiff,
   SshAuthMode,
   SshHostInfo,
   SyncSettings,
@@ -226,6 +230,37 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ ...input, confirmed: true }),
     }),
+  previewDiscard: (id: string, path: string) =>
+    request<VersionDiscardPreview>(versionsUrl(id) + '/discard/preview', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
+  discardFile: (id: string, input: VersionDiscardInput) =>
+    request<VersionRestoreResult>(versionsUrl(id) + '/discard', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  turnChanges: (id: string, target: { agent: AgentKind; sessionId?: string }, signal?: AbortSignal) => {
+    const query = new URLSearchParams({ agent: target.agent });
+    if (target.sessionId) query.set('sessionId', target.sessionId);
+    return request<{ records: TurnChangesRecord[] }>(
+      `/api/workspaces/${encodeURIComponent(id)}/turn-changes?${query}`,
+      { signal, cache: 'no-store' },
+    );
+  },
+  turnDiff: (
+    id: string,
+    input: { turnId: string; agent: AgentKind; sessionId?: string; path?: string },
+    signal?: AbortSignal,
+  ) => {
+    const query = new URLSearchParams({ agent: input.agent });
+    if (input.sessionId) query.set('sessionId', input.sessionId);
+    if (input.path) query.set('path', input.path);
+    return request<TurnDiff>(
+      `/api/workspaces/${encodeURIComponent(id)}/turn-changes/${encodeURIComponent(input.turnId)}/diff?${query}`,
+      { signal, cache: 'no-store' },
+    );
+  },
   listFiles: (id: string, relative = '', signal?: AbortSignal) =>
     request<WorkspaceDirectory>(fileUrl(id, 'files', relative), { signal, cache: 'no-store' }),
   readFile: (id: string, relative: string, signal?: AbortSignal) =>

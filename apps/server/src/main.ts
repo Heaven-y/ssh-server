@@ -7,6 +7,8 @@ import { createSessionRegistry } from './chat/registry';
 import { TurnManager } from './chat/turn-manager';
 import { createSessionsService } from './chat/sessions';
 import { createCapabilitiesService } from './chat/capabilities';
+import { createTurnChanges } from './chat/turn-changes';
+import { registerTurnChangesRoutes } from './http/turn-changes.routes';
 import { discoverClaudeCapabilities } from './agents/claude-capabilities';
 import { createClaudeSessions } from './agents/claude-sessions';
 import {
@@ -35,7 +37,7 @@ import { createFilePreflights } from './remote-files/preflight';
 import { createFileTasks } from './remote-files/tasks';
 import { createFileDownloads } from './remote-files/downloads';
 import { createRemoteFilesService } from './remote-files/service';
-import { registerVersionRoutes } from './http/versions.routes';
+import { registerDiscardRoutes, registerVersionRoutes } from './http/versions.routes';
 import { createWorkspaceFilesService } from './files/service';
 import { createVersionsService } from './vcs/service';
 import { registerSyncRoutes } from './http/sync.routes';
@@ -139,6 +141,8 @@ async function main(): Promise<void> {
     driver: createRcloneDriver({ configDir: config.configDir, pool }),
   });
   const registry = createSessionRegistry();
+  const versions = createVersionsService();
+  const changes = createTurnChanges({ configDir: config.configDir, versions });
   const setup = createWorkspaceSetup({ store, pool, sync, configDir: config.configDir, acquireWorkspace });
   const browse = createRemoteFilesService({ store, pool });
   const executor = createRemoteExecutor(pool);
@@ -190,6 +194,7 @@ async function main(): Promise<void> {
     internalUrl: () => `http://${hostForUrl(config.host)}:${port}`,
     sync,
     acquireWorkspace,
+    changes,
   });
 
   const app = await buildApp({
@@ -217,7 +222,9 @@ async function main(): Promise<void> {
       registerFileEditorRoutes(a, { store, editors, acquireWorkspace });
       registerRemoteFileRoutes(a, browse);
       registerRemoteFileActionRoutes(a, { preflights, tasks, downloads: createFileDownloads({ pool, browse }) });
-      registerVersionRoutes(a, { store, versions: createVersionsService(), sync });
+      registerVersionRoutes(a, { store, versions, sync });
+      registerDiscardRoutes(a, { store, versions, sync });
+      registerTurnChangesRoutes(a, { store, changes, sessions });
       registerSyncRoutes(a, { store, sync });
       registerWsRoutes(a, { turns });
       registerTerminalRoutes(a, { terminals, bindings: terminalBindings });
