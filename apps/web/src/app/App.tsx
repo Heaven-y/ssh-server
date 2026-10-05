@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import type { Workspace } from '@ssh-server/shared';
 import { ChatView } from '../features/chat/ChatView';
 import { lastWorkspaceId, useChat } from '../features/chat/chat-store';
@@ -12,12 +12,18 @@ import { api, queryKeys } from '../lib/api';
 import { TopBar } from './TopBar';
 import { WorkspaceArea } from './WorkspaceArea';
 import { useProductSettings } from '../features/settings/use-product-settings';
+import { useUiPreferences } from '../ui/ui-preferences';
+import { WorkspaceColumns, WorkspaceLayout } from './WorkspaceLayout';
 
 const SettingsDialog = lazy(() => import('../features/settings/SettingsDialog'));
 const FilesPanel = lazy(() => import('../features/files/FilesPanel'));
 
 /** 对话保持主区，文件面板按需打开；窄窗口以覆盖层承载编辑。 */
 export function App() {
+  const theme = useUiPreferences((state) => state.theme);
+  useLayoutEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
   const productSettings = useProductSettings();
   const setDefaults = useChat((s) => s.setDefaults);
   useEffect(() => {
@@ -71,50 +77,57 @@ export function App() {
           <SettingsDialog onClose={() => setSettingsOpen(false)} />
         </Suspense>
       )}
-      <div className="flex min-h-0 flex-1">
-        <WorkspaceSidebar workspaces={workspaces} currentId={current?.id} onRemoved={workspaceRemoved} />
+      <WorkspaceLayout
+        navigation={<WorkspaceSidebar workspaces={workspaces} currentId={current?.id} onRemoved={workspaceRemoved} />}
+      >
         <WorkspaceArea
           workspace={current}
           terminalLoaded={terminalLoaded}
           terminalVisible={terminalVisible}
           onHideTerminal={hideTerminal}
         >
-          <main className="flex min-w-0 flex-1 flex-col">
-            {current ? (
-              <>
-                <div
-                  aria-label="工作区状态"
-                  className="flex min-h-11 shrink-0 flex-wrap items-center gap-1 border-b border-border/60 px-4"
+          <WorkspaceColumns
+            opened={!!filesWorkspace}
+            files={
+              filesWorkspace && (
+                <Suspense
+                  fallback={
+                    <p role="status" className="p-4 text-sm">
+                      正在打开文件…
+                    </p>
+                  }
                 >
-                  <SshConnectionPanel
-                    key={JSON.stringify([current.id, current.sshHost, current.authMode ?? 'key', current.remoteDir])}
-                    workspace={current}
-                  />
-                  <SyncPanel key={current.id} workspace={current} />
-                  <VersionsPanel key={current.id} workspace={current} />
-                  <ResourcesPanel key={current.id} workspace={current} />
+                  <FilesPanel workspace={filesWorkspace} onClose={() => setFilesWorkspace(undefined)} />
+                </Suspense>
+              )
+            }
+          >
+            <main className="flex min-w-0 flex-1 flex-col">
+              {current ? (
+                <>
+                  <div
+                    aria-label="工作区状态"
+                    className="flex min-h-11 shrink-0 flex-wrap items-center gap-1 border-b border-border/60 px-4"
+                  >
+                    <SshConnectionPanel
+                      key={JSON.stringify([current.id, current.sshHost, current.authMode ?? 'key', current.remoteDir])}
+                      workspace={current}
+                    />
+                    <SyncPanel key={current.id} workspace={current} />
+                    <VersionsPanel key={current.id} workspace={current} />
+                    <ResourcesPanel key={current.id} workspace={current} />
+                  </div>
+                  <ChatView workspace={current} />
+                </>
+              ) : (
+                <div className="m-auto max-w-sm text-center text-sm text-muted-foreground">
+                  {workspaces.isPending ? '正在加载工作区…' : '在左侧新建或选择一个工作区后开始对话。'}
                 </div>
-                <ChatView workspace={current} />
-              </>
-            ) : (
-              <div className="m-auto max-w-sm text-center text-sm text-muted-foreground">
-                {workspaces.isPending ? '正在加载工作区…' : '在左侧新建或选择一个工作区后开始对话。'}
-              </div>
-            )}
-          </main>
-          {filesWorkspace && (
-            <Suspense
-              fallback={
-                <p role="status" className="p-4 text-sm">
-                  正在打开文件…
-                </p>
-              }
-            >
-              <FilesPanel workspace={filesWorkspace} onClose={() => setFilesWorkspace(undefined)} />
-            </Suspense>
-          )}
+              )}
+            </main>
+          </WorkspaceColumns>
         </WorkspaceArea>
-      </div>
+      </WorkspaceLayout>
     </div>
   );
 }

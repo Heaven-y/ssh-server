@@ -1,13 +1,57 @@
-import { FileCode2, FolderOpen, LoaderCircle, RefreshCw, Settings2, TerminalSquare, Wifi, WifiOff } from 'lucide-react';
+import {
+  FileCode2,
+  FolderOpen,
+  LoaderCircle,
+  Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
+  RefreshCw,
+  Settings2,
+  Sun,
+  TerminalSquare,
+  Wifi,
+  WifiOff,
+} from 'lucide-react';
 import type { Workspace } from '@ssh-server/shared';
 import { reconnectChat, useChat } from '../features/chat/chat-store';
 import { buttonClass } from '../ui/styles';
+import { useUiPreferences } from '../ui/ui-preferences';
 
 const STATUS = {
   open: { label: '本机服务已连接', icon: Wifi, cls: 'text-muted-foreground' },
   connecting: { label: '本机服务连接中', icon: LoaderCircle, cls: 'text-muted-foreground' },
   closed: { label: '本机服务已断开', icon: WifiOff, cls: 'text-destructive-foreground' },
 } as const;
+
+function AppearanceActions() {
+  const collapsed = useUiPreferences((state) => state.sidebarCollapsed);
+  const theme = useUiPreferences((state) => state.theme);
+  const setCollapsed = useUiPreferences((state) => state.setSidebarCollapsed);
+  const toggleTheme = useUiPreferences((state) => state.toggleTheme);
+  const SidebarIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
+  const ThemeIcon = theme === 'dark' ? Sun : Moon;
+  return (
+    <>
+      <button
+        type="button"
+        className={buttonClass('ghost')}
+        aria-label={collapsed ? '展开侧栏' : '折叠侧栏'}
+        aria-expanded={!collapsed}
+        onClick={() => setCollapsed(!collapsed)}
+      >
+        <SidebarIcon aria-hidden className="size-4" />
+      </button>
+      <button
+        type="button"
+        className={buttonClass('ghost')}
+        aria-label={theme === 'dark' ? '切换亮色主题' : '切换暗色主题'}
+        onClick={toggleTheme}
+      >
+        <ThemeIcon aria-hidden className="size-4" />
+      </button>
+    </>
+  );
+}
 
 /** 顶栏：应用名、当前工作区、WebSocket 连接状态（图标 + 文字，不只靠颜色） */
 export function TopBar({
@@ -31,12 +75,16 @@ export function TopBar({
 
   return (
     <header className="flex h-14 shrink-0 items-center border-b border-border/70 bg-card">
-      <div className="flex w-60 shrink-0 items-center gap-2.5 px-5 xl:w-64">
+      <div className="flex shrink-0 items-center gap-2.5 px-4">
+        <AppearanceActions />
         <TerminalSquare aria-hidden className="size-5 text-accent" />
         <span className="text-sm font-semibold tracking-wide">ssh-server</span>
       </div>
       {workspace && (
-        <span className="flex min-w-0 items-center gap-2 px-5 text-sm text-muted-foreground" title={workspace.localDir}>
+        <span
+          className="flex min-w-0 flex-1 items-center gap-2 px-3 text-sm text-muted-foreground"
+          title={workspace.localDir}
+        >
           <FolderOpen aria-hidden className="size-4 shrink-0" />
           <span className="truncate text-foreground">{workspace.name}</span>
         </span>
