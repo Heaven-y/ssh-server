@@ -9,6 +9,7 @@ export function ToolGroup({
   itemExpanded,
   setItemExpanded,
 }: ExpandedProps & {
+  expanded: boolean;
   items: ToolItem[];
   itemExpanded(id: string): boolean;
   setItemExpanded(id: string, open: boolean): void;
@@ -35,16 +36,18 @@ export function ToolGroup({
         </span>
         <ChevronRight aria-hidden className="size-4 shrink-0 transition-transform group-open/reads:rotate-90" />
       </summary>
-      <div className="space-y-1 border-t border-border p-2">
-        {items.map((item) => (
-          <ToolCard
-            key={item.id}
-            item={item}
-            expanded={itemExpanded(item.id)}
-            onExpandedChange={(open) => setItemExpanded(item.id, open)}
-          />
-        ))}
-      </div>
+      {expanded && (
+        <div className="space-y-1 border-t border-border p-2">
+          {items.map((item) => (
+            <ToolCard
+              key={item.id}
+              item={item}
+              expanded={itemExpanded(item.id)}
+              onExpandedChange={(open) => setItemExpanded(item.id, open)}
+            />
+          ))}
+        </div>
+      )}
     </details>
   );
 }

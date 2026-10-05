@@ -44,7 +44,7 @@
 | 版本记录 | 本机 git（外部命令） | |
 | 前端 | React 19 + Vite + Tailwind CSS 4 | |
 | 前端组件 | Base UI（无样式组件）、react-resizable-panels（分栏）、cmdk（命令面板）、lucide-react（图标）、sonner（提示） | 选型参考 t3code、vibe-kanban 等项目，见 ui-layout 第 0 节 |
-| 消息渲染 | streamdown（流式 Markdown）+ shiki（代码高亮）、@pierre/diffs（diff）、@tanstack/react-virtual（长列表） | |
+| 消息渲染 | streamdown（流式 Markdown）+ shiki（代码高亮）、react-virtuoso4.18.16（动态长列表） | 时间线投影合并明确读取工具；展开状态留在列表父层，选择代次重置视图。diff沿用现有Git文本，下一阶段接入成熟diff组件 |
 | 前端状态与接口数据 | zustand、`@tanstack/react-query`、partysocket | zustand 管流式状态，react-query 管接口加载与刷新，partysocket 管 WebSocket 重连 |
 | 终端 | @xterm/xterm + @xterm/addon-fit | |
 | 文件编辑 | `@uiw/react-codemirror` / CodeMirror 6 | 原生配置和轻量脚本编辑共用，按需加载，不引入完整 IDE |

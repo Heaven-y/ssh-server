@@ -8,7 +8,7 @@
 
 L01：采用固定react-virtuoso4.18.16（MIT，包元数据确认支持React19）的动态测量、followOutput、autoscrollToBottom和scrollToIndex。相比在use-stick-to-bottom上手写窗口范围与高度表，成熟库统一处理变量高度；相比固定高度列表，不裁断工具/代码块。保留原生对话条目与审批，不迁移后端。移除不再使用的use-stick-to-bottom依赖。
 
-L02：由纯函数projectTimeline(items)生成稳定TimelineRow：普通message或read-group，key为原条目id/首个工具id。只有已知读取/搜索类名称进入组：Read、read_file、Grep、Glob、search、search_files、list_directory、list_files、remote_peek（按明确短名、忽略大小写）；不解析shell文本猜测只读。remote_exec、commandExecution、编辑、未知工具、用户/助手/思考/审批/错误/压缩边界均打断组。连续至少两项才合并，标题“读取/搜索了N项”，仍显示每项原始参数/结果和完成/失败/结果未返回。不能以分组把失败或未完成标成成功。
+L02：由纯函数projectTimeline(items)生成稳定TimelineRow：普通message或read-group，key为原条目id/首个工具id。只有已知读取/搜索类名称进入组：Read、read_file、Grep、Glob、search、search_files、list_directory、list_files、remote_peek（按明确短名、忽略大小写）；不解析shell文本猜测只读。remote_exec、commandExecution、编辑、未知工具、用户/助手/思考/审批/错误/压缩边界均打断组。连续至少两项才合并，每段最多40项（L07）；标题“读取/搜索了N项”，仍显示每项原始参数/结果和完成/失败/结果未返回。不能以分组把失败或未完成标成成功。
 
 L03：分组、工具及思考的展开状态保存在当前时间线内存中，以原条目id作为key，离开视口后返回仍保持；不把历史内容或状态写浏览器存储。初始一个读取工具变成组时仍保留原工具状态。关闭组时仍保留内部展开选择，组默认折叠，进行中/失败/未返回数量始终可见。
 
@@ -17,6 +17,8 @@ L04：chat-store增加只用于网页实例的conversationVersion，沿用现有
 L05：viewport扩展上下300px，估计条目120px，实际高度由库测量。跟随使用即时定位，避免持续流式内容与平滑动画竞争；同条目增高时只有仍贴底才调用官方autoscrollToBottom。上翻不移动。列表外保留标题、提示和输入框，列表role=log、aria-live=polite、运行时aria-busy。动态展开、主题和分栏变更必须实际Edge复验；任何布局变化不能重新连接聊天或发起模型轮次。
 
 L06：布局阶段本机门禁通过后已本地--no-ff合入feat8a18738（树等同f6e3542），从该点创建codex/conversation-timeline；PR12的双平台CI通过后才推送共享feat/main。新阶段不重跑未受影响的真实SSH资源/PTY；阶段末验证相关会话/条目/审批与构建，最终整合执行既有门禁，不改覆盖率、复杂度或重复代码阈值。
+
+L07：一次核心Review发现连续1000个读取压成一行时仍挂载1001个details/2000个pre，即使折叠也绕过外层虚拟化。改为每段最多40项，折叠组不挂载内部卡片，展开状态仍由时间线父层保留；代价是很长的连续读取显示多段摘要，换取折叠和展开时均有明确DOM边界。不单靠隐藏内容或只卸载折叠内容来声称展开有界。
 
 ## 验收与后续
 
