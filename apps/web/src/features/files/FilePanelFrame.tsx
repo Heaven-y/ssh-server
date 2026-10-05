@@ -44,7 +44,7 @@ export function FilePanelFrame({ children, close }: { children: ReactNode; close
       className={
         narrow
           ? 'm-auto h-[calc(100dvh-32px)] w-[min(900px,calc(100vw-32px))] overflow-hidden rounded-lg border border-border bg-card p-0 text-foreground shadow-xl backdrop:bg-black/60'
-          : 'relative m-0 h-full max-h-none w-[clamp(400px,38vw,680px)] max-w-none shrink-0 overflow-hidden border-0 border-l border-border bg-card p-0 text-foreground'
+          : 'relative m-0 h-full max-h-none w-full max-w-none overflow-hidden border-0 bg-card p-0 text-foreground'
       }
     >
       <div className={`${style} h-full`}>{children}</div>

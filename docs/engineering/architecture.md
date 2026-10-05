@@ -48,7 +48,7 @@
 | 前端状态与接口数据 | zustand、`@tanstack/react-query`、partysocket | zustand 管流式状态，react-query 管接口加载与刷新，partysocket 管 WebSocket 重连 |
 | 终端 | @xterm/xterm + @xterm/addon-fit | |
 | 文件编辑 | `@uiw/react-codemirror` / CodeMirror 6 | 原生配置和轻量脚本编辑共用，按需加载，不引入完整 IDE |
-| 资源状态 | SSH 只读采样 + 有界共享缓存 + HTTP/React Query 详情 | 可见时5秒检查；宿主按实际认证身份共享，磁盘按目录隔离，不依赖 `nvitop` 或服务器采集服务 |
+| 资源状态 | SSH只读采样、有界共享缓存、HTTP/React Query单controller | 顶栏与详情共用检查；可见、网页连接open且设置有效时按动态间隔刷新，隐藏/断线取消HTTP并暂停；宿主按认证身份共享，磁盘按目录隔离，不依赖服务器采集服务 |
 | 字体 | @fontsource/ibm-plex-sans、@fontsource/jetbrains-mono | 本地打包，不访问外部字体服务 |
 | 存储 | JSON 文件 | 只存工作区配置，不存对话 |
 

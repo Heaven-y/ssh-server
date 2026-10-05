@@ -395,11 +395,12 @@ export const api = {
   decideSyncDeletions: (id: string, decision: 'confirm' | 'reject') => postSync(id, '/deletions', { decision }),
   acknowledgeSyncConflicts: (id: string) => postSync(id, '/conflicts/ack'),
   updateSyncSettings: (id: string, settings: SyncSettings) => postSync(id, '/settings', settings),
-  listSessions: (workspaceId: string, agent: AgentKind = 'claude', archived = false) =>
+  listSessions: (workspaceId: string, agent: AgentKind = 'claude', archived = false, signal?: AbortSignal) =>
     request<SessionSummary[]>(
       `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions?agent=${agent}${archived ? '&archived=true' : ''}`,
       {
         cache: 'no-store',
+        signal,
       },
     ),
   /** 原生管理请求不因面板关闭而取消；结果以运行时响应和重新读取为准。 */

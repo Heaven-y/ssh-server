@@ -12,10 +12,10 @@
 | F3.4 工作区规则追加 | 严格默认id目录、有界程序名/字符串自定义、串行摘要保存、侧栏独立草稿及实际执行接线已完成；一次Review的null保护RED→GREEN，见[规则验收](../guides/workspace-policy-acceptance.md) | 核心范围完成；完整模型对话与实际rclone串联继续按M6核对，规则不作用网页终端及在途已检查命令 |
 | F4 / A10 网页终端 | 后端终端协议、绑定、目录确认、PTY 路由与背压已接入；网页多标签、分屏和可调主区已接入，核心回归及本机真实ssh2网页验收完成；[书面设计](../superpowers/specs/2026-10-04-web-terminal-design.md)已确认，[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)已确认，实施中 | 真实服务器已有全屏工具、原生OS输入法和密码保存重启串联；[本机验收](../guides/web-terminal-acceptance.md)覆盖基础交互和通道回收 |
 | F5.2 创建前同步预览 | 用户触发的两端计数/字节/排除例子、过滤和上限已实现；独立rclone lsjson不建立基线，真实只读预览通过 | 核心范围完成；超限/工具缺失继续返回未完成，不能伪造总量 |
-| F9 / A18 资源面板 | [资源服务](../../apps/server/src/resources/service.ts)及HTTP已接入；[资源详情](../../apps/web/src/features/resources/ResourcesPanel.tsx)支持固定目标、空值/时间/过期和可见性；真实SSH、核心回归及网页证据见[验收](../guides/resources-acceptance.md) | 产品刷新参数已贯通并真实复验；仍需顶栏持续概览、原生页面隐藏及完整多活动组合验收；不检测训练完成或调用模型 |
+| F9 / A18 资源面板 | [资源服务](../../apps/server/src/resources/service.ts)及HTTP已接入；[资源详情](../../apps/web/src/features/resources/ResourcesPanel.tsx)支持固定目标、空值/时间/过期和可见性；真实SSH、核心回归及网页证据见[验收](../guides/resources-acceptance.md) | 产品参数和顶栏单controller概览已贯通，真实SSH入口与共享详情复验见[导航验收](../guides/workspace-navigation-acceptance.md)；原生页面隐藏及完整多活动组合仍待验，不调用模型 |
 | 界面第 7 节产品设置 | 独立本机偏好、产品/原生视图、手动版本检测、新会话默认与向导快照已贯通；一次Review三项修复和真实/网页证据见[设置验收](../guides/product-settings-acceptance.md) | 工作区黑名单已独立贯通；产品默认空值保持跟随原生，历史只保留显式覆盖 |
 | 可调定时同步间隔 | [调度](../../apps/web/src/features/sync/scheduler.ts)默认15秒、可配置5–300秒；替换旧计时器不增加立即同步，保留隐藏/忙/待确认门禁 | 核心范围完成；完整对话/PTY/同步/资源并发继续按M6验收 |
-| 界面第 1/3/4/5 节目标 | 现有[App](../../apps/web/src/app/App.tsx)与侧栏固定布局；[对话](../../apps/web/src/features/chat/ChatView.tsx)直接映射条目，[工具卡](../../apps/web/src/features/chat/ToolCard.tsx)逐个渲染；文件/版本页提供已有 diff | 可折叠侧栏、可调分栏与亮色切换、网页命令面板、长会话虚拟列表、连续读取工具分组、本轮改动聚合和 diff 行内反馈；按原界面目标继续实施，不以单次界面改版作为全部完成 |
+| 界面第 1/3/4/5 节目标 | [布局/导航](../guides/workspace-navigation-acceptance.md)已完成侧栏折叠、可调分栏、亮色与cmdk；[对话](../../apps/web/src/features/chat/ChatView.tsx)仍直接映射条目，[工具卡](../../apps/web/src/features/chat/ToolCard.tsx)逐个渲染；文件/版本页提供已有diff | 长会话虚拟列表、连续读取工具分组、本轮改动聚合和diff行内反馈；按原界面目标继续实施，不以单次界面改版作为全部完成 |
 
 ## 2. 验收缺口与证据边界
 
