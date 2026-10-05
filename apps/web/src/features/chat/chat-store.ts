@@ -36,6 +36,8 @@ type ChatState = {
   contextUsage?: ContextUsage | null;
   compaction?: CompactionState;
   items: ChatItem[];
+  /** 网页选择代次；原生首次返回sessionId不会重建时间线。 */
+  conversationVersion: number;
   running: boolean;
   turnId?: string;
   pendingClientTurnId?: string;
@@ -153,6 +155,7 @@ function persistWorkspace(id?: string): void {
 
 export const useChat = create<ChatState>()((set, get) => ({
   connection: 'connecting',
+  conversationVersion: 0,
   agent: 'claude',
   modelOverrides: { claude: '', codex: '' },
   modelSources: { claude: 'default', codex: 'default' },
@@ -163,9 +166,9 @@ export const useChat = create<ChatState>()((set, get) => ({
   ...emptyConversation,
   selectWorkspace(id) {
     if (get().workspaceId === id) return;
-    changeSelection();
+    const conversationVersion = changeSelection();
     persistWorkspace(id);
-    set({ workspaceId: id, ...emptyConversation, ...newDefaults(get()) });
+    set({ workspaceId: id, ...emptyConversation, ...newDefaults(get()), conversationVersion });
   },
   removeWorkspace(id, nextId) {
     const prefix = JSON.stringify([id]).slice(0, -1) + ',';
@@ -178,16 +181,16 @@ export const useChat = create<ChatState>()((set, get) => ({
     set({ sessionOperations });
   },
   newSession(agent = get().defaults.defaultAgent) {
-    changeSelection();
-    set({ ...emptyConversation, ...newDefaults(get()), agent, initialDefaultsEligible: false });
+    const conversationVersion = changeSelection();
+    set({ ...emptyConversation, ...newDefaults(get()), agent, initialDefaultsEligible: false, conversationVersion });
   },
   setAgent(agent) {
     const current = get();
     if (current.sessionId || current.running || current.loadingHistory || current.pendingClientTurnId) return;
     set({ initialDefaultsEligible: false });
     if (current.agent !== agent) {
-      changeSelection();
-      set({ ...emptyConversation, agent });
+      const conversationVersion = changeSelection();
+      set({ ...emptyConversation, agent, conversationVersion });
     }
   },
   async openSession(session) {
@@ -201,6 +204,7 @@ export const useChat = create<ChatState>()((set, get) => ({
       agent: session.agent,
       sessionId: session.sessionId,
       loadingHistory: true,
+      conversationVersion: generation,
       modelOverrides: historicalModels(get()),
       initialDefaultsEligible: false,
     });

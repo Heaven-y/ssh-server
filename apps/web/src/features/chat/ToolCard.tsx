@@ -1,5 +1,6 @@
 import { ChevronRight, CircleAlert, CircleCheck, CircleX, LoaderCircle, Terminal, Wrench } from 'lucide-react';
 import type { ChatItem } from './chat-reducer';
+import type { ExpandedProps } from './timeline-model';
 
 type ToolItem = Extract<ChatItem, { kind: 'tool' }>;
 
@@ -51,7 +52,7 @@ function StatusLabel({ item }: { item: ToolItem }) {
 }
 
 /** 工具调用卡片：默认折叠，展开显示参数与结果 */
-export function ToolCard({ item }: { item: ToolItem }) {
+export function ToolCard({ item, expanded, onExpandedChange }: { item: ToolItem } & ExpandedProps) {
   const name = shortToolName(item.name);
   const isExec = name === 'remote_exec';
   const arg = keyArg(item.input);
@@ -59,7 +60,13 @@ export function ToolCard({ item }: { item: ToolItem }) {
   const Icon = isExec ? Terminal : Wrench;
 
   return (
-    <details className="group min-w-0 rounded-lg text-sm open:bg-card">
+    <details
+      className="group/tool min-w-0 rounded-lg text-sm open:bg-card"
+      open={expanded}
+      onToggle={(event) => {
+        if (event.currentTarget.open !== expanded) onExpandedChange?.(event.currentTarget.open);
+      }}
+    >
       <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 rounded-lg px-3 py-2.5 marker:hidden hover:bg-muted/50">
         <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
@@ -81,7 +88,7 @@ export function ToolCard({ item }: { item: ToolItem }) {
         </span>
         <ChevronRight
           aria-hidden
-          className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+          className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open/tool:rotate-90"
         />
       </summary>
       <div className="mx-3 mb-3 flex min-w-0 flex-col gap-3 border-l border-border py-1 pl-4">

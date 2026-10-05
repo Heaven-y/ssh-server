@@ -35,7 +35,7 @@
 
 - [x] Task 1–9：workspaces 骨架、共享协议、命令黑名单、ssh config 与 known_hosts、远程执行与连接池、工作区存储、访问控制、远程工具 MCP、Claude 适配器与对话 WebSocket
 - [x] Task 10：前端（工作区、会话、对话界面）；此前已记录 `npm test`、`npm run typecheck`、`npm run build -w @ssh-server/web` 通过，浏览器冒烟检查通过（登录、空状态、表单校验、连接状态、控制台无错误）
-- [x] 复用成熟库：规范写入开发环境 1.1、1.2；`ssh-config.ts` 改用 `ssh-config` 库；前端使用 react-query、partysocket、use-stick-to-bottom
+- [x] 复用成熟库：规范写入开发环境 1.1、1.2；`ssh-config.ts` 改用 `ssh-config` 库；前端使用 react-query、partysocket；长列表由react-virtuoso统一动态测量与贴底
 - [x] 工程检查：接入 `npm run check`（类型、ESLint 与复杂度、Prettier、jscpd 重复率、Vitest 覆盖率）与 GitHub Actions；此前记录补测试后的行覆盖率约 92%（见开发环境 1.3）
 - [x] 创建 `scripts/dev/e2e-m1.ts`：真实 Claude → MCP → SSH hostname 比对和原生历史可见性通过
 - [ ] 接入同步后的模型复验、浏览器工具卡/黑名单/续接/审批/中断验证与收尾记录
@@ -117,7 +117,8 @@
 - [x] 工作区黑名单网页停用/恢复与有界自定义规则追加，版本保存、校验及执行贯通；一次Review的null保护修复、核心回归、真实SSH标记与Edge三宽度通过，见[规则验收](guides/workspace-policy-acceptance.md)
 - [x] 工作区配置删除的网页入口及活动资源收尾：配置确认、活动/持久任务/离线编辑器阻断、所属PTY/SFTP关闭和迟到收尾；真实SSH与Edge三宽度通过，见[验收](guides/workspace-removal-acceptance.md)
 - [x] 侧栏折叠、有界分栏与亮色切换、网页cmdk命令面板、持续资源概览；一次Review三项修复与Edge两主题三宽度/真实资源PTY通过，见[验收](guides/workspace-navigation-acceptance.md)
-- [ ] 长会话虚拟列表/工具分组、本轮改动聚合与diff行内反馈
+- [x] 长会话动态虚拟列表与连续读取/搜索工具分组；受控2000轮14000原始条目、流式增高/上翻/展开保持/独立审批和两主题三宽度通过，见[验收](guides/conversation-timeline-acceptance.md)
+- [ ] 本轮改动聚合与diff行内反馈
 - [x] Claude/Codex 固定原生文件编辑、语法校验、外部修改检测、原子保存与关闭清理
 - [x] Claude 真实 SDK 的两次 query 读取新配置；Codex 官方 config/read 重读隔离配置
 - [x] Codex 隔离原生运行时真实下一次调用：更新后的 GLM 配置通过，源配置保持不变

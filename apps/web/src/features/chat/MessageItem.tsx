@@ -5,9 +5,14 @@ import type { ChatItem } from './chat-reducer';
 import { PermissionCard } from './PermissionCard';
 import { ToolCard } from './ToolCard';
 import { CompactionStatus } from './ContextStatus';
+import type { ExpandedProps } from './timeline-model';
 
 /** 单个对话条目；memo 避免流式更新时整列表重渲染（条目内容不变时引用不变） */
-export const MessageItem = memo(function MessageItem({ item }: { item: ChatItem }) {
+export const MessageItem = memo(function MessageItem({
+  item,
+  expanded,
+  onExpandedChange,
+}: { item: ChatItem } & ExpandedProps) {
   switch (item.kind) {
     case 'compaction':
       return <CompactionStatus state={item.state} incomplete={item.incomplete} />;
@@ -27,13 +32,19 @@ export const MessageItem = memo(function MessageItem({ item }: { item: ChatItem 
       );
     case 'reasoning':
       return (
-        <details className="min-w-0 text-sm text-muted-foreground">
+        <details
+          className="min-w-0 text-sm text-muted-foreground"
+          open={expanded}
+          onToggle={(event) => {
+            if (event.currentTarget.open !== expanded) onExpandedChange?.(event.currentTarget.open);
+          }}
+        >
           <summary className="w-fit cursor-pointer rounded-md py-1 select-none hover:text-foreground">思考过程</summary>
           <p className="mt-2 border-l border-border pl-4 leading-7 whitespace-pre-wrap break-words">{item.text}</p>
         </details>
       );
     case 'tool':
-      return <ToolCard item={item} />;
+      return <ToolCard item={item} expanded={expanded} onExpandedChange={onExpandedChange} />;
     case 'permission':
       return <PermissionCard item={item} />;
     case 'error':
