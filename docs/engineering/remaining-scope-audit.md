@@ -55,3 +55,5 @@
 | UI布局与设置 | [界面](../guides/workspace-ui-acceptance.md)、[导航](../guides/workspace-navigation-acceptance.md)、[设置](../guides/product-settings-acceptance.md)、[时间线](../guides/conversation-timeline-acceptance.md)、[本轮改动](../guides/conversation-changes-acceptance.md) | 保留原生IME未验和既有构建chunk体积提示 |
 
 第一版排除项继续按需求第5节执行：不新增完整IDE、多Agent编排、集群监控、服务器软件安装、多用户、打包迁移或自动续跑。核心实现与可执行验收已交付，原生界面缺口和工具限制未消除前，整个Goal保持进行中。
+
+最终进度核对已更正路线图M1、F3/F6说明与架构并发段落中的旧“等待M6”状态；真实模型、网页和受控异常分别引用已有记录，不为更正文字重复调用模型或未受影响的测试。当前没有新增核心实现缺口；原生界面拒绝与工具边界仍按上表保留。

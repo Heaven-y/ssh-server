@@ -38,9 +38,9 @@
 - [x] 复用成熟库：规范写入开发环境 1.1、1.2；`ssh-config.ts` 改用 `ssh-config` 库；前端使用 react-query、partysocket；长列表由react-virtuoso统一动态测量与贴底
 - [x] 工程检查：接入 `npm run check`（类型、ESLint 与复杂度、Prettier、jscpd 重复率、Vitest 覆盖率）与 GitHub Actions；此前记录补测试后的行覆盖率约 92%（见开发环境 1.3）
 - [x] 创建 `scripts/dev/e2e-m1.ts`：真实 Claude → MCP → SSH hostname 比对和原生历史可见性通过
-- [ ] 接入同步后的模型复验、浏览器工具卡/黑名单/续接/审批/中断验证与收尾记录
+- [x] 接入同步后的双Agent实际SSH/rclone复验见[完整链路验收](guides/real-workflow-acceptance.md)；工具卡与原ID续接见[对话验收](guides/codex-conversation-acceptance.md)，网页审批/中断保留受控证据；规则拒绝及真实无副作用SSH接线见[规则验收](guides/workspace-policy-acceptance.md)，不扩大为真实危险命令执行
 
-当前实现边界：Claude/Codex 对话及原生会话管理、原生配置、网页文件编辑与本地版本记录已接入；原生能力目录、按钮选择、输入 `/` 自动补全、模型候选与上下文/压缩均已接入。服务器文件视图已支持分页浏览、操作任务、下载与同步协调；终端、资源详情和完整向导已接入。产品设置和删除生命周期核心范围已完成；工作区黑名单、界面收尾和完整M6继续实施。
+当前实现边界：Claude/Codex 对话及原生会话管理、原生配置、网页文件编辑与本地版本记录已接入；原生能力目录、按钮选择、输入 `/` 自动补全、模型候选与上下文/压缩均已接入。服务器文件视图已支持分页浏览、操作任务、下载与同步协调；终端、资源详情和完整向导已接入。产品设置、删除生命周期、工作区规则和界面核心范围已完成，实际M6链路已有证据；剩余原生界面验收和工具边界见[范围核对](engineering/remaining-scope-audit.md)。
 
 ## M2–M6 实施范围
 
