@@ -285,9 +285,9 @@ export class TurnManager {
   private async beginChanges(turn: Turn): Promise<void> {
     if (turn.syncAfter && this.deps.changes && turn.workspace) {
       try {
+        turn.changesStarted = true;
         // 已开始的采集先收尾；准备取消不能提前释放工作区租约。
         await this.deps.changes.begin(turn.workspace, turn.id, { agent: turn.agent, sessionId: turn.sessionId });
-        turn.changesStarted = true;
       } catch {
         turn.changesUnavailable = '本轮改动采集不可用，Agent仍可继续';
       }
@@ -298,12 +298,8 @@ export class TurnManager {
     if (!this.deps.changes || !turn.workspace || turn.syncAfter === false) return undefined;
     if (turn.changesStarted) {
       try {
-        const current = await this.deps.getWorkspace(turn.workspaceId);
-        if (current)
-          return await this.deps.changes.finish(current, turn.id, {
-            sessionId: turn.sessionId,
-            interrupted: turn.controller.signal.aborted || turn.failed === true || !turn.handle,
-          });
+        const record = await this.completeChanges(turn);
+        if (record) return record;
       } catch {
         turn.changesUnavailable = '本轮结束后的文件快照不可用；未改变Agent或同步结果';
       }
@@ -319,6 +315,15 @@ export class TurnManager {
       message: turn.changesUnavailable,
       changes: [],
     };
+  }
+
+  private async completeChanges(turn: Turn): Promise<TurnChangesRecord | undefined> {
+    const current = await this.deps.getWorkspace(turn.workspaceId);
+    if (!current) return undefined;
+    return this.deps.changes!.finish(current, turn.id, {
+      sessionId: turn.sessionId,
+      interrupted: turn.controller.signal.aborted || turn.failed === true || !turn.handle,
+    });
   }
 
   private async synchronize(turn: Turn): Promise<void> {

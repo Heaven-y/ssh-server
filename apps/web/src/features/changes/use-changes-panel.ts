@@ -49,6 +49,7 @@ function useSelectedDiff(input: {
       turns.agent,
       turns.sessionId,
       turns.version,
+      turns.target,
       selection.turnId,
       path,
       selection.turnId ? '' : input.revision,
@@ -65,6 +66,16 @@ function useSelectedDiff(input: {
   });
 }
 
+function validComparison(input: {
+  turnId?: string;
+  record?: TurnChangesRecord;
+  diffError: boolean;
+  statusError: boolean;
+  turnsError: boolean;
+}) {
+  return !input.diffError && (input.turnId ? !input.turnsError && !!input.record : !input.statusError);
+}
+
 export function useChangesPanel(input: ChangesPanelInput) {
   const { workspace, active, request } = input;
   const turns = useTurnChanges(workspace.id, active);
@@ -72,7 +83,7 @@ export function useChangesPanel(input: ChangesPanelInput) {
   const selection = requestedSelection(manual, request);
   const discard = useDiscard(workspace.id);
   const status = useQuery({
-    queryKey: queryKeys.versions(workspace.id),
+    queryKey: [...queryKeys.versions(workspace.id), turns.target],
     queryFn: ({ signal }) => api.versionStatus(workspace.id, signal),
     enabled: active && !discard.busy,
   });
@@ -91,7 +102,14 @@ export function useChangesPanel(input: ChangesPanelInput) {
   });
   const source = feedbackSource({ turnId: selection.turnId, revision: diff.data?.revision, head: status.data?.head });
   const add = useChat((state) => state.addFeedback);
-  const error = status.error ?? turns.query.error ?? diff.error;
+  const error = [status.error, turns.query.error, diff.error].find(Boolean);
+  const valid = validComparison({
+    turnId: selection.turnId,
+    record,
+    diffError: diff.isError,
+    statusError: status.isError,
+    turnsError: turns.query.isError,
+  });
   return {
     turns,
     status,
@@ -100,6 +118,7 @@ export function useChangesPanel(input: ChangesPanelInput) {
     path,
     selection,
     diff,
+    displayDiff: valid ? diff.data : undefined,
     source,
     discard,
     error,
@@ -112,10 +131,11 @@ export function useChangesPanel(input: ChangesPanelInput) {
       if (turns.current && turns.sessionId) void turns.query.refetch();
       if (path) void diff.refetch();
     },
-    feedback: turns.current
-      ? (candidate: LineFeedbackInput) =>
-          add(candidate, { workspaceId: workspace.id, agent: turns.agent, conversationVersion: turns.version })
-      : undefined,
+    feedback:
+      turns.current && valid && !!diff.data
+        ? (candidate: LineFeedbackInput) =>
+            add(candidate, { workspaceId: workspace.id, agent: turns.agent, conversationVersion: turns.version })
+        : undefined,
   };
 }
 export type ChangesPanelModel = ReturnType<typeof useChangesPanel>;

@@ -10,6 +10,7 @@ export type TurnSnapshot = {
   scope: string;
   revision: string;
   createdAt: number;
+  excluded: VersionExcluded[];
 };
 export type TurnFileChange = VersionChange & { additions: number | null; deletions: number | null; binary: boolean };
 export type TurnDiff = VersionDiff & { changes: TurnFileChange[]; excluded: VersionExcluded[] };
@@ -22,4 +23,5 @@ export type TurnChangesRecord = {
   phase: 'running' | 'complete' | 'incomplete' | 'unavailable';
   message?: string;
   changes: TurnFileChange[];
+  excluded?: VersionExcluded[];
 };

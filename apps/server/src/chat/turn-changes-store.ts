@@ -15,6 +15,9 @@ const Snapshot = z
     scope: z.string().regex(/^[a-f0-9]{64}$/),
     revision: z.string().regex(/^[a-f0-9]{64}$/),
     createdAt: z.number().int().nonnegative(),
+    excluded: z
+      .array(z.object({ path: z.string().min(1).max(4096), reason: z.string().max(500) }).strict())
+      .max(10_000),
   })
   .strict();
 const Record = z
@@ -39,6 +42,10 @@ const Record = z
           .strict(),
       )
       .max(10_000),
+    excluded: z
+      .array(z.object({ path: z.string().min(1).max(4096), reason: z.string().max(500) }).strict())
+      .max(10_000)
+      .optional(),
     binding: z.string().regex(/^[a-f0-9]{64}$/),
     base: Snapshot.optional(),
     result: Snapshot.optional(),

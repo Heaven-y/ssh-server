@@ -113,9 +113,13 @@ function ChangeFiles({ model }: { model: ChangesPanelModel }) {
           {model.selection.turnId ? '此轮没有可展示的文件净差异。' : '当前没有可展示的本地差异。'}
         </p>
       )}
-      {!model.selection.turnId && model.status.data && <ExcludedList excluded={model.status.data.excluded} />}
+      <ExcludedChanges model={model} />
     </>
   );
+}
+function ExcludedChanges({ model }: { model: ChangesPanelModel }) {
+  const excluded = model.selection.turnId ? model.record?.excluded : model.status.data?.excluded;
+  return excluded ? <ExcludedList excluded={excluded} /> : null;
 }
 function ChangeResult({ model }: { model: ChangesPanelModel }) {
   return (
@@ -141,8 +145,8 @@ function ChangeResult({ model }: { model: ChangesPanelModel }) {
           }}
         />
       )}
-      {model.diff.data && model.path && (
-        <DiffView diff={model.diff.data} path={model.path} source={model.source} onFeedback={model.feedback} />
+      {model.displayDiff && model.path && (
+        <DiffView diff={model.displayDiff} path={model.path} source={model.source} onFeedback={model.feedback} />
       )}
     </>
   );

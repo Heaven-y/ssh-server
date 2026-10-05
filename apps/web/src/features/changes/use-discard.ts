@@ -74,7 +74,7 @@ export function useDiscard(workspaceId: string) {
           revision: confirmed.revision,
           confirmed: true,
         });
-        queryClient.setQueryData(queryKeys.versions(workspaceId), result.status);
+        queryClient.setQueriesData({ queryKey: queryKeys.versions(workspaceId) }, result.status);
         if (mounted.current) {
           setPreview(undefined);
           setNotice(`已放弃${result.restored.length}个本地文件；编辑器未保存内容保留。`);

@@ -1,7 +1,7 @@
 # 本轮改动与行内反馈实施计划
 
 **Goal：** 真实轮次快照、改动视图、成熟diff渲染、待发送行反馈及有确认的单文件放弃。
-**Spec：** [C01–C12](../specs/2026-10-05-conversation-changes-design.md)
+**Spec：** [C01–C15](../specs/2026-10-05-conversation-changes-design.md)
 **方式：** Native，用户授权自主记录；一次阶段核心Review后补最少回归。
 
 ## 全局约束
@@ -49,7 +49,8 @@ Interfaces：ChangesPanel接收固定workspace/会话身份；DiffView({patch,so
 
 ## Task 4：核心Review与整合
 
-- [ ] 一次新独立Reviewer完整分支，逐项裁定与记录；Important/Critical一轮修复且RED→GREEN，不复审。
-- [ ] Review后补最少核心：真实Git前后快照/保留、生命周期取消、行反馈身份与成功消费、陈旧/未跟踪放弃；测试不写绝对路径。
-- [ ] 正式需求/架构/决策/进度/验收同步；最终既有门禁、中文提交与PR，双平台CI后两级--no-ff，核对树并推送main。
+- [x] 一次新独立Reviewer完整分支，逐项裁定与记录；Important/Critical一轮修复且RED→GREEN，不复审。
+- [x] Review后补最少核心：真实Git前后快照/保留、生命周期取消、行反馈身份与成功消费、陈旧/未跟踪放弃；测试不写绝对路径。
+- [x] 正式需求/架构/决策/进度/验收同步；最终既有门禁108文件717项、网页构建和中文提交。
+- [ ] PR双平台CI后两级--no-ff，核对树并推送main。
 - [ ] main CI与小分支合入/占用核对，安全清理小分支；继续真实SSH、原生长负载与多活动完整M6。

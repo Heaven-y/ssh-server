@@ -32,6 +32,7 @@
 | D24 | 工作区黑名单使用有界字面规则，保存版本在串行队列内核对 | 防误操作需要可解释匹配，避免用户正则回溯与并发覆盖；坏值不能静默降低保护 | 程序名/字符串两种匹配、最多20条；只更新policy，缺省undefined兼容、null拒绝；网页终端/在途已检查命令沿用边界；细则见[W01–W10](../superpowers/specs/2026-10-05-workspace-policy-design.md)及[验收](../guides/workspace-policy-acceptance.md) |
 | D25 | 浏览器有界UI偏好、官方分栏、cmdk委托入口及持续资源单controller | 布局变化保留编辑/PTY实例；复用原有动作与缓存，避免重复采样和确认分支 | 各浏览器分别记忆；暗色默认、亮色语义变量；原生modal/IME/xterm门禁；同步和版本确认保持；全部裁定见[N01–N14](../superpowers/specs/2026-10-05-workspace-navigation-design.md)及[验收](../guides/workspace-navigation-acceptance.md) |
 | D26 | react-virtuoso动态时间线、明确读取工具分组与网页视图代次 | 统一变量高度和跟随；保存展开状态，避免虚拟卸载及首次原生id丢视图 | 每段最多40项、折叠卸载内容；只按白名单分组，不解析shell猜测；审批/执行/错误独立；不将受控长历史标为原生压缩，取舍见[L01–L07](../superpowers/specs/2026-10-05-conversation-timeline-design.md) |
+| D27 | 普通轮次前后Git树净差异、成熟diff与会话待发送反馈 | 隔离预存脏内容与本轮净变化，保持正文和编辑缓冲 | 20轮有界元数据/所属引用，不创建commit、不改HEAD/index；失败不阻断Agent；单文件放弃拒绝独立暂存及陈旧预览；高对比双主题实测；见[C01–C15](../superpowers/specs/2026-10-05-conversation-changes-design.md)及[验收](../guides/conversation-changes-acceptance.md) |
 
 ## 2. 对话、skills 与命令的接入边界
 

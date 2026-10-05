@@ -57,6 +57,7 @@ export async function captureTurn(repo: Repository, turnId: string, edge: TurnSn
       ...turnScope(repo),
       revision: state.status.revision,
       createdAt: Date.now(),
+      excluded: [...state.files].flatMap(([path, file]) => (file.reason ? [{ path, reason: file.reason }] : [])),
     };
     validate(value);
     await git(repo.root, ['update-ref', reference(value), tree, '0'.repeat(repo.objectFormat === 'sha1' ? 40 : 64)]);
@@ -113,6 +114,10 @@ function changeReason(repo: Repository, path: string, entries: Array<TreeEntry |
   return undefined;
 }
 
+function matchingPath(path: string | undefined, selected?: string): path is string {
+  return path !== undefined && (selected === undefined || selected === path);
+}
+
 async function changesBetween(repo: Repository, base: TurnSnapshot, result: TurnSnapshot, selected?: string) {
   const stats = await git(repo.root, [
     'diff',
@@ -131,10 +136,13 @@ async function changesBetween(repo: Repository, base: TurnSnapshot, result: Turn
   const before = await treeEntries(repo, base.tree);
   const after = await treeEntries(repo, result.tree);
   const changes: TurnFileChange[] = [];
-  const excluded: VersionExcluded[] = [];
+  const exclusions = new Map([...base.excluded, ...result.excluded].map((entry) => [entry.path, entry]));
+  const excluded: VersionExcluded[] = [...exclusions.values()].filter(
+    (entry) => selected === undefined || entry.path === selected,
+  );
   for (const record of records) {
     const path = relativePath(repo, record.path);
-    if (path === undefined || (selected !== undefined && selected !== path)) continue;
+    if (!matchingPath(path, selected) || exclusions.has(path)) continue;
     const reason = changeReason(repo, path, [before.get(path), after.get(path)]);
     if (reason) {
       excluded.push({ path, reason });

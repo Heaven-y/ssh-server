@@ -38,11 +38,38 @@ const owns = (record: StoredTurn, target: TurnIdentity) =>
 
 export function createTurnChanges(deps: Deps) {
   const store = createTurnChangesStore(deps.configDir);
+  const terminalFailures = new Map<string, Set<string>>();
 
-  async function persistCaptured(ws: Workspace, records: StoredTurn[], captured?: StoredTurn['base']): Promise<void> {
+  async function recoverTerminal(ws: Workspace, records: StoredTurn[]): Promise<StoredTurn[]> {
+    const failed = terminalFailures.get(ws.id);
+    if (!failed?.size) return records;
+    const repaired = records.map((record): StoredTurn =>
+      failed.has(record.turnId) && record.phase === 'running'
+        ? {
+            ...record,
+            phase: 'incomplete',
+            completedAt: Date.now(),
+            message: '采集记录保存失败；已结束采集，未重跑Agent或同步',
+          }
+        : record,
+    );
+    await store.persist(ws.id, repaired);
+    terminalFailures.delete(ws.id);
+    return repaired;
+  }
+
+  async function persistCaptured(
+    ws: Workspace,
+    records: StoredTurn[],
+    turnId: string,
+    captured?: StoredTurn['base'],
+  ): Promise<void> {
     try {
       await store.persist(ws.id, records);
     } catch (error) {
+      const failed = terminalFailures.get(ws.id) ?? new Set<string>();
+      failed.add(turnId);
+      terminalFailures.set(ws.id, failed);
       // 仅清理本次尚未写入元数据的新引用，保留既有轮次的基线。
       if (captured) await deps.versions.releaseTurn(ws, [captured]).catch(() => undefined);
       throw error;
@@ -77,7 +104,8 @@ export function createTurnChanges(deps: Deps) {
 
   return {
     begin(ws: Workspace, turnId: string, target: TurnIdentity): Promise<void> {
-      return store.serial(ws.id, async (records) => {
+      return store.serial(ws.id, async (previous) => {
+        const records = await recoverTerminal(ws, previous);
         if (records.some((record) => record.turnId === turnId))
           throw new SessionError(409, 'changes_duplicate', '本轮已经开始采集');
         const kept = await removeOldest(ws, records);
@@ -96,7 +124,7 @@ export function createTurnChanges(deps: Deps) {
           record.phase = 'unavailable';
           record.message = unavailable(error);
         }
-        await persistCaptured(ws, [...kept, record], record.base);
+        await persistCaptured(ws, [...kept, record], turnId, record.base);
       });
     },
     finish(
@@ -104,7 +132,8 @@ export function createTurnChanges(deps: Deps) {
       turnId: string,
       input: { sessionId?: string; interrupted: boolean },
     ): Promise<TurnChangesRecord | undefined> {
-      return store.serial(ws.id, async (records) => {
+      return store.serial(ws.id, async (previous) => {
+        const records = await recoverTerminal(ws, previous);
         const index = records.findIndex((record) => record.turnId === turnId);
         if (index < 0) return undefined;
         const record: StoredTurn = { ...records[index]!, sessionId: input.sessionId, completedAt: Date.now() };
@@ -112,9 +141,14 @@ export function createTurnChanges(deps: Deps) {
           if (record.binding !== binding(ws)) throw new VersionError('stale_revision');
           if (record.base) {
             record.result = await deps.versions.captureTurn(ws, turnId, 'result');
-            record.changes = (await deps.versions.diffTurn(ws, record.base, record.result)).changes;
+            const diff = await deps.versions.diffTurn(ws, record.base, record.result);
+            record.changes = diff.changes;
+            record.excluded = diff.excluded;
             record.phase = input.interrupted ? 'incomplete' : 'complete';
             record.message = input.interrupted ? '本轮已中断；显示采集期间实际本地净差异' : undefined;
+          } else {
+            record.phase = 'unavailable';
+            record.message ??= '未能保存本轮基线，文件快照不可用';
           }
         } catch (error) {
           record.phase = 'unavailable';
@@ -124,13 +158,15 @@ export function createTurnChanges(deps: Deps) {
         await persistCaptured(
           ws,
           records.map((value, at) => (at === index ? record : value)),
+          turnId,
           record.result,
         );
         return publicRecord(record);
       });
     },
     list(ws: Workspace, target: TurnIdentity): Promise<TurnChangesRecord[]> {
-      return store.serial(ws.id, async (records) => {
+      return store.serial(ws.id, async (previous) => {
+        const records = await recoverTerminal(ws, previous);
         if (!target.sessionId) return [];
         const current = await deps.versions.turnScope(ws).catch(() => undefined);
         return records
@@ -145,7 +181,8 @@ export function createTurnChanges(deps: Deps) {
       });
     },
     diff(ws: Workspace, turnId: string, target: TurnIdentity, path?: string): Promise<TurnDiff> {
-      return store.serial(ws.id, async (records) => {
+      return store.serial(ws.id, async (previous) => {
+        const records = await recoverTerminal(ws, previous);
         const record = readRecord(ws, records, turnId, target);
         return deps.versions.diffTurn(ws, record.base!, record.result!, path);
       });
