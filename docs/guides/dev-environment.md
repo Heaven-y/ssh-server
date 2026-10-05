@@ -10,7 +10,7 @@
 |---|---|
 | Node.js | 22+，运行本地 TypeScript + Fastify 后端，沿用现有 tsx 启动方式 |
 | Git | 2.43+，本地版本恢复需要 `GIT_ATTR_SOURCE` 支持目标提交属性 |
-| Claude Code、Codex CLI | 已安装并配置好，产品沿用本机原生配置；Codex app-server 本阶段验证版本为 0.156.1，验收使用指定配置的隔离副本 |
+| Claude Code、Codex CLI | 已安装并配置好，产品沿用本机原生配置；Codex app-server 最新真实验收版本为 0.160.0，验收使用指定配置的隔离副本 |
 | 本机 Python | 3.x，仅部分开发 skill 的脚本按需使用（用 `python` 调用，见 4.3）；网页后端不依赖 Python |
 | rclone | 本机固定 1.75.1；通过 PATH 或 `SSH_SERVER_RCLONE` 指定，服务器无需安装 |
 
@@ -38,7 +38,7 @@
 | known_hosts 校验（`ssh/known-hosts.ts`） | 手写 | ssh2 不提供 known_hosts 解析；逻辑约 100 行，含哈希条目与 `@revoked`，已有测试覆盖 |
 | 远程命令拼装、工作区存储、访问控制 | 手写 | 项目特有逻辑，代码量小 |
 | SSH 连接、HTTP、WebSocket、MCP、Agent | ssh2、Fastify、@fastify/websocket、@modelcontextprotocol/sdk、Claude Agent SDK | — |
-| Codex 对话与历史 | 已安装的官方 app-server 0.156.1，stdio JSON-RPC | 复用原生配置、会话、审批与上下文；每轮及历史读取独立启动，不增加模型协议转换层 |
+| Codex 对话与历史 | 已验官方 app-server 0.160.0，stdio JSON-RPC | 复用原生配置、会话、审批与上下文；每轮及历史读取独立启动，不增加模型协议转换层 |
 | 前端接口数据（加载、错误、刷新） | `@tanstack/react-query` | 替代手写的 loading / error 状态与刷新逻辑 |
 | 前端 WebSocket 断线重连 | `partysocket` | 自带退避重连与发送缓冲 |
 | 对话长列表与贴底 | `react-virtuoso` 4.18.16（MIT） | 动态高度虚拟列表、流式贴底与用户上翻停止，取代早期use-stick-to-bottom；采用官方跟随/定位API，展开状态保存在列表外 |
@@ -54,7 +54,7 @@
 | 重复率 | jscpd | — |
 | 覆盖率 | `@vitest/coverage-v8` | 与 Vitest 同版本 |
 
-待引入能力不作为已安装依赖记录：终端已选 xterm.js，正式接入时固定版本并验证许可与按需加载。Pebrel 仅参考界面和交互，不引入其 GPL 实现。
+终端已接入固定 `@xterm/xterm` 6.0.0 与 `@xterm/addon-fit` 0.11.0，按入口加载并通过核心与实际网页/SSH验收；Pebrel 仅参考界面和交互，不引入其 GPL 实现。未安装的未来能力不写成已有依赖。
 
 ### 1.3 质量检查
 

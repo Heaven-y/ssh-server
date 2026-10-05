@@ -1,6 +1,6 @@
 # 产品设置与环境检测验收
 
-日期：2026-10-05。范围为本机产品偏好、环境检测、新会话/新向导默认值和已有同步/资源参数接线。设计及裁定见[产品设置设计](../superpowers/specs/2026-10-05-product-settings-design.md)，黑名单、资源概览和完整M6继续独立实施。
+日期：2026-10-05。范围为本机产品偏好、环境检测、新会话/新向导默认值和已有同步/资源参数接线。设计及裁定见[产品设置设计](../superpowers/specs/2026-10-05-product-settings-design.md)；后续[工作区规则](workspace-policy-acceptance.md)、[资源概览](workspace-navigation-acceptance.md)和[实际 M6](real-workflow-acceptance.md)已有独立证据，本页设置证据保持原范围。
 
 ## 实现与核心Review
 

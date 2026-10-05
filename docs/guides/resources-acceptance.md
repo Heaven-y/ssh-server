@@ -43,4 +43,4 @@ headless Edge 检查 960/1280/1920：详情、节点/目录/独立时间、CPU�
 
 首轮PR CI中Linux通过，Windows的既有文件任务重启回归在默认1秒轮询内仍为checking。日志表明失败位于等待执行阶段，不是资源指标或最终结果断言。将该用例改为等待执行器实际派发，再由dispose等待持久化收尾，仍断言needs_check和重启不重放；不增大全局超时，不改变产品实现。
 
-A18 节点指标、空值、共享缓存与网页故障行为已有实际证据；资源刷新参数产品设置和顶栏单controller概览已完成，见[导航验收](workspace-navigation-acceptance.md)；真实Agent/同步/文件任务完整并发和原生隐藏仍待验。当前不将资源阶段视为整个项目完成。
+A18 节点指标、空值、共享缓存与网页故障行为已有实际证据；资源刷新参数产品设置和顶栏单controller概览已完成，见[导航验收](workspace-navigation-acceptance.md)；后续真实 Agent/双 PTY/资源/文件任务并发和同步排队已补齐[独立证据](real-workflow-acceptance.md)；原生隐藏未新增证据，继续保留受控可见性范围。当前不将资源阶段视为整个项目完成。
