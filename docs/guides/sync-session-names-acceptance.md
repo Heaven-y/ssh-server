@@ -39,3 +39,17 @@ Review 后集中增加五项核心回归：普通升级门禁/失败不保存布
 ## 整合策略
 
 从已验证 `feat/ssh-workflow` 的 `f9302aa` 创建 `codex/sync-session-names`，复用现有隔离工作树。代码、最少回归及正式文档一起提交；PR以feat为base，双平台CI后依次no-ff合入feat、main并推送。确认两端包含原提交且无工作树占用后仅删除小分支，大分支和ignored证据保留。实际PR、提交及最终CI以任务交付和Git历史核对，避免文档提交自引用。
+
+
+## 已核对整合记录
+
+| 事项 | 结果 |
+|---|---|
+| 产品提交 | `8041919fa3cf5335e166a71bca8a79dabd390db1`，代码、六项核心回归及文档共同提交 |
+| PR | [#16](https://github.com/Heaven-y/ssh-server/pull/16)已合入feat；[CI37272167070](https://github.com/Heaven-y/ssh-server/actions/runs/37272167070) Windows/Linux全部成功，head精确为产品提交 |
+| 产品第一层no-ff | `ca8aa0656a736ff38bdaac74a003a00375c8291a`，已推送feat，文件树与产品提交相同 |
+| 产品第二层no-ff | `58f5a36bcf301e33c34c6f50146ee3b68033f93b`，本地main已整合，文件树与产品提交相同，随下述最终main统一推送 |
+| 文档收尾 | 从上述feat创建codex/sync-session-integration，仅补实际整合记录、计划状态及旧文档收尾，不改产品源码；沿用两级no-ff |
+| 最终发布检查 | 文档收尾后一次推送main；核对两端main/feat一致、均包含产品与文档提交，最终main双平台CI成功后才清理已合并小分支。精确最终SHA/CI由任务交付及Git历史核对，避免文档自引用 |
+
+所有实现决策见D31和本页裁定。原生界面策略拒绝及早期ignored副本清理拒绝仍保留；Windows rclone反斜杠根仍属工具边界，整个Goal不因本阶段完成而标为全部完成。
