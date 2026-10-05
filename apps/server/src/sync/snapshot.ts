@@ -239,7 +239,32 @@ async function applyFile(input: ApplyFile): Promise<SyncConflict | undefined> {
     return conflict;
   }
 }
-async function applyMirror(input: Input, mirror: string, originals: Map<string, Original>): Promise<SyncConflict[]> {
+async function removeEmptyDirectory(directory: string): Promise<void> {
+  if (!(await statIfPresent(directory))) return;
+  await checkedRoot(directory);
+  await rmdir(directory).catch((error: NodeJS.ErrnoException) => {
+    if (!['ENOENT', 'ENOTEMPTY', 'EEXIST'].includes(error.code ?? '')) throw error;
+  });
+}
+async function pruneRemovedParents(root: string, removed: string[]): Promise<void> {
+  const directories = new Set<string>();
+  for (const file of removed) {
+    let relative = path.posix.dirname(file);
+    while (relative !== '.') {
+      safeRelativePath(relative);
+      directories.add(relative);
+      relative = path.posix.dirname(relative);
+    }
+  }
+  const deepestFirst = [...directories].sort((a, b) => b.split('/').length - a.split('/').length);
+  for (const relative of deepestFirst) await removeEmptyDirectory(path.join(root, ...relative.split('/')));
+}
+async function applyMirror(
+  input: Input,
+  mirror: string,
+  originals: Map<string, Original>,
+  pruneEmpty = false,
+): Promise<SyncConflict[]> {
   const inventory = await localInventory(mirror, input.settings);
   if (inventory.all.some((file) => !eligibleFile(file.path, file.size, input.settings)))
     throw new SyncError('filter_changed', '镜像包含超出同步范围的文件，已停止回写');
@@ -257,6 +282,11 @@ async function applyMirror(input: Input, mirror: string, originals: Map<string, 
     });
     if (conflict) conflicts.push(conflict);
   }
+  if (pruneEmpty)
+    await pruneRemovedParents(
+      input.ws.localDir,
+      [...originals.keys()].filter((file) => !remote.has(file)),
+    );
   return conflicts;
 }
 async function verifySources(input: Input, originals: Map<string, Original>): Promise<void> {
@@ -370,7 +400,7 @@ export async function restoreTaskSnapshot(input: Input, id: string): Promise<Sta
     localDir: mirror,
     all: manifest.all,
     inventory: (await localInventory(mirror, input.settings)).included,
-    apply: (directory = mirror) => applyMirror(input, directory, originals),
+    apply: (directory = mirror) => applyMirror(input, directory, originals, true),
   };
 }
 

@@ -67,14 +67,14 @@
 
 - [x] CodeMirror 文件面板、逐级浏览、脚本编辑、原子保存及外部改动冲突提示
 - [x] 区分本地保存与服务器同步结果；保存后调用已有同步入口，不创建 git 提交
-- [ ] A13 实际 SSH 端到端复验；本阶段已通过真实文件服务、HTTP 路由及受控同步的浏览器验证
+- [x] A13实际SSH端到端复验：Edge保存中文脚本、实际rclone两端一致，HEAD/index保持；见[完整链路验收](guides/real-workflow-acceptance.md)
 - [x] 本地 Git 初始化、保存、分页历史、diff、单文件/整区恢复预览与确认；保留工作区外及排除文件的暂存内容
 - [x] 恢复只改变工作树，HEAD/索引保持不变；未跟踪覆盖、陈旧确认、部分失败明确反馈，成功后进入已有同步流程
-- [ ] A5 实际 SSH 端到端复验；真实 Git 与网页流程已通过，同步结果分支使用受控替身
+- [x] A5实际SSH端到端复验：Edge保存原生Git版本及单文件恢复，两端一致，未保存缓冲保持；见[完整链路验收](guides/real-workflow-acceptance.md)
 
 实施与边界见 [文件编辑设计](superpowers/specs/2026-10-03-workspace-files-design.md)、[实施计划](superpowers/plans/2026-10-03-workspace-files.md) 和 [文件验收记录](guides/workspace-files-acceptance.md)。
 
-版本实现与验证见 [版本设计](superpowers/specs/2026-10-03-local-versions-design.md)、[版本计划](superpowers/plans/2026-10-03-local-versions.md) 和 [版本验收记录](guides/local-versions-acceptance.md)。真实目标与允许创建临时子目录的位置已恢复到本机ignored配置，后续串联使用该目标；A5/A13仍待实际验收。
+版本实现与验证见 [版本设计](superpowers/specs/2026-10-03-local-versions-design.md)、[版本计划](superpowers/plans/2026-10-03-local-versions.md) 和 [版本验收记录](guides/local-versions-acceptance.md)。A5/A13的实际链路已补齐；真实目标只在本机ignored配置，各次验收随机根已清理。
 
 ### M4：两类原生 Agent 能力
 
@@ -85,7 +85,7 @@
 - [x] Claude/Codex 原生重命名/删除及 Codex 归档列表/归档/恢复；运行与管理按 Agent/ID 互斥，锁覆盖同步收尾
 - [x] 临时合成记录的真实 SDK/app-server 与网页管理链路通过；删除明确勾选，等待/失败/重试、后台运行锁及三种宽度完成验收
 - [ ] A8 独立客户端刷新：已验证网页与原生存储/API，尚未观察 VS Code 插件界面及 CLI 交互列表，不标整项完成
-- [ ] A7 实际SSH重复A1/A2；目标已恢复，按ignored运行时参数继续验收，不把受控替身视为真实链路
+- [x] A7实际SSH重复A1/A2：Codex0.160.0及Claude SDK真实编辑、rclone、Python/hostname、小JSON返回通过；MCP空表单单次审批已兼容
 - [x] 按工作区/Agent 发现 skills、模型和命令；按钮搜索选择及直接 `/name` 解析，同一原生实例调用前复验，禁用/过期/歧义项明确拒绝
 - [x] 两类 compact、Claude context 与 CLI-only 限制提示；纯上下文/压缩命令不触发轮次后同步，普通消息及技能仍沿用同步
 - [x] 原生模型/推理强度候选并保留手动输入；目录默认项和历史实际模型不自动变为覆盖参数
@@ -93,7 +93,7 @@
 - [x] 真实 CLI/SDK 与合成模型协议验证技能、上下文、压缩成功/失败/取消和同步边界；两类网页能力选择、状态与三种宽度通过
 - [x] GLM 增量两次原生适配器运行：技能返回仅存在于 SKILL 正文的随机标记，原生上下文及手动压缩完成确认通过；源配置摘要不变，临时密钥副本清理
 - [x] 输入 `/` 自动展开当前 Agent 候选；键盘选择保留焦点和参数，首次 Enter 只选择，路径/参数区/中文输入法不误触发；见[补全验收](guides/slash-completion-acceptance.md)
-- [ ] 长会话在实际负载下的自动压缩与续接体验；本阶段不将合成协议及短程手动压缩视为完整长会话验收
+- [x] 真实MCP长文本负载触发官方自动压缩、原ID记忆续接及手动compact完成；隔离阈值14000，源配置不改，见[完整链路验收](guides/real-workflow-acceptance.md)
 
 对话阶段见 [Codex 对话设计](superpowers/specs/2026-10-03-codex-conversation-design.md)、[实施计划](superpowers/plans/2026-10-03-codex-conversation.md) 和 [Codex 对话验收](guides/codex-conversation-acceptance.md)。会话管理阶段见 [管理设计](superpowers/specs/2026-10-03-session-management-design.md) 与 [会话管理验收](guides/session-management-acceptance.md)；Codex 0.156.1 的归档记录需先恢复才能重命名。上述阶段完成不代表整个 M4 完成。
 
@@ -109,7 +109,7 @@
 - [x] xterm.js SSH终端基础：固定目标、目录确认、独立PTY、复制粘贴、稳定多标签/分屏和可调主区；一次核心Review及本机真实ssh2/Chrome验收完成，见[记录](guides/web-terminal-acceptance.md)。真实htop/nvitop PTY已复验，原生OS输入法与密码串联仍待验，A10/A12保持部分完成
 - [x] 基于已有 `nvidia-smi` / Linux 信息的 GPU、CPU、内存、磁盘与进程详情，标注采集主机、独立时间和不可用状态；真实SSH和网页证据见[资源验收](guides/resources-acceptance.md)
 - [x] 资源采样与 AI 对话独立，按实际认证身份共享并控制刷新开销；不依赖 `nvitop` 或服务器新装软件；顶栏单controller概览与可调参数已接入，见[导航验收](guides/workspace-navigation-acceptance.md)
-- [ ] 对话、终端、资源采样和同步分别反馈状态；对话 / 终端运行期间资源仍刷新，不以整页加载阻塞其他入口
+- [x] 实际对话/SSH执行、双全屏PTY、两帧资源、远端复制同时响应；同步串行、重复轮次拒绝、关闭单PTY独立
 
 ### M6：设置、完整链路与并发验收
 
@@ -125,14 +125,16 @@
 - [x] Codex 网页适配器重读配置、原生 MCP 与受控内部接口、原生历史续接；源配置摘要不变，临时密钥副本清理，内部令牌不落盘且结束撤销
 - [x] 受控客户端/进程与浏览器：审批等待后端确认、禁止重复、单次批准/拒绝，准备阶段停止及 5 秒强停，未返回的工具结果不标完成，单来源列表失败不遮蔽另一来源
 - [x] Codex 对话在 960/1280/1920 宽度无横向溢出，实际截图见 Codex 对话验收
-- [ ] A5/A13/A7 新入口的真实 SSH 与同步完整串联；可信私钥目标已从本机恢复，连接参数只在ignored运行时文件中使用
-- [ ] A20–A23 真实 SSH 文件管理与下载验收：大文件只在远端操作、跨文件系统移动、同步目录迁移、目标冲突及取消结果；验证过程只使用指定测试目录
-- [ ] 验证对话、终端、资源采样与同步同时运行的响应，单会话单轮、同工作区同步串行、超时和输出限制，记录架构 V16、V17 的真实结论
+- [x] A5/A13/A7实际SSH/rclone完整串联；真实密码DPAPI保存/断开重连/后端重建、浏览/同步/Python/PTY组合通过，边界见[完整链路验收](guides/real-workflow-acceptance.md)
+- [x] A20/A21真实大文件同/跨FS、混合目录实际rclone迁移；A22目标冲突/链接/实际取消，源和部分目标核对；Firefox独立磁盘下载通过
+- [x] V16/V17实际多活动组合、Python小结果、同步串行和单轮门禁通过；超时/输出限制保留既有核心回归
+- [ ] A8独立VS Code/CLI刷新、原生OS输入法、Edge系统保存选择器；Windows界面读取被自动策略检查中止，未绕过，不标通过
+- [ ] rclone较长Windows配置路径的状态文件名限制；源码和实际alias实验确认，短根规避不当产品修复，见开发环境4.13
 
 尚未完成的项目按相应里程碑继续设计、实施和验证，不把需求归档当作实施完成。详细待验证事项见 [架构第 8 节](engineering/architecture.md#8-待验证事项)。
 
 连接向导[PR #8](https://github.com/Heaven-y/ssh-server/pull/8)双平台CI37234735439成功，随后以两级--no-ff合入feat（5147dc0）与main（7845821）并推送；[main CI37235267430](https://github.com/Heaven-y/ssh-server/actions/runs/37235267430)双平台成功。工作区删除生命周期从最新feat创建codex/workspace-lifecycle继续实施。
 
-2026-10-05 状态核对：浏览和操作阶段已整合；Task 4 同步路径协调及编辑保护已接入，本机核心回归与网页证据见同步协调验收。A20–A23 的真实 SSH、实际 rclone 迁移、跨文件系统和浏览器磁盘保存仍不能标记为完整通过；终端本机基础及真实PTY全屏工具、资源详情与真实只读指标完成。五步连接向导已实现，一次Review的两项问题先复现后修复；真实SSH创建/初始化、三宽度网页、手动目标与Windows保存密码验收通过。产品设置、删除生命周期与工作区规则已完成核心范围；界面和完整M6继续实施。
+2026-10-05完整链路更新：真实SSH/rclone、网页保存/版本恢复、双Agent编辑执行、同/跨FS文件管理/混合迁移、Firefox磁盘下载、并发与保存密码后端重建及真实长负载压缩均有新证据，见[验收](guides/real-workflow-acceptance.md)。本轮一次新Review无阻断项；A8、OS输入法、Edge系统选择器与rclone长配置路径工具限制保留。整项目Goal仍进行中。
 
-Task 4阶段已使用两级 `--no-ff` 合入 `feat/ssh-workflow` 和 `main`；[此前main CI](https://github.com/Heaven-y/ssh-server/actions/runs/37190899240)双平台成功。终端[PR#5](https://github.com/Heaven-y/ssh-server/pull/5)的[双平台CI](https://github.com/Heaven-y/ssh-server/actions/runs/37224820671)成功；随后Linux暴露的同步恢复收尾竞态已修复，[PR#6](https://github.com/Heaven-y/ssh-server/pull/6)与[main d0547e8 CI](https://github.com/Heaven-y/ssh-server/actions/runs/37226825812)双平台成功。资源详情一次Review及最少核心回归完成；真实工具浏览器画面、原生OS输入法和密码重启串联仍在A10/A12，整项目目标保持进行中。
+此前Task 4以两级 `--no-ff` 整合，[main CI](https://github.com/Heaven-y/ssh-server/actions/runs/37190899240)成功。终端[PR#5](https://github.com/Heaven-y/ssh-server/pull/5)及[PR#6](https://github.com/Heaven-y/ssh-server/pull/6)的双平台修复记录保留；本轮密码重建与全屏PTY组合证据已补齐。净差异[PR#14](https://github.com/Heaven-y/ssh-server/pull/14)及[main 13a3287 CI](https://github.com/Heaven-y/ssh-server/actions/runs/37258824743)成功并安全清理小分支；当前完整链路从feat创建codex/real-workflow-acceptance继续整合。
