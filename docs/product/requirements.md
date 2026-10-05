@@ -32,7 +32,7 @@
 - F1.7 支持选择“保存密码”，使用 Windows 当前用户的系统加密能力保存在本机；明文仅在连接需要时进入后端内存。主动断开只关闭连接并清理内存，保留已保存凭据，重连或后端重启后可以复用；取消“保存密码”勾选会删除该目标的已保存凭据并断开连接，不提供独立“忘记密码”入口。凭据绑定实际地址、端口和账号，目标变化时不能复用旧密码；认证失败时提示重新输入。界面区分认证失败、连接失败与主机密钥校验失败。
 - F1.8 保持服务器主机密钥校验，不因使用密码就跳过 `known_hosts` 校验；未知主机须提示用户确认指纹，密钥变化须明确提示并拒绝静默连接。
 
-F1连接向导已接入五步配置、手动服务器表、两端分页浏览、实际指纹与一次性验证创建。F5.2预览复用过滤与独立rclone元数据清单；真实SSH创建及首次双向初始化通过，见[向导验收](../guides/workspace-setup-acceptance.md)。F1.5删除入口与生命周期已接入，证据见[移除验收](../guides/workspace-removal-acceptance.md)；A12完整密码/同步/终端组合继续收尾。
+F1连接向导已接入五步配置、手动服务器表、两端分页浏览、实际指纹与一次性验证创建。F5.2预览复用过滤与独立rclone元数据清单；真实SSH创建及首次双向初始化通过，见[向导验收](../guides/workspace-setup-acceptance.md)。F1.5删除入口与生命周期已接入，证据见[移除验收](../guides/workspace-removal-acceptance.md)。A12的真实DPAPI、后端重建、同步和PTY组合通过受控密码网关与真实远端通道验收，边界见[完整链路验收](../guides/real-workflow-acceptance.md)。
 
 ### F2 对话与原生 Agent 能力
 
@@ -69,7 +69,7 @@ F3.4工作区规则管理已接入侧栏：默认启停/恢复、最多20条自�
 - F4.3 终端是用户本人操作，不受命令黑名单限制。
 - F4.4 终端是通用 SSH shell，不绑定 `nvitop`，资源概览可以直接使用 F9 面板。
 
-F4 的[网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.md)和[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)已实施。固定目标、目录确认、独立PTY、背压、标签/分屏、复制粘贴及稳定布局已通过核心回归与本机真实ssh2网页验收，见[验收记录](../guides/web-terminal-acceptance.md)。真实服务器全屏工具、原生OS输入法及密码重启串联尚未实测，A10/A12保持部分完成。
+F4 的[网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.md)和[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)已实施。固定目标、目录确认、独立PTY、背压、标签/分屏、复制粘贴及稳定布局已通过核心回归与本机真实ssh2网页验收，见[验收记录](../guides/web-terminal-acceptance.md)。真实htop/nvitop的绘制、尺寸调整、退出、并发和密码后端重建组合通过；原生OS输入法仍待验，详见[完整链路验收](../guides/real-workflow-acceptance.md)。
 
 ### F5 同步
 
@@ -103,7 +103,7 @@ F4 的[网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.m
 - F7.4 打开历史会话时恢复其原 Agent 和官方会话 ID，通过对应运行时继续会话；显示历史与向运行时续接上下文分别处理。
 - F7.5 两类会话均通过官方接口重命名；标题去除首尾空白后为 1–200 个字符。失败保留条目并允许核对重试，操作结果仅更新对应工作区与原生会话。
 
-当前已实现 F2 主对话链路、原生能力目录/按钮选择、模型候选、上下文/压缩和 F7 会话管理，证据见 [Codex 对话验收](../guides/codex-conversation-acceptance.md)、[会话管理验收](../guides/session-management-acceptance.md) 与 [原生能力验收](../guides/native-capabilities-acceptance.md)。输入 `/` 自动补全已接入，见[补全验收](../guides/slash-completion-acceptance.md)；A8 独立插件/CLI 界面刷新和 A7 真实 SSH 尚未完成。
+当前已实现 F2 主对话链路、原生能力目录/按钮选择、模型候选、上下文/压缩和 F7 会话管理，证据见 [Codex 对话验收](../guides/codex-conversation-acceptance.md)、[会话管理验收](../guides/session-management-acceptance.md) 与 [原生能力验收](../guides/native-capabilities-acceptance.md)。输入 `/` 自动补全已接入，见[补全验收](../guides/slash-completion-acceptance.md)。当前Codex0.160.0真实MCP审批、两类Agent编辑/实际SSH/rclone、原ID续接和真实长负载压缩已通过[完整链路验收](../guides/real-workflow-acceptance.md)；A8独立插件/CLI界面刷新仍待验。
 
 ### F8 轻量文件编辑
 
@@ -137,7 +137,7 @@ F4 的[网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.m
 - F10.8 源和目标均仅在服务器、且不影响同步范围的操作，不启动文件同步或把大文件拉回本地。移入同步范围的小文件按现有规则协调同步；混合包含代码与数据的目录不能整体视作“仅服务器”跳过检查。
 - F10.9 复制、跨文件系统移动和下载展示独立操作状态、可用的进度、取消及结果核对入口；无可靠总量时不伪造百分比。断线、超时或取消不能等同于已回滚；报告已完成和未完成部分，刷新后再决定重试。关闭文件面板不暗中重发或取消已提交任务，不阻塞对话、终端和资源刷新。
 
-F10 的双视图、SFTP 分页浏览、目录外导航、直接操作任务与显式下载已接入；同步范围的路径协调、编辑缓冲保护、持久阻断和不重放恢复已实现。证据见[服务器文件浏览验收](../guides/remote-files-browser-acceptance.md)、[操作阶段验收](../guides/remote-file-operations-acceptance.md)及[同步协调验收](../guides/remote-file-sync-acceptance.md)。本机受控传输和网页证据不代表 A20–A23 的真实服务器与实际 rclone 完整验收已完成。
+F10 的双视图、SFTP 分页浏览、目录外导航、直接操作任务与显式下载已接入；同步范围的路径协调、编辑缓冲保护、持久阻断和不重放恢复已实现。证据见[服务器文件浏览验收](../guides/remote-files-browser-acceptance.md)、[操作阶段验收](../guides/remote-file-operations-acceptance.md)及[同步协调验收](../guides/remote-file-sync-acceptance.md)。真实同/跨文件系统大文件、混合目录迁移及实际rclone、目标冲突/链接/取消与Firefox磁盘下载已通过[完整链路验收](../guides/real-workflow-acceptance.md)；Edge系统保存选择器与真实断线故障证据保留各自未验边界。
 
 ## 4. 约束
 

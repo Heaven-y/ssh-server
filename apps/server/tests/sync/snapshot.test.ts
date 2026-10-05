@@ -1,10 +1,11 @@
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SyncSettingsSchema, type Workspace } from '@ssh-server/shared';
 import { workspaceStateDir } from '../../src/sync/inventory';
-import { stageSnapshot } from '../../src/sync/snapshot';
+import { restoreTaskSnapshot, stageSnapshot } from '../../src/sync/snapshot';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof fs>();
@@ -136,5 +137,54 @@ describe('稳定小文件镜像与受保护的回写', () => {
     expect(await fs.readFile(path.join(input.localDir, 'new.txt'), 'utf8')).toBe('user new');
     expect(await fs.readFile(path.join(input.localDir, conflict!.localCopy), 'utf8')).toBe('user new');
     expect(await fs.readFile(path.join(input.localDir, conflict!.remoteCopy), 'utf8')).toBe('remote new');
+  });
+});
+
+describe('文件任务恢复后的旧空目录', () => {
+  it('迁移后移除多层空父目录，保留工作区根与新路径', async () => {
+    const input = await setup({ 'old/nested/script.py': 'print(1)' });
+    const id = randomUUID();
+    const snapshot = await stageSnapshot({ ...input, snapshotId: id });
+    await fs.mkdir(path.join(snapshot.localDir, 'new'));
+    await fs.rename(
+      path.join(snapshot.localDir, 'old/nested/script.py'),
+      path.join(snapshot.localDir, 'new/script.py'),
+    );
+    const restored = await restoreTaskSnapshot(input, id);
+    expect(await restored.apply()).toEqual([]);
+    await expect(fs.lstat(path.join(input.localDir, 'old'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await fs.stat(input.localDir)).isDirectory()).toBe(true);
+    expect(await fs.readFile(path.join(input.localDir, 'new/script.py'), 'utf8')).toBe('print(1)');
+  });
+
+  it.each(['weights.bin', 'external.txt'])('保留父目录中的排除文件或外部新增内容：%s', async (remaining) => {
+    const input = await setup({ 'old/script.py': 'print(1)' });
+    const id = randomUUID();
+    const snapshot = await stageSnapshot({ ...input, snapshotId: id });
+    await fs.rm(path.join(snapshot.localDir, 'old/script.py'));
+    await fs.writeFile(path.join(input.localDir, 'old', remaining), 'keep');
+    expect(await (await restoreTaskSnapshot(input, id)).apply()).toEqual([]);
+    expect(await fs.readFile(path.join(input.localDir, 'old', remaining), 'utf8')).toBe('keep');
+    await expect(fs.lstat(path.join(input.localDir, 'old/script.py'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('父目录被链接替换时拒绝访问，外部文件保持', async () => {
+    const input = await setup({ 'old/script.py': 'print(1)' });
+    const id = randomUUID();
+    const snapshot = await stageSnapshot({ ...input, snapshotId: id });
+    await fs.rm(path.join(snapshot.localDir, 'old/script.py'));
+    const outside = path.join(input.dir, 'outside');
+    await fs.rename(path.join(input.localDir, 'old'), outside);
+    await fs.symlink(outside, path.join(input.localDir, 'old'), 'junction');
+    await expect((await restoreTaskSnapshot(input, id)).apply()).rejects.toMatchObject({ code: 'unsafe_path' });
+    expect(await fs.readFile(path.join(outside, 'script.py'), 'utf8')).toBe('print(1)');
+  });
+
+  it('普通同步删除文件仍保留空父目录', async () => {
+    const input = await setup({ 'old/script.py': 'print(1)' });
+    const snapshot = await stageSnapshot(input);
+    await fs.rm(path.join(snapshot.localDir, 'old/script.py'));
+    expect(await snapshot.apply()).toEqual([]);
+    expect(await fs.readdir(path.join(input.localDir, 'old'))).toEqual([]);
   });
 });

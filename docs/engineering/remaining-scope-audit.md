@@ -1,33 +1,34 @@
 # 剩余范围核对
 
-更新日期：2026-10-05。基于当前源码和阶段验收核对，终端本机基础已完成。本页补充[路线图](../roadmap.md)中的实施缺口；既有阶段的运行证据仍以各验收记录为准，各阶段按实际运行证据更新，不扩大已通过的验收范围。
+更新日期：2026-10-05。本轮完整链路已补齐实际SSH/rclone、双Agent编辑、版本恢复、文件管理、并发、长负载压缩和保存密码后端重建组合，见[完整链路验收](../guides/real-workflow-acceptance.md)。本页保留[路线图](../roadmap.md)中的剩余缺口；真实、受控与未验范围分别记录，不扩大证据。
 
 ## 1. 实施缺口
 
 | 需求或目标 | 当前源码证据 | 仍需交付 |
 |---|---|---|
-| F1.1–F1.3 完整连接向导 | 五步表单、独立手动目标、两端只读草稿浏览及绑定快照/身份的验证票已接入；真实SSH/rclone首次初始化与网页通过，见[向导验收](../guides/workspace-setup-acceptance.md) | 核心创建范围完成；完整密码/终端/rclone多活动组合继续按A12/M6核对 |
+| F1.1–F1.3 完整连接向导 | 五步表单、手动目标、只读浏览及验证票已接入；真实SSH/rclone首次初始化与网页通过，见[向导验收](../guides/workspace-setup-acceptance.md) | 核心创建完成；A12密码DPAPI/后端重建/实际rclone/SFTP/Python/PTY组合已补齐，不声称用户服务器开启密码认证 |
 | F1.5 工作区删除 | 侧栏入口、配置摘要确认、活动/持久阻断、所属通道与迟到网页收尾已实现；真实SSH/Edge三宽度通过，见[验收](../guides/workspace-removal-acceptance.md) | 核心范围完成；不删除项目/原生历史，不强停外部训练或独立客户端 |
 | F1.8 未知主机指纹 | 无认证实际握手、一次挑战及显式确认追加已接入新建向导和已有SSH详情；变化/吊销/过期/陈旧/重放核心回归通过 | 核心范围完成，保持实际目标和信任记录边界 |
 | F3.4 工作区规则追加 | 严格默认id目录、有界程序名/字符串自定义、串行摘要保存、侧栏独立草稿及实际执行接线已完成；一次Review的null保护RED→GREEN，见[规则验收](../guides/workspace-policy-acceptance.md) | 核心范围完成；完整模型对话与实际rclone串联继续按M6核对，规则不作用网页终端及在途已检查命令 |
-| F4 / A10 网页终端 | 后端终端协议、绑定、目录确认、PTY 路由与背压已接入；网页多标签、分屏和可调主区已接入，核心回归及本机真实ssh2网页验收完成；[书面设计](../superpowers/specs/2026-10-04-web-terminal-design.md)已确认，[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)已确认，实施中 | 真实服务器已有全屏工具、原生OS输入法和密码保存重启串联；[本机验收](../guides/web-terminal-acceptance.md)覆盖基础交互和通道回收 |
+| F4 / A10 网页终端 | 固定目标、独立PTY、背压、多标签/分屏与可调布局完成；本机网页及真实htop/nvitop绘制、重绘/退出、独立关闭和并发通过 | 原生OS输入法仍待验；Windows界面读取被策略拒绝，保留合成IME原范围 |
 | F5.2 创建前同步预览 | 用户触发的两端计数/字节/排除例子、过滤和上限已实现；独立rclone lsjson不建立基线，真实只读预览通过 | 核心范围完成；超限/工具缺失继续返回未完成，不能伪造总量 |
-| F9 / A18 资源面板 | [资源服务](../../apps/server/src/resources/service.ts)及HTTP已接入；[资源详情](../../apps/web/src/features/resources/ResourcesPanel.tsx)支持固定目标、空值/时间/过期和可见性；真实SSH、核心回归及网页证据见[验收](../guides/resources-acceptance.md) | 产品参数和顶栏单controller概览已贯通，真实SSH入口与共享详情复验见[导航验收](../guides/workspace-navigation-acceptance.md)；原生页面隐藏及完整多活动组合仍待验，不调用模型 |
+| F9 / A18 资源面板 | [资源服务](../../apps/server/src/resources/service.ts)及[资源详情](../../apps/web/src/features/resources/ResourcesPanel.tsx)支持固定目标、空值/过期和可见性；真实SSH及网页证据见[验收](../guides/resources-acceptance.md) | 完整Agent/双PTY/资源两帧/实际同步/远端任务组合已通过；网页隐藏/缓存核心回归保留原范围，不调用模型 |
 | 界面第 7 节产品设置 | 独立本机偏好、产品/原生视图、手动版本检测、新会话默认与向导快照已贯通；一次Review三项修复和真实/网页证据见[设置验收](../guides/product-settings-acceptance.md) | 工作区黑名单已独立贯通；产品默认空值保持跟随原生，历史只保留显式覆盖 |
-| 可调定时同步间隔 | [调度](../../apps/web/src/features/sync/scheduler.ts)默认15秒、可配置5–300秒；替换旧计时器不增加立即同步，保留隐藏/忙/待确认门禁 | 核心范围完成；完整对话/PTY/同步/资源并发继续按M6验收 |
-| 界面第 1/3/4/5 节目标 | [布局/导航](../guides/workspace-navigation-acceptance.md)已完成侧栏折叠、可调分栏、亮色与cmdk；[时间线](../guides/conversation-timeline-acceptance.md)已接入动态虚拟列表及明确读取工具分组；文件/版本页提供已有diff | [本轮净差异/行反馈/单文件放弃](../guides/conversation-changes-acceptance.md)已接入真实本地快照；实际原生长负载仍按A14–A16验收，不以受控显示作为全部完成 |
+| 可调定时同步间隔 | [调度](../../apps/web/src/features/sync/scheduler.ts)默认15秒、可配置5–300秒，保留隐藏/忙/待确认门禁 | 核心范围与实际多活动并发通过；同工作区同步串行 |
+| 界面第 1/3/4/5 节目标 | [布局/导航](../guides/workspace-navigation-acceptance.md)、[时间线](../guides/conversation-timeline-acceptance.md)和[净差异/行反馈/放弃](../guides/conversation-changes-acceptance.md)已接入 | 实际原生长负载自动/手动压缩及记忆续接已补齐；仍不把合成IME当作OS输入法通过 |
 
 ## 2. 验收缺口与证据边界
 
 | 验收 | 已有证据及其范围 | 尚需核对 |
 |---|---|---|
-| A5、A7、A12、A13 及 A19 的完整串联 | [文件](../guides/workspace-files-acceptance.md)、[版本](../guides/local-versions-acceptance.md)、[Codex 对话](../guides/codex-conversation-acceptance.md)及[认证同步](../guides/m2-acceptance.md)保留各阶段真实/受控链路记录 | 新入口在允许的真实 SSH 目标上串联；密码、同步门禁、保存/恢复和模型运行时分别核对，不把受控同步替身当作实际 rclone |
+| A5、A7、A12、A13 及 A19 的完整串联 | Edge保存/版本恢复/删除确认、双Agent原生编辑/实际rclone/SSH/Python、小结果及密码后端重建组合已补齐；A19沿用真实同步门禁和核心回归 | 不把受控密码网关扩大为用户服务器认证设置；真实参数只在ignored配置 |
 | A8 原生会话删除 | [会话管理验收](../guides/session-management-acceptance.md)记录网页和原生 API/存储结果 | 在独立 VS Code 插件界面与 CLI 列表实际刷新确认，不用后端文件检查代替客户端显示 |
-| A14–A16 与长会话体验 | [原生能力](../guides/native-capabilities-acceptance.md)及[补全验收](../guides/slash-completion-acceptance.md)记录协议、短程真实运行与网页证据 | 实际长会话的自动压缩、续接和显示负载；缺少原生比例时保持不可用，不自行估计为已确认用量 |
-| A20–A23 远端文件管理 | [浏览](../guides/remote-files-browser-acceptance.md)、[操作](../guides/remote-file-operations-acceptance.md)、[同步协调](../guides/remote-file-sync-acceptance.md)明确本机和受控范围 | 真实大文件、同/跨文件系统移动与复制、实际 rclone 迁移、冲突/取消后的结果、浏览器磁盘保存及并发响应 |
-| A10、A18 与架构 V16 | 终端已实现并完成本机验收，真实全屏工具及资源service已复验；资源网页和缓存核心验证完成，当前没有完整并发验收证据 | 对话、多个 PTY、资源采样、同步及文件任务同时工作；按通道核对输入、输出限制、独立取消/失败和串行边界，不仅检查静态页面 |
+| A14–A16 与长会话体验 | 原生能力/补全网页与时间线负载基准保持；真实MCP长文本触发auto完成、原ID记忆续接和官方manual完成 | 采用隔离阈值14000而非修改产品默认；缺失比例仍不可用 |
+| A20–A23 远端文件管理 | 真实同/跨FS大文件、实际rclone混合迁移、冲突/链接/复制取消、Firefox独立磁盘下载及并发响应通过 | Edge系统保存选择器仍未验；真实断线证据不以受控故障替代，边界详见完整链路验收 |
+| A10、A18 与架构 V16 | 实际15秒Agent SSH期间双全屏PTY、资源两帧、远端任务响应；单PTY关闭、同步排队及重复轮次拒绝通过 | 原生OS输入法待验；超时/输出限制保留相关核心回归 |
+| Windows长配置路径 | 实际rclone文件名错误与固定版本源码确认，alias实验无效并撤回 | 保留工具限制，短配置根规避不算修复，不修改或删除同步基线 |
 
-用户已授权自主完成，后续从本机既有SSH配置和工作区恢复真实目标，并在可确认范围内选择独立临时目录。临时Agent配置不包含SSH目标；真实连接信息不写入仓库。
+用户已授权自主完成及记录决策。Windows原生界面读取被自动策略检查拒绝后停止相应界面验收，不绕过；已完成的独立核心工作继续整合。真实连接不写公开仓库，临时原生副本仅ignored；被策略拒绝的本机目录清理保留并在最终交付单独说明。
 
 ## 3. 后续依赖与分支
 

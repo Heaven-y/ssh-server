@@ -52,5 +52,5 @@ Interfaces：ChangesPanel接收固定workspace/会话身份；DiffView({patch,so
 - [x] 一次新独立Reviewer完整分支，逐项裁定与记录；Important/Critical一轮修复且RED→GREEN，不复审。
 - [x] Review后补最少核心：真实Git前后快照/保留、生命周期取消、行反馈身份与成功消费、陈旧/未跟踪放弃；测试不写绝对路径。
 - [x] 正式需求/架构/决策/进度/验收同步；最终既有门禁108文件717项、网页构建和中文提交。
-- [ ] PR双平台CI后两级--no-ff，核对树并推送main。
-- [ ] main CI与小分支合入/占用核对，安全清理小分支；继续真实SSH、原生长负载与多活动完整M6。
+- [x] PR #14双平台CI37258162809成功后两级--no-ff；feat b751f1f、main 13a3287与源4e5d68e合并树一致，已推送。
+- [x] main CI37258824743成功；确认合入且无工作树占用后删除本地/远端小分支，保留feat；后续真实链路见2026-10-05-real-workflow计划。
