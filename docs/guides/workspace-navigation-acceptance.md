@@ -1,6 +1,6 @@
 # 工作区布局与导航验收
 
-日期：2026-10-05。设计和全部取舍见[N01–N14](../superpowers/specs/2026-10-05-workspace-navigation-design.md)。本阶段交付可调侧栏/文件分栏、亮暗主题、网页命令面板与顶栏持续资源；长会话、工具分组、本轮改动和完整M6继续实施。
+日期：2026-10-05。设计和全部取舍见[N01–N14](../superpowers/specs/2026-10-05-workspace-navigation-design.md)。本阶段交付可调侧栏/文件分栏、亮暗主题、网页命令面板与顶栏持续资源；本页保留导航阶段证据；后续[长会话/工具分组](conversation-timeline-acceptance.md)、[本轮改动](conversation-changes-acceptance.md)与[实际 M6](real-workflow-acceptance.md)已有独立证据。
 
 ## 核心Review与修复
 
@@ -34,6 +34,6 @@ Edge960/1280/1920两主题验证：无横向溢出或pageerror；主题/折叠�
 
 ## 工程门禁与整合
 
-最终类型、静态检查、格式、重复代码和覆盖率门禁均通过；格式检查发现的一处侧栏缩进已修正，随后只继续未完成门禁。104个测试文件、700项通过，1文件/5项平台相关跳过；覆盖率Statements85.79%、Branches79.24%、Functions86.31%、Lines89.43%，重复行0.38%，未降低既有门槛。网页构建及相关浏览器增量通过。PR双平台CI和两级合并按实际结果补记。下一阶段继续长会话/diff，之后真实SSH文件操作、实际同步和多活动并发。
+最终类型、静态检查、格式、重复代码和覆盖率门禁均通过；格式检查发现的一处侧栏缩进已修正，随后只继续未完成门禁。104个测试文件、700项通过，1文件/5项平台相关跳过；覆盖率Statements85.79%、Branches79.24%、Functions86.31%、Lines89.43%，重复行0.38%，未降低既有门槛。网页构建及相关浏览器增量通过。PR双平台CI和两级合并按实际结果补记。后续长会话/diff、真实 SSH 文件操作、实际同步和多活动并发已完成相应范围，证据见上述链接，未验项见[范围核对](../engineering/remaining-scope-audit.md)。
 
-[PR12](https://github.com/Heaven-y/ssh-server/pull/12)的[双平台CI37249422601](https://github.com/Heaven-y/ssh-server/actions/runs/37249422601)通过后，已按两级--no-ff整合并推送feat8a18738与main a01cd4a；两次合并树等同已验证f6e3542。[main CI37249948237](https://github.com/Heaven-y/ssh-server/actions/runs/37249948237)双平台成功，PR已merged。小分支确认合入main且无工作树占用后已删除本地/远端；保留feat，现有实施树继续codex/conversation-timeline。
+[PR12](https://github.com/Heaven-y/ssh-server/pull/12)的[双平台CI37249422601](https://github.com/Heaven-y/ssh-server/actions/runs/37249422601)通过后，已按两级--no-ff整合并推送feat8a18738与main a01cd4a；两次合并树等同已验证f6e3542。[main CI37249948237](https://github.com/Heaven-y/ssh-server/actions/runs/37249948237)双平台成功，PR已merged。小分支确认合入main且无工作树占用后已删除本地/远端；保留feat，该历史阶段随后进入 codex/conversation-timeline 并已整合；当前分支状态见[路线图](../roadmap.md)与任务交付。

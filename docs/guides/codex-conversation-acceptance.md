@@ -4,7 +4,7 @@
 
 ## 结论与范围
 
-M4 的 Codex 对话适配、固定 Agent、手动模型/推理强度、原生列表/历史/续接已完成。真实网页与 GLM 两轮通过，原生 MCP 调用和会话恢复均有实际运行证据；M4 其余原生能力、A7 真实 SSH 和 M6 完整并发尚未完成。
+M4 的 Codex 对话适配、固定 Agent、手动模型/推理强度、原生列表/历史/续接已完成。真实网页与 GLM 两轮通过，原生 MCP 调用和会话恢复均有实际运行证据；后续 M4 其余能力、A7 真实 SSH 和 M6 完整并发已补齐独立证据，见[原生能力](native-capabilities-acceptance.md)及[完整链路](real-workflow-acceptance.md)，本页早期证据保持原范围。
 
 实现依据见 [对话设计](../superpowers/specs/2026-10-03-codex-conversation-design.md)、[实施计划](../superpowers/plans/2026-10-03-codex-conversation.md) 与 [架构](../engineering/architecture.md)。现有主链路 review 无阻断项。
 
@@ -47,6 +47,6 @@ M4 的 Codex 对话适配、固定 Agent、手动模型/推理强度、原生列
 
 最终定向覆盖率验证为 12 个测试文件、100 项测试通过：语句 90.62%、分支 86.18%、函数 85.48%、行 93.98%。范围包含 Codex/Claude 适配与会话读取、工作区会话边界、对话管理与会话路由、前端对话状态/归约/API，以及共享 Agent/消息协议；报告位于 `coverage/codex-conversation`，这是相关模块的定向结果，不是全仓覆盖率。
 
-- A5/A13/A7：仍需用户指定已配置 Host 别名和允许创建临时子目录的服务器位置，串联真实 SSH、文件保存/版本恢复及 Codex 远程执行。
-- M4：skills / `/` 命令、上下文/压缩展示与手动压缩、模型目录/下拉选择、会话删除及 Codex 归档/恢复待后续实现。
-- M6：网页配置与远程工具主链路已有证据，真实 SSH 及对话/终端/资源采样/同步完整并发未完成。
+- A5/A13/A7：后续真实 SSH/rclone、网页保存/恢复及 Codex 远程执行已在授权随机根补齐，见[完整链路](real-workflow-acceptance.md)。
+- M4：后续[原生能力](native-capabilities-acceptance.md)、[输入补全](slash-completion-acceptance.md)及[会话管理](session-management-acceptance.md)已实现并分范围验收；真实长负载压缩与续接见完整链路，A8 独立客户端刷新仍未验。
+- M6：实际双 Agent/SSH/rclone、全屏 PTY/资源/文件任务并发、保存密码后端重建和长会话已有[独立证据](real-workflow-acceptance.md)，不从本页受控异常推导所有真实故障已验。

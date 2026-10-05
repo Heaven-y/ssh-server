@@ -30,6 +30,6 @@
 
 最终npm run check通过：类型、静态检查、格式、重复率及覆盖率均通过；106个测试文件/706项通过，1文件/5项平台相关跳过。覆盖率Statements85.84%、Branches79.28%、Functions86.41%、Lines89.46%；重复行0.38%，未修改门槛。Review修复后的网页构建、连续1000项负载和两主题三宽度分组复验均通过。
 
-Review另用只读Edge验证键盘PageUp和tabIndex=0；上翻后缩小窗口并追加屏外内容，scrollTop保持12548。未提供真实读屏器播报证据，保留该限制；真实原生自动压缩和续接在M6继续核对。文件改动聚合、主题/分栏变化期间的持续并发及完整SSH验收仍按需求实施，不能从万条静态载入推断其全部通过。
+Review另用只读Edge验证键盘PageUp和tabIndex=0；上翻后缩小窗口并追加屏外内容，scrollTop保持12548。未提供真实读屏器播报证据，保留该限制；后续真实原生自动压缩与续接、实际多活动并发和完整 SSH/rclone 已有[独立证据](real-workflow-acceptance.md)，[文件净差异/行反馈](conversation-changes-acceptance.md)也已交付。不能由本页万条静态载入推导真实链路通过；原生 OS 操作和读屏器证据未扩大。
 
-整合完成：[PR13](https://github.com/Heaven-y/ssh-server/pull/13)已合入feat，双平台CI37251447782成功。两级--no-ff分别为feat6e1670b与mainfe69a681，合并树均与已验收f2812dc相同；main CI37252353935成功。核对已合入main且无工作树占用后，删除本地及远端codex/conversation-timeline，保留feat/ssh-workflow；本轮改动阶段从feat6e1670b继续。
+整合完成：[PR13](https://github.com/Heaven-y/ssh-server/pull/13)已合入feat，双平台CI37251447782成功。两级--no-ff分别为feat6e1670b与mainfe69a681，合并树均与已验收f2812dc相同；main CI37252353935成功。核对已合入main且无工作树占用后，删除本地及远端codex/conversation-timeline，保留feat/ssh-workflow；本轮改动阶段随后从 feat6e1670b 继续并已整合，当前状态见[路线图](../roadmap.md)。
