@@ -138,7 +138,7 @@ F4 的[网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.m
 - F10.8 源和目标均仅在服务器、且不影响同步范围的操作，不启动文件同步或把大文件拉回本地。移入同步范围的小文件按现有规则协调同步；混合包含代码与数据的目录不能整体视作“仅服务器”跳过检查。
 - F10.9 复制、跨文件系统移动和下载展示独立操作状态、可用的进度、取消及结果核对入口；无可靠总量时不伪造百分比。断线、超时或取消不能等同于已回滚；报告已完成和未完成部分，刷新后再决定重试。关闭文件面板不暗中重发或取消已提交任务，不阻塞对话、终端和资源刷新。
 
-F10 的双视图、SFTP 分页浏览、目录外导航、直接操作任务与显式下载已接入；同步范围的路径协调、编辑缓冲保护、持久阻断和不重放恢复已实现。证据见[服务器文件浏览验收](../guides/remote-files-browser-acceptance.md)、[操作阶段验收](../guides/remote-file-operations-acceptance.md)及[同步协调验收](../guides/remote-file-sync-acceptance.md)。真实同/跨文件系统大文件、混合目录迁移及实际rclone、目标冲突/链接/取消与Firefox磁盘下载已通过[完整链路验收](../guides/real-workflow-acceptance.md)；Edge系统保存选择器与真实断线故障证据保留各自未验边界。
+F10 的双视图、SFTP 分页浏览、目录外导航、直接操作任务与显式下载已接入；同步范围的路径协调、编辑缓冲保护、持久阻断和不重放恢复已实现。证据见[服务器文件浏览验收](../guides/remote-files-browser-acceptance.md)、[操作阶段验收](../guides/remote-file-operations-acceptance.md)及[同步协调验收](../guides/remote-file-sync-acceptance.md)。真实同/跨文件系统大文件、混合目录迁移及实际rclone、目标冲突/链接/取消与Firefox磁盘下载已通过[完整链路验收](../guides/real-workflow-acceptance.md)；真实权限、预检后对象变化及独立SSH连接中断后的持久重开/核对/不重放已补齐[失败验收](../guides/remote-file-failure-acceptance.md)。Edge系统保存选择器仍未验，独立连接证据不扩大为共享池或全网络故障通过。
 
 ## 4. 约束
 
