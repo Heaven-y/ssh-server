@@ -127,6 +127,7 @@
 - [x] Codex 对话在 960/1280/1920 宽度无横向溢出，实际截图见 Codex 对话验收
 - [x] A5/A13/A7实际SSH/rclone完整串联；真实密码DPAPI保存/断开重连/后端重建、浏览/同步/Python/PTY组合通过，边界见[完整链路验收](guides/real-workflow-acceptance.md)
 - [x] A20/A21真实大文件同/跨FS、混合目录实际rclone迁移；A22目标冲突/链接/实际取消，源和部分目标核对；Firefox独立磁盘下载通过
+- [x] A22真实权限拒绝、预检后源移动/内容变化/同名目标出现、独立SSH连接中断后的持久重开与核对；写操作不重放、独立活动响应、镜像为空且随机根清理，见[失败验收](guides/remote-file-failure-acceptance.md)。共享池/全网络与完整网页故障未扩大范围
 - [x] V16/V17实际多活动组合、Python小结果、同步串行和单轮门禁通过；超时/输出限制保留既有核心回归
 - [ ] A8独立VS Code/CLI刷新、原生OS输入法、Edge系统保存选择器；Windows界面读取被自动策略检查中止，未绕过，不标通过
 - [x] rclone较长Windows配置路径状态文件名：combine短逻辑根修复，长根真实SSH、中文/空格/引号、旧基线及持久任务升级通过；Windows反斜杠根转换仍受工具约束，见[验收](guides/sync-session-names-acceptance.md)

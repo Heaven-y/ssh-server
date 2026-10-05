@@ -24,7 +24,7 @@
 | A5、A7、A12、A13 及 A19 的完整串联 | Edge保存/版本恢复/删除确认、双Agent原生编辑/实际rclone/SSH/Python、小结果及密码后端重建组合已补齐；A19沿用真实同步门禁和核心回归 | 不把受控密码网关扩大为用户服务器认证设置；真实参数只在ignored配置 |
 | A8 原生会话删除 | [会话管理验收](../guides/session-management-acceptance.md)记录网页和原生 API/存储结果 | 在独立 VS Code 插件界面与 CLI 列表实际刷新确认，不用后端文件检查代替客户端显示 |
 | A14–A16 与长会话体验 | 原生能力/补全网页与时间线负载基准保持；真实MCP长文本触发auto完成、原ID记忆续接和官方manual完成 | 采用隔离阈值14000而非修改产品默认；缺失比例仍不可用 |
-| A20–A23 远端文件管理 | 真实同/跨FS大文件、实际rclone混合迁移、冲突/链接/复制取消、Firefox独立磁盘下载及并发响应通过 | Edge系统保存选择器仍未验；真实断线证据不以受控故障替代，边界详见完整链路验收 |
+| A20–A23 远端文件管理 | 真实同/跨FS大文件、实际rclone混合迁移、冲突/链接/复制取消、Firefox独立磁盘下载及并发响应通过；真实权限、源/目标变化和独立连接中断后的持久重开/核对/不重放已补齐 | Edge系统保存选择器仍未验；[失败验收](../guides/remote-file-failure-acceptance.md)未扩大为共享池或全网络故障证据 |
 | A10、A18 与架构 V16 | 实际15秒Agent SSH期间双全屏PTY、资源两帧、远端任务响应；单PTY关闭、同步排队及重复轮次拒绝通过 | 原生OS输入法待验；超时/输出限制保留相关核心回归 |
 | Windows长配置路径 | combine短逻辑根、长配置根六项真实SSH、特殊字符及旧基线/任务升级通过，见[验收](../guides/sync-session-names-acceptance.md) | 状态单文件名已修复；Windows rclone对反斜杠根的转换保留工具边界，旧清单不删除 |
 
@@ -34,7 +34,7 @@
 
 终端沿用认证池和访问控制，设计/计划、一次独立Review及本机基础验收已完成。完整向导已把手动目标和草稿连接贯通到现有resolver，保留已存工作区兼容；资源采样在同一目标身份上共享，同时将磁盘指标绑定实际目录，不能仅按Host别名合并所有结果。
 
-工作区删除、产品设置与命令规则已完成核心范围；布局与长会话改动已按实际影响完成视觉/负载验证，真实SSH与多活动并发已串联。原生界面策略拒绝、Windows rclone反斜杠根及未扩充的故障证据继续保留；长状态文件名已有独立修复与真实升级证据。各阶段从 `feat/ssh-workflow` 创建 `codex/` 小分支，代码和对应正式文档一起提交，验证后按两级 `--no-ff` 整合。
+工作区删除、产品设置与命令规则已完成核心范围；布局与长会话改动已按实际影响完成视觉/负载验证，真实SSH与多活动并发已串联。原生界面策略拒绝、Windows rclone反斜杠根及未扩充的共享池/全网络故障证据继续保留；长状态文件名已有独立修复与真实升级证据，独立连接故障已补齐。各阶段从 `feat/ssh-workflow` 创建 `codex/` 小分支，代码和对应正式文档一起提交，验证后按两级 `--no-ff` 整合；纯验收阶段不为满足形式修改产品。
 
 ## 4. 第一版需求总对照
 
@@ -51,7 +51,7 @@
 | F7 / A8 | [原生会话管理](../guides/session-management-acceptance.md)，网页及官方API/存储已验 | 独立VS Code插件和CLI交互列表刷新未验 |
 | F8 / A13 | [文件编辑](../guides/workspace-files-acceptance.md)与实际Edge保存/同步 | 真实文件系统最后检查与写入间隙不承诺跨进程事务 |
 | F9 / A18 | [资源采样](../guides/resources-acceptance.md)及实际Agent/双PTY/资源/任务组合 | 缺工具和故障显示不可用；隐藏状态沿用受控网页证据 |
-| F10 / A20–A23 | [浏览](../guides/remote-files-browser-acceptance.md)、[任务](../guides/remote-file-operations-acceptance.md)、[同步协调](../guides/remote-file-sync-acceptance.md)与实际同/跨FS、混合迁移、Firefox下载 | Edge系统选择器未验；真实断线未扩大受控证据范围 |
+| F10 / A20–A23 | [浏览](../guides/remote-files-browser-acceptance.md)、[任务](../guides/remote-file-operations-acceptance.md)、[同步协调](../guides/remote-file-sync-acceptance.md)、实际同/跨FS/混合迁移/Firefox下载及[真实失败](../guides/remote-file-failure-acceptance.md) | Edge系统选择器未验；独立SSH断线证据不扩大为共享池/全网络或完整网页故障 |
 | UI布局与设置 | [界面](../guides/workspace-ui-acceptance.md)、[导航](../guides/workspace-navigation-acceptance.md)、[设置](../guides/product-settings-acceptance.md)、[时间线](../guides/conversation-timeline-acceptance.md)、[本轮改动](../guides/conversation-changes-acceptance.md) | 保留原生IME未验和既有构建chunk体积提示 |
 
 第一版排除项继续按需求第5节执行：不新增完整IDE、多Agent编排、集群监控、服务器软件安装、多用户、打包迁移或自动续跑。核心实现与可执行验收已交付，原生界面缺口和工具限制未消除前，整个Goal保持进行中。
