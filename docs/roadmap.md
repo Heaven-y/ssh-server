@@ -5,12 +5,12 @@
 | 里程碑 | 内容 | 验收 | 状态 |
 |---|---|---|---|
 | M0 | 文档、仓库规范、项目 skill | — | 完成，持续更新文档 |
-| M1 | 最小链路：后端 + 访问控制 + 手动配置的工作区 + Claude 对话（流式）+ `remote_exec` + 命令黑名单 | A1、A11 | Task 1–10 已实现；真实模型/SSH 脚本通过，接入同步后的复验及浏览器收尾中 |
-| M2 | SSH 密码接入；rclone bisync、过滤、删除确认、冲突保留、执行门禁；远程 Python 结果读取 | A2、A3、A4、A9、A12（执行 / 同步部分）、A17、A19 | 认证同步基础与保存密码入口完成；真实传输和网页同步记录保留，完整向导与终端已接入，A12完整组合待M6 |
-| M3 | 轻量文件浏览 / 编辑、保存文件后同步；本地保存版本、历史、diff、恢复 | A5、A13 | 文件编辑与本地版本功能已接入，真实 Git / HTTP / 受控浏览器流程通过；A5、A13 实际 SSH 串联复验待办 |
-| M4 | Codex 适配器、会话固定 Agent、模型选择、会话列表 / 重命名 / 删除 / 归档、原生 skills / 命令、上下文及压缩状态 | A6、A7、A8、A14、A15、A16 | 对话、原生会话管理、技能/命令选择与补全、模型候选及上下文/压缩已接入；A7 真实 SSH、A8 独立客户端刷新及长会话负载验收仍待完成 |
-| M5 | 完整向导；服务器文件浏览与直接管理；参考 Pebrel 的网页终端；资源面板 | A10、A12（向导 / 终端部分）、A18、A20–A23 | 向导、文件管理、终端及资源详情已接入；真实向导/rclone、全屏工具和资源service通过，真实文件管理完整验收待完成 |
-| M6 | 设置页、错误与空状态、端到端测试 | 全部复测 | 原生配置编辑、Codex 网页与远程工具主链路已有证据；真实 SSH 串联及多活动并发未完成 |
+| M1 | 最小链路：后端 + 访问控制 + 手动配置的工作区 + Claude 对话（流式）+ `remote_exec` + 命令黑名单 | A1、A11 | 已实现；模型/SSH与接入同步后的双Agent编辑执行及网页链路通过 |
+| M2 | SSH 密码接入；rclone bisync、过滤、删除确认、冲突保留、执行门禁；远程 Python 结果读取 | A2、A3、A4、A9、A12（执行 / 同步部分）、A17、A19 | 真实传输、删除确认和Python小结果通过；A12密码网关/DPAPI/后端重建组合已补齐，保留认证证据边界 |
+| M3 | 轻量文件浏览 / 编辑、保存文件后同步；本地保存版本、历史、diff、恢复 | A5、A13 | 文件编辑、本地Git版本与恢复已实现，Edge及实际SSH/rclone两端链路通过 |
+| M4 | Codex 适配器、会话固定 Agent、模型选择、会话列表 / 重命名 / 删除 / 归档、原生 skills / 命令、上下文及压缩状态 | A6、A7、A8、A14、A15、A16 | A7真实SSH、原生长负载压缩/续接已补齐；A8独立客户端刷新仍未验 |
+| M5 | 完整向导；服务器文件浏览与直接管理；参考 Pebrel 的网页终端；资源面板 | A10、A12（向导 / 终端部分）、A18、A20–A23 | 向导、同/跨FS大文件、混合迁移、全屏PTY/资源和Firefox下载通过；Edge系统选择器和原生OS输入法仍未验 |
+| M6 | 设置页、错误与空状态、端到端测试 | 全部复测 | 核心设置、布局、净差异及实际SSH/双Agent/多活动/密码/长会话组合通过；保留原生界面缺口和rclone长配置路径工具限制 |
 
 技术方向已确认：本地后端继续 Node.js + TypeScript + Fastify，异步协调 Agent、SSH、子进程、同步和网页状态；Python 分析默认在服务器已有环境执行。独立 `.exe` / 安装器、Go 迁移与外部工具打包只属于比较话题，不增加相应里程碑。并发与远端分析验证分别见架构 V16、V17。
 
@@ -97,16 +97,16 @@
 
 对话阶段见 [Codex 对话设计](superpowers/specs/2026-10-03-codex-conversation-design.md)、[实施计划](superpowers/plans/2026-10-03-codex-conversation.md) 和 [Codex 对话验收](guides/codex-conversation-acceptance.md)。会话管理阶段见 [管理设计](superpowers/specs/2026-10-03-session-management-design.md) 与 [会话管理验收](guides/session-management-acceptance.md)；Codex 0.156.1 的归档记录需先恢复才能重命名。上述阶段完成不代表整个 M4 完成。
 
-本轮原生能力的实现、证据及尚未完成项见 [原生能力设计](superpowers/specs/2026-10-03-native-capabilities-design.md) 和 [原生能力验收](guides/native-capabilities-acceptance.md)，保留 A7/A8 与 M5/M6 原有待办。
+原生能力早期范围见 [原生能力设计](superpowers/specs/2026-10-03-native-capabilities-design.md) 和 [原生能力验收](guides/native-capabilities-acceptance.md)。A7、长负载及M5/M6实际链路已有[新证据](guides/real-workflow-acceptance.md)，A8独立客户端仍保留未验。
 
 ### M5：向导、远端文件管理、终端与资源状态
 
 - [x] 完整连接向导：导入 Host / 独立手动目标、账号密码 / 私钥、实际主机指纹、草稿目录分页、按需同步预览、一次性验证创建与首次初始化；真实SSH/rclone与网页证据见[验收](guides/workspace-setup-acceptance.md)
 - [x] 文件区“本地代码 / 服务器文件”双视图；SSH/SFTP 逐级分页、目录外导航、返回工作区、元数据与同步范围标记，浏览不改变同步根或自动下载；本机合成 SSH 与网页范围见[浏览验收](guides/remote-files-browser-acceptance.md)
 - [x] 同服务器新建目录、重命名、移动、复制、删除的预检与任务后端，显式下载流及网页入口；右键菜单、目标选择、拖动和键盘入口，默认不覆盖同名目标，证据与阶段限制见[操作验收](guides/remote-file-operations-acceptance.md)
-- [x] 同/跨文件系统操作的独立持久任务状态与结果核对机制；移动/复制在服务器完成，下载不自动纳入 Git/同步；真实跨文件系统及浏览器保存验收仍列于 M6
-- [x] 与同步范围内源/目标及混合目录协调，保留编辑缓冲和冲突，防止旧路径重新生成；仅服务器操作不依赖无关同步或模型。本机受控传输与网页证据见[同步协调验收](guides/remote-file-sync-acceptance.md)，实际 rclone 与真实 SSH 保留在 M6
-- [x] xterm.js SSH终端基础：固定目标、目录确认、独立PTY、复制粘贴、稳定多标签/分屏和可调主区；一次核心Review及本机真实ssh2/Chrome验收完成，见[记录](guides/web-terminal-acceptance.md)。真实htop/nvitop PTY已复验，原生OS输入法与密码串联仍待验，A10/A12保持部分完成
+- [x] 同/跨文件系统操作的独立持久任务状态与结果核对机制；真实移动/复制在服务器完成，Firefox下载不自动纳入Git/同步；Edge系统选择器保留未验
+- [x] 与同步范围内源/目标及混合目录协调，保留编辑缓冲和冲突，防止旧路径重新生成；仅服务器操作不依赖无关同步或模型。早期[同步协调验收](guides/remote-file-sync-acceptance.md)与实际SSH/rclone[完整链路](guides/real-workflow-acceptance.md)共同限定证据范围
+- [x] xterm.js固定目标、目录确认、独立PTY、复制粘贴、多标签/分屏和可调主区；早期Review/网页证据见[记录](guides/web-terminal-acceptance.md)。真实htop/nvitop、并发及密码后端重建组合已通过；原生OS输入法仍未验
 - [x] 基于已有 `nvidia-smi` / Linux 信息的 GPU、CPU、内存、磁盘与进程详情，标注采集主机、独立时间和不可用状态；真实SSH和网页证据见[资源验收](guides/resources-acceptance.md)
 - [x] 资源采样与 AI 对话独立，按实际认证身份共享并控制刷新开销；不依赖 `nvitop` 或服务器新装软件；顶栏单controller概览与可调参数已接入，见[导航验收](guides/workspace-navigation-acceptance.md)
 - [x] 实际对话/SSH执行、双全屏PTY、两帧资源、远端复制同时响应；同步串行、重复轮次拒绝、关闭单PTY独立
@@ -137,4 +137,6 @@
 
 2026-10-05完整链路更新：真实SSH/rclone、网页保存/版本恢复、双Agent编辑执行、同/跨FS文件管理/混合迁移、Firefox磁盘下载、并发与保存密码后端重建及真实长负载压缩均有新证据，见[验收](guides/real-workflow-acceptance.md)。本轮一次新Review无阻断项；A8、OS输入法、Edge系统选择器与rclone长配置路径工具限制保留。整项目Goal仍进行中。
 
-此前Task 4以两级 `--no-ff` 整合，[main CI](https://github.com/Heaven-y/ssh-server/actions/runs/37190899240)成功。终端[PR#5](https://github.com/Heaven-y/ssh-server/pull/5)及[PR#6](https://github.com/Heaven-y/ssh-server/pull/6)的双平台修复记录保留；本轮密码重建与全屏PTY组合证据已补齐。净差异[PR#14](https://github.com/Heaven-y/ssh-server/pull/14)及[main 13a3287 CI](https://github.com/Heaven-y/ssh-server/actions/runs/37258824743)成功并安全清理小分支；当前完整链路从feat创建codex/real-workflow-acceptance继续整合。
+此前Task 4以两级 `--no-ff` 整合，[main CI](https://github.com/Heaven-y/ssh-server/actions/runs/37190899240)成功。终端[PR#5](https://github.com/Heaven-y/ssh-server/pull/5)及[PR#6](https://github.com/Heaven-y/ssh-server/pull/6)的双平台修复记录保留；本轮密码重建与全屏PTY组合证据已补齐。净差异[PR#14](https://github.com/Heaven-y/ssh-server/pull/14)及[main 13a3287 CI](https://github.com/Heaven-y/ssh-server/actions/runs/37258824743)成功并安全清理小分支。
+
+完整链路[PR#15](https://github.com/Heaven-y/ssh-server/pull/15)与[PR CI37266496269](https://github.com/Heaven-y/ssh-server/actions/runs/37266496269)双平台成功；两级no-ff为feat `68d356e`、main `740e804`，两树与产品提交 `c23489d` 相同，均已推送。[main CI37267005186](https://github.com/Heaven-y/ssh-server/actions/runs/37267005186)双平台成功后原小分支已安全删除。最终文档核对、F1–F10/A1–A23总对照及实际整合记录在本地 `codex/m6-integration-record` 收尾，按R18继续两级合并；既有未验项目保持。
