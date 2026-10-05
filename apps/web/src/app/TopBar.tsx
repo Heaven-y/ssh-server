@@ -16,6 +16,7 @@ import type { Workspace } from '@ssh-server/shared';
 import { reconnectChat, useChat } from '../features/chat/chat-store';
 import { buttonClass } from '../ui/styles';
 import { useUiPreferences } from '../ui/ui-preferences';
+import type { ReactNode } from 'react';
 
 const STATUS = {
   open: { label: '本机服务已连接', icon: Wifi, cls: 'text-muted-foreground' },
@@ -61,6 +62,7 @@ export function TopBar({
   filesOpen,
   onOpenTerminal,
   terminalOpen,
+  resources,
 }: {
   workspace?: Workspace;
   onOpenSettings(): void;
@@ -68,14 +70,15 @@ export function TopBar({
   filesOpen: boolean;
   onOpenTerminal(): void;
   terminalOpen: boolean;
+  resources?: ReactNode;
 }) {
   const connection = useChat((s) => s.connection);
   const st = STATUS[connection];
   const Icon = st.icon;
 
   return (
-    <header className="flex h-14 shrink-0 items-center border-b border-border/70 bg-card">
-      <div className="flex shrink-0 items-center gap-2.5 px-4">
+    <header className="flex shrink-0 flex-wrap items-center border-b border-border/70 bg-card">
+      <div className="flex h-14 shrink-0 items-center gap-2.5 px-4">
         <AppearanceActions />
         <TerminalSquare aria-hidden className="size-5 text-accent" />
         <span className="text-sm font-semibold tracking-wide">ssh-server</span>
@@ -89,7 +92,12 @@ export function TopBar({
           <span className="truncate text-foreground">{workspace.name}</span>
         </span>
       )}
-      <div className="ml-auto flex shrink-0 items-center gap-1 pr-4">
+      {resources && (
+        <div className="order-last w-full border-t border-border/60 px-3 py-1 2xl:order-none 2xl:w-auto 2xl:flex-1 2xl:border-0">
+          {resources}
+        </div>
+      )}
+      <div className="ml-auto flex h-14 shrink-0 items-center gap-1 pr-4">
         <button
           type="button"
           className={buttonClass('ghost')}

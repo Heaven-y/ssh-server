@@ -31,9 +31,9 @@
 文件：features/resources/{ResourcesPanel,ResourceOverview}.tsx、use-resources.ts；TopBar/App。
 接口：useResources(workspace)单controller供概览和详情；ResourcesActions.open()通过ref打开，目标变化使用固定key重建目标controller。
 
-- [ ] 持续概览、实际目标/时间/过期/空值；同一controller打开详情。
-- [ ] 可见性/网页连接/参数读取门禁和恢复检查，无重复timer/请求。
-- [ ] 相关静态检查及既有资源回归通过，提交。
+- [x] 持续概览、实际目标/时间/过期/空值；同一controller打开详情。
+- [x] 可见性/网页连接/参数读取门禁和恢复检查，无重复timer/请求。
+- [x] 相关静态检查及既有资源回归通过，提交。
 
 ## 任务3：网页命令面板
 

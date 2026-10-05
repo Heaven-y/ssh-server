@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState } from 'react';
-import type { Workspace } from '@ssh-server/shared';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { workspaceTerminalTarget, terminalTargetKey, type Workspace } from '@ssh-server/shared';
 import { ChatView } from '../features/chat/ChatView';
 import { lastWorkspaceId, useChat } from '../features/chat/chat-store';
 import { SyncPanel } from '../features/sync/SyncPanel';
 import { SshConnectionPanel } from '../features/ssh/SshConnectionPanel';
-import { ResourcesPanel } from '../features/resources/ResourcesPanel';
+import { ResourcesPanel, type ResourcesActions } from '../features/resources/ResourcesPanel';
 import { WorkspaceSidebar } from '../features/workspaces/WorkspaceSidebar';
 import { VersionsPanel } from '../features/versions/VersionsPanel';
 import { api, queryKeys } from '../lib/api';
@@ -20,6 +20,7 @@ const FilesPanel = lazy(() => import('../features/files/FilesPanel'));
 
 /** 对话保持主区，文件面板按需打开；窄窗口以覆盖层承载编辑。 */
 export function App() {
+  const resources = useRef<ResourcesActions>(null);
   const theme = useUiPreferences((state) => state.theme);
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -54,6 +55,15 @@ export function App() {
     <div className="flex h-full min-w-[960px] flex-col">
       <TopBar
         workspace={current}
+        resources={
+          current && (
+            <ResourcesPanel
+              key={terminalTargetKey(workspaceTerminalTarget(current))}
+              workspace={current}
+              ref={resources}
+            />
+          )
+        }
         onOpenSettings={() => setSettingsOpen(true)}
         filesOpen={!!filesWorkspace}
         onOpenFiles={() => setFilesWorkspace((opened) => opened ?? current)}
@@ -115,7 +125,6 @@ export function App() {
                     />
                     <SyncPanel key={current.id} workspace={current} />
                     <VersionsPanel key={current.id} workspace={current} />
-                    <ResourcesPanel key={current.id} workspace={current} />
                   </div>
                   <ChatView workspace={current} />
                 </>
