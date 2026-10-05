@@ -10,7 +10,7 @@
 | M3 | 轻量文件浏览 / 编辑、保存文件后同步；本地保存版本、历史、diff、恢复 | A5、A13 | 文件编辑、本地Git版本与恢复已实现，Edge及实际SSH/rclone两端链路通过 |
 | M4 | Codex 适配器、会话固定 Agent、模型选择、会话列表 / 重命名 / 删除 / 归档、原生 skills / 命令、上下文及压缩状态 | A6、A7、A8、A14、A15、A16 | A7真实SSH、原生长负载压缩/续接已补齐；A8独立客户端刷新仍未验 |
 | M5 | 完整向导；服务器文件浏览与直接管理；参考 Pebrel 的网页终端；资源面板 | A10、A12（向导 / 终端部分）、A18、A20–A23 | 向导、同/跨FS大文件、混合迁移、全屏PTY/资源和Firefox下载通过；Edge系统选择器和原生OS输入法仍未验 |
-| M6 | 设置页、错误与空状态、端到端测试 | 全部复测 | 核心设置、布局、净差异及实际SSH/双Agent/多活动/密码/长会话组合通过；保留原生界面缺口和rclone长配置路径工具限制 |
+| M6 | 设置页、错误与空状态、端到端测试 | 全部复测 | 核心设置、布局、净差异及实际SSH/双Agent/多活动/密码/长会话组合通过；combine长配置根及旧基线/任务升级通过，保留原生界面缺口 |
 
 技术方向已确认：本地后端继续 Node.js + TypeScript + Fastify，异步协调 Agent、SSH、子进程、同步和网页状态；Python 分析默认在服务器已有环境执行。独立 `.exe` / 安装器、Go 迁移与外部工具打包只属于比较话题，不增加相应里程碑。并发与远端分析验证分别见架构 V16、V17。
 
@@ -129,13 +129,13 @@
 - [x] A20/A21真实大文件同/跨FS、混合目录实际rclone迁移；A22目标冲突/链接/实际取消，源和部分目标核对；Firefox独立磁盘下载通过
 - [x] V16/V17实际多活动组合、Python小结果、同步串行和单轮门禁通过；超时/输出限制保留既有核心回归
 - [ ] A8独立VS Code/CLI刷新、原生OS输入法、Edge系统保存选择器；Windows界面读取被自动策略检查中止，未绕过，不标通过
-- [ ] rclone较长Windows配置路径的状态文件名限制；源码和实际alias实验确认，短根规避不当产品修复，见开发环境4.13
+- [x] rclone较长Windows配置路径状态文件名：combine短逻辑根修复，长根真实SSH、中文/空格/引号、旧基线及持久任务升级通过；Windows反斜杠根转换仍受工具约束，见[验收](guides/sync-session-names-acceptance.md)
 
 尚未完成的项目按相应里程碑继续设计、实施和验证，不把需求归档当作实施完成。详细待验证事项见 [架构第 8 节](engineering/architecture.md#8-待验证事项)。
 
 连接向导[PR #8](https://github.com/Heaven-y/ssh-server/pull/8)双平台CI37234735439成功，随后以两级--no-ff合入feat（5147dc0）与main（7845821）并推送；[main CI37235267430](https://github.com/Heaven-y/ssh-server/actions/runs/37235267430)双平台成功。工作区删除生命周期从最新feat创建codex/workspace-lifecycle继续实施。
 
-2026-10-05完整链路更新：真实SSH/rclone、网页保存/版本恢复、双Agent编辑执行、同/跨FS文件管理/混合迁移、Firefox磁盘下载、并发与保存密码后端重建及真实长负载压缩均有新证据，见[验收](guides/real-workflow-acceptance.md)。本轮一次新Review无阻断项；A8、OS输入法、Edge系统选择器与rclone长配置路径工具限制保留。整项目Goal仍进行中。
+2026-10-05完整链路更新：真实SSH/rclone、网页保存/版本恢复、双Agent编辑执行、同/跨FS文件管理/混合迁移、Firefox磁盘下载、并发与保存密码后端重建及真实长负载压缩均有新证据，见[验收](guides/real-workflow-acceptance.md)。本轮一次新Review无阻断项；A8、OS输入法、Edge系统选择器保留；rclone长状态文件名在后续独立阶段已修复并验证旧状态升级。整项目Goal仍进行中。
 
 此前Task 4以两级 `--no-ff` 整合，[main CI](https://github.com/Heaven-y/ssh-server/actions/runs/37190899240)成功。终端[PR#5](https://github.com/Heaven-y/ssh-server/pull/5)及[PR#6](https://github.com/Heaven-y/ssh-server/pull/6)的双平台修复记录保留；本轮密码重建与全屏PTY组合证据已补齐。净差异[PR#14](https://github.com/Heaven-y/ssh-server/pull/14)及[main 13a3287 CI](https://github.com/Heaven-y/ssh-server/actions/runs/37258824743)成功并安全清理小分支。
 

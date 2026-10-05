@@ -112,6 +112,7 @@ export function createRemoteFileChanges(deps: Deps) {
       state.baseline = (await localInventory(baselineDirectory, settings)).included;
       Object.assign(state, {
         remoteTask: undefined,
+        baselineLayout: context.baselineLayout,
         phase: conflicts.length ? 'conflicts' : 'ready',
         reason: undefined,
         conflicts,

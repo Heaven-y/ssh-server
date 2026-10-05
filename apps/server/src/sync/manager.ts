@@ -120,13 +120,38 @@ export function createSyncManager(deps: Deps) {
       files.some((file) => opposite.has(file.path) && !eligibleFile(file.path, file.size, input.settings));
     return hasExcluded(input.local.all, remoteSmall) || hasExcluded(remoteAll, localSmall);
   }
-  async function checkSnapshot(input: Snapshot, context: RcloneContext): Promise<FileEntry[] | undefined> {
-    const { ws, state, settings, options, local } = input;
-    if (state.signature && context.signature !== state.signature && !options.confirmed) {
+  async function checkTargetAndLayout(
+    input: Pick<Snapshot, 'ws' | 'state' | 'options'>,
+    context: RcloneContext,
+    requireSignature?: boolean,
+  ): Promise<boolean> {
+    const { ws, state, options } = input;
+    if ((requireSignature || state.signature) && context.signature !== state.signature && !options.confirmed) {
       confirmation(state, 'recovery', 'SSH 目标或目录发生变化，请确认新目录初始化');
       await save(ws, state);
-      return undefined;
+      return false;
     }
+    if (
+      state.signature &&
+      context.baselineLayout &&
+      state.baselineLayout !== context.baselineLayout &&
+      !options.initialize
+    ) {
+      confirmation(
+        state,
+        'recovery',
+        state.deletions.length
+          ? '同步清单格式已升级，待删除请求尚未处理；确认恢复会重新拉取这些文件，请在恢复后重新核对删除'
+          : '同步清单格式已升级，请确认恢复；双端差异会保留，旧清单不会删除',
+      );
+      await save(ws, state);
+      return false;
+    }
+    return true;
+  }
+  async function checkSnapshot(input: Snapshot, context: RcloneContext): Promise<FileEntry[] | undefined> {
+    const { ws, state, settings, options, local } = input;
+    if (!(await checkTargetAndLayout(input, context))) return undefined;
     const remoteAll = await context.listRemote(true);
     const prior = new Set(state.baseline.map((file) => file.path));
     const oversized = [...local.all, ...remoteAll].some(
@@ -211,6 +236,7 @@ export function createSyncManager(deps: Deps) {
     state.conflicts = [...conflicts, ...(await prepared.snapshot.apply()), ...newConflicts(state.baseline, previous)];
     Object.assign(state, {
       signature: context.signature,
+      baselineLayout: context.baselineLayout,
       configuration: configurationOf(ws),
       filters: digest,
       phase: state.conflicts.length ? 'conflicts' : 'ready',
@@ -258,8 +284,8 @@ export function createSyncManager(deps: Deps) {
     try {
       context = await deps.driver.open(ws, settings);
       active.add(context);
-      if (context.signature !== state.signature)
-        throw new SyncError('target_changed', '连接目标已变化，无法处理旧目录的删除，请确认恢复');
+      if (!(await checkTargetAndLayout({ ws, state, options: {} }, context, true)))
+        return publicStatus(state, settings);
       const local = new Set((await localInventory(ws.localDir, settings)).all.map((file) => file.path));
       const remote = new Set((await context.listRemote()).map((file) => file.path));
       const missing = state.deletions.filter((file) => !local.has(file));

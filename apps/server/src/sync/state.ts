@@ -18,6 +18,7 @@ const ConflictSchema = z.object({ path: RelativePath, localCopy: RelativePath, r
 const StateSchema = z.object({
   version: z.literal(1),
   signature: z.string().optional(),
+  baselineLayout: z.string().min(1).max(64).optional(),
   remoteTask: z.string().uuid().optional(),
   configuration: z.string().optional(),
   filters: z.string(),
