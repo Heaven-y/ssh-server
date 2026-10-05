@@ -51,7 +51,7 @@ export async function history(repo: Repository, skip: number): Promise<VersionHi
   return { commits: commits.slice(0, 30), hasMore: commits.length > 30 };
 }
 
-async function patch(repo: Repository, args: string[], files: string[]): Promise<VersionDiff> {
+export async function patch(repo: Repository, args: string[], files: string[]): Promise<VersionDiff> {
   if (!files.length) return { text: '当前范围没有可显示的差异。', files, truncated: false };
   if (files.join('').length > 20_000) return { text: '差异文件较多，请选择单个文件查看。', files, truncated: true };
   try {

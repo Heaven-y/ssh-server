@@ -6,7 +6,11 @@ import type { VersionsService } from '../vcs/service';
 import type { WorkspaceStore } from '../workspaces/store';
 import type { SyncManager } from '../sync/manager';
 
-type Deps = { store: Pick<WorkspaceStore, 'get'>; versions: VersionsService; sync: Pick<SyncManager, 'transaction'> };
+type Deps = {
+  store: Pick<WorkspaceStore, 'get'>;
+  versions: Pick<VersionsService, 'initialize' | 'status' | 'history' | 'diff' | 'save' | 'previewRestore' | 'restore'>;
+  sync: Pick<SyncManager, 'transaction'>;
+};
 const Path = z.string().min(1).max(4096);
 const Commit = z.string().regex(/^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/);
 const Revision = z.string().regex(/^[a-f0-9]{64}$/);

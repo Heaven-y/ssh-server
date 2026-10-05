@@ -30,3 +30,6 @@ export type VersionRestorePreview = {
   excluded: VersionExcluded[];
 };
 export type VersionRestoreResult = { restored: string[]; status: VersionStatus };
+/** 放弃当前单文件差异，head 为空表示尚未创建首个提交。 */
+export type VersionDiscardPreview = Omit<VersionRestorePreview, 'commit' | 'path'> & { head?: string; path: string };
+export type VersionDiscardInput = { path: string; revision: string; confirmed: true };

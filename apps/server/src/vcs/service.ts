@@ -3,14 +3,16 @@ import {
   type VersionRestoreInput,
   type VersionSaveInput,
   type VersionStatus,
+  type TurnSnapshot,
   type Workspace,
 } from '@ssh-server/shared';
 import { versionOperation, VersionError } from './errors';
 import { commitInfo, diff, history } from './history';
 import { commitWorkspace } from './index';
 import { commitId, repository, sha256, type Repository } from './repository';
-import { restorePlan, restoreWorkspace } from './restore';
+import { discardPlan, discardWorkspace, restorePlan, restoreWorkspace } from './restore';
 import { snapshot } from './snapshot';
+import { captureTurn, diffTurn, releaseTurn } from './turn-snapshots';
 
 export function createVersionsService() {
   const queues = new Map<string, Promise<unknown>>();
@@ -31,6 +33,40 @@ export function createVersionsService() {
     return repo;
   }
   return {
+    previewDiscard(ws: Workspace, path: string) {
+      return versionOperation(async () => {
+        const repo = await required(ws);
+        return serial(repo, async () => {
+          const plan = await discardPlan(repo, path);
+          const { commit: _commit, ...preview } = plan.preview;
+          return { ...preview, path, head: plan.state.head };
+        });
+      });
+    },
+    discard(ws: Workspace, input: { path: string; revision: string }) {
+      return versionOperation(async () => {
+        const repo = await required(ws);
+        return serial(repo, () => discardWorkspace(repo, input));
+      });
+    },
+    captureTurn(ws: Workspace, turnId: string, edge: TurnSnapshot['edge']) {
+      return versionOperation(async () => {
+        const repo = await required(ws);
+        return serial(repo, () => captureTurn(repo, turnId, edge));
+      });
+    },
+    diffTurn(ws: Workspace, base: TurnSnapshot, result: TurnSnapshot, path?: string) {
+      return versionOperation(async () => {
+        const repo = await required(ws);
+        return serial(repo, () => diffTurn(repo, base, result, path));
+      });
+    },
+    releaseTurn(ws: Workspace, snapshots: TurnSnapshot[]) {
+      return versionOperation(async () => {
+        const repo = await required(ws);
+        return serial(repo, () => releaseTurn(repo, snapshots));
+      });
+    },
     initialize(ws: Workspace): Promise<VersionStatus> {
       return versionOperation(async () => {
         const repo = await repository(ws, true);
