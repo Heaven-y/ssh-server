@@ -1,6 +1,6 @@
 # 需求
 
-更新日期：2026-10-04。本文描述第一版的目标行为，不代表功能全部实现；实际进度见 [路线图](../roadmap.md)，选型与取舍见 [设计决策](../engineering/decisions.md)。
+更新日期：2026-10-05。本文描述第一版的目标行为，不代表功能全部验收；实际进度见 [路线图](../roadmap.md)，选型与取舍见 [设计决策](../engineering/decisions.md)。
 
 ## 1. 背景
 
@@ -123,7 +123,7 @@ F4 的[网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.m
 - F9.6 资源概览或详情可见时按秒级间隔刷新；多个工作区连接同一服务器时共享采样，页面隐藏或断开时暂停 / 降频，避免重复查询。具体刷新参数在实现时验证。
 - F9.7 仅展示实际采样节点的数据。Slurm 任务可由用户通过对话或终端查询；第一版不自动遍历计算节点，也不以高频调度器轮询代替节点采样。
 
-资源详情已接入固定目标HTTP、共享只读采样、独立时间/过期/空值和节点进程。默认5秒可见检查，产品设置提供2–60秒间隔及2–30秒超时；真实参数缩短与并发缓存复验见[设置验收](../guides/product-settings-acceptance.md)。真实SSH指标见[资源验收](../guides/resources-acceptance.md)；顶栏持续概览与详情单controller已接入，隐藏/网页断线停止检查，真实入口和布局证据见[导航验收](../guides/workspace-navigation-acceptance.md)；原生OS隐藏和完整并发在M6收尾。
+资源详情已接入固定目标HTTP、共享只读采样、独立时间/过期/空值和节点进程。默认5秒可见检查，产品设置提供2–60秒间隔及2–30秒超时；真实参数缩短与并发缓存复验见[设置验收](../guides/product-settings-acceptance.md)。真实SSH指标见[资源验收](../guides/resources-acceptance.md)；顶栏持续概览与详情单controller已接入，隐藏/网页断线停止检查，真实入口和布局证据见[导航验收](../guides/workspace-navigation-acceptance.md)。实际Agent执行、双PTY、资源、同步和远端文件任务组合通过[完整链路验收](../guides/real-workflow-acceptance.md)；隐藏状态仍沿用受控网页证据，未新增原生OS隐藏操作证据。
 
 ### F10 远端文件管理
 

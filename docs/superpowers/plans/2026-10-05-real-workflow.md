@@ -44,5 +44,7 @@ Files：生产remote-files与HTTP/网页按发现修改；脱敏验收记录。
 ## Task 4：最终整合
 
 - [x] 一次新核心Review无Critical/Important/需修Minor；Declined逐项裁定，最少核心回归RED→GREEN，不复审。
-- [ ] 正式需求/架构/决策/路线图/验收一致，门禁按实际代码范围执行；PR与双平台CI后两级合并、核树推main及安全清理。
-- [ ] 审计全部需求与遗留能力限制；只有所有要求满足才结束Goal。被政策拒绝的旧Temp残留保留，最终如实单独说明。
+- [x] 正式需求/架构/决策/路线图/验收已按实际范围同步；PR#15双平台CI成功后两级no-ff合并，文件树一致，main双平台CI成功，原小分支安全清理。文档收尾按R18另作一条提交。
+- [x] 已审计F1–F10及A1–A23，见remaining-scope-audit总对照；原生界面和rclone工具边界未消除，Goal保持进行中。被政策拒绝的8个ignored副本及旧Temp残留保留，交付单独说明。
+
+整合证据：产品提交c23489d、feat合并68d356e、main合并740e804；PR CI37266496269与main CI37267005186双平台均成功。详见[正式验收整合记录](../../guides/real-workflow-acceptance.md#整合记录)。本计划的核心链路与整合任务已完成，Task2的Edge系统选择器仍未验，不据此宣称整个项目完成。

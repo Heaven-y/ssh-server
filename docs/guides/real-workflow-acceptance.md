@@ -70,3 +70,18 @@ A23 的 Firefox 下载管理器路径通过。Edge 原生系统保存选择器�
 一次新的独立核心 Review 未发现 Critical、Important 或需单独修复的 Minor。Review 后只在现有审批和快照测试文件补充 11 项核心回归；旧基线有 6 项预期失败，恢复修复后 23 项全部通过，覆盖新协议批准/拒绝/无持久授权、受限请求、超时/取消/迟到，以及多层空目录、排除/外部内容、链接和普通同步边界。
 
 最终既有 `npm run check` 退出 0：108 个测试文件、728 项通过，另有既有 1 个文件 / 5 项跳过；类型、lint、格式、重复率和覆盖率门槛均通过，没有降低门槛。总覆盖率为语句 85.57%、分支 78.93%、函数 86.45%、行 89.17%，重复行 0.35%。网页生产构建退出 0，保留既有大于 500 kB 的 chunk 提示；本轮不重复验证未改动的界面布局。
+
+## 整合记录
+
+| 事项 | 已核对结果 |
+|---|---|
+| 修复提交 | `c23489d8103035f15a29564a40a60e2baa04e7c2`；代码、11项回归及对应文档一起提交 |
+| PR | [#15](https://github.com/Heaven-y/ssh-server/pull/15) 已合入 `feat/ssh-workflow`；[CI 37266496269](https://github.com/Heaven-y/ssh-server/actions/runs/37266496269) Windows/Linux全部成功，head为该修复提交 |
+| 第一层no-ff | `68d356e91b38878a122547d321c0655d57ebc9b1`，文件树与修复提交相同，已推送feat |
+| 第二层no-ff | `740e804b9bc7b4f10c86e768f7d8ea9b1c20ad92`，文件树与修复提交相同，已推送main；[CI 37267005186](https://github.com/Heaven-y/ssh-server/actions/runs/37267005186) Windows/Linux全部成功 |
+| 原分支收尾 | `codex/real-workflow-acceptance` 已被两端feat/main包含，确认无工作树占用后安全删除本地/远端分支；大分支保留 |
+| 最终需求核对 | [总对照](../engineering/remaining-scope-audit.md#4-第一版需求总对照)覆盖F1–F10和A1–A23，原生界面缺口与工具边界保留，Goal未标完成 |
+
+实际整合后以本地 `codex/m6-integration-record` 追加一条文档收尾提交，修正旧进度和重复决策编号，按R18沿用两级no-ff。其源码与上述可靠基准保持一致，本机只检查文档编码、链接和差异；最终main的追加整合与CI以Git记录及任务交付为准，避免文档提交自引用。
+
+自动策略拒绝的本机清理保留：本阶段8个早期ignored原生配置副本及此前一个已停止进程的临时目录未删除。真实源配置保持，远端随机根已清理；未换工具或命令绕过删除拒绝，原始路径清单只在ignored运行记录。
