@@ -131,8 +131,7 @@ async function collectOperations(
   state: Snapshot,
   target: Map<string, TreeEntry>,
   paths: string[],
-  commit: string,
-  discard: boolean,
+  input: { commit: string; discard: boolean },
 ) {
   const repo = state.repo;
   const ignored = await ignoredPaths(repo, paths);
@@ -147,8 +146,8 @@ async function collectOperations(
       excluded.push({ path: file, reason });
       continue;
     }
-    if (!discard && !entry && !state.tree.has(file) && !state.staged.has(file)) continue;
-    const operation = await operationFor(repo, { commit, relative: file, current, target: entry });
+    if (!included(state, file, entry, input.discard)) continue;
+    const operation = await operationFor(repo, { commit: input.commit, relative: file, current, target: entry });
     if (operation) {
       if (operation.data) bytes += operation.data.length;
       if (bytes > 128 * 1024 * 1024) throw new VersionError('limit_exceeded');
@@ -156,6 +155,17 @@ async function collectOperations(
     }
   }
   return { operations, excluded };
+}
+
+function included(state: Snapshot, file: string, entry: TreeEntry | undefined, discard: boolean): boolean {
+  return discard || !!entry || state.tree.has(file) || state.staged.has(file);
+}
+
+function assertNoStagedChange(state: Snapshot, relative: string): void {
+  const recorded = state.tree.get(relative);
+  const staged = state.staged.get(relative);
+  if (recorded?.oid !== staged?.oid || recorded?.mode !== staged?.mode || (staged && staged.stage !== '0'))
+    throw new VersionError('staged_changes');
 }
 
 export async function restorePlan(
@@ -167,16 +177,11 @@ export async function restorePlan(
   validatePath(repo, relative);
   const target = await treeEntries(repo, commit);
   const state = await snapshot(repo, [...target.keys()]);
-  if (discard && relative) {
-    const recorded = state.tree.get(relative);
-    const staged = state.staged.get(relative);
-    if (recorded?.oid !== staged?.oid || recorded?.mode !== staged?.mode || (staged && staged.stage !== '0'))
-      throw new VersionError('staged_changes');
-  }
+  if (discard && relative) assertNoStagedChange(state, relative);
   const paths = relative
     ? [relative]
     : [...new Set([...state.tree.keys(), ...state.staged.keys(), ...target.keys()])].sort();
-  const { operations, excluded } = await collectOperations(state, target, paths, commit, discard);
+  const { operations, excluded } = await collectOperations(state, target, paths, { commit, discard });
   const safe = await resolveStructural(operations, state, excluded);
   // 确认令牌同时绑定最终计划；被忽略的目录内容也可能改变安全恢复范围。
   const revision = sha256(

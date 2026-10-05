@@ -1,7 +1,7 @@
 # 本轮改动与行内反馈实施计划
 
 **Goal：** 真实轮次快照、改动视图、成熟diff渲染、待发送行反馈及有确认的单文件放弃。
-**Spec：** [C01–C09](../specs/2026-10-05-conversation-changes-design.md)
+**Spec：** [C01–C10](../specs/2026-10-05-conversation-changes-design.md)
 **方式：** Native，用户授权自主记录；一次阶段核心Review后补最少回归。
 
 ## 全局约束
@@ -21,10 +21,10 @@
 Files：shared/versions.ts与turn-changes.ts；vcs/{service,history,index,restore}.ts；新增vcs/turn-snapshots.ts。
 Interfaces：VersionsService.captureTurn(ws,turnId,edge:'base'|'result')返回TurnSnapshot；diffTurn(ws,base,result,path?)返回TurnDiff；releaseTurn(ws,snapshots)只处理本功能refs；previewDiscard(ws,path)、discard(ws,{path,revision,confirmed})复用恢复基础。
 
-- [ ] 临时索引生成树，assertFresh后写绑定范围的专用引用；只在已有仓库采集，失败保留原因。
-- [ ] 两快照比较返回文件/增删行/二进制及有界patch；校验当前范围和私有引用，拒绝任意OID读取。
-- [ ] 单文件放弃预览包含未跟踪新增删除；使用当前HEAD/空树、实际指纹与既有原子恢复，不动用户提交史。
-- [ ] 类型/相关lint和既有版本回归；真实临时Git核对净diff、HEAD/index、暂存及放弃。提交feat(changes)。
+- [x] 临时索引生成树，assertFresh后写绑定范围的专用引用；只在已有仓库采集，失败保留原因。
+- [x] 两快照比较返回文件/增删行/二进制及有界patch；校验当前范围和私有引用，拒绝任意OID读取。
+- [x] 单文件放弃预览包含未跟踪新增删除；使用当前HEAD/空树、实际指纹与既有原子恢复，不动用户提交史；C10阻断该文件独立暂存差异。
+- [x] 类型/相关lint和既有版本2文件14项回归；真实临时Git核对净diff、HEAD/index、暂存及放弃通过。提交feat(changes)。
 
 ## Task 2：轮次生命周期与HTTP
 

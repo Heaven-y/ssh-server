@@ -92,16 +92,7 @@ function parseStat(record: string): { path: string; additions: number | null; de
   };
 }
 
-export async function diffTurn(
-  repo: Repository,
-  base: TurnSnapshot,
-  result: TurnSnapshot,
-  selected?: string,
-): Promise<TurnDiff> {
-  if (base.turnId !== result.turnId || base.edge !== 'base' || result.edge !== 'result')
-    throw new VersionError('invalid_request');
-  await verify(repo, base);
-  await verify(repo, result);
+function validateSelected(repo: Repository, selected?: string): void {
   if (selected !== undefined) {
     try {
       assertAllowedPath(selected, repo.location.settings);
@@ -109,6 +100,20 @@ export async function diffTurn(
       throw new VersionError('unsafe_path');
     }
   }
+}
+
+function changeReason(repo: Repository, path: string, entries: Array<TreeEntry | undefined>): string | undefined {
+  try {
+    assertAllowedPath(path, repo.location.settings);
+  } catch {
+    return '当前同步过滤或路径规则已排除';
+  }
+  if (!entries.every((entry) => displayable(entry, repo.location.settings.maxFileBytes)))
+    return '链接、非普通对象或内容超过同步大小阈值';
+  return undefined;
+}
+
+async function changesBetween(repo: Repository, base: TurnSnapshot, result: TurnSnapshot, selected?: string) {
   const stats = await git(repo.root, [
     'diff',
     '--numstat',
@@ -130,16 +135,9 @@ export async function diffTurn(
   for (const record of records) {
     const path = relativePath(repo, record.path);
     if (path === undefined || (selected !== undefined && selected !== path)) continue;
-    try {
-      assertAllowedPath(path, repo.location.settings);
-    } catch {
-      excluded.push({ path, reason: '当前同步过滤或路径规则已排除' });
-      continue;
-    }
-    if (
-      ![before.get(path), after.get(path)].every((entry) => displayable(entry, repo.location.settings.maxFileBytes))
-    ) {
-      excluded.push({ path, reason: '链接、非普通对象或内容超过同步大小阈值' });
+    const reason = changeReason(repo, path, [before.get(path), after.get(path)]);
+    if (reason) {
+      excluded.push({ path, reason });
       continue;
     }
     changes.push({
@@ -150,6 +148,21 @@ export async function diffTurn(
       binary: record.additions === null || record.deletions === null,
     });
   }
+  return { changes, excluded };
+}
+
+export async function diffTurn(
+  repo: Repository,
+  base: TurnSnapshot,
+  result: TurnSnapshot,
+  selected?: string,
+): Promise<TurnDiff> {
+  if (base.turnId !== result.turnId || base.edge !== 'base' || result.edge !== 'result')
+    throw new VersionError('invalid_request');
+  await verify(repo, base);
+  await verify(repo, result);
+  validateSelected(repo, selected);
+  const { changes, excluded } = await changesBetween(repo, base, result, selected);
   const rendered = await patch(
     repo,
     ['diff', base.tree, result.tree],
