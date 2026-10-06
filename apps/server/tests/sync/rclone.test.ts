@@ -85,7 +85,7 @@ async function setup(version = 'rclone v1.75.1\n') {
 describe('rclone 隔离 SFTP 驱动', () => {
   it('短逻辑根保留实际CSV映射，子进程成功或异常后清除凭据副本', async () => {
     const { driver, run, pool } = await setup();
-    const remoteRoot = path.posix.join(path.posix.sep, 'projects', 'demo "quoted" \\root');
+    const remoteRoot = path.posix.join(path.posix.sep, 'projects', 'demo 中文 "quoted" ');
     pool.exec.mockResolvedValue({
       stdout: remoteRoot + '\n',
       stderr: '',
@@ -106,7 +106,7 @@ describe('rclone 隔离 SFTP 驱动', () => {
         RCLONE_CONFIG_LOCALVIEW_UPSTREAMS: `"root=${localDir.split(path.sep).join('/')}"`,
         RCLONE_CONFIG_REMOTEVIEW_TYPE: 'combine',
         RCLONE_CONFIG_REMOTEVIEW_UPSTREAMS:
-          '"root=workspace:' + path.posix.join(path.posix.sep, 'projects', 'demo ""quoted"" \\root') + '"',
+          '"root=workspace:' + path.posix.join(path.posix.sep, 'projects', 'demo 中文 ""quoted"" ') + '"',
       });
       return output('');
     });
