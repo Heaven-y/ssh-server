@@ -120,7 +120,7 @@ export function createSyncManager(deps: Deps) {
       files.some((file) => opposite.has(file.path) && !eligibleFile(file.path, file.size, input.settings));
     return hasExcluded(input.local.all, remoteSmall) || hasExcluded(remoteAll, localSmall);
   }
-  async function checkTargetAndLayout(
+  async function checkTarget(
     input: Pick<Snapshot, 'ws' | 'state' | 'options'>,
     context: RcloneContext,
     requireSignature?: boolean,
@@ -131,27 +131,11 @@ export function createSyncManager(deps: Deps) {
       await save(ws, state);
       return false;
     }
-    if (
-      state.signature &&
-      context.baselineLayout &&
-      state.baselineLayout !== context.baselineLayout &&
-      !options.initialize
-    ) {
-      confirmation(
-        state,
-        'recovery',
-        state.deletions.length
-          ? '同步清单格式已升级，待删除请求尚未处理；确认恢复会重新拉取这些文件，请在恢复后重新核对删除'
-          : '同步清单格式已升级，请确认恢复；双端差异会保留，旧清单不会删除',
-      );
-      await save(ws, state);
-      return false;
-    }
     return true;
   }
   async function checkSnapshot(input: Snapshot, context: RcloneContext): Promise<FileEntry[] | undefined> {
     const { ws, state, settings, options, local } = input;
-    if (!(await checkTargetAndLayout(input, context))) return undefined;
+    if (!(await checkTarget(input, context))) return undefined;
     const remoteAll = await context.listRemote(true);
     const prior = new Set(state.baseline.map((file) => file.path));
     const oversized = [...local.all, ...remoteAll].some(
@@ -284,8 +268,7 @@ export function createSyncManager(deps: Deps) {
     try {
       context = await deps.driver.open(ws, settings);
       active.add(context);
-      if (!(await checkTargetAndLayout({ ws, state, options: {} }, context, true)))
-        return publicStatus(state, settings);
+      if (!(await checkTarget({ ws, state, options: {} }, context, true))) return publicStatus(state, settings);
       const local = new Set((await localInventory(ws.localDir, settings)).all.map((file) => file.path));
       const remote = new Set((await context.listRemote()).map((file) => file.path));
       const missing = state.deletions.filter((file) => !local.has(file));

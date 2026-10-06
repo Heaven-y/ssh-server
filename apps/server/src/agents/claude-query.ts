@@ -1,22 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import {
-  query,
-  type ModelInfo,
-  type Options,
-  type SDKUserMessage,
-  type SlashCommand,
-} from '@anthropic-ai/claude-agent-sdk';
+import { query, type Options, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { ContextUsage } from '@ssh-server/shared';
 import { resolveClaudeExecutable } from './claude-launch';
 
-/** 控制能力可选，已有只提供迭代与中断的测试替身仍可运行普通对话。 */
-export type ClaudeQuery = AsyncIterable<unknown> & {
-  interrupt(): Promise<unknown>;
-  close?(): void;
-  supportedCommands?(): Promise<SlashCommand[]>;
-  supportedModels?(): Promise<ModelInfo[]>;
-  getContextUsage?(options: { detail: 'summary' }): Promise<unknown>;
-};
+/** 固定SDK的控制契约；只收窄消息迭代内容，由映射器校验原生事件。 */
+export type ClaudeQuery = AsyncIterable<unknown> &
+  Pick<Query, 'interrupt' | 'close' | 'supportedCommands' | 'supportedModels' | 'getContextUsage'>;
 export type QueryFn = (params: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => ClaudeQuery;
 export const nativeClaudeQuery: QueryFn = (params) =>
   query({
@@ -113,7 +102,6 @@ export function claudeContextUsage(value: unknown): ContextUsage | null {
 }
 
 export async function readClaudeContext(q: ClaudeQuery, signal?: AbortSignal): Promise<ContextUsage | null> {
-  if (!q.getContextUsage) return null;
   try {
     return claudeContextUsage(
       await claudeControl(q.getContextUsage({ detail: 'summary' }), signal, CLAUDE_SUMMARY_TIMEOUT_MS),

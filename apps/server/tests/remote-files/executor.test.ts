@@ -12,6 +12,7 @@ function channel() {
   return value;
 }
 const input: HelperInput = { action: 'execute', kind: 'delete', roots: [] };
+const target = { alias: 'my-server', authMode: 'key' as const };
 
 it('固定执行器按顺序处理阶段与结果，参数通过 base64 传递且不转发 stderr', async () => {
   const connection = channel();
@@ -27,7 +28,7 @@ it('固定执行器按顺序处理阶段与结果，参数通过 base64 传递�
   });
   const phase = vi.fn(async () => undefined);
   const executor = createRemoteExecutor({ openExec });
-  expect(await executor.run('my-server', input, { onPhase: phase })).toEqual({ completed: true });
+  expect(await executor.run(target, input, { onPhase: phase })).toEqual({ completed: true });
   expect(phase).toHaveBeenCalledWith({ event: 'phase', phase: 'removing_source' });
   const command = (openExec.mock.calls as unknown as Array<[unknown, string]>)[0]![1];
   expect(command).toContain(Buffer.from(JSON.stringify(input)).toString('base64'));
@@ -46,7 +47,7 @@ it('远端拒绝码与不完整输出不能冒充执行成功，取消只关闭�
         return connection as unknown as ClientChannel;
       },
     });
-    await expect(executor.run('my-server', input)).rejects.toBeInstanceOf(Error);
+    await expect(executor.run(target, input)).rejects.toBeInstanceOf(Error);
     expect(connection.close).toHaveBeenCalledOnce();
   }
   const connection = channel();
@@ -57,7 +58,7 @@ it('远端拒绝码与不完整输出不能冒充执行成功，取消只关闭�
       return connection as unknown as ClientChannel;
     },
   });
-  await expect(executor.run('my-server', input, { signal: controller.signal })).rejects.toBeInstanceOf(Error);
+  await expect(executor.run(target, input, { signal: controller.signal })).rejects.toBeInstanceOf(Error);
   expect(connection.signal).toHaveBeenCalledWith('TERM');
   expect(connection.destroyed).toBe(true);
 });

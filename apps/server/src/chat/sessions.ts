@@ -13,7 +13,7 @@ export type SessionProvider = {
   list(dir: string, signal?: AbortSignal, archived?: boolean): Promise<NativeSessionSummary[]>;
   read(id: string, dir: string, signal?: AbortSignal): Promise<NativeSessionRead>;
   assertBelongs(id: string, dir: string, signal?: AbortSignal): Promise<void>;
-  mutate?(id: string, dir: string, input: SessionActionInput): Promise<void>;
+  mutate(id: string, dir: string, input: SessionActionInput): Promise<void>;
 };
 type SessionOperations = {
   withIdleSession<T>(session: SessionRef, operation: () => Promise<T>): Promise<T>;
@@ -42,7 +42,7 @@ async function safeOperation<T>(agent: AgentKind, operation: () => Promise<T>, v
   }
 }
 
-export function createSessionsService(providers: Record<AgentKind, SessionProvider>, operations?: SessionOperations) {
+export function createSessionsService(providers: Record<AgentKind, SessionProvider>, operations: SessionOperations) {
   return {
     list(ws: Workspace, agent: AgentKind, signal?: AbortSignal, archived = false): Promise<SessionSummary[]> {
       return safeOperation(agent, async () => {
@@ -69,9 +69,7 @@ export function createSessionsService(providers: Record<AgentKind, SessionProvid
           if (agent === 'claude' && (input.action === 'archive' || input.action === 'unarchive'))
             throw new SessionError(400, 'unsupported_action', 'Claude Code 不支持归档会话');
           const provider = providers[agent];
-          if (!operations || !provider.mutate)
-            throw new SessionError(503, 'session_management_unavailable', '当前原生会话管理不可用');
-          await operations.withIdleSession({ agent, sessionId: id }, () => provider.mutate!(id, ws.localDir, input));
+          await operations.withIdleSession({ agent, sessionId: id }, () => provider.mutate(id, ws.localDir, input));
         },
         '操作',
       );

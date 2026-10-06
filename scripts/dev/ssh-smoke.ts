@@ -13,7 +13,7 @@ if (!alias) {
 
 const pool = createSshPool();
 try {
-  const r = await pool.exec(alias, buildRemoteCommand('~', 'hostname', 30), {
+  const r = await pool.exec({ alias, authMode: 'key' }, buildRemoteCommand('~', 'hostname', 30), {
     localTimeoutMs: 60_000,
     outputCap: OUTPUT_CAP_BYTES,
   });

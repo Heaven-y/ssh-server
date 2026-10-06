@@ -54,7 +54,7 @@ export function createSetupRemote(pool: SshPool) {
         name: '创建前目录浏览',
         localDir: os.homedir(),
         sshHost: target.sshHost,
-        authMode: target.authMode ?? 'key',
+        authMode: workspaceTarget(target).authMode,
         remoteDir: target.remoteDir ?? '~',
       };
       const draft: Draft = { workspace, expiresAt: Date.now() + 15 * 60000 };

@@ -44,6 +44,8 @@ function setup() {
         parent_agent_id: null,
       },
     ]),
+    rename: vi.fn(async () => undefined),
+    delete: vi.fn(async () => undefined),
   };
   const app = Fastify();
   apps.push(app);
@@ -73,6 +75,24 @@ function setup() {
 }
 
 describe('会话接口', () => {
+  it.each([
+    { method: 'GET' as const, url: '/api/workspaces/w1/sessions' },
+    { method: 'GET' as const, url: '/api/workspaces/w1/sessions/s1/events' },
+    {
+      method: 'POST' as const,
+      url: '/api/workspaces/w1/sessions/s1/actions',
+      payload: { action: 'rename', title: '新名称' },
+    },
+  ])('缺Agent拒绝 $method $url，不能默认为Claude', async (request) => {
+    const { app, api, codex, withIdleSession } = setup();
+    expect((await app.inject(request)).statusCode).toBe(400);
+    expect(api.list).not.toHaveBeenCalled();
+    expect(api.messages).not.toHaveBeenCalled();
+    expect(api.rename).not.toHaveBeenCalled();
+    expect(codex.list).not.toHaveBeenCalled();
+    expect(withIdleSession).not.toHaveBeenCalled();
+  });
+
   it('会话管理校验确认与名称，并按原生身份加锁', async () => {
     const { app, codex, withIdleSession } = setup();
     const url = '/api/workspaces/w1/sessions/s1/actions?agent=codex';
@@ -103,7 +123,7 @@ describe('会话接口', () => {
     withIdleSession.mockRejectedValueOnce(new SessionError(409, 'session_busy', '会话正在运行'));
     expect((await app.inject(request)).statusCode).toBe(409);
     expect(codex.mutate).not.toHaveBeenCalled();
-    vi.mocked(codex.mutate!).mockRejectedValueOnce(new Error('private-native-details'));
+    vi.mocked(codex.mutate).mockRejectedValueOnce(new Error('private-native-details'));
     const failed = await app.inject(request);
     expect(failed.statusCode).toBe(503);
     expect(failed.body).not.toContain('private-native-details');
@@ -119,7 +139,7 @@ describe('会话接口', () => {
       (
         await app.inject({
           method: 'POST',
-          url: '/api/workspaces/w1/sessions/s1/actions',
+          url: '/api/workspaces/w1/sessions/s1/actions?agent=claude',
           payload: { action: 'archive' },
         })
       ).statusCode,
@@ -128,7 +148,7 @@ describe('会话接口', () => {
 
   it('列出工作区本地文件夹下的会话', async () => {
     const { app, api } = setup();
-    const r = await app.inject({ method: 'GET', url: '/api/workspaces/w1/sessions' });
+    const r = await app.inject({ method: 'GET', url: '/api/workspaces/w1/sessions?agent=claude' });
     expect(r.statusCode).toBe(200);
     expect(r.json()).toEqual([{ agent: 'claude', sessionId: 's1', summary: '调参', lastModified: 100 }]);
     expect(api.list).toHaveBeenCalledWith(ws.localDir);
@@ -136,7 +156,7 @@ describe('会话接口', () => {
 
   it('返回会话历史对应的事件', async () => {
     const { app, api } = setup();
-    const r = await app.inject({ method: 'GET', url: '/api/workspaces/w1/sessions/s1/events' });
+    const r = await app.inject({ method: 'GET', url: '/api/workspaces/w1/sessions/s1/events?agent=claude' });
     expect(r.json().session).toMatchObject({ agent: 'claude', sessionId: 's1' });
     expect(r.json().events).toEqual([
       { type: 'user_message', text: '你好' },
@@ -147,8 +167,12 @@ describe('会话接口', () => {
 
   it('工作区不存在 404，会话 id 不合法 400', async () => {
     const { app } = setup();
-    expect((await app.inject({ method: 'GET', url: '/api/workspaces/nope/sessions' })).statusCode).toBe(404);
-    expect((await app.inject({ method: 'GET', url: '/api/workspaces/w1/sessions/a.b/events' })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/api/workspaces/nope/sessions?agent=claude' })).statusCode).toBe(
+      404,
+    );
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/workspaces/w1/sessions/a.b/events?agent=claude' })).statusCode,
+    ).toBe(400);
     expect((await app.inject('/api/workspaces/w1/sessions?agent=unknown')).statusCode).toBe(400);
   });
 
@@ -158,7 +182,7 @@ describe('会话接口', () => {
       { sessionId: 's1', summary: '本项目', lastModified: 100, cwd: ws.localDir },
       { sessionId: 'foreign', summary: '其他项目', lastModified: 200, cwd: path.join(ws.localDir, 'other') },
     ]);
-    expect((await app.inject('/api/workspaces/w1/sessions')).json()).toEqual([
+    expect((await app.inject('/api/workspaces/w1/sessions?agent=claude')).json()).toEqual([
       { agent: 'claude', sessionId: 's1', summary: '本项目', lastModified: 100 },
     ]);
     vi.mocked(api.messages).mockResolvedValueOnce([
@@ -166,7 +190,9 @@ describe('会话接口', () => {
       { type: 'assistant', message: { model: 'latest-model', content: [] } },
       { type: 'system', subtype: 'status' },
     ]);
-    expect((await app.inject('/api/workspaces/w1/sessions/s1/events')).json().actualModel).toBe('latest-model');
+    expect((await app.inject('/api/workspaces/w1/sessions/s1/events?agent=claude')).json().actualModel).toBe(
+      'latest-model',
+    );
     await sessions.assertBelongs(ws, 'claude', 's1');
     await expect(sessions.assertBelongs(ws, 'claude', 'wrong-id')).rejects.toMatchObject({ status: 404 });
   });
@@ -204,7 +230,7 @@ describe('会话接口', () => {
       lastModified: 100,
       cwd: path.join(ws.localDir, 'other'),
     });
-    expect((await app.inject('/api/workspaces/w1/sessions/s1/events')).statusCode).toBe(404);
+    expect((await app.inject('/api/workspaces/w1/sessions/s1/events?agent=claude')).statusCode).toBe(404);
     vi.mocked(codex.list).mockRejectedValueOnce(new Error('secret-sentinel'));
     const failed = await app.inject('/api/workspaces/w1/sessions?agent=codex');
     expect(failed.statusCode).toBe(503);

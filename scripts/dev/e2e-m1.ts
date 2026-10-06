@@ -6,7 +6,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
 import { WebSocket } from 'ws';
-import type { AgentEvent, ServerMessage, Workspace } from '../../packages/shared/src/index';
+import type {
+  AgentEvent,
+  ClientMessage,
+  ServerMessage,
+  WorkspaceInput,
+  WorkspaceSetupResult,
+  WorkspaceSetupVerification,
+} from '../../packages/shared/src/index';
 import { createSshPool } from '../../apps/server/src/ssh/pool';
 import { buildRemoteCommand } from '../../apps/server/src/ssh/remote-command';
 
@@ -88,6 +95,18 @@ async function jsonRequest<T>(url: string, cookie: string, body?: unknown): Prom
   return (await response.json()) as T;
 }
 
+async function createWorkspace(origin: string, cookie: string, input: WorkspaceInput) {
+  const verified = await jsonRequest<WorkspaceSetupVerification>(`${origin}/api/workspace-setup/verify`, cookie, input);
+  if (!verified.local.empty || !verified.remote.empty) throw new Error('验收仅接受两端专用空目录，不初始化已有项目');
+  const result = await jsonRequest<WorkspaceSetupResult>(`${origin}/api/workspaces`, cookie, {
+    input,
+    verification: verified.verification,
+    initializationConfirmed: true,
+  });
+  if (result.sync.phase !== 'ready') throw new Error('验收工作区首次同步未成功');
+  return result.workspace;
+}
+
 type TurnResult = { events: AgentEvent[]; firstEventMs: number; totalMs: number };
 
 function collectTurn(socket: WebSocket, workspaceId: string): Promise<TurnResult> {
@@ -129,10 +148,11 @@ function collectTurn(socket: WebSocket, workspaceId: string): Promise<TurnResult
     socket.send(
       JSON.stringify({
         type: 'chat.send',
+        agent: 'claude',
         workspaceId,
         clientTurnId: randomUUID(),
         text: '这是只读验收。请只使用 remote_exec 工具执行 hostname，并原样告诉我输出。不修改文件，不执行其他命令，不访问工作区之外的目录。',
-      }),
+      } satisfies ClientMessage),
     );
   });
 }
@@ -157,8 +177,8 @@ let stage = '参数与环境';
 
 async function run(): Promise<void> {
   if (process.argv.includes('--help')) {
-    console.log('用法：npm run e2e:m1 -- --host my-server --remote-dir ~/projects/demo [--local-dir <已有本地目录>]');
-    console.log('仅执行 hostname；临时工作区配置会清理，官方运行时保留本机验收会话。');
+    console.log('用法：npm run e2e:m1 -- --host my-server --remote-dir ~/projects/demo [--local-dir <专用空目录>]');
+    console.log('两端必须是专用空目录，正式向导验证并初始化后仅执行 hostname；官方运行时保留本机验收会话。');
     return;
   }
   const host = requireArg('--host');
@@ -174,13 +194,13 @@ async function run(): Promise<void> {
     stage = '后端启动与登录';
     const { origin, cookie } = await login(await waitForServer(child));
     stage = '直接 SSH';
-    const direct = await pool.exec(host, buildRemoteCommand(remoteDir, 'hostname', 30), {
+    const direct = await pool.exec({ alias: host, authMode: 'key' }, buildRemoteCommand(remoteDir, 'hostname', 30), {
       localTimeoutMs: 60_000,
       outputCap: 10_000,
     });
     const hostname = direct.stdout.trim();
     if (direct.exitCode !== 0 || !hostname) throw new Error('直接 SSH 只读检查失败');
-    const workspace = await jsonRequest<Workspace>(`${origin}/api/workspaces`, cookie, {
+    const workspace = await createWorkspace(origin, cookie, {
       name: '链路验收',
       localDir,
       sshHost: host,
@@ -195,7 +215,7 @@ async function run(): Promise<void> {
     const session = assertResult(result, hostname);
     stage = '原生会话历史';
     const sessions = await jsonRequest<Array<{ sessionId: string }>>(
-      `${origin}/api/workspaces/${workspace.id}/sessions`,
+      `${origin}/api/workspaces/${workspace.id}/sessions?agent=claude`,
       cookie,
     );
     if (!sessions.some((s) => s.sessionId === session.sessionId)) throw new Error('原生历史列表中未找到验收会话');

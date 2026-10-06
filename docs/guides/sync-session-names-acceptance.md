@@ -1,5 +1,7 @@
 # 同步清单短名称验收
 
+> 历史验收：保留2026-10-05的真实结果和取舍。combine短逻辑根仍使用；旧基线与任务兼容升级自2026-10-07起由[D36](../engineering/decisions.md)替代，当前明确拒绝旧布局，不按本文迁移。
+
 日期：2026-10-05。版本固定为 rclone 1.75.1；无新依赖、挂载或服务器安装。设计和兼容策略见 [D31](../engineering/decisions.md) 与[设计](../superpowers/specs/2026-10-05-sync-session-names-design.md)。
 
 ## 真实证据

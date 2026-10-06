@@ -27,6 +27,7 @@ async function setup(local: Record<string, string> = {}, initial: Record<string,
   const ws: Workspace = { id: 'w1', name: 'demo', localDir, sshHost: 'my-server', remoteDir: '~/projects/demo' };
   const context: RcloneContext = {
     signature: 'fixture-target',
+    baselineLayout: 'combine-v1',
     close: vi.fn(),
     listRemote: async () =>
       [...remote].map(([file, value]) => ({
@@ -63,6 +64,15 @@ async function setup(local: Record<string, string> = {}, initial: Record<string,
 }
 
 describe('工作区同步状态与执行事务', () => {
+  it('非ENOENT同步状态读取失败明确阻断初始化，保留原目录', async () => {
+    const { manager, ws, configDir, driver } = await setup();
+    const file = path.join(workspaceStateDir(configDir, ws.id), 'state.json');
+    await mkdir(file, { recursive: true });
+    await expect(manager.initialize(ws, true)).rejects.toMatchObject({ code: 'state_storage_error' });
+    await expect(manager.status(ws)).rejects.toMatchObject({ code: 'state_storage_error' });
+    expect(await readdir(file)).toEqual([]);
+    expect(driver.open).not.toHaveBeenCalled();
+  });
   it('待删除状态缺少目标签名时仍暂停，不读取或删除未绑定目标', async () => {
     const { manager, ws, configDir, localDir, context, driver } = await setup({}, { 'keep.py': 'remote' });
     await manager.sync(ws);
@@ -73,33 +83,61 @@ describe('工作区同步状态与执行事务', () => {
     await saveSyncState(configDir, ws.id, state);
     const listing = vi.spyOn(context, 'listRemote');
     const resumed = createSyncManager({ configDir, driver });
-    expect((await resumed.resolveDeletions(ws, 'confirm')).phase).toBe('confirmation_required');
+    await expect(resumed.resolveDeletions(ws, 'confirm')).rejects.toMatchObject({ code: 'state_unsupported' });
     expect(listing).not.toHaveBeenCalled();
     expect(context.deleteRemote).not.toHaveBeenCalled();
   });
-  it('旧布局在远端读取与执行前暂停；升级失败保留旧基线，确认成功才保存新布局', async () => {
-    const { manager, ws, configDir, context } = await setup({}, { 'keep.py': 'remote' });
+  it.each([undefined, 'old-layout'])('旧基线布局%s阻断所有恢复入口并保留原文', async (baselineLayout) => {
+    const { manager, ws, configDir, driver, context } = await setup({}, { 'keep.py': 'remote' });
     await manager.sync(ws);
-    const previous = await loadSyncState(configDir, ws.id);
-    context.baselineLayout = 'combine-v1';
-    const listing = vi.spyOn(context, 'listRemote');
-    expect((await manager.sync(ws)).reason).toBe('recovery');
-    const command = vi.fn(async () => ({}));
-    await expect(manager.execute(ws, command)).rejects.toMatchObject({ code: 'sync_blocked' });
-    expect(command).not.toHaveBeenCalled();
-    expect(listing).not.toHaveBeenCalled();
-    vi.mocked(context.bisync).mockRejectedValueOnce(new Error('fixture interrupted'));
-    expect((await manager.initialize(ws, true)).phase).toBe('error');
-    const failed = await loadSyncState(configDir, ws.id);
-    expect(failed.baselineLayout).toBeUndefined();
-    expect(failed.baseline).toEqual(previous.baseline);
-    expect((await manager.initialize(ws, true)).phase).toBe('ready');
-    expect(await loadSyncState(configDir, ws.id)).toMatchObject({
-      signature: previous.signature,
-      baselineLayout: 'combine-v1',
-    });
+    const state = await loadSyncState(configDir, ws.id);
+    state.baselineLayout = baselineLayout;
+    state.remoteTask = randomUUID();
+    state.reason = 'deletions';
+    state.deletions = ['keep.py'];
+    await saveSyncState(configDir, ws.id, state);
+    const file = path.join(workspaceStateDir(configDir, ws.id), 'state.json');
+    const original = await readFile(file);
+    const resumed = createSyncManager({ configDir, driver });
+    vi.mocked(driver.open).mockClear();
+    vi.mocked(context.bisync).mockClear();
+    for (const operation of [
+      () => resumed.status(ws),
+      () => resumed.sync(ws),
+      () => resumed.initialize(ws, true),
+      () => resumed.resolveDeletions(ws, 'confirm'),
+      () => resumed.resolveDeletions(ws, 'reject'),
+      () => resumed.acknowledgeConflicts(ws),
+      () => resumed.remoteFiles.finish(ws, state.remoteTask!),
+      () => resumed.remoteFiles.abortBeforeDispatch(ws, state.remoteTask!),
+      () => resumed.hasRemoteTask(ws.id),
+      () => resumed.execute(ws, async () => ({})),
+    ]) {
+      await expect(operation()).rejects.toMatchObject({ code: 'state_unsupported' });
+      expect(await readFile(file)).toEqual(original);
+    }
+    expect(driver.open).not.toHaveBeenCalled();
+    expect(context.bisync).not.toHaveBeenCalled();
   });
-  it('旧持久文件任务允许布局升级，目标真的改变仍在拉取前拒绝', async () => {
+  it.each([undefined, 'old-layout', 'combine-v1'])(
+    '非空基线缺失签名且布局%s时不能确认初始化',
+    async (baselineLayout) => {
+      const { manager, ws, configDir, driver } = await setup({}, { 'keep.py': 'remote' });
+      await manager.sync(ws);
+      const state = await loadSyncState(configDir, ws.id);
+      delete state.signature;
+      state.baselineLayout = baselineLayout;
+      await saveSyncState(configDir, ws.id, state);
+      const file = path.join(workspaceStateDir(configDir, ws.id), 'state.json');
+      const original = await readFile(file);
+      vi.mocked(driver.open).mockClear();
+      const resumed = createSyncManager({ configDir, driver });
+      await expect(resumed.initialize(ws, true)).rejects.toMatchObject({ code: 'state_unsupported' });
+      expect(await readFile(file)).toEqual(original);
+      expect(driver.open).not.toHaveBeenCalled();
+    },
+  );
+  it('当前持久文件任务正常恢复，目标真的改变仍在拉取前拒绝', async () => {
     const { manager, ws, configDir, context, driver, remote, localDir } = await setup({}, { 'old.py': 'remote' });
     await manager.sync(ws);
     const previous = await loadSyncState(configDir, ws.id);
@@ -112,7 +150,6 @@ describe('工作区同步状态与执行事务', () => {
       for (const file of await readdir(directory)) await rm(path.join(directory, file));
       for (const [file, content] of remote) await writeFile(path.join(directory, file), content);
     });
-    context.baselineLayout = 'combine-v1';
     context.signature = 'fixture-changed-target';
     const resumed = createSyncManager({ configDir, driver });
     await expect(resumed.remoteFiles.finish(ws, id)).rejects.toMatchObject({ code: 'target_changed' });
@@ -127,39 +164,6 @@ describe('工作区同步状态与执行事务', () => {
     expect((await loadSyncState(configDir, ws.id)).remoteTask).toBeUndefined();
     expect(await readdir(localDir)).toEqual(['new.py']);
     expect((await resumed.sync(ws)).phase).toBe('ready');
-  });
-  it.each(['confirm', 'reject'] as const)('旧布局的待删除%s先暂停升级，不接受删除决策或清空记录', async (decision) => {
-    const { manager, ws, localDir, configDir, context } = await setup({}, { 'keep.py': 'remote' });
-    await manager.sync(ws);
-    await rm(path.join(localDir, 'keep.py'));
-    expect((await manager.sync(ws)).reason).toBe('deletions');
-    const previous = await loadSyncState(configDir, ws.id);
-    context.baselineLayout = 'combine-v1';
-    const listing = vi.spyOn(context, 'listRemote');
-    vi.mocked(context.bisync).mockClear();
-    expect(await manager.resolveDeletions(ws, decision)).toMatchObject({
-      phase: 'confirmation_required',
-      reason: 'recovery',
-      deletions: ['keep.py'],
-    });
-    expect(listing).not.toHaveBeenCalled();
-    expect(context.restore).not.toHaveBeenCalled();
-    expect(context.deleteRemote).not.toHaveBeenCalled();
-    expect(context.bisync).not.toHaveBeenCalled();
-    expect(await loadSyncState(configDir, ws.id)).toMatchObject({
-      signature: previous.signature,
-      baseline: previous.baseline,
-      deletionHashes: previous.deletionHashes,
-      deletions: previous.deletions,
-    });
-    // 升级恢复不代表接受先前删除；明确恢复后重新产生正常删除确认。
-    expect((await manager.initialize(ws, true)).phase).toBe('ready');
-    expect(await readFile(path.join(localDir, 'keep.py'), 'utf8')).toBe('remote');
-    expect((await loadSyncState(configDir, ws.id)).baselineLayout).toBe('combine-v1');
-    await rm(path.join(localDir, 'keep.py'));
-    expect((await manager.sync(ws)).reason).toBe('deletions');
-    expect((await manager.resolveDeletions(ws, 'confirm')).phase).toBe('ready');
-    expect(context.deleteRemote).toHaveBeenCalledWith('keep.py');
   });
   it('空本地首拉建立基线，配置状态留在项目外', async () => {
     const { manager, ws, localDir, configDir } = await setup({}, { 'result.txt': 'remote result' });
@@ -275,14 +279,33 @@ describe('工作区同步状态与执行事务', () => {
     expect(await manager.sync(changed)).toMatchObject({ phase: 'confirmation_required', reason: 'filter_changed' });
     expect(context.bisync).toHaveBeenCalledTimes(before);
   });
-  it('损坏状态不静默 resync，须显式恢复', async () => {
+  it.each(['{private-secret', '{}'])('损坏状态拒绝确认恢复，不覆盖原文件：%s', async (text) => {
     const { manager, ws, configDir, driver, context } = await setup();
     await manager.sync(ws);
-    await writeFile(path.join(workspaceStateDir(configDir, ws.id), 'state.json'), '{bad');
+    const file = path.join(workspaceStateDir(configDir, ws.id), 'state.json');
+    await writeFile(file, text, 'utf8');
     const recovered = createSyncManager({ configDir, driver });
     vi.mocked(context.bisync).mockClear();
-    expect(await recovered.sync(ws)).toMatchObject({ phase: 'confirmation_required', reason: 'recovery' });
+    for (const operation of [
+      () => recovered.sync(ws),
+      () => recovered.status(ws),
+      () => recovered.initialize(ws, true),
+    ]) {
+      await expect(operation()).rejects.toMatchObject({ code: 'state_storage_error' });
+      await expect(operation()).rejects.not.toThrow('private-secret');
+      expect(await readFile(file, 'utf8')).toBe(text);
+    }
     expect(context.bisync).not.toHaveBeenCalled();
+  });
+  it('当前格式同步中断仍可明确恢复', async () => {
+    const { manager, ws, configDir, driver } = await setup({}, { 'keep.py': 'remote' });
+    await manager.sync(ws);
+    const state = await loadSyncState(configDir, ws.id);
+    state.phase = 'syncing';
+    await saveSyncState(configDir, ws.id, state);
+    const resumed = createSyncManager({ configDir, driver });
+    expect(await resumed.status(ws)).toMatchObject({ phase: 'confirmation_required', reason: 'recovery' });
+    expect((await resumed.initialize(ws, true)).phase).toBe('ready');
   });
   it('前同步未就绪不执行；后同步失败仍保留命令输出和退出码', async () => {
     const { manager, ws, context } = await setup({ 'a.py': 'source' });

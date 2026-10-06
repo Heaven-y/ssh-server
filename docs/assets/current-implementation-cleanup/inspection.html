@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>当前实现整理：下载界面检查</title>
+    <style>
+      body {
+        margin: 24px;
+        background: #f4f5f7;
+        color: #18202d;
+        font:
+          16px/1.7 system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 1100px;
+        margin: auto;
+      }
+      h1 {
+        font-size: 24px;
+      }
+      figure {
+        margin: 24px 0;
+        background: white;
+        padding: 16px;
+        border: 1px solid #d9dde3;
+        border-radius: 8px;
+      }
+      img {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      figcaption {
+        font-weight: 600;
+      }
+      p {
+        max-width: 900px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>下载界面检查 · 2026-10-07</h1>
+      <p>
+        实际 Edge 154.0.4258.53，加载当前组件与实际样式。无保存 API
+        的三种宽度均无横向溢出、无备用入口或正文请求；受控保存句柄只有关闭成功后显示完成，选择器取消不请求正文，页面无脚本错误。
+      </p>
+      <p>范围：网页 DOM、布局和受控保存行为。不是 OS 系统选择器实测，也不代表真实 SSH 下载验收。</p>
+      <figure>
+        <figcaption>1440 × 900：无保存能力，明确不可用</figcaption>
+        <img src="unsupported-1440.png" alt="1440宽度下的下载不可用提示" />
+      </figure>
+      <figure>
+        <figcaption>960 × 900：无保存能力，明确不可用</figcaption>
+        <img src="unsupported-960.png" alt="960宽度下的下载不可用提示" />
+      </figure>
+      <figure>
+        <figcaption>720 × 900：提示与关闭按钮完整可见</figcaption>
+        <img src="unsupported-720.png" alt="720宽度下的下载不可用提示" />
+      </figure>
+      <figure>
+        <figcaption>960 × 900：受控流写入并成功关闭后显示完成</figcaption>
+        <img src="completed-960.png" alt="下载成功关闭后的页面提示" />
+      </figure>
+    </main>
+  </body>
+</html>

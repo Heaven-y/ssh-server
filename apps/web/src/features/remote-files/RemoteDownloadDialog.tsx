@@ -6,7 +6,6 @@ import { RemoteDialog } from './RemoteDialog';
 
 type WritableFile = { write(data: Uint8Array): Promise<void>; close(): Promise<void>; abort(): Promise<void> };
 type SavePicker = (options: { suggestedName: string }) => Promise<{ createWritable(): Promise<WritableFile> }>;
-const savePicker = (window as Window & { showSaveFilePicker?: SavePicker }).showSaveFilePicker;
 
 async function transfer(url: string, signal: AbortSignal, writable: WritableFile, received: (bytes: number) => void) {
   const response = await fetch(url, { signal, cache: 'no-store' });
@@ -39,6 +38,7 @@ export function RemoteDownloadDialog({
   entry: RemoteFileEntry;
   close(): void;
 }) {
+  const savePicker = (window as Window & { showSaveFilePicker?: SavePicker }).showSaveFilePicker;
   const controller = useRef<AbortController | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [received, setReceived] = useState(0);
@@ -63,6 +63,7 @@ export function RemoteDownloadDialog({
       await transfer(url, active.signal, writable, setReceived);
       await writable.close();
       writable = undefined;
+      active.signal.throwIfAborted();
       setMessage('下载流已写入并关闭。保存位置由你选择，未加入工作区同步或版本记录。');
     } catch (reason) {
       active.abort();
@@ -104,19 +105,9 @@ export function RemoteDownloadDialog({
             )}
           </div>
         ) : (
-          <div className="space-y-2">
-            <p className="leading-5 text-muted-foreground">
-              当前浏览器使用下载管理器；保存位置由浏览器设置决定，可在那里取消和查看完成状态。
-            </p>
-            <a
-              className={buttonClass('primary')}
-              href={url}
-              download={entry.name}
-              onClick={() => setMessage('已将下载请求交给浏览器。请在下载管理器查看结果。')}
-            >
-              开始浏览器下载
-            </a>
-          </div>
+          <p role="alert" className="leading-5 text-destructive">
+            当前浏览器不支持文件保存 API，无法下载。请使用支持该能力的当前版 Edge 或 Chrome。
+          </p>
         )}
       </div>
     </RemoteDialog>

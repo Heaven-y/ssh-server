@@ -24,7 +24,9 @@ function discovery(readCommands: () => Promise<SlashCommand[]>) {
           supportedEffortLevels: ['low', 'high'],
         },
       ],
-      getContextUsage: async () => ({ totalTokens: 0 }),
+      getContextUsage: async () => {
+        throw new Error('能力发现不应读取上下文');
+      },
     });
   };
   return { discover: createClaudeCapabilityDiscovery(queryFn), calls, close };
@@ -93,5 +95,22 @@ describe('Claude 原生能力发现', () => {
     await expect(pending).rejects.toThrow('取消');
     expect(fake.close).toHaveBeenCalledOnce();
     expect((await fake.calls[0]!.prompt[Symbol.asyncIterator]().next()).done).toBe(true);
+  });
+  it('命令调用失败保留模型分支，关闭Query且不透出底层异常', async () => {
+    const fake = discovery(async () => {
+      throw new Error('private-native-details');
+    });
+    const catalog = await fake.discover(directory);
+    expect(catalog.entries).toEqual([]);
+    expect(catalog.models[0]?.id).toBe('native-suggestion');
+    expect(catalog.warnings).toEqual(['Claude 技能与命令读取失败，请刷新重试']);
+    expect(fake.close).toHaveBeenCalledOnce();
+  });
+
+  it('尚未创建Query的初始化失败不会被close掩盖', async () => {
+    const discover = createClaudeCapabilityDiscovery(() => {
+      throw new Error('初始化失败');
+    });
+    await expect(discover(directory)).rejects.toThrow('初始化失败');
   });
 });

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createConnectionResolver } from '../../src/ssh/connection';
+import { createConnectionResolver, workspaceTarget } from '../../src/ssh/connection';
 
 const HOME = path.resolve('test-home');
 const SSH = path.join(HOME, '.ssh');
@@ -25,9 +25,16 @@ function fixture() {
 }
 
 describe('SSH 共用连接解析器', () => {
-  it('旧 Host 输入解析私钥和同一 known_hosts 路径', async () => {
+  it('工作区目标始终是对象，只在此解释未指定的私钥默认值', () => {
+    expect(workspaceTarget({ sshHost: 'my-server' })).toEqual({ alias: 'my-server', authMode: 'key' });
+    expect(workspaceTarget({ sshHost: 'my-server', authMode: 'password' })).toEqual({
+      alias: 'my-server',
+      authMode: 'password',
+    });
+  });
+  it('显式私钥目标解析私钥和同一 known_hosts 路径', async () => {
     const { resolver } = fixture();
-    const value = await resolver.resolve('my-server');
+    const value = await resolver.resolve({ alias: 'my-server', authMode: 'key' });
     expect(value).toMatchObject({
       alias: 'my-server',
       hostname: 'example.invalid',
@@ -94,14 +101,16 @@ describe('SSH 共用连接解析器', () => {
   it('不支持的跳板选项明确拒绝，而非静默直连', async () => {
     const { resolver, files } = fixture();
     files.set(path.join(SSH, 'config'), Buffer.from('Host my-server\n HostName example.invalid\n ProxyJump jump\n'));
-    await expect(resolver.resolve('my-server')).rejects.toMatchObject({ code: 'unsupported_config' });
+    await expect(resolver.resolve({ alias: 'my-server', authMode: 'key' })).rejects.toMatchObject({
+      code: 'unsupported_config',
+    });
   });
 
   it('私钥和 known_hosts 修改后缓存身份变化', async () => {
     const { resolver, files } = fixture();
-    const before = await resolver.resolve('my-server');
+    const before = await resolver.resolve({ alias: 'my-server', authMode: 'key' });
     files.set(path.join(SSH, 'id_ed25519'), Buffer.from('changed-key'));
-    expect((await resolver.resolve('my-server')).cacheKey).not.toBe(before.cacheKey);
+    expect((await resolver.resolve({ alias: 'my-server', authMode: 'key' })).cacheKey).not.toBe(before.cacheKey);
   });
   it.each(['disconnect', 'shutdown'] as const)('配置读取中 %s 后迟到的密码不会复活', async (action) => {
     const { files } = fixture();

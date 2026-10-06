@@ -76,8 +76,7 @@ function setup(
     getWorkspace: async (id) => (id === 'w1' ? ws : undefined),
     registry,
     internalUrl: () => 'http://127.0.0.1:1',
-    runTurn: fake.runTurn,
-    runners: { codex: codex.runTurn },
+    runners: { claude: fake.runTurn, codex: codex.runTurn },
     sessions,
     capabilities,
     sync,
@@ -89,6 +88,7 @@ function setup(
 
 const send = (extra: Record<string, unknown> = {}) => ({
   type: 'chat.send' as const,
+  agent: 'claude' as const,
   workspaceId: 'w1',
   text: 'hi',
   clientTurnId: 'c1',

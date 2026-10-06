@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { RemoteFileTask, RemoteFileTaskPhase, WorkspaceRemovalBlocker } from '@ssh-server/shared';
 import { workspaceTarget } from '../ssh/connection';
@@ -7,10 +7,11 @@ import { remoteFilesError, RemoteFilesError } from './errors';
 import type { RemoteExecutor } from './executor';
 import { createPathLocks } from './path-locks';
 import type { FilePreflights, PreparedAction } from './preflight';
-import { confirmedResult, ResultCheckSchema, TaskRecordSchema } from './task-record';
+import { confirmedResult, ResultCheckSchema } from './task-record';
+import { loadTaskRecords } from './task-storage';
 import type { FileSyncCoordinator } from './sync-coordinator';
 
-type Record = { task: RemoteFileTask; action: PreparedAction; verified?: string; dispatched?: boolean };
+type Record = { task: RemoteFileTask; action: PreparedAction; verified?: string; dispatched: boolean };
 type Deps = {
   configDir: string;
   preflights: FilePreflights;
@@ -79,17 +80,7 @@ export function createFileTasks(deps: Deps) {
     await run;
   }
   const ready = (async () => {
-    for (const name of await readdir(dir).catch(() => [])) {
-      if (!/^[a-f0-9-]{36}\.json$/.test(name)) continue;
-      let record: Record;
-      try {
-        record = TaskRecordSchema.parse(JSON.parse(await readFile(path.join(dir, name), 'utf8')));
-      } catch {
-        // 保留原始损坏记录供恢复，其余任务仍可查询；绝不重放未知写操作。
-        deps.onCorrupt?.(name);
-        continue;
-      }
-      if (record.task.id + '.json' !== name) continue;
+    for (const record of await loadTaskRecords(dir, deps.onCorrupt)) {
       if (runningPhases.has(record.task.phase)) {
         record.task.phase = record.dispatched === false ? 'cancelled' : 'needs_check';
         record.task.message =
@@ -101,7 +92,11 @@ export function createFileTasks(deps: Deps) {
       }
       records.set(record.task.id, record);
     }
-  })();
+  })().catch(() => {
+    throw new RemoteFilesError('task_storage_error');
+  });
+  // 启动即挂接拒绝处理；各入口仍await原Promise，明确阻断而不是返回空任务。
+  void ready.catch(() => undefined);
   const get = (workspaceId: string, id: string) => {
     const record = records.get(id);
     if (!record || record.task.workspaceId !== workspaceId) throw new RemoteFilesError('task_missing');
@@ -391,6 +386,7 @@ export function createFileTasks(deps: Deps) {
     async dispose() {
       disposed = true;
       for (const controller of controllers.values()) controller.abort(new RemoteFilesError('cancelled'));
+      await ready.catch(() => undefined);
       await Promise.allSettled(executions.values());
       await writes;
     },

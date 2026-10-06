@@ -99,7 +99,7 @@ describe('访问控制', () => {
     expect(r.json()).toEqual([]);
   });
 
-  it('修改类请求：Origin 不对或缺失时 403，正确时成功', async () => {
+  it('修改类请求：Origin 不对或缺失时403，正确时进入业务服务可用性校验', async () => {
     const app = await make();
     const post = (origin?: string) =>
       app.inject({
@@ -111,7 +111,7 @@ describe('访问控制', () => {
     expect((await post('http://evil.com')).statusCode).toBe(403);
     expect((await post()).statusCode).toBe(403);
     expect((await post('http://127.0.0.1:9999')).statusCode).toBe(403);
-    expect((await post(ORIGIN)).statusCode).toBe(201);
+    expect((await post(ORIGIN)).statusCode).toBe(503);
   });
 
   it('/internal 不认 Cookie', async () => {

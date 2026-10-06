@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { z } from 'zod';
 import { WorkspaceInputSchema, type Workspace, type WorkspaceInput } from '@ssh-server/shared';
 
 export class WorkspaceValidationError extends Error {
@@ -11,6 +12,13 @@ export class WorkspaceValidationError extends Error {
     message: string,
   ) {
     super(message);
+  }
+}
+
+export class WorkspaceStorageError extends Error {
+  override name = 'WorkspaceStorageError';
+  constructor() {
+    super('工作区配置损坏或不可读，已停止读写并保留原文件；请检查配置目录权限或恢复有效配置');
   }
 }
 
@@ -34,6 +42,12 @@ export type WorkspaceStoreDeps = {
 };
 
 const FILE_NAME = 'workspaces.json';
+const StoredWorkspacesSchema = WorkspaceInputSchema.extend({
+  id: z.string().min(1),
+  localDir: z.string().refine((directory) => path.isAbsolute(directory)),
+})
+  .array()
+  .refine((items) => new Set(items.map((item) => item.id)).size === items.length);
 
 export function createWorkspaceStore(deps: WorkspaceStoreDeps): WorkspaceStore {
   const file = path.join(deps.configDir, FILE_NAME);
@@ -49,20 +63,14 @@ export function createWorkspaceStore(deps: WorkspaceStoreDeps): WorkspaceStore {
     let text: string;
     try {
       text = await readFile(file, 'utf8');
-    } catch {
-      return []; // 文件不存在
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw new WorkspaceStorageError();
     }
     try {
-      const data: unknown = JSON.parse(text);
-      if (!Array.isArray(data)) throw new Error('不是数组');
-      return data.filter(
-        (w): w is Workspace => typeof w === 'object' && w !== null && typeof (w as { id?: unknown }).id === 'string',
-      );
+      return StoredWorkspacesSchema.parse(JSON.parse(text));
     } catch {
-      // 文件损坏：备份后从空列表开始
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      await rename(file, `${file}.bak-${stamp}`).catch(() => undefined);
-      return [];
+      throw new WorkspaceStorageError();
     }
   }
 
