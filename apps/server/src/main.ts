@@ -9,6 +9,7 @@ import { createSessionsService } from './chat/sessions';
 import { createCapabilitiesService } from './chat/capabilities';
 import { createTurnChanges } from './chat/turn-changes';
 import { registerTurnChangesRoutes } from './http/turn-changes.routes';
+import { runClaudeTurn } from './agents/claude-adapter';
 import { discoverClaudeCapabilities } from './agents/claude-capabilities';
 import { createClaudeSessions } from './agents/claude-sessions';
 import {
@@ -190,7 +191,7 @@ async function main(): Promise<void> {
     registry,
     sessions,
     capabilities,
-    runners: { codex: runCodexTurn },
+    runners: { claude: runClaudeTurn, codex: runCodexTurn },
     internalUrl: () => `http://${hostForUrl(config.host)}:${port}`,
     sync,
     acquireWorkspace,

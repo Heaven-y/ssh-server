@@ -1,5 +1,7 @@
 # 完整真实链路验收
 
+> 历史证据范围：本文保存当时真实结果及未观察项。2026-10-07起以[D36](../engineering/decisions.md)和当前需求为准：旧迁移及Firefox下载分支不再维护，VS Code/CLI与OS控件未观察项不自动构成新任务。
+
 日期：2026-10-05。基线：`b751f1f`。本轮使用生产后端、实际 SSH、rclone 1.75.1、Codex app-server 0.160.0、Claude 官方 SDK，以及 Edge / Firefox。真实目标、原生配置副本和原始诊断仅保存在本机 ignored 目录。各次运行都先建立独立 Git 和随机远端测试根，结束后清理远端根并核对原生源配置摘要。
 
 ## 文件、版本与两类 Agent
@@ -80,7 +82,7 @@ A23 的 Firefox 下载管理器路径通过。Edge 原生系统保存选择器�
 | 第一层no-ff | `68d356e91b38878a122547d321c0655d57ebc9b1`，文件树与修复提交相同，已推送feat |
 | 第二层no-ff | `740e804b9bc7b4f10c86e768f7d8ea9b1c20ad92`，文件树与修复提交相同，已推送main；[CI 37267005186](https://github.com/Heaven-y/ssh-server/actions/runs/37267005186) Windows/Linux全部成功 |
 | 原分支收尾 | `codex/real-workflow-acceptance` 已被两端feat/main包含，确认无工作树占用后安全删除本地/远端分支；大分支保留 |
-| 最终需求核对 | [总对照](../engineering/remaining-scope-audit.md#4-第一版需求总对照)覆盖F1–F10和A1–A23，原生界面缺口与工具边界保留，Goal未标完成 |
+| 最终需求核对 | [总对照](../engineering/remaining-scope-history.md#4-第一版需求总对照)覆盖F1–F10和A1–A23，原生界面缺口与工具边界保留，Goal未标完成 |
 
 实际整合后以本地 `codex/m6-integration-record` 追加一条文档收尾提交，修正旧进度和重复决策编号，按R18沿用两级no-ff。其源码与上述可靠基准保持一致，本机只检查文档编码、链接和差异；最终main的追加整合与CI以Git记录及任务交付为准，避免文档提交自引用。
 

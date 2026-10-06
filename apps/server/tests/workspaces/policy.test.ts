@@ -85,10 +85,12 @@ it('实际HTTP拒绝非法/陈旧输入与通用PATCH绕过，坏规则保留，
         })
       ).statusCode,
     ).toBe(400);
+    const beforePatch = await readFile(path.join(f.dir, 'workspaces.json'), 'utf8');
     expect(
       (await app.inject({ method: 'PATCH', url: `/api/workspaces/${f.workspace.id}`, payload: { policy: {} } }))
         .statusCode,
-    ).toBe(400);
+    ).toBe(404);
+    expect(await readFile(path.join(f.dir, 'workspaces.json'), 'utf8')).toBe(beforePatch);
     expect((await app.inject({ method: 'GET', url: '/api/workspaces/missing/policy' })).statusCode).toBe(404);
     await expect(f.service.save('missing', { revision: initial.revision, policy: {} })).rejects.toMatchObject({
       status: 404,

@@ -236,18 +236,10 @@ export function createRcloneDriver(deps: Deps): SyncDriver {
   const executable = deps.executable ?? process.env.SSH_SERVER_RCLONE ?? 'rclone';
   let versionCheck: Promise<void> | undefined;
   async function ensureVersion(): Promise<void> {
-    versionCheck ??= run(executable, ['version'], { env: cleanEnvironment(), timeoutMs: 5000, outputCap: 10_000 })
-      .then((result) => {
-        if (result.exitCode !== 0 || !result.stdout.toString().startsWith(`rclone v${RCLONE_VERSION}\n`))
-          throw new SyncError(
-            'version_mismatch',
-            `同步需要本机 rclone ${RCLONE_VERSION}，请通过 SSH_SERVER_RCLONE 指定`,
-          );
-      })
-      .catch((error: unknown) => {
-        versionCheck = undefined;
-        throw error;
-      });
+    versionCheck ??= checkRcloneVersion(run, executable).catch((error: unknown) => {
+      versionCheck = undefined;
+      throw error;
+    });
     await versionCheck;
   }
   async function open(ws: Workspace, settings: SyncSettings): Promise<RcloneContext> {

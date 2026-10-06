@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import Fastify from 'fastify';
@@ -286,7 +286,7 @@ it('排队后配置改变会拒绝执行，不误标远端已经修改', async (
   expect(fixture.executor.run).not.toHaveBeenCalled();
 });
 
-it('重启不重放未完成操作，损坏记录不遮蔽有效任务，目标存在不能冒充复制完成', async () => {
+it('当前记录重启不重放未完成操作，目标存在不能冒充复制完成', async () => {
   let dispatched!: () => void;
   const started = new Promise<void>((resolve) => {
     dispatched = resolve;
@@ -307,16 +307,88 @@ it('重启不重放未完成操作，损坏记录不遮蔽有效任务，目标�
   record.action.public.kind = 'copy';
   record.action.plan.kind = 'copy';
   await writeFile(file, JSON.stringify(record));
-  await writeFile(path.join(fixture.dir, randomUUID() + '.json'), '{invalid');
   const executor = { run: vi.fn(async () => ({ destination: { exists: true } })) };
   const restored = createFileTasks({ ...fixture.deps, executor });
   cleanups.push(() => restored.dispose());
   const listed = await restored.list(ws.id);
   expect(listed).toHaveLength(1);
   expect(listed[0]?.phase).toBe('needs_check');
-  expect(fixture.corrupt).toHaveBeenCalledOnce();
   expect(executor.run).not.toHaveBeenCalled();
   expect((await restored.check(ws.id, task.id)).phase).toBe('needs_check');
+});
+
+it.each(['mkdir', 'delete'] as const)('%s正式空路径记录在重启后仍可读取且不重放', async (kind) => {
+  const action = actionFixture();
+  action.public.kind = kind;
+  action.plan.kind = kind;
+  const missing = kind === 'mkdir' ? 'source' : 'destination';
+  delete action.public[missing];
+  // Python处理器对不存在的操作端输出null，公开任务字段则省略。
+  action.plan[missing] = null;
+  const fixture = await tasksFixture(async () => ({ completed: true }), action);
+  const task = await fixture.tasks.submit(ws.id, action.public.id);
+  await vi.waitFor(async () => expect((await fixture.tasks.status(ws.id, task.id)).phase).toBe('completed'));
+  await fixture.tasks.dispose();
+  const file = path.join(fixture.dir, task.id + '.json');
+  const original = await readFile(file, 'utf8');
+  const executor = { run: vi.fn() };
+  const restored = createFileTasks({ ...fixture.deps, executor });
+  cleanups.push(() => restored.dispose());
+  expect(await restored.status(ws.id, task.id)).toMatchObject({ kind, phase: 'completed' });
+  expect(await restored.blockers(ws.id)).toEqual([]);
+  expect(executor.run).not.toHaveBeenCalled();
+  expect(await readFile(file, 'utf8')).toBe(original);
+});
+
+it.each(['syncRequired', 'dispatched', 'id', 'identity', 'json', 'read'])('%s损坏拒绝', async (kind) => {
+  const fixture = await tasksFixture(async () => ({ completed: true }));
+  const task = await fixture.tasks.submit(ws.id, fixture.action.public.id);
+  await fixture.tasks.dispose();
+  const file = path.join(fixture.dir, task.id + '.json');
+  const record = JSON.parse(await readFile(file, 'utf8'));
+  if (kind === 'syncRequired') delete record.task.syncRequired;
+  if (kind === 'dispatched') delete record.dispatched;
+  if (kind === 'id') record.task.id = randomUUID();
+  if (kind === 'identity') record.action.context.info.workspaceId = 'other';
+  const text = kind === 'json' ? '{private-secret' : JSON.stringify(record);
+  await writeFile(file, text, 'utf8');
+  if (kind === 'read') {
+    await rm(file);
+    await mkdir(file);
+  }
+  const executor = { run: vi.fn() };
+  const restored = createFileTasks({ ...fixture.deps, executor });
+  cleanups.push(() => restored.dispose());
+  // 让启动读取先失败，再调用入口；不能产生未处理的ready拒绝。
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  for (const operation of [
+    () => restored.list(ws.id),
+    () => restored.status(ws.id, task.id),
+    () => restored.cancel(ws.id, task.id),
+    () => restored.check(ws.id, task.id),
+    () => restored.recover(ws.id, task.id),
+    () => restored.submit(ws.id, randomUUID()),
+    () => restored.blockers(ws.id),
+    () => restored.blockers('other'),
+  ]) {
+    await expect(operation()).rejects.toMatchObject({ code: 'task_storage_error' });
+    await expect(operation()).rejects.not.toThrow('private-secret');
+    if (kind !== 'read') expect(await readFile(file, 'utf8')).toBe(text);
+  }
+  expect(executor.run).not.toHaveBeenCalled();
+  await expect(restored.dispose()).resolves.toBeUndefined();
+});
+
+it('任务目录非ENOENT读取失败阻止新任务和工作区移除', async () => {
+  const fixture = await tasksFixture(async () => ({ completed: true }));
+  await fixture.tasks.dispose();
+  await writeFile(fixture.dir, 'private-secret', 'utf8');
+  const restored = createFileTasks(fixture.deps);
+  cleanups.push(() => restored.dispose());
+  await expect(restored.list(ws.id)).rejects.toMatchObject({ code: 'task_storage_error' });
+  await expect(restored.submit(ws.id, randomUUID())).rejects.toMatchObject({ code: 'task_storage_error' });
+  await expect(restored.blockers(ws.id)).rejects.toMatchObject({ code: 'task_storage_error' });
+  expect(await readFile(fixture.dir, 'utf8')).toBe('private-secret');
 });
 
 it('同设备移动退化为复制时使用已保存的正文证明核对，不依赖旧 inode', async () => {

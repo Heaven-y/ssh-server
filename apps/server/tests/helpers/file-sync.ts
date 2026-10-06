@@ -37,6 +37,7 @@ export function fileSyncFixture() {
         );
       const context: RcloneContext = {
         signature: 'fixture-target-' + ws.id,
+        baselineLayout: 'combine-v1',
         close: () => closed.abort(new Error('fixture_closed')),
         listRemote: async (large) =>
           [...inventory(large)].map(([file, content]) => ({

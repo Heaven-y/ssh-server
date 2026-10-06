@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { SyncSettingsSchema, type Workspace } from '../../packages/shared/src/index';
+import { workspaceTarget } from '../../apps/server/src/ssh/connection';
 import { createSshPool } from '../../apps/server/src/ssh/pool';
 import { buildRemoteCommand, sq as quotePosix } from '../../apps/server/src/ssh/remote-command';
 import { localInventory } from '../../apps/server/src/sync/inventory';
@@ -56,7 +57,7 @@ async function fixture() {
   const local = (file: string) => path.join(ws.localDir, prefix, file);
   const remoteFile = (file: string) => `${prefix}/${file}`;
   const remote = async (command: string) => {
-    const result = await pool.exec(ws.sshHost, buildRemoteCommand(ws.remoteDir, command, 60), {
+    const result = await pool.exec(workspaceTarget(ws), buildRemoteCommand(ws.remoteDir, command, 60), {
       localTimeoutMs: 90_000,
       outputCap: 20_000,
     });

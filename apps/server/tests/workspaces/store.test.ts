@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -61,11 +61,43 @@ describe('createWorkspaceStore', () => {
     await expect(make().create({ ...input(), remoteDir: 'projects' })).rejects.toMatchObject({ field: 'remoteDir' });
   });
 
-  it('配置文件损坏时备份并从空列表开始', async () => {
-    await writeFile(path.join(configDir, 'workspaces.json'), '{坏', 'utf8');
-    expect(await make().list()).toEqual([]);
-    const files = await readdir(configDir);
-    expect(files.some((f) => f.startsWith('workspaces.json.bak-'))).toBe(true);
+  it.each(['{private-secret', '{}', '[null]', '[{"id":"secret"}]'])('%s损坏拒绝读写并保留原文', async (text) => {
+    const file = path.join(configDir, 'workspaces.json');
+    await writeFile(file, text, 'utf8');
+    const store = make();
+    for (const operation of [
+      () => store.list(),
+      () => store.get('secret'),
+      () => store.create(input()),
+      () => store.update('secret', { name: 'changed' }),
+      () => store.remove('secret'),
+    ]) {
+      await expect(operation()).rejects.toMatchObject({ name: 'WorkspaceStorageError' });
+      await expect(operation()).rejects.not.toThrow('secret');
+      expect(await readFile(file, 'utf8')).toBe(text);
+    }
+    expect(await readdir(configDir)).toEqual(['workspaces.json']);
+  });
+
+  it('非ENOENT读取失败不能视为空配置', async () => {
+    await mkdir(path.join(configDir, 'workspaces.json'));
+    await expect(make().list()).rejects.toMatchObject({ name: 'WorkspaceStorageError' });
+    await expect(make().create(input())).rejects.toMatchObject({ name: 'WorkspaceStorageError' });
+  });
+
+  it('混合有效与无效条目不能过滤后写回', async () => {
+    const valid = await make().create(input());
+    const file = path.join(configDir, 'workspaces.json');
+    const text = JSON.stringify([valid, { ...valid, id: 'other', authMode: 'invalid' }]);
+    await writeFile(file, text, 'utf8');
+    await expect(make().remove(valid.id)).rejects.toMatchObject({ name: 'WorkspaceStorageError' });
+    expect(await readFile(file, 'utf8')).toBe(text);
+  });
+
+  it('当前可选字段与默认配置合法，不要求SSH或目录仍在线', async () => {
+    const valid = await make().create({ ...input(), authMode: 'password' });
+    expect(await make({ dirExists: false }).list()).toEqual([valid]);
+    expect(await make().update(valid.id, { name: 'renamed' })).toMatchObject({ authMode: 'password' });
   });
 
   it('update 只改指定字段，id 不变', async () => {

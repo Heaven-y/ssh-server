@@ -1,7 +1,6 @@
 // 轮次按 Agent 与原生会话隔离；耗时准备前先建立应用轮次，允许及时中断。
 import { randomUUID } from 'node:crypto';
 import type { AgentEvent, AgentKind, ClientMessage, ServerMessage, SessionRef, Workspace } from '@ssh-server/shared';
-import { runClaudeTurn } from '../agents/claude-adapter';
 import type { AgentTurnInput, PermissionAnswer, TurnHandle, TurnRunner } from '../agents/types';
 import type { SessionRegistry } from './registry';
 import { SessionError, type SessionsService } from './sessions';
@@ -16,8 +15,7 @@ export type TurnManagerDeps = {
   getWorkspace(id: string): Promise<Workspace | undefined>;
   registry: SessionRegistry;
   internalUrl(): string;
-  runTurn?: TurnRunner;
-  runners?: Partial<Record<AgentKind, TurnRunner>>;
+  runners: Partial<Record<AgentKind, TurnRunner>>;
   sessions: Pick<SessionsService, 'assertBelongs'>;
   capabilities?: Pick<CapabilitiesService, 'prepare'>;
   sync: Pick<SyncManager, 'sync'>;
@@ -65,7 +63,7 @@ export class TurnManager {
   private readonly runners: Partial<Record<AgentKind, TurnRunner>>;
 
   constructor(private readonly deps: TurnManagerDeps) {
-    this.runners = { claude: deps.runTurn ?? runClaudeTurn, ...deps.runners };
+    this.runners = deps.runners;
   }
 
   /** 原生管理从范围校验到写入结果全程占锁，避免与准备、运行及同步收尾交错。 */
@@ -207,7 +205,7 @@ export class TurnManager {
       this.send(socket, { type: 'error', clientTurnId: msg.clientTurnId, message: '后端正在关闭，请稍后重试' });
       return;
     }
-    const agent = msg.agent ?? 'claude';
+    const agent = msg.agent;
     const key = msg.sessionId && sessionKey(agent, msg.sessionId);
     if (key && this.sessions.has(key)) {
       this.send(socket, { type: 'error', clientTurnId: msg.clientTurnId, message: '该会话正在运行' });

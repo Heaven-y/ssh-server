@@ -1,4 +1,5 @@
 // REST 接口封装：Cookie 由 /auth 设置，同源请求自动携带
+import { WorkspaceInputSchema } from '@ssh-server/shared';
 import type {
   AgentKind,
   AgentCapabilities,
@@ -304,20 +305,6 @@ export const api = {
       cache: 'no-store',
       body: JSON.stringify(input),
     }),
-  createWorkspace: (input: WorkspaceInput) =>
-    request<Workspace>('/api/workspaces', {
-      method: 'POST',
-      // 显式选择可保存的字段，防止运行时附加的凭据进入工作区配置。
-      body: JSON.stringify({
-        name: input.name,
-        localDir: input.localDir,
-        sshHost: input.sshHost,
-        remoteDir: input.remoteDir,
-        authMode: input.authMode,
-        policy: input.policy,
-        sync: input.sync,
-      }),
-    }),
   listSshHosts: () => request<SshHostInfo[]>('/api/ssh-hosts'),
   setupLocalDirectory: (input: { path?: string; cursor?: string }, signal?: AbortSignal) =>
     request<LocalDirectory>('/api/workspace-setup/local-directory', {
@@ -381,7 +368,12 @@ export const api = {
       method: 'POST',
       signal,
       cache: 'no-store',
-      body: JSON.stringify(input),
+      // 只提交现行工作区字段，运行时附加的认证数据不进入配置请求。
+      body: JSON.stringify({
+        input: WorkspaceInputSchema.parse(input.input),
+        verification: input.verification,
+        initializationConfirmed: input.initializationConfirmed,
+      }),
     }),
   saveSshTarget: (input: ManualServerInput, signal?: AbortSignal) =>
     request<ManagedServer>('/api/ssh-targets', { method: 'POST', signal, body: JSON.stringify(input) }),
@@ -431,7 +423,7 @@ export const api = {
   decideSyncDeletions: (id: string, decision: 'confirm' | 'reject') => postSync(id, '/deletions', { decision }),
   acknowledgeSyncConflicts: (id: string) => postSync(id, '/conflicts/ack'),
   updateSyncSettings: (id: string, settings: SyncSettings) => postSync(id, '/settings', settings),
-  listSessions: (workspaceId: string, agent: AgentKind = 'claude', archived = false, signal?: AbortSignal) =>
+  listSessions: (workspaceId: string, agent: AgentKind, archived = false, signal?: AbortSignal) =>
     request<SessionSummary[]>(
       `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions?agent=${agent}${archived ? '&archived=true' : ''}`,
       {
@@ -448,7 +440,7 @@ export const api = {
         body: JSON.stringify(input),
       },
     ),
-  sessionEvents: (workspaceId: string, sessionId: string, agent: AgentKind = 'claude', signal?: AbortSignal) =>
+  sessionEvents: (workspaceId: string, sessionId: string, agent: AgentKind, signal?: AbortSignal) =>
     request<SessionHistory>(
       `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/events?agent=${agent}`,
       { signal, cache: 'no-store' },
@@ -463,7 +455,7 @@ export const queryKeys = {
   workspaceRemoval: (id: string) => ['workspace-removal', id] as const,
   sshHosts: ['ssh-hosts'] as const,
   sshCredentials: (sshHost: string) => ['ssh-credentials', sshHost] as const,
-  sessions: (workspaceId: string, agent: AgentKind = 'claude', archived = false) =>
+  sessions: (workspaceId: string, agent: AgentKind, archived = false) =>
     archived ? (['sessions', workspaceId, agent, 'archived'] as const) : (['sessions', workspaceId, agent] as const),
   sync: (workspaceId: string) => ['sync', workspaceId] as const,
   versions: (workspaceId: string) => ['versions', workspaceId] as const,

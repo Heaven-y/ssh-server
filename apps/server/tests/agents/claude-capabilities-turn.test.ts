@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, Workspace } from '@ssh-server/shared';
-import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { SDKUserMessage, SDKControlGetContextUsageResponse } from '@anthropic-ai/claude-agent-sdk';
 import { runClaudeTurn, type QueryFn } from '../../src/agents/claude-adapter';
 import { CLAUDE_SUMMARY_TIMEOUT_MS, type ClaudeQuery } from '../../src/agents/claude-query';
 
@@ -26,6 +26,23 @@ function deferred<T>() {
     resolve = yes;
   });
   return { promise, resolve };
+}
+function contextUsage(overrides: Partial<SDKControlGetContextUsageResponse> = {}): SDKControlGetContextUsageResponse {
+  return {
+    totalTokens: 120,
+    rawMaxTokens: 200000,
+    maxTokens: 200000,
+    percentage: 0,
+    model: 'native-model',
+    categories: [],
+    gridRows: [],
+    memoryFiles: [],
+    mcpTools: [],
+    agents: [],
+    isAutoCompactEnabled: true,
+    apiUsage: null,
+    ...overrides,
+  };
 }
 type Controls = Partial<Pick<ClaudeQuery, 'supportedCommands' | 'getContextUsage' | 'interrupt'>>;
 function controlledQuery(source: Iterable<unknown> | AsyncIterable<unknown> = [result], controls: Controls = {}) {
@@ -51,13 +68,14 @@ function controlledQuery(source: Iterable<unknown> | AsyncIterable<unknown> = [r
       })(),
       {
         interrupt: async () => undefined,
+        supportedModels: async () => [],
         supportedCommands: async () => {
           timeline.push('commands');
           return [skill, compact];
         },
         getContextUsage: async () => {
           timeline.push('summary');
-          return { totalTokens: 120, rawMaxTokens: 200000, percentage: 0, model: 'native-model' };
+          return contextUsage();
         },
         close() {
           closed = true;
@@ -126,7 +144,7 @@ describe('Claude 能力轮次', () => {
   });
 
   it('context 仅查询 summary，不发送任何用户消息', async () => {
-    const read = vi.fn(async () => ({ totalTokens: 99, rawMaxTokens: 1000, percentage: 10 }));
+    const read = vi.fn(async () => contextUsage({ totalTokens: 99, rawMaxTokens: 1000, percentage: 10 }));
     const fake = controlledQuery([], { getContextUsage: read });
     const { handle, events } = run(fake, {
       sessionId: 's1',
@@ -198,7 +216,10 @@ describe('Claude 能力轮次', () => {
   it('运行中的压缩中断通过原生 interrupt 结束，并保留 cancelled 状态', async () => {
     const waiting = deferred<void>();
     const inCompaction = deferred<void>();
-    const interrupt = vi.fn(async () => waiting.resolve());
+    const interrupt = vi.fn(async () => {
+      waiting.resolve();
+      return undefined;
+    });
     const source = (async function* () {
       yield running;
       inCompaction.resolve();
@@ -239,7 +260,13 @@ describe('Claude 能力轮次', () => {
           };
           yield result;
         })(),
-        { interrupt: async () => undefined, supportedCommands: async () => [compact], close() {} },
+        {
+          interrupt: async () => undefined,
+          supportedCommands: async () => [compact],
+          supportedModels: async () => [],
+          getContextUsage: async () => contextUsage(),
+          close() {},
+        },
       );
     const handle = runClaudeTurn({
       workspace,
@@ -258,5 +285,42 @@ describe('Claude 能力轮次', () => {
       { state: { status: 'completed', trigger: 'manual' } },
     ]);
     expect(events.at(-1)).toMatchObject({ type: 'turn_end', isError: false });
+  });
+  it.each([null, {}, { totalTokens: -1 }])('原生summary空值或坏数据不伪造占用：%j', async (value) => {
+    // 模拟原生运行时返回与声明不符的数据，校验边界必须保留。
+    const fake = controlledQuery([result], {
+      getContextUsage: async () => value as SDKControlGetContextUsageResponse,
+    });
+    const { handle, events } = run(fake);
+    await handle.done;
+    expect(events).toContainEqual({ type: 'context', usage: null });
+    expect(events.at(-1)).toMatchObject({ type: 'turn_end', isError: false });
+    expect(fake.closed).toBe(true);
+  });
+
+  it('context控制调用失败仍正常关闭并标记本次查询失败', async () => {
+    const fake = controlledQuery([], {
+      getContextUsage: async () => {
+        throw new Error('原生控制失败');
+      },
+    });
+    const { handle, events } = run(fake, { sessionId: 's1', invocation: { kind: 'command', name: 'context' } });
+    await handle.done;
+    expect(events).toContainEqual({ type: 'context', usage: null });
+    expect(events.at(-1)).toMatchObject({ type: 'turn_end', isError: true });
+    expect(fake.closed).toBe(true);
+  });
+
+  it('Query尚未创建即抛错仍能收尾', async () => {
+    const { handle, events } = run(controlledQuery(), {
+      queryFn: () => {
+        throw new Error('初始化失败');
+      },
+    });
+    await handle.done;
+    expect(events).toEqual([
+      { type: 'error', message: '初始化失败' },
+      { type: 'turn_end', isError: true },
+    ]);
   });
 });

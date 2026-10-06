@@ -26,14 +26,16 @@ describe('独立rclone只读清单', () => {
     temps.push(configDir);
     const signal = new AbortController();
     const calls: string[][] = [];
-    const run: ProcessRunner = (_exe, args) => {
+    const run: ProcessRunner = (_exe, args, options) => {
       calls.push(args);
-      if (args[0] === 'version')
+      if (args[0] === 'version') {
+        expect(options.signal).toBe(signal.signal);
         return Promise.resolve({
           exitCode: 0,
           stdout: Buffer.from(`rclone v${mode === '版本不符' ? '1.74.0' : '1.75.1'}\n`),
           stderr: Buffer.alloc(0),
         });
+      }
       if (mode === '取消') signal.abort();
       const files = Array.from({ length: mode === '超限' ? 20001 : 1 }, (_, i) => ({
         Path: `file-${i}.py`,

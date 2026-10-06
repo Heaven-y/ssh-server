@@ -6,7 +6,7 @@ import { SessionError, type SessionsService } from '../chat/sessions';
 import type { WorkspaceStore } from '../workspaces/store';
 
 const Params = z.object({ id: z.string().min(1), sessionId: NativeSessionIdSchema.optional() });
-const Query = z.object({ agent: AgentKindSchema.default('claude') }).strict();
+const Query = z.object({ agent: AgentKindSchema }).strict();
 const ListQuery = Query.extend({ archived: z.enum(['true', 'false']).optional() });
 type Deps = { store: Pick<WorkspaceStore, 'get'>; sessions: SessionsService };
 

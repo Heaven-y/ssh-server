@@ -101,7 +101,7 @@ export function registerWorkspaceSetupRoutes(app: FastifyInstance, setup: Worksp
   });
   app.addHook('preClose', () => setup.dispose());
 }
-/** 生产旧POST入口也强制一次性验证；只有显式注入纯存储依赖的夹具保留存储接口。 */
+/** 工作区创建的唯一入口：必须提供一次性验证票据并确认首次同步。 */
 export function createVerifiedWorkspace(setup: WorkspaceSetup, request: FastifyRequest, reply: FastifyReply) {
   const parsed = WorkspaceSetupCreateSchema.safeParse(request.body);
   if (!parsed.success)

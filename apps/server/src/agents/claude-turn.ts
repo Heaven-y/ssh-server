@@ -41,7 +41,7 @@ export function runClaudeQuery(input: Input, options: Options, controller: Abort
   let fallback: ReturnType<typeof setTimeout> | undefined;
   const close = () => {
     messages.close();
-    q?.close?.();
+    q?.close();
   };
 
   function emit(event: AgentEvent) {

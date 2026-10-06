@@ -31,8 +31,15 @@ function fakeQuery(messages: unknown[] = [], fail?: Error) {
       if (fail) throw fail;
     }
     return Object.assign(gen(), {
+      close: vi.fn(),
+      supportedCommands: async () => [],
+      supportedModels: async () => [],
+      getContextUsage: async () => {
+        throw new Error('原生上下文暂不可用');
+      },
       interrupt: async () => {
         state.interrupted = true;
+        return undefined;
       },
     });
   };

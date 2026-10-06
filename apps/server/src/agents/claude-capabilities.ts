@@ -39,7 +39,7 @@ function commandEntry(command: SlashCommand, available: boolean, reason?: string
   };
 }
 
-function entriesFrom(commands: SlashCommand[], hasContext: boolean): Entry[] {
+function entriesFrom(commands: SlashCommand[]): Entry[] {
   const entries: Entry[] = [];
   const names = [...new Set(commands.map((command) => command.name))];
   for (const name of names) {
@@ -76,8 +76,7 @@ function entriesFrom(commands: SlashCommand[], hasContext: boolean): Entry[] {
   entries.push(
     commandEntry(
       { name: 'context', description: '读取当前会话的 Claude 原生上下文估计，不调用模型', argumentHint: '' },
-      hasContext,
-      hasContext ? undefined : '当前 Claude SDK 不支持上下文查询',
+      true,
     ),
   );
   return entries;
@@ -94,11 +93,11 @@ function modelsFrom(models: ModelInfo[]): AgentModel[] {
 
 async function readCatalog(q: ClaudeQuery, signal: AbortSignal): Promise<NativeCapabilityCatalog> {
   const [commands, models] = await Promise.allSettled([
-    claudeControl(q.supportedCommands?.() ?? Promise.reject(new Error('不支持技能发现')), signal),
-    claudeControl(q.supportedModels?.() ?? Promise.reject(new Error('不支持模型发现')), signal),
+    claudeControl(q.supportedCommands(), signal),
+    claudeControl(q.supportedModels(), signal),
   ]);
   return {
-    entries: commands.status === 'fulfilled' ? entriesFrom(usableCommands(commands.value), !!q.getContextUsage) : [],
+    entries: commands.status === 'fulfilled' ? entriesFrom(usableCommands(commands.value)) : [],
     models: models.status === 'fulfilled' ? modelsFrom(models.value) : [],
     warnings: [
       ...(commands.status === 'rejected' ? ['Claude 技能与命令读取失败，请刷新重试'] : []),
@@ -132,7 +131,7 @@ export function createClaudeCapabilityDiscovery(queryFn: QueryFn = nativeClaudeQ
     } finally {
       options.signal?.removeEventListener('abort', abort);
       input.close();
-      q?.close?.();
+      q?.close();
     }
   };
 }
@@ -154,7 +153,6 @@ export async function claudeInvocationText(
 ): Promise<string> {
   if (!invocation) return text;
   if (invocation.kind === 'command' && invocation.name === 'context') throw new Error('上下文查询必须使用原生控制接口');
-  if (!q.supportedCommands) throw new Error('当前 Claude SDK 不支持能力校验');
   const commands = usableCommands(await claudeControl(q.supportedCommands(), signal));
   if (invocation.kind === 'command') {
     if (!compactAvailable(commands)) throw new Error('当前工作区的原生压缩不可用，存在缺失或同名命令冲突');

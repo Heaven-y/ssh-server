@@ -1,5 +1,7 @@
 # 原生会话管理验收
 
+> 范围更新：2026-10-07的[D36](../engineering/decisions.md)明确A8只要求网页与官方API/原生记录核对。本文保留当时版本、实际结果及未观察的外部界面事实，不再从旧“待验”描述追加VS Code/CLI任务。
+
 日期：2026-10-03；开发基线：`164175e`。本阶段完成 Claude/Codex 原生重命名、删除，以及 Codex 归档列表、归档和恢复。设计与范围见 [管理设计](../superpowers/specs/2026-10-03-session-management-design.md) 和 [实施计划](../superpowers/plans/2026-10-03-session-management.md)。
 
 ## 真实原生与网页验证

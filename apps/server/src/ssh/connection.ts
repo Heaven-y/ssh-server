@@ -8,7 +8,7 @@ import { createCredentialVault } from './credentials';
 import { knownHostRecordsForTarget } from './known-hosts';
 import { parseSshConfig, resolveHost, type SshHostConfig } from './ssh-config';
 
-export type SshTarget = string | { alias: string; authMode?: SshAuthMode };
+export type SshTarget = { alias: string; authMode: SshAuthMode };
 export type SshErrorCode =
   | 'credentials_required'
   | 'authentication_failed'
@@ -50,11 +50,11 @@ export type ConnectionDeps = {
   readFile?: (file: string) => Promise<Buffer>;
   lookupHost?: (alias: string) => Promise<SshHostConfig | undefined>;
 };
-export const workspaceTarget = (ws: Workspace): SshTarget =>
-  ws.authMode ? { alias: ws.sshHost, authMode: ws.authMode } : ws.sshHost;
-export const targetAlias = (target: SshTarget): string => (typeof target === 'string' ? target : target.alias);
-const targetAuthMode = (target: SshTarget): SshAuthMode =>
-  typeof target === 'string' ? 'key' : (target.authMode ?? 'key');
+export const workspaceTarget = (ws: Pick<Workspace, 'sshHost' | 'authMode'>): SshTarget => ({
+  alias: ws.sshHost,
+  authMode: ws.authMode ?? 'key',
+});
+export const targetAlias = (target: SshTarget): string => target.alias;
 const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 const DEFAULT_KEYS = ['id_ed25519', 'id_ecdsa', 'id_rsa'];
 const targetIdentity = (host: SshHostConfig, username: string) => JSON.stringify([host.hostname, host.port, username]);
@@ -101,7 +101,7 @@ export function createConnectionResolver(deps: ConnectionDeps = {}) {
       if (generation !== resetGeneration || revision !== vault.revision(alias))
         throw new SshConnectionError('connection_cancelled', '连接认证周期已结束，请重新连接');
     };
-    const authMode = targetAuthMode(target);
+    const authMode = target.authMode;
     const host = await loadHost(alias);
     assertCurrent();
     const username = host.user ?? os.userInfo().username;
