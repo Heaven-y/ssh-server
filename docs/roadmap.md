@@ -1,6 +1,6 @@
 # 路线图
 
-更新日期：2026-10-05。验收编号见 [需求](product/requirements.md) 第 6 节，已确认的取舍见 [设计决策](engineering/decisions.md)。按已验证阶段提交，真实目标和模型配置只通过运行时参数使用。
+更新日期：2026-10-06。验收编号见 [需求](product/requirements.md) 第 6 节，已确认的取舍见 [设计决策](engineering/decisions.md)。按已验证阶段提交，真实目标和模型配置只通过运行时参数使用。
 
 | 里程碑 | 内容 | 验收 | 状态 |
 |---|---|---|---|
@@ -15,6 +15,8 @@
 技术方向已确认：本地后端继续 Node.js + TypeScript + Fastify，异步协调 Agent、SSH、子进程、同步和网页状态；Python 分析默认在服务器已有环境执行。独立 `.exe` / 安装器、Go 迁移与外部工具打包只属于比较话题，不增加相应里程碑。并发与远端分析验证分别见架构 V16、V17。
 
 2026-10-05按当前源码及真实证据核对[剩余范围](engineering/remaining-scope-audit.md)：向导、终端、资源、工作区删除、产品设置、自定义规则、界面目标和完整真实串联已完成核心范围；原生客户端刷新、OS输入法、Edge系统选择器与外部工具限制保留，不把旧“待实施”状态沿用为当前缺口。
+
+2026-10-06续接：核对F1–F10/A1–A23和实际Git后，不新增既定范围外功能。沿已知rclone路径边界发现并修复同步/预览的实际根裁剪与Windows反斜杠换向缺口；只去掉一个命令终止LF，拒绝异常/截断输出及Windows不兼容根，普通目标/布局保持。新增19项路径回归及原CSV映射回归、关联116项测试通过，见[路径安全验收](guides/rclone-root-safety-acceptance.md)和D35。A8独立客户端、原生OS输入法与Edge系统选择器继续保留未验。
 
 用户新增界面优化优先项：已核对 UI UX Pro Max 与三个开源项目，以 T3 Code 的简洁对话工作区为主完成中性深色改版。SSH/同步收为状态摘要，详情与新建表单按需展开，导航、对话、输入和审批层级统一；24 项前端测试及受控浏览器回归通过，见 [界面验收](guides/workspace-ui-acceptance.md) 和 [参考依据](product/ui-reference-review.md)。
 
@@ -132,6 +134,7 @@
 - [x] V16/V17实际多活动组合、Python小结果、同步串行和单轮门禁通过；超时/输出限制保留既有核心回归
 - [ ] A8独立VS Code/CLI刷新、原生OS输入法、Edge系统保存选择器；Windows界面读取被自动策略检查中止，未绕过，不标通过
 - [x] rclone较长Windows配置路径状态文件名：combine短逻辑根修复，长根真实SSH、中文/空格/引号、旧基线及持久任务升级通过；Windows反斜杠根转换仍受工具约束，见[验收](guides/sync-session-names-acceptance.md)
+- [x] F5.11同步/预览实际根精确绑定：不裁剪合法尾随空格，拒绝异常/截断输出；Windows反斜杠在数据传输前明确停止，不以其他目录不存在代替保护。工具仍不支持该根，见[验收](guides/rclone-root-safety-acceptance.md)。
 
 尚未完成的项目按相应里程碑继续设计、实施和验证，不把需求归档当作实施完成。详细待验证事项见 [架构第 8 节](engineering/architecture.md#8-待验证事项)。
 
