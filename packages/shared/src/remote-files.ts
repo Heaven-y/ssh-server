@@ -78,6 +78,6 @@ export type RemoteFileTask = RemoteFileActionInput & {
   message?: string;
   remoteCompleted: boolean;
   syncCompleted: boolean;
-  syncRequired?: boolean;
+  syncRequired: boolean;
   resultCheck?: { source?: { exists: boolean }; destination?: { exists: boolean } };
 };

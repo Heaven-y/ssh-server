@@ -14,8 +14,8 @@ export type ClaudeSessionsApi = {
   list(dir: string): Promise<SDKSessionInfo[]>;
   info(id: string, dir: string): Promise<SDKSessionInfo | undefined>;
   messages(id: string, dir: string): Promise<unknown[]>;
-  rename?(id: string, title: string, dir: string): Promise<void>;
-  delete?(id: string, dir: string): Promise<void>;
+  rename(id: string, title: string, dir: string): Promise<void>;
+  delete(id: string, dir: string): Promise<void>;
 };
 
 const nativeApi: ClaudeSessionsApi = {
@@ -75,9 +75,8 @@ export function createClaudeSessions(api: ClaudeSessionsApi = nativeApi): Sessio
       const record = await info(id, dir);
       // 管理操作不采用老会话的目录缺失回退，避免 SDK 搜索关联工作树后修改错误的记录。
       if (!record.cwd) throw new SessionError(404, 'session_missing', 'Claude Code 会话缺少工作区信息，无法修改');
-      if (input.action === 'rename' && api.rename) return api.rename(id, input.title, dir);
-      if (input.action === 'delete' && api.delete) return api.delete(id, dir);
-      throw new SessionError(400, 'unsupported_action', '当前 Claude Code 会话接口不支持此管理操作');
+      if (input.action === 'rename') return api.rename(id, input.title, dir);
+      return api.delete(id, dir);
     },
   };
 }

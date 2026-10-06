@@ -1,7 +1,13 @@
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { deleteSession, getSessionInfo, listSessions, renameSession } from '@anthropic-ai/claude-agent-sdk';
+import {
+  deleteSession,
+  getSessionInfo,
+  getSessionMessages,
+  listSessions,
+  renameSession,
+} from '@anthropic-ai/claude-agent-sdk';
 import { createClaudeSessions } from '../../src/agents/claude-sessions';
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
@@ -25,8 +31,8 @@ beforeEach(() => {
 describe('Claude 原生会话管理', () => {
   it('重命名和删除均先校验 metadata，且 SDK 操作固定传入当前目录', async () => {
     const provider = createClaudeSessions();
-    await provider.mutate!(id, dir, { action: 'rename', title: '新标题' });
-    await provider.mutate!(id, dir, { action: 'delete', confirmed: true });
+    await provider.mutate(id, dir, { action: 'rename', title: '新标题' });
+    await provider.mutate(id, dir, { action: 'delete', confirmed: true });
     expect(getSessionInfo).toHaveBeenCalledTimes(2);
     expect(getSessionInfo).toHaveBeenCalledWith(id, { dir });
     expect(renameSession).toHaveBeenCalledExactlyOnceWith(id, '新标题', { dir });
@@ -45,7 +51,7 @@ describe('Claude 原生会话管理', () => {
     { label: 'ID 不一致', info: { ...metadata, sessionId: 'another-session' } },
   ])('$label 时禁止操作', async ({ info }) => {
     vi.mocked(getSessionInfo).mockResolvedValue(info);
-    await expect(createClaudeSessions().mutate!(id, dir, { action: 'delete', confirmed: true })).rejects.toMatchObject({
+    await expect(createClaudeSessions().mutate(id, dir, { action: 'delete', confirmed: true })).rejects.toMatchObject({
       status: 404,
       code: 'session_missing',
     });
@@ -55,10 +61,10 @@ describe('Claude 原生会话管理', () => {
 
   it('不支持的归档、恢复及归档列表在 SDK 操作前拒绝', async () => {
     const provider = createClaudeSessions();
-    await expect(provider.mutate!(id, dir, { action: 'archive' })).rejects.toMatchObject({
+    await expect(provider.mutate(id, dir, { action: 'archive' })).rejects.toMatchObject({
       code: 'unsupported_action',
     });
-    await expect(provider.mutate!(id, dir, { action: 'unarchive' })).rejects.toMatchObject({
+    await expect(provider.mutate(id, dir, { action: 'unarchive' })).rejects.toMatchObject({
       code: 'unsupported_action',
     });
     await expect(provider.list(dir, undefined, true)).rejects.toMatchObject({ code: 'unsupported_action' });
@@ -66,5 +72,16 @@ describe('Claude 原生会话管理', () => {
     expect(listSessions).not.toHaveBeenCalled();
     expect(renameSession).not.toHaveBeenCalled();
     expect(deleteSession).not.toHaveBeenCalled();
+  });
+  it('缺cwd的历史仍可在指定目录只读，不放宽管理校验', async () => {
+    vi.mocked(getSessionInfo).mockResolvedValue({ ...metadata, cwd: undefined });
+    vi.mocked(getSessionMessages).mockResolvedValue([]);
+    const provider = createClaudeSessions();
+    expect(await provider.read(id, dir)).toMatchObject({ cwd: dir, session: { sessionId: id }, events: [] });
+    await provider.assertBelongs(id, dir);
+    await expect(provider.mutate(id, dir, { action: 'rename', title: '新标题' })).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(renameSession).not.toHaveBeenCalled();
   });
 });

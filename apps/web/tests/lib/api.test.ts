@@ -54,9 +54,13 @@ describe('api', () => {
 
   it('成功时返回 JSON；POST 带 content-type', async () => {
     respond(201, { id: 'w1' });
-    await expect(api.createWorkspace({ name: 'n', localDir, sshHost: 'h', remoteDir: '~' })).resolves.toEqual({
-      id: 'w1',
-    });
+    await expect(
+      api.createVerifiedWorkspace({
+        input: { name: 'n', localDir, sshHost: 'h', remoteDir: '~' },
+        verification: '11111111-1111-4111-8111-111111111111',
+        initializationConfirmed: true,
+      }),
+    ).resolves.toEqual({ id: 'w1' });
     const [url, init] = vi.mocked(fetch).mock.calls[0]!;
     expect(url).toBe('/api/workspaces');
     expect(init).toMatchObject({ method: 'POST', headers: { 'content-type': 'application/json' } });
@@ -85,7 +89,7 @@ describe('api', () => {
 
   it('会话请求和缓存按 Agent 隔离，历史读取传递取消信号', async () => {
     respond(200, []);
-    await api.sessionEvents('w/1', 's 1');
+    await api.sessionEvents('w/1', 's 1', 'claude');
     expect(vi.mocked(fetch).mock.calls[0]![0]).toBe('/api/workspaces/w%2F1/sessions/s%201/events?agent=claude');
     await api.listSessions('w/1', 'codex');
     expect(vi.mocked(fetch).mock.calls[1]).toEqual([
@@ -98,12 +102,12 @@ describe('api', () => {
       '/api/workspaces/w%2F1/sessions/s%201/events?agent=codex',
       expect.objectContaining({ cache: 'no-store', signal: controller.signal }),
     ]);
-    expect(queryKeys.sessions('w/1')).not.toEqual(queryKeys.sessions('w/1', 'codex'));
+    expect(queryKeys.sessions('w/1', 'claude')).not.toEqual(queryKeys.sessions('w/1', 'codex'));
   });
 
   it('归档查询独立缓存，管理 POST 保留确认且不绑定取消信号', async () => {
     respond(200, []);
-    await api.listSessions('w/1');
+    await api.listSessions('w/1', 'claude');
     await api.listSessions('w/1', 'codex', true);
     expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual([
       '/api/workspaces/w%2F1/sessions?agent=claude',
@@ -181,10 +185,18 @@ describe('api', () => {
       savePassword: true,
       sync: { maxFileBytes: 100, excludedExtensions: [] },
     };
-    await api.createWorkspace(input);
+    await api.createVerifiedWorkspace({
+      input,
+      verification: '11111111-1111-4111-8111-111111111111',
+      initializationConfirmed: true,
+    });
     const body = vi.mocked(fetch).mock.calls[2]![1]!.body as string;
     expect(body).not.toContain('never-save');
-    expect(JSON.parse(body)).not.toHaveProperty('savePassword');
-    expect(JSON.parse(body)).toMatchObject({ sync: input.sync });
+    expect(JSON.parse(body).input).not.toHaveProperty('savePassword');
+    expect(JSON.parse(body)).toMatchObject({
+      input: { sync: input.sync },
+      verification: '11111111-1111-4111-8111-111111111111',
+      initializationConfirmed: true,
+    });
   });
 });

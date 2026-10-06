@@ -39,7 +39,7 @@ export function normalizeSetupInput(input: WorkspaceInput): WorkspaceInput {
   return {
     ...parsed,
     localDir: path.resolve(parsed.localDir),
-    authMode: parsed.authMode ?? 'key',
+    authMode: workspaceTarget(parsed).authMode,
     sync: SyncSettingsSchema.parse(parsed.sync ?? {}),
   };
 }
@@ -59,11 +59,11 @@ export function createSetupVerification(deps: Deps) {
       throw new WorkspaceSetupError('local_directory_invalid', '本地目录必须是绝对路径');
     const input = normalizeSetupInput(raw);
     const generation = deps.pool.generation(input.sshHost);
-    const config = await deps.pool.resolveConnection(workspaceTarget({ ...input, id: 'setup-verification' }));
+    const config = await deps.pool.resolveConnection(workspaceTarget(input));
     signal.throwIfAborted();
     const localInfo = await local(input.localDir, signal);
     const remoteInfo = await remote(deps.pool, { ...input, id: 'setup-verification' }, signal);
-    const current = await deps.pool.resolveConnection(workspaceTarget({ ...input, id: 'setup-verification' }));
+    const current = await deps.pool.resolveConnection(workspaceTarget(input));
     const localAfter = await local(input.localDir, signal);
     signal.throwIfAborted();
     if (
@@ -109,7 +109,7 @@ export function createSetupVerification(deps: Deps) {
           expiresAt,
           local: checked.local.info,
           remote: checked.remote,
-          target: { sshHost: checked.input.sshHost, authMode: checked.input.authMode ?? 'key' },
+          target: { sshHost: checked.input.sshHost, authMode: workspaceTarget(checked.input).authMode },
         };
       } finally {
         pending--;

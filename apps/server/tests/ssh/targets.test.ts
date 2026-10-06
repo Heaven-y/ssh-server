@@ -33,7 +33,7 @@ describe('独立手动服务器表', () => {
         throw error;
       },
     });
-    expect(await resolver.resolve(second.alias)).toMatchObject({
+    expect(await resolver.resolve({ alias: second.alias, authMode: 'key' })).toMatchObject({
       alias: second.alias,
       hostname: 'example.invalid',
       port: 22,

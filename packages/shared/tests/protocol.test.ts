@@ -5,13 +5,18 @@ import { ClientMessageSchema } from '../src/protocol';
 import { WorkspaceInputSchema } from '../src/workspace';
 
 describe('ClientMessageSchema', () => {
-  const send = { type: 'chat.send', workspaceId: 'w1', text: '你好', clientTurnId: 'c1' };
+  const send = { type: 'chat.send', agent: 'claude', workspaceId: 'w1', text: '你好', clientTurnId: 'c1' };
 
   it('接受合法的 chat.send', () => {
     expect(ClientMessageSchema.safeParse(send).success).toBe(true);
     expect(ClientMessageSchema.safeParse({ ...send, sessionId: 's1', model: 'sonnet' }).success).toBe(true);
     expect(ClientMessageSchema.safeParse({ ...send, agent: 'codex', reasoningEffort: 'high' }).success).toBe(true);
     expect(ClientMessageSchema.safeParse({ ...send, agent: 'unknown' }).success).toBe(false);
+  });
+
+  it('拒绝未明确指定Agent的chat.send', () => {
+    const { agent: _agent, ...withoutAgent } = send;
+    expect(ClientMessageSchema.safeParse(withoutAgent).success).toBe(false);
   });
 
   it('拒绝空消息', () => {

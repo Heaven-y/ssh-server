@@ -10,8 +10,7 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
     .object({
       type: z.literal('chat.send'),
       workspaceId: z.string().min(1),
-      /** 旧调用未指定时，后端使用 Claude。 */
-      agent: AgentKindSchema.optional(),
+      agent: AgentKindSchema,
       /** 继续已有会话时传入 */
       sessionId: NativeSessionIdSchema.optional(),
       text: z.string(),

@@ -1,10 +1,11 @@
-// 本机同步状态，原子替换；损坏或中断只进入恢复确认，不自动清空基线。
+// 本机同步状态，原子替换；只允许当前布局的中断恢复，旧格式和损坏文件绝不改写。
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import type { SyncConflict, SyncSettings, SyncStatus } from '@ssh-server/shared';
 import { safeRelativePath } from './filters';
 import { hash, workspaceStateDir, type FileEntry } from './inventory';
+import { SyncError } from './errors';
 
 const RelativePath = z.string().refine((file) => {
   try {
@@ -59,6 +60,14 @@ export async function loadSyncState(configDir: string, id: string): Promise<Sync
     const text = await readFile(path.join(workspaceStateDir(configDir, id), 'state.json'), 'utf8');
     if (text.length > 4 * 1024 * 1024) throw new Error('too large');
     const state = StateSchema.parse(JSON.parse(text));
+    if (
+      (state.baseline.length > 0 && !state.signature) ||
+      (state.signature !== undefined && state.baselineLayout !== 'combine-v1')
+    )
+      throw new SyncError(
+        'state_unsupported',
+        '本地同步基线格式不受支持，已保留原文件；请使用匹配版本处理，不能通过确认升级',
+      );
     if (state.phase === 'syncing')
       Object.assign(state, {
         phase: 'confirmation_required',
@@ -68,12 +77,11 @@ export async function loadSyncState(configDir: string, id: string): Promise<Sync
     return state;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return emptyState();
-    return {
-      ...emptyState(),
-      phase: 'confirmation_required',
-      reason: 'recovery',
-      message: '本地同步状态损坏或不可读，请确认恢复；不会自动选择一端覆盖',
-    };
+    if (error instanceof SyncError) throw error;
+    throw new SyncError(
+      'state_storage_error',
+      '本地同步状态损坏或不可读，已停止同步并保留原文件；请检查配置目录权限或恢复有效配置',
+    );
   }
 }
 export async function saveSyncState(configDir: string, id: string, state: SyncState): Promise<void> {

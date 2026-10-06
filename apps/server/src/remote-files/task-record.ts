@@ -43,7 +43,7 @@ export const TaskRecordSchema = z
       cancelRequested: z.boolean(),
       remoteCompleted: z.boolean(),
       syncCompleted: z.boolean(),
-      syncRequired: z.boolean().optional(),
+      syncRequired: z.boolean(),
       message: z.string().optional(),
       resultCheck: ResultCheckSchema.optional(),
     }),
@@ -74,20 +74,22 @@ export const TaskRecordSchema = z
       configurations: z.array(z.object({ id: text, key: text })),
     }),
     verified: digest.optional(),
-    dispatched: z.boolean().optional(),
+    dispatched: z.boolean(),
   })
   .superRefine((value, context) => {
-    if (
-      value.task.workspaceId !== value.action.public.workspaceId ||
-      value.task.workspaceId !== value.action.context.workspace.id ||
-      value.task.preflightId !== value.action.public.id ||
-      value.task.kind !== value.action.public.kind ||
-      value.task.kind !== value.action.plan.kind ||
-      value.task.source !== value.action.public.source ||
-      value.task.destination !== value.action.public.destination
-    )
+    const { task, action } = value;
+    const identities = [
+      [task.workspaceId, action.public.workspaceId, action.context.workspace.id, action.context.info.workspaceId],
+      [task.sshHost, action.public.sshHost, action.context.workspace.sshHost, action.context.info.sshHost],
+      [task.preflightId, action.public.id],
+      [task.kind, action.public.kind, action.plan.kind],
+      [task.source, action.public.source, action.plan.source ?? undefined],
+      [task.destination, action.public.destination, action.plan.destination ?? undefined],
+    ];
+    if (identities.some((values) => new Set(values).size !== 1))
       context.addIssue({ code: 'custom', message: '任务记录身份不一致' });
   });
+export type TaskRecord = z.infer<typeof TaskRecordSchema>;
 
 /** 核对只确认有证据的结果；目标存在本身不能证明复制或新建完整。 */
 export function confirmedResult(record: z.infer<typeof TaskRecordSchema>, result: z.infer<typeof ResultCheckSchema>) {

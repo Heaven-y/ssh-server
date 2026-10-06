@@ -83,6 +83,17 @@ async function setup(version = 'rclone v1.75.1\n') {
   };
 }
 describe('rclone 隔离 SFTP 驱动', () => {
+  it.each(['version', 'process'])('版本检查%s失败后重试，并发与后续成功只共用一个Promise', async (failure) => {
+    const { driver, run } = await setup();
+    if (failure === 'version') run.mockResolvedValueOnce(output('rclone v0.0.0\n'));
+    else run.mockRejectedValueOnce(new Error('fixture process failure'));
+    const settings = SyncSettingsSchema.parse({});
+    await expect(driver.open(ws, settings)).rejects.toThrow();
+    const contexts = await Promise.all(['w1', 'w2'].map((id) => driver.open({ ...ws, id }, settings)));
+    contexts.push(await driver.open({ ...ws, id: 'w3' }, settings));
+    for (const context of contexts) context.close();
+    expect(run.mock.calls.filter(([, args]) => args[0] === 'version')).toHaveLength(2);
+  });
   it('短逻辑根保留实际CSV映射，子进程成功或异常后清除凭据副本', async () => {
     const { driver, run, pool } = await setup();
     const remoteRoot = path.posix.join(path.posix.sep, 'projects', 'demo 中文 "quoted" ');

@@ -8,10 +8,8 @@ export async function sampleResourceCommand(
   pool: SshPool,
   target: SshTarget,
   command: string,
-  options: AbortSignal | { signal: AbortSignal; timeoutMs: number },
+  { signal, timeoutMs }: { signal: AbortSignal; timeoutMs: number },
 ): Promise<string> {
-  const signal = 'signal' in options ? options.signal : options;
-  const timeoutMs = 'signal' in options ? options.timeoutMs : RESOURCE_LIMITS.timeoutMs;
   let channel: Awaited<ReturnType<SshPool['openExec']>> | undefined;
   const close = () => channel?.close();
   signal.addEventListener('abort', close, { once: true });

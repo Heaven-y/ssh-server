@@ -1,11 +1,12 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { SyncSettingsSchema, type RemoteBrowseTarget, type Workspace } from '@ssh-server/shared';
 import type { SshPool } from '../ssh/pool';
+import { workspaceTarget } from '../ssh/connection';
 import type { WorkspaceStore } from '../workspaces/store';
 import { RemoteFilesError } from './errors';
 
 export const targetKey = (target: RemoteBrowseTarget) =>
-  JSON.stringify([target.sshHost, target.authMode ?? 'key', target.remoteDir, target.localDir]);
+  JSON.stringify([target.sshHost, workspaceTarget(target).authMode, target.remoteDir, target.localDir]);
 export const workspaceKey = (workspace: Workspace) =>
   JSON.stringify([targetKey(workspace), SyncSettingsSchema.parse(workspace.sync ?? {})]);
 
