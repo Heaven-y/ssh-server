@@ -8,7 +8,7 @@ import { readRcloneMetadata } from '../../src/sync/rclone';
 import type { ProcessRunner } from '../../src/sync/process';
 
 vi.mock('../../src/ssh/metadata-exec', () => ({
-  executeMetadataCommand: () => Promise.resolve(path.posix.join(path.posix.sep, 'fixture-home', 'project')),
+  executeMetadataCommand: () => Promise.resolve(path.posix.join(path.posix.sep, 'fixture-home', 'project') + '\n'),
 }));
 const temps: string[] = [];
 afterEach(async () => {

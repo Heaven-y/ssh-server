@@ -59,6 +59,18 @@ const ENV_KEYS = [
 function cleanEnvironment(): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(process.env).filter(([key]) => ENV_KEYS.includes(key.toUpperCase())));
 }
+/** pwd 只追加一个 LF；目录名的空白属于目标身份，不能用 trim 清理。 */
+function parseRemoteRoot(stdout: string): string {
+  const root = stdout.slice(0, -1);
+  if (!stdout.endsWith('\n') || !root.startsWith('/') || /[\r\n\0]/.test(root))
+    throw new SyncError('unsafe_remote', '服务器目录检查返回了不完整或不安全的路径，同步和预览已停止');
+  if (process.platform === 'win32' && root.includes('\\'))
+    throw new SyncError(
+      'unsafe_remote',
+      'Windows rclone 无法保留服务器目录中的反斜杠，同步和预览已停止；请选择不含反斜杠的实际目录，不要直接替换路径字符',
+    );
+  return root;
+}
 async function remoteRoot(pool: Pool, ws: Workspace): Promise<string> {
   const result = await pool.exec(
     workspaceTarget(ws),
@@ -69,10 +81,9 @@ async function remoteRoot(pool: Pool, ws: Workspace): Promise<string> {
     ),
     { localTimeoutMs: 30_000, outputCap: 4096 },
   );
-  const root = result.stdout.trim();
-  if (result.exitCode !== 0 || result.timedOut || !root.startsWith('/') || /[\r\n\0]/.test(root))
-    throw new SyncError('unsafe_remote', '服务器目录不可访问、不可写或含符号链接，同步已停止');
-  return root;
+  if (result.exitCode !== 0 || result.timedOut || result.truncated)
+    throw new SyncError('unsafe_remote', '服务器目录检查未完成，或目录不可访问、不可写、含符号链接，同步已停止');
+  return parseRemoteRoot(result.stdout);
 }
 async function remoteEnvironment(
   config: ResolvedConnection,
@@ -134,7 +145,7 @@ export async function readRcloneMetadata(
   await checkRcloneVersion(run, executable, signal);
   const generation = deps.pool.generation(workspace.sshHost);
   const config = await deps.pool.resolveConnection(workspaceTarget(workspace));
-  const root = (
+  const root = parseRemoteRoot(
     await executeMetadataCommand(deps.pool, workspaceTarget(workspace), {
       command: buildRemoteCommand(
         workspace.remoteDir,
@@ -144,9 +155,8 @@ export async function readRcloneMetadata(
       signal,
       timeoutMs: 22000,
       outputCap: 4096,
-    })
-  ).trim();
-  if (!root.startsWith('/') || /[\r\n\0]/.test(root)) throw new SyncError('unsafe_remote', '远端目录不可安全读取');
+    }),
+  );
   await mkdir(deps.configDir, { recursive: true });
   const temporary = await mkdtemp(path.join(deps.configDir, 'setup-preview-'));
   const credentialsChanged = new AbortController();
