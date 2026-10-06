@@ -1,6 +1,6 @@
 # 架构
 
-更新日期：2026-10-05。本文同时标明已接入模块与后续目标。当前已实现双 Agent 对话与原生能力、认证同步、原生配置、本地文件编辑、版本记录及服务器目录浏览；远端操作任务、显式下载、同步路径协调、编辑保护、网页终端和资源详情已接入。完成与验收范围见 [路线图](../roadmap.md)，已确认的取舍集中在 [设计决策](decisions.md)。
+更新日期：2026-10-07。本文描述当前正式实现，不维护旧版本接口或迁移路径。模块完成与验证范围见[路线图](../roadmap.md)，历次取舍见[设计决策](decisions.md)；现行规则与历史材料按[文档索引](../README.md)区分。
 
 ## 1. 总览
 
@@ -36,7 +36,7 @@
 | 后端 | Fastify + `@fastify/websocket` | HTTP、访问控制和流式消息，继续现有实现 |
 | 参数校验 | zod | 接口入参、配置文件 |
 | Claude | `@anthropic-ai/claude-agent-sdk` | 调用本机 Claude Code |
-| Codex | 本机 Codex app-server（JSON-RPC over stdio） | 已按 CLI 0.156.1 接入对话、原生会话、技能/模型目录及上下文/压缩控制 |
+| Codex | 本机 Codex app-server（JSON-RPC over stdio） | 当前真实验收版本0.160.0；接入对话、原生会话、技能/模型目录和上下文/压缩，不另设旧版本协议栈 |
 | MCP | `@modelcontextprotocol/sdk` | 远程工具服务 |
 | SSH | `ssh2` | 支持账号密码与已有私钥，导入 `~/.ssh/config` 或手动配置；凭据在本地处理 |
 | 同步 | rclone（外部可执行文件） | `rclone bisync` 走 SFTP |
@@ -198,22 +198,22 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 
 - 连接入口支持从 `~/.ssh/config` 导入 HostName、Port、User、IdentityFile，也支持手动配置地址、端口、账号。不支持的选项（如 ProxyJump）在界面上提示，不静默忽略后宣称连接成功。
 - 认证支持账号密码和已有私钥；密码经受本机访问控制保护的接口进入后端内存，可选择使用 Windows 当前用户加密保存。主动断开只关闭连接并清理内存，取消保存密码时移除保存项并断开；认证失败时提示重新输入，不回显密码、不交给 Agent。
-- 保持 `known_hosts` 校验。M2 未登记主机要求通过本机 SSH 核对，网页指纹确认在 M5 实现；已有可信密钥变化或吊销时拒绝连接。
-- 连接按解析后的地址、端口、账号、认证方式、可信记录与凭据代次复用；参数变化不能复用旧连接，工作目录由所属工作区决定。执行、同步和服务器目录已共用 resolver；终端已接入同一入口，资源采样继续复用。
+- 保持 `known_hosts` 校验。未知主机通过网页指纹挑战明确确认，已有可信密钥变化或吊销时拒绝连接。
+- 内部连接入口统一 `SshTarget = { alias, authMode }`；工作区缺省私钥只在 `workspaceTarget` 解释，不保留字符串重载。连接按实际地址、端口、账号、认证方式、可信记录与凭据代次复用；执行、同步、浏览、终端和资源共用 resolver，参数变化不能复用旧连接。
 - 终端：`shell()` 打开 PTY，数据经 WebSocket 与 xterm.js 双向转发，支持窗口尺寸变化、多标签和可调整布局。视觉与分屏交互参考 Pebrel，仅参考设计。
 
-终端的目标绑定、目录确认、独立 WebSocket、背压与释放规则见[网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.md)；模块职责、连接 guard 和稳定窗格宿主见[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)。后端和网页已接入，核心回归、本机真实SSH通道和Chrome交互已通过；SFTP移交、EOF/退出、Fastify preClose和粘贴模式的修复见[实施决策](web-terminal-decisions.md)。实际服务器全屏工具、并发和密码后端重建组合通过[完整链路验收](../guides/real-workflow-acceptance.md)；原生OS输入法仍待验，早期证据见[终端验收](../guides/web-terminal-acceptance.md)。
+终端的目标绑定、目录确认、独立 WebSocket、背压与释放规则见[网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.md)；模块职责和稳定窗格宿主见[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)。核心回归、本机真实SSH和网页交互通过；SFTP移交、EOF/退出、preClose和粘贴模式取舍见[实施决策](web-terminal-decisions.md)。实际服务器全屏工具、并发和密码后端重建见[完整链路验收](../guides/real-workflow-acceptance.md)；OS输入法未观察属于历史证据边界，不自动列为待办。
 
 ### 5.5 sync
 
 - 使用 `rclone bisync`，远端用连接参数临时定义的 SFTP 远程（不写入 rclone 全局配置），状态目录用 `--workdir` 指向该工作区的 `bisync\`。
 - bisync 通过固定版本自带 combine 将实际双端根映射为 `localview:root/`、`remoteview:root/`，每次绑定实际镜像，避免完整路径进入单文件名；其他读写沿用真实 workspace backend。upstreams 按空格分隔 CSV 编码。
-- 目标签名保持 mirror-v1，状态独立保存 baselineLayout=combine-v1。已有基线布局不匹配时，普通同步先进入 recovery；确认后沿用双方差异保留再重建。未完成服务器文件任务仍按目标签名恢复，成功后保存布局；旧清单不删除，见[D31](decisions.md)和[验收](../guides/sync-session-names-acceptance.md)。
+- 当前状态固定 `version=1`、`signature=mirror-v1…`、`baselineLayout=combine-v1`。无基线可首次初始化；非空基线缺签名，或已有签名但布局缺失/不匹配时拒绝。初始化确认、删除批准/拒绝及文件任务恢复均不能迁移或重写旧数据。当前布局的中断恢复保留。D31的短逻辑根继续采用，其兼容升级部分已由[D36](decisions.md)替代。
 - ssh2 与 rclone 使用同一组连接参数和认证方式，均校验服务器主机密钥；仅转交运行需要的内存凭据，不写 rclone 全局配置。`rclone obscure` 只用于子进程环境转交，不视为加密保存。
-- 固定 rclone 1.75.1，通过 `SSH_SERVER_RCLONE` 指定本机程序；过滤固定排除任意深度的 `.git`，按扩展名与默认 10 MiB 上限选择小文件，符号链接或 Windows 大小写冲突停止同步。
+- 固定 rclone 1.75.1，通过 `SSH_SERVER_RCLONE` 指定本机程序；同步与向导共用版本检查，并发共享成功结果、失败允许重试。过滤固定排除任意深度的 `.git`，按扩展名与默认 10 MiB 上限选择小文件，符号链接或 Windows 大小写冲突停止同步。
 - 同步和向导预览共用实际根解析：只去掉 `pwd -P` 的一个 LF，保留目录名空格，拒绝不完整/异常路径；同步执行结果截断时拒绝采用。Windows 上含反斜杠的实际根在传输状态创建与凭据转交前停止，防止 rclone 改换目标。工具不支持不等于自动改名或替换分隔符，见[D35](decisions.md)和[验收](../guides/rclone-root-safety-acceptance.md)。
 - 传输使用本机 `mirror\` 中的稳定小文件副本，复制期间发现源变化则暂停；同步后仅将未被用户再次修改的文件更新到项目。双方在此期间都修改时保留冲突版本，新的本地删除留到下一次确认，不随进行中的传输传播。
-- 本地为空时可首拉并建立基线；非空初始化、目标/过滤变化、损坏/中断状态须确认。初始化前保留同名不同内容的双方版本，不覆盖另一端同名的超限文件。
+- 本地为空时可首拉并建立基线；非空初始化、目标/过滤变化和当前格式的中断状态须确认。状态读失败或非法结构不视为空，不以确认覆盖；初始化前保留同名不同内容的双方版本，不覆盖另一端同名的超限文件。
 - 删除检查使用本地成功基线与当前两端清单。发现本地删除后暂停整个工作区同步与执行；拒绝恢复远端最新内容，确认时重新核对本地重现和远端内容，实际删除前再校验。
 - 已确认的空基线可连续同步并上传首个文件；最后文件删除经逐项确认后建立空基线。非空基线一端意外清空则暂停并要求恢复确认，不传播整端清空。
 - 普通 bisync 保留两端冲突版本，并根据真实冲突文件名形成网页提示；恢复选定内容到原路径并确认后才继续执行。
@@ -242,12 +242,12 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 ### 5.7 sessions
 
 - 已接入列表与历史：Claude 使用 SDK 原生接口，Codex 使用 `thread/list` / `thread/read`，按工作区本地文件夹筛选。读取和续接再次校验原生 cwd 与官方 ID，拒绝越界或不完整历史。
-- `chat/sessions.ts` 统一两类 provider，HTTP 会话路由用 `agent` 参数区分来源。网页分别加载两类列表；一个运行时失败仍显示另一类历史，并为失败来源提供重新读取。
+- `chat/sessions.ts` 统一两类 provider，HTTP 会话路由必须显式提供 `agent`，不猜测Claude。网页分别加载两类列表；一个运行时失败仍显示另一类历史，并为失败来源提供重新读取。provider管理方法和会话操作锁为当前必需契约。
 - 列表、选中状态和查询键保留所属 Agent；历史请求绑定工作区、Agent、官方 ID 与选择代次，切换后忽略迟到结果，读取期间禁止发送。展示历史不替代官方上下文续接。
 - 已接入管理：Claude `renameSession` / `deleteSession`，Codex `thread/name/set` / `thread/delete` / `thread/archive` / `thread/unarchive`；归档列表使用 `thread/list(archived: true)`，保持目录过滤、分页与子代理排除。产品不手工删除原生 JSONL。
 - 管理前验证原生 ID/cwd；Claude 缺少 cwd 时拒绝修改，Codex 拒绝 active 状态与内部子代理。`TurnManager.withIdleSession` 复用 `(agent, sessionId)` 锁，从验证前持有至原生操作返回，并与对话准备、运行及同步收尾互斥；忙时返回 409，失败只释放本次占用。
 - HTTP 管理入口校验删除 `confirmed: true` 与 1–200 字符标题。请求交给原生运行时后继续等待结果，网页断开不视为回滚；匿名错误提示重新读取核对。前端成功后刷新对应来源，删除/归档的迟到结果只清空仍匹配工作区、Agent 和 ID 的当前对话。
-- Codex 0.156.1 不支持直接重命名归档记录，网页仅提供恢复/删除，恢复后从普通列表改名。删除说明相关子会话影响，归档说明派生子会话影响，恢复不承诺恢复全部后代。真实原生与网页验收见 [会话管理验收](../guides/session-management-acceptance.md)；外部客户端并发不由本后端统一加锁。
+- Codex归档记录只提供恢复/删除，恢复后从普通列表改名；不为旧版本能力另设分支。删除说明相关子会话影响，归档说明派生子会话影响，恢复不承诺恢复全部后代。历史版本与原生网页证据见[会话管理验收](../guides/session-management-acceptance.md)；外部客户端并发不由本后端统一加锁。
 
 ### 5.8 policy：命令黑名单
 
@@ -255,7 +255,7 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 - 只是防误操作的字符串匹配，不能防有意绕过（编码、写进脚本再执行等）。
 - 网页终端不经过黑名单。
 
-shared/policy提供严格规则目录/schema；policy支持工作区默认启停及20条有界自定义字面规则。独立GET/PUT使用完整工作区摘要，在store.update串行写盘内核对并只patch policy；通用PATCH拒绝policy。缺省undefined兼容旧配置，显式坏值（包括null）拒绝读取/执行。每次remote-exec读取最新配置，命中先于同步/SSH；已检查在途命令继续。网页按需dialog绑定工作区和独立草稿，409保留，成功取消旧列表查询再刷新。实际范围见[规则验收](../guides/workspace-policy-acceptance.md)和[D24](decisions.md)。
+shared/policy提供严格规则目录/schema；policy支持工作区默认启停及20条有界自定义字面规则。独立GET/PUT使用完整工作区摘要，在store.update串行写盘内核对并只更新policy，不提供通用PATCH。未设置policy表示当前默认规则，显式坏值（包括null）拒绝读取/执行。每次remote-exec读取最新配置，命中先于同步/SSH；已检查在途命令继续。网页按需dialog绑定工作区和独立草稿，409保留，成功取消旧列表查询再刷新。见[规则验收](../guides/workspace-policy-acceptance.md)和[D24/D36](decisions.md)。
 
 ### 5.9 http：访问控制
 
@@ -263,6 +263,8 @@ shared/policy提供严格规则目录/schema；policy支持工作区默认启停
 - 启动时生成随机访问令牌，打开浏览器时带在地址里，之后保存在会话 Cookie（HttpOnly、SameSite=Strict）。
 - 校验 `Host` 为本机地址，校验 WebSocket 与修改类请求的 `Origin`，防止其他网页借浏览器调用本地后端（DNS 重绑定、跨站请求）。
 - remote-tools 调后端内部接口时使用单独的会话令牌。
+- 工作区POST只走setup验证创建，DELETE只走removal确认服务；模块未注入时503，不回退store CRUD。同步及policy使用各自专用接口，通用PATCH不存在。
+- 工作区存储只将ENOENT视为空；其他读取、JSON及条目结构错误原样阻断，不过滤坏项、备份重置或覆盖原文。
 
 ### 5.10 files：轻量文件编辑
 
@@ -288,6 +290,7 @@ shared/policy提供严格规则目录/schema；policy支持工作区默认启停
 - 按目标连接共享采样，资源概览或详情可见时秒级刷新，页面隐藏 / 断线后暂停或降频；设置超时与退避，避免重叠和重复查询。具体间隔需真实测量。
 - 共享账号下展示进程信息但不推断属于本人；只有已知 PID / 任务信息且能可靠关联时才标注当前工作区。
 - 采样失败保留最近值并标为过期，缺少指标显示不可用，不能显示为零。服务器不安装采集器、不运行常驻监控服务，不要求 `nvitop`。
+- 采样函数统一 `{ signal, timeoutMs }` 选项对象，不保留直接AbortSignal重载。
 - Slurm 状态由用户按需查询，不增加任务完成检测器或高频 `squeue` / `sstat` 轮询。
 
 ### 5.12 remote-files：远端文件管理（操作、下载与同步协调已接入）
@@ -311,7 +314,7 @@ shared/policy提供严格规则目录/schema；policy支持工作区默认启停
 - 同步关联按实际 SSH 目标和源/目标路径判断，覆盖本工具已管理的受影响工作区，不能仅按文件扩展名或当前面板判断混合目录。涉及同步范围时处理未保存编辑/冲突，进入相应同步事务，完成前后状态核对；保留 Git 索引和历史，避免旧路径回传。仅服务器路径无需进入同步，移入范围的小文件仍遵守大小/排除规则。
 - 操作 ID 将远端执行结果和后续同步结果分开，查询/重开面板不重复执行变更。超时、断线或后端重启后不能确定结果时标为未确认，先重新读取源/目标再允许用户决定重试；取消只停止本工具拥有的该任务，不断开共享 SSH 连接，也不声称外部进程变化可被统一加锁。
 - 下载只在用户明确选择后进行，经 SSH/SFTP 和本地 HTTP 流式传输到用户选择的下载位置，控制缓冲并支持取消；不自动落入工作区镜像或 Git，不将大文件整体读入内存。服务器内部移动/复制不经过这条下载链路。
-- `downloads` 在打开前及打开句柄后复验普通文件属性。流的高水位为 64 KiB，ssh2 可预取更多数据，高水位不是硬内存上限；背压和中止传至独立 SFTP 通道。浏览器支持保存选择器时逐块写入；否则交由下载管理器，网页只确认交接，不声称已保存到磁盘。
+- `downloads` 在打开前及打开句柄后复验普通文件属性。流的高水位为 64 KiB，ssh2 可预取更多数据，高水位不是硬内存上限；背压和中止传至独立 SFTP 通道。网页只用 File System Access API 选择位置并逐块写入，成功关闭后才报告完成；无该能力时明确不可用，不转交浏览器下载管理器。
 
 ### 5.13 workspaces/setup：创建前向导与验证
 
@@ -322,6 +325,7 @@ local/remote提供只读草稿目录浏览，每页200项、最多32组、15分�
 verification生成五分钟/64项一次性快照票，绑定配置、认证代次、连接cacheKey、本地根身份及远端规范路径。生产POST工作区要求该票及首次同步确认；创建开始和store串行队列写盘前均复验，每轮race截止可释放挂起resolver。远端检查结束重新lstat/realpath，rclone拒绝逻辑/物理根重定向。最后检查之后的任意外部修改不属于已锁定保证。
 
 保存是提交点，之后调用既有sync.initialize，真实失败/冲突保留工作区；不以HTTP30秒截止伪造首次同步失败。网页取消撤票、关闭草稿与清DOM密码；创建mutation完成后刷新列表，外部卸载不自动切换工作区。见[验收](../guides/workspace-setup-acceptance.md)和设计W01–W15。
+工作区记录不保存验证票或认证输入；网页按共享schema筛选工作区字段，再显式提交验证票与初始化确认，附加密码不会串入创建请求。
 
 ### 5.14 settings：产品偏好与环境检测
 
@@ -337,8 +341,8 @@ chat-store区分default/explicit模型来源，新会话复制默认，历史清
 
 ### 6.1 一轮对话
 
-1. 网页发送消息 → 新会话使用创建时选择的适配器，已有会话使用其原 Agent 与官方 ID。
-2. 适配器通过官方接口启动或继续会话，注入远程工具与工作区指令；上下文和压缩由运行时负责。
+1. 网页消息显式提供Agent，新会话使用所选适配器，已有会话保持原Agent与官方ID；协议不填补隐式Claude。
+2. `TurnManager` 只接收 `runners` 注册表，main显式组装，未注册Agent拒绝。Claude固定SDK的close、supportedCommands、supportedModels及getContextUsage为必需契约；适配器启动/续接并注入远程工具，原生运行时负责上下文和压缩。
 3. Agent 在本地副本改代码；需要运行时调用 `remote_exec`。
 4. `remote_exec`：黑名单检查 → 执行前同步（含删除 / 冲突检查）→ 成功后 SSH 执行 → 拉回小文件 → 返回命令结果与同步状态。前置同步未成功则不执行。
 5. 普通消息或技能回复结束后再同步一次，界面更新待记录版本的改动数；纯 context/compact 不触发这次同步。不创建 git 提交，也不等待后台训练完成。
@@ -361,7 +365,7 @@ chat-store区分default/explicit模型来源，新会话复制默认，历史清
 
 ## 7. 设计决策
 
-完整记录已移至 [设计决策](decisions.md)，集中维护 D01–D23，避免在多个文档重复保存取舍结论。主要新增约定包括：
+完整记录见[设计决策](decisions.md)，集中维护D01–D36。当前实现以D36的收敛规则为准，早期取舍和被替代路径保留供复盘，不作为并行维护方案。主要约定包括：
 
 - 会话固定 Agent，沿用原生上下文、skills 与可接入的 `/` 命令。
 - 账号密码与私钥均支持，可选择本机系统加密保存密码；断开保留保存项，取消保存时清除并断开。
@@ -378,27 +382,29 @@ chat-store区分default/explicit模型来源，新会话复制默认，历史清
 
 `workspaces/removal` 将明确确认绑定配置 SHA256，在 store 串行写盘前复验摘要与阻断；阻断回调不重入 store。阻断读取全部持久任务、同步队列/remoteTask 和包含离线项的编辑器登记。保存失败保留配置；保存成功后逐项关闭所属 PTY/SFTP、撤销预检、清内存，单项失败返回已移除及清理警告，不断开共享 SSH 池，不删除磁盘状态或原生历史。网页常驻业务收尾独立于弹窗挂载，缓存按工作区取消，迟到结果不覆盖其他选择。见[设计](../superpowers/specs/2026-10-05-workspace-lifecycle-design.md)及[验收](../guides/workspace-removal-acceptance.md)。
 
-## 8. 待验证事项
+## 8. 验证依据与边界
 
-| 编号 | 事项 |
+当前产品要求和阶段实绩分开维护；以下沿用V编号便于定位旧记录，不是新的待办清单。VS Code、CLI和OS界面均为检查手段，未观察事实不补写为通过，也不自动扩大交付范围。
+
+| 编号 | 已有证据及适用范围 |
 |---|---|
-| V1 | Claude真实SDK连续调用读取隔离配置、Codex官方config/read与后续真实调用重读配置已验；源配置摘要保持。见原生配置及完整链路验收，不替用户改写cc-switch配置 |
-| V2 | Claude 原生重命名/删除及网页删除已验证存储/API 更新；VS Code 插件界面和 CLI 交互列表刷新待独立验证 |
-| V3 | CLI 0.156.1 的对话/续接与重命名、删除、归档/恢复已通过原生及网页验证；A8 独立客户端界面刷新仍待验证 |
-| V4 | GLM 与当前Codex0.160.0原生MCP访问真实SSH；两类Agent编辑、实际rclone、远端Python/hostname、小JSON返回及续接通过，见完整链路验收 |
-| V5 | 已实现读取生效的 `developer_instructions` 后追加工作区约束；各类项目 `AGENTS.md` 组合的完整行为仍需按实际环境验证 |
-| V6 | 受控客户端与网页保留审批生命周期回归；0.160.0本产品空字段MCP elicitation真实单次批准与SSH执行通过，不发送persist；其他表单/URL不支持 |
-| V7 | Windows固定rclone 1.75.1的真实首次初始化、大小/扩展名过滤、删除确认、冲突、混合迁移及多活动同步排队已验；combine长配置根修复/旧基线升级见同步清单验收，反斜杠根仍受工具约束 |
-| V8 | 当前固定版本清单解析、删除门禁、旧清单保留及combine布局升级已验证；未来rclone升级须重新核对格式，不由当前证据承诺兼容 |
-| V9 | 真实ssh2 PTY、窗口尺寸、已有htop/nvitop网页画面/重绘/退出、独立关闭和并发已验；不安装工具，Slurm不作为前提，原生OS输入法仍未验 |
-| V10 | 本机监听、令牌/Cookie、Origin/Host与HTTP/WS访问门禁已有安全核心回归；实际网页鉴权通过。非法来源和DNS重绑定按受控回归范围，不声称所有浏览器或网络环境安全审计完成 |
-| V11 | 密码/私钥连接及实际SFTP/rclone/Python/PTY、Windows DPAPI保存/断开重连/新后端复用/取消保存已验；受控本机密码端点透传真实远端，不改变用户服务器认证设置，目标变化与明文边界保留核心回归 |
-| V12 | 两类技能/模型目录、按钮选择、直接 slash 解析及限制提示已接入；输入 `/` 自动补全和键盘边界通过网页验收，见原生能力及补全验收记录 |
-| V13 | 原生上下文和压缩事件已展示，成功/失败/取消及不触发同步的边界已验证；真实长负载auto完成、原ID记忆续接及manual完成通过，隔离阈值14000，见完整链路验收 |
-| V14 | CodeMirror按需加载、Edge实际保存及SSH/rclone两端同步通过；未保存缓冲、AI/同步变更冲突及断开登记保护见文件/同步协调验收。真实文件系统检查至写入不承诺跨进程事务 |
-| V15 | 真实SSH资源service两帧及独立exec并发通过，GPU/CPU/内存/进程/磁盘可用；共享、退避、空值和网页故障已验，实际Agent/双PTY/任务组合已补齐；原生OS隐藏操作未新增证据 |
-| V16 | 实际15秒Agent SSH执行期间双全屏PTY、两帧资源、仅远端文件任务响应；同步串行排队、重复轮次拒绝、单PTY关闭独立通过；超时/输出限制沿用相关核心回归 |
-| V17 | 服务器已有Python与实际小结果通过；A17真实网页提交120秒nohup任务、等待150秒无新AI轮次、用户再发消息同ID读取小JSON，16MiB数据留远端，见[后台结果验收](../guides/background-result-acceptance.md)；不安装环境或增加自动监测 |
-| V18 | 远端文件管理 A20–A23：真实同/跨FS、混合迁移、链接/冲突/取消及Firefox下载已验；真实权限、旧预检变化和独立SSH连接中断后的持久重开/核对/不重放见失败验收。正文不经本机且独立活动响应；Edge系统选择器仍未验，未扩大共享池/全网络故障范围 |
+| V1 | Claude SDK及Codex官方配置读取、后续调用重读配置见原生配置和完整链路验收，源配置摘要保持 |
+| V2 | Claude网页删除与原生SDK/记录核对已验，满足现行A8；不要求外部界面刷新 |
+| V3 | Codex对话/续接、重命名、删除、归档/恢复已有原生及网页证据；最新真实调用版本0.160.0，早期0.156.1证据保留原日期 |
+| V4 | 两类Agent编辑、实际SSH/rclone、远端Python/hostname、小JSON及原ID续接见完整链路验收 |
+| V5 | 生效的developer_instructions后追加工作区约束；不承诺所有外部项目AGENTS.md组合 |
+| V6 | 审批生命周期受控回归及0.160.0本产品空字段MCP真实单次批准已验；不支持其他表单/URL，不发送persist |
+| V7 | 固定rclone1.75.1真实初始化、过滤、删除、冲突、多活动排队及combine短逻辑根已验；Windows反斜杠根明确拒绝 |
+| V8 | 当前清单解析与删除门禁保留；旧布局升级证据归档，不再维护迁移路径，未来工具版本不承诺兼容 |
+| V9 | 真实ssh2 PTY、htop/nvitop画面/重绘/退出和并发已验；不安装工具，OS输入法未观察 |
+| V10 | 本机监听、令牌/Cookie、Origin/Host与HTTP/WS门禁有核心回归和网页鉴权证据，不等于所有浏览器/网络安全审计 |
+| V11 | 密码/私钥、DPAPI保存/重建/复用/取消保存已有实际通道证据；密码网关不改变用户服务器认证 |
+| V12 | 技能/模型目录、slash解析、补全和限制提示已有网页验收 |
+| V13 | 原生上下文和压缩事件、失败/取消边界及真实长负载auto/manual压缩已有证据，隔离阈值不修改用户配置 |
+| V14 | CodeMirror保存、Git恢复和真实两端同步已验；保留未保存编辑保护，不承诺跨进程文件系统事务 |
+| V15 | 真实SSH资源指标、共享/退避/空值、实际多活动组合已验；隐藏状态沿用受控网页证据 |
+| V16 | Agent执行期间双PTY、资源、文件任务响应和同步排队已验；超时/输出限制沿用核心回归 |
+| V17 | [后台结果验收](../guides/background-result-acceptance.md)：等待期间无新AI轮次，同ID手动读取小JSON，大数据留远端；不增加监测器 |
+| V18 | 同/跨文件系统、混合目录移动、冲突/取消及真实权限/对象变化/独立连接中断见完整链路和失败验收；旧Firefox下载证据不代表现行保存API，OS选择器未观察 |
 
-2026-10-05完整链路更新：A1/A2/A5/A7/A13的实际SSH/rclone、真实同/跨FS文件管理和混合目录迁移、Firefox磁盘下载、保存密码后端重建组合、多活动并发及真实长负载压缩通过；详见[完整链路验收](../guides/real-workflow-acceptance.md)。A8独立客户端、原生OS输入法和Edge系统选择器仍待验，Windows原生界面读取被自动策略检查中止，不绕过。Windows较长配置路径的rclone状态文件名限制已通过combine短逻辑根修复，并实际验证旧基线及持久任务升级，见[验收](../guides/sync-session-names-acceptance.md)；Windows版rclone对远端反斜杠根的分隔符转换仍属工具边界。
+本轮收敛验证见[当前实现整理验收](../guides/current-implementation-cleanup-acceptance.md)。历史真实链路见[完整链路验收](../guides/real-workflow-acceptance.md)，后续故障证据见[失败验收](../guides/remote-file-failure-acceptance.md)。未改变的Agent/SSH链路不重复验收；不绕过此前对Windows原生界面读取的策略拒绝。
