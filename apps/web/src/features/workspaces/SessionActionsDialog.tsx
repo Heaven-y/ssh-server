@@ -6,6 +6,7 @@ import { DetailDialog } from '../../ui/DetailDialog';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { AGENT_LABELS } from '../chat/AgentControls';
 import { sessionActionKey, useChat } from '../chat/chat-store';
+import { useSessionModel } from '../chat/use-session-model';
 
 type Action = SessionActionInput['action'];
 const ACTION_LABELS: Record<Action, string> = { rename: '重命名', delete: '删除', archive: '归档', unarchive: '恢复' };
@@ -133,6 +134,7 @@ function SessionActionError({
 
 export function SessionActionsDialog({ workspaceId, session, archived, onClose, onCompleted }: Props) {
   const key = sessionActionKey(workspaceId, session);
+  const { description } = useSessionModel(workspaceId, session);
   const operation = useChat((state) => state.sessionOperations[key]);
   const manage = useChat((state) => state.manageSession);
   const running = useChat(
@@ -162,8 +164,15 @@ export function SessionActionsDialog({ workspaceId, session, archived, onClose, 
         <div>
           <p className="text-sm font-medium wrap-anywhere">{session.summary || '无标题会话'}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {AGENT_LABELS[session.agent]}
+            运行来源：{AGENT_LABELS[session.agent]}
             {archived ? ' · 已归档' : ''}
+          </p>
+          <p className="mt-1 text-xs leading-6 wrap-anywhere text-muted-foreground">{description}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            最后更新：
+            <time dateTime={new Date(session.lastModified).toISOString()}>
+              {new Date(session.lastModified).toLocaleString('zh-CN')}
+            </time>
           </p>
         </div>
         {busy && (

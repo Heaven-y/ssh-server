@@ -254,3 +254,44 @@ it.each([true, false])('复用服务器密码并按服务器断开，保存状�
   await screen.findByText('SSH 已断开，自动连接已暂停');
   expect(f.client.getQueryData(['ssh-credentials', server.alias])).toMatchObject({ connected: false, saved: false });
 });
+it('新增密码档案后聚焦当前档案密码步骤，连接后留空复用不再发送保存偏好', async () => {
+  const added = { ...server, alias: 'new-server', name: '新密码服务器' };
+  vi.spyOn(api, 'saveSshTarget').mockResolvedValue(added);
+  vi.spyOn(api, 'connectSsh').mockResolvedValue({
+    ...status,
+    connected: true,
+    hasPassword: true,
+    authMode: 'password',
+  });
+  vi.spyOn(api, 'disconnectSsh').mockResolvedValue(undefined);
+  const f = mount();
+  fireEvent.click(screen.getByRole('button', { name: '新增服务器' }));
+  fireEvent.change(screen.getByLabelText('连接名称'), { target: { value: added.name } });
+  fireEvent.change(screen.getByLabelText('地址'), { target: { value: added.hostname } });
+  fireEvent.change(screen.getByLabelText('账号'), { target: { value: added.username } });
+  fireEvent.change(screen.getByLabelText('认证方式'), { target: { value: 'password' } });
+  expect(screen.queryByLabelText('SSH 密码')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '保存服务器' }));
+  const password = await screen.findByLabelText<HTMLInputElement>('SSH 密码');
+  await waitFor(() => expect(document.activeElement).toBe(password));
+  expect(screen.getByText(/已保存.*新密码服务器/)).toBeTruthy();
+  expect(screen.getByLabelText<HTMLSelectElement>('已保存服务器').value).toBe('new-server');
+  expect(vi.mocked(api.saveSshTarget).mock.calls[0]?.[0]).not.toHaveProperty('password');
+  await waitFor(() =>
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: '保存密码' }).disabled).toBe(false),
+  );
+  fireEvent.change(password, { target: { value: 'new-secret' } });
+  fireEvent.click(screen.getByRole('button', { name: '连接服务器' }));
+  expect(password.value).toBe('');
+  await screen.findByText('服务器已连接');
+  fireEvent.click(screen.getByRole('button', { name: '连接服务器' }));
+  await waitFor(() => expect(api.connectSsh).toHaveBeenCalledTimes(2));
+  expect(vi.mocked(api.connectSsh).mock.calls[1]?.[0]).toEqual({
+    sshHost: 'new-server',
+    password: undefined,
+    savePassword: undefined,
+  });
+  fireEvent.click(screen.getByRole('button', { name: '关闭服务器' }));
+  f.unmount();
+  expect(api.disconnectSsh).not.toHaveBeenCalled();
+});

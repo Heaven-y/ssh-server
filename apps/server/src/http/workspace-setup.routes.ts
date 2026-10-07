@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { WorkspaceSetupCreateSchema, WorkspaceSetupInputSchema } from '@ssh-server/shared';
+import { WorkspaceSetupCreateSchema, WorkspaceSetupInputSchema, WorkspaceSetupVerifySchema } from '@ssh-server/shared';
 import { WorkspaceSetupError } from '../workspaces/setup/errors';
 import { SshConnectionError } from '../ssh/connection';
 import { RemoteFilesError } from '../remote-files/errors';
@@ -93,7 +93,9 @@ export function registerWorkspaceSetupRoutes(app: FastifyInstance, setup: Worksp
     return Promise.resolve({ closed: true });
   });
   post(app, '/api/workspace-setup/preview', WorkspaceSetupInputSchema, (input, signal) => setup.preview(input, signal));
-  post(app, '/api/workspace-setup/verify', WorkspaceSetupInputSchema, (input, signal) => setup.verify(input, signal));
+  post(app, '/api/workspace-setup/verify', WorkspaceSetupVerifySchema, (request, signal) =>
+    setup.verify(request.input, signal, request.previousBinding),
+  );
   post(app, '/api/workspace-setup/revoke', z.object({ verification: z.string().uuid() }).strict(), (input) => {
     setup.revoke(input.verification);
     return Promise.resolve({ revoked: true });

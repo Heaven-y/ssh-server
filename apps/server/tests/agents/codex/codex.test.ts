@@ -311,6 +311,12 @@ describe('原生会话读取', () => {
       modelProviders: [],
     });
   });
+  it('列表复用原生分页模型元数据，不为每条记录读取历史', async () => {
+    const { dir, options, messages } = await setup();
+    const sessions = await listCodexSessions(dir, options);
+    expect(sessions[0]).toMatchObject({ nativeModel: 'native-model' });
+    expect((await messages()).some((value) => value.method === 'thread/read')).toBe(false);
+  });
   it('读取完整历史之前验证 cwd，禁止跨工作区读取与续接', async () => {
     const { dir, workspace, options, messages } = await setup();
     await expect(assertCodexSession('foreign', dir, options)).rejects.toThrow('不属于');
@@ -332,11 +338,12 @@ describe('原生会话读取', () => {
     ).toBe(false);
     expect(events.at(-1)).toEqual({ type: 'turn_end', isError: true });
   });
-  it('历史使用原生 thread.id、实际模型和毫秒时间', async () => {
+  it('历史保留原生 thread.id、会话记录模型和毫秒时间，不把配置元数据当执行遥测', async () => {
     const { dir, options } = await setup();
     const history = await readCodexSession('native-thread', dir, options);
     expect(history.session).toMatchObject({ sessionId: 'native-thread', lastModified: 10_000 });
-    expect(history.actualModel).toBe('native-model');
+    expect(history.session).toMatchObject({ nativeModel: 'native-model' });
+    expect(history.actualModel).toBeUndefined();
     expect(history.events).toEqual([
       { type: 'user_message', text: '历史问题' },
       { type: 'text', delta: '历史回复' },

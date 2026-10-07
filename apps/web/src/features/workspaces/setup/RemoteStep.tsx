@@ -5,7 +5,15 @@ import { buttonClass, inputClass } from '../../../ui/styles';
 import { DirectoryPicker } from './DirectoryPicker';
 import { useCancelableRequest } from './use-cancelable-request';
 
-export function RemoteStep({ input, change }: { input: WorkspaceInput; change(patch: Partial<WorkspaceInput>): void }) {
+export function RemoteStep({
+  input,
+  change,
+  onBrowsingChange,
+}: {
+  input: WorkspaceInput;
+  change(patch: Partial<WorkspaceInput>): void;
+  onBrowsingChange?(blocked: boolean): void;
+}) {
   const id = useId();
   const session = useRef<string | undefined>(undefined);
   const [directory, setDirectory] = useState<RemoteDirectory>();
@@ -18,7 +26,9 @@ export function RemoteStep({ input, change }: { input: WorkspaceInput; change(pa
     },
     [],
   );
+  useEffect(() => () => onBrowsingChange?.(false), [onBrowsingChange]);
   const browse = async (path?: string, cursor?: string) => {
+    onBrowsingChange?.(true);
     setSize(undefined);
     const result = await request.run(async (signal) => {
       if (!session.current) {
@@ -31,7 +41,11 @@ export function RemoteStep({ input, change }: { input: WorkspaceInput; change(pa
       }
       return api.readSetupRemote(session.current, { path: path ?? '~', cursor }, signal);
     });
-    if (result) setDirectory(result);
+    if (result) {
+      setDirectory(result);
+      change({ remoteDir: result.path });
+      onBrowsingChange?.(false);
+    }
   };
   const measure = async () => {
     if (!session.current || !directory) return;
@@ -49,19 +63,25 @@ export function RemoteStep({ input, change }: { input: WorkspaceInput; change(pa
           id={id}
           className={`${inputClass} font-mono`}
           value={input.remoteDir}
-          onChange={(event) => change({ remoteDir: event.target.value })}
+          onChange={(event) => {
+            request.abort();
+            setDirectory(undefined);
+            setSize(undefined);
+            onBrowsingChange?.(false);
+            change({ remoteDir: event.target.value });
+          }}
           autoComplete="off"
           spellCheck={false}
         />
       </div>
       <p className="text-xs leading-5 text-muted-foreground">
-        可手动填写以 / 或 ~/ 开头的普通目录，或从服务器家目录逐级选择。浏览仅读取目录元数据。
+        可手动填写以 / 或 ~/ 开头的普通目录，或逐级浏览。浏览仅读取目录元数据，不写入目录或自动扫描文件。
       </p>
       <button
         type="button"
         className={`${buttonClass('outline')} self-start`}
         disabled={request.busy}
-        onClick={() => void browse()}
+        onClick={() => void browse(input.remoteDir || '~')}
       >
         {request.busy ? '正在读取…' : '浏览服务器目录'}
       </button>
@@ -72,7 +92,6 @@ export function RemoteStep({ input, change }: { input: WorkspaceInput; change(pa
             parent={parent}
             busy={request.busy}
             browse={(path, cursor) => void browse(path, cursor)}
-            choose={(remoteDir) => change({ remoteDir })}
           />
           <button
             type="button"

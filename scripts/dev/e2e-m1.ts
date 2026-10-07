@@ -103,7 +103,9 @@ async function jsonRequest<T>(url: string, cookie: string, body?: unknown): Prom
 }
 
 async function createWorkspace(origin: string, cookie: string, input: WorkspaceInput) {
-  const verified = await jsonRequest<WorkspaceSetupVerification>(`${origin}/api/workspace-setup/verify`, cookie, input);
+  const verified = await jsonRequest<WorkspaceSetupVerification>(`${origin}/api/workspace-setup/verify`, cookie, {
+    input,
+  });
   if (!verified.local.empty || !verified.remote.empty) throw new Error('验收仅接受两端专用空目录，不初始化已有项目');
   const result = await jsonRequest<WorkspaceSetupResult>(`${origin}/api/workspaces`, cookie, {
     input,

@@ -5,7 +5,7 @@ import { api, queryKeys } from '../../lib/api';
 import { useChat } from './chat-store';
 import { Composer } from './Composer';
 import { ChatTimeline } from './ChatTimeline';
-import { AgentControls, AGENT_LABELS } from './AgentControls';
+import { AGENT_LABELS } from './AgentControls';
 import { TurnChangesCard } from '../changes/TurnChangesCard';
 
 function Banner() {
@@ -54,6 +54,7 @@ function Messages() {
 export function ChatView({ workspace, onOpenChanges }: { workspace: Workspace; onOpenChanges?(turnId: string): void }) {
   const sessionId = useChat((s) => s.sessionId);
   const agent = useChat((s) => s.agent);
+  const actualModel = useChat((s) => s.actualModel);
   // 与侧栏共享查询结果，使用已有会话标题，避免把不易辨认的 ID 当作标题。
   const sessions = useQuery({
     queryKey: queryKeys.sessions(workspace.id, agent),
@@ -71,7 +72,9 @@ export function ChatView({ workspace, onOpenChanges }: { workspace: Workspace; o
             {AGENT_LABELS[agent]} · {workspace.name}
           </p>
         </div>
-        <AgentControls />
+        <span className="max-w-[50%] truncate text-xs text-muted-foreground" title={actualModel}>
+          实际模型：{actualModel || '未报告'}
+        </span>
       </div>
       <Banner />
       <div className="flex min-h-0 flex-1 flex-col">

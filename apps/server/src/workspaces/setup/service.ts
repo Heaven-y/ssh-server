@@ -36,8 +36,8 @@ export function createWorkspaceSetup(deps: {
       operation(signal, (active) => remote.size(session, directory, active)),
     preview: (input: WorkspaceInput, signal: AbortSignal) =>
       operation(signal, (active) => previewWorkspace(deps, input, active)),
-    verify: (input: WorkspaceInput, signal: AbortSignal) =>
-      operation(signal, (active) => verification.verify(input, active)),
+    verify: (input: WorkspaceInput, signal: AbortSignal, previousBinding?: string) =>
+      operation(signal, (active) => verification.verify(input, active, previousBinding)),
     // 创建前的复验受取消影响；保存后由同步管理器收尾，不设置30秒HTTP假失败。
     create: (input: Parameters<typeof verification.create>[0], signal: AbortSignal) =>
       verification.create(input, AbortSignal.any([signal, lifetime.signal])),

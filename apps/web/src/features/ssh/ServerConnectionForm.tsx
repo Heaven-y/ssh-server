@@ -16,11 +16,34 @@ const PHASES = {
 function needsPasswordInput(server: ManagedServer, connection: ReturnType<typeof useSshConnection>) {
   return server.authMode === 'password' && !connection.hasPassword && !connection.saved && !connection.reusablePassword;
 }
-export function ServerConnectionForm({ server }: { server: ManagedServer }) {
+function SavedConnectionHint({
+  name,
+  requested,
+  connected,
+}: {
+  name: string;
+  requested?: boolean;
+  connected: boolean;
+}) {
+  if (!requested || connected) return null;
+  return (
+    <p role="status" className="rounded border border-accent/40 bg-accent/5 p-3 text-sm leading-6">
+      已保存“{name}”。下一步：核对主机指纹后，在下方输入 SSH 密码并连接；密码不写入服务器档案。
+    </p>
+  );
+}
+export function ServerConnectionForm({
+  server,
+  connectAfterSave,
+}: {
+  server: ManagedServer;
+  connectAfterSave?: boolean;
+}) {
   const connection = useSshConnection({ sshHost: server.alias, authMode: server.authMode });
   const needsPassword = needsPasswordInput(server, connection);
   return (
     <section aria-label="服务器认证与连接" className="space-y-4">
+      <SavedConnectionHint name={server.name} requested={connectAfterSave} connected={connection.verified} />
       <p role={connection.phase === 'error' ? 'alert' : 'status'} className="text-sm leading-6">
         {connection.message ?? PHASES[connection.phase]}
       </p>
@@ -39,7 +62,7 @@ export function ServerConnectionForm({ server }: { server: ManagedServer }) {
         }}
       >
         {server.authMode === 'password' ? (
-          <SshPasswordField connection={connection} disabled={connection.busy} />
+          <SshPasswordField connection={connection} disabled={connection.busy} autoFocus={connectAfterSave} />
         ) : (
           <p className="text-sm text-muted-foreground">使用服务器档案指定的私钥或本机默认私钥。</p>
         )}

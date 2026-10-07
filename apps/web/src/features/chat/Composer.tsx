@@ -8,6 +8,7 @@ import { ContextStatus } from './ContextStatus';
 import { ComposerInput } from './ComposerInput';
 import { PendingFeedback } from '../changes/PendingFeedback';
 import type { AgentCapability } from '@ssh-server/shared';
+import { AgentControls } from './AgentControls';
 
 function ComposerActions({ disabled }: { disabled: boolean }) {
   const running = useChat((s) => s.running);
@@ -15,14 +16,14 @@ function ComposerActions({ disabled }: { disabled: boolean }) {
   const loading = useChat((s) => s.loadingHistory);
   const managing = useChat(managementPending);
   const interrupt = useChat((s) => s.interrupt);
-  const hint = loading
-    ? '正在读取历史，请稍候…'
-    : managing
-      ? '正在管理当前会话，请稍候…'
-      : 'Enter 发送 · Shift+Enter 换行';
+  const hint = loading ? '正在读取历史，请稍候…' : managing ? '正在管理当前会话，请稍候…' : undefined;
   return (
-    <div className="flex items-end justify-between gap-3">
-      <p className="pb-1 text-xs leading-5 text-muted-foreground">{hint}</p>
+    <div className="ml-auto flex shrink-0 items-center gap-2">
+      {hint && (
+        <p role="status" className="max-w-36 text-xs leading-5 text-muted-foreground">
+          {hint}
+        </p>
+      )}
       {running ? (
         <button
           type="button"
@@ -86,7 +87,6 @@ export function Composer() {
     <form onSubmit={submit} className="shrink-0 space-y-2 px-4 pt-2 pb-4 sm:px-6">
       <ContextStatus />
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 rounded-xl border border-border-strong bg-card p-3 transition-colors focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20 sm:p-4">
-        <CapabilityPicker disabled={busy} />
         <PendingFeedback />
         <label htmlFor={id} className="sr-only">
           输入消息
@@ -103,7 +103,15 @@ export function Composer() {
           placeholder={placeholder(connected, selection?.argumentHint)}
         />
         {restriction && <p className="text-xs leading-5 text-warning">{restriction}</p>}
-        <ComposerActions disabled={blocked} />
+        <div
+          role="group"
+          aria-label="消息选项"
+          className="flex flex-wrap items-center gap-2 border-t border-border/70 pt-2"
+        >
+          <AgentControls disabled={busy} />
+          <CapabilityPicker disabled={busy} />
+          <ComposerActions disabled={blocked} />
+        </div>
       </div>
     </form>
   );

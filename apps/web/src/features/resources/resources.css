@@ -1,0 +1,151 @@
+/* 仅资源组件使用的蓝青色阶；橙红保留给异常/过期，不以负载高低推断故障。 */
+.resource-scope {
+  --resource-cpu: #235bb5;
+  --resource-gpu: #087184;
+  --resource-memory: #6950b0;
+  --resource-track: #e2e9f0;
+  --resource-surface: #f6f9fd;
+  --resource-border: #cfdce8;
+  --resource-warning: #855100;
+  --resource-warning-bg: #fff5df;
+  color: var(--color-foreground);
+}
+:root[data-theme='dark'] .resource-scope {
+  --resource-cpu: #8fb9ff;
+  --resource-gpu: #69d2e1;
+  --resource-memory: #baa6f2;
+  --resource-track: #2d394a;
+  --resource-surface: #19232f;
+  --resource-border: #35475a;
+  --resource-warning: #f0c77f;
+  --resource-warning-bg: #352c1e;
+}
+.resource-scope .resource-tone-cpu {
+  --resource-tone: var(--resource-cpu);
+}
+.resource-scope .resource-tone-gpu {
+  --resource-tone: var(--resource-gpu);
+}
+.resource-scope .resource-tone-memory {
+  --resource-tone: var(--resource-memory);
+}
+.resource-scope .resource-number {
+  color: var(--resource-tone, var(--resource-cpu));
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.resource-scope .resource-meter {
+  display: block;
+  height: 0.3rem;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--resource-track);
+}
+.resource-scope .resource-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--resource-tone, var(--resource-cpu));
+}
+.resource-scope .resource-meter-unavailable {
+  background: transparent;
+  border: 1px dashed var(--color-border-strong);
+}
+.resource-scope.resource-overview {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--resource-border);
+  border-radius: 0.65rem;
+  padding: 0.625rem 0.75rem;
+  text-align: left;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  background: var(--resource-surface);
+}
+.resource-scope.resource-overview:hover {
+  border-color: var(--resource-cpu);
+}
+.resource-scope.resource-overview:focus-visible {
+  outline: 2px solid var(--resource-cpu);
+  outline-offset: 2px;
+}
+.resource-scope .resource-overview-heading,
+.resource-scope .resource-overview-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+}
+.resource-scope .resource-overview-heading {
+  margin-bottom: 0.5rem;
+}
+.resource-scope .resource-overview-footer {
+  margin-top: 0.5rem;
+  color: var(--color-muted-foreground);
+}
+.resource-scope .resource-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 0.75rem;
+}
+.resource-scope .resource-overview-stat {
+  min-width: 0;
+}
+.resource-scope .resource-overview-stat > span {
+  display: block;
+}
+.resource-scope .resource-overview-stat .resource-number {
+  font-size: 1rem;
+}
+.resource-scope .resource-overview-gpu {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.125rem 0.75rem;
+  min-width: 0;
+  border-top: 1px solid var(--resource-border);
+  padding-top: 0.375rem;
+}
+.resource-scope .resource-status {
+  display: inline-block;
+  border-radius: 0.3rem;
+  padding: 0.125rem 0.375rem;
+  color: var(--resource-gpu);
+  background: var(--resource-track);
+  font-size: 0.75rem;
+}
+.resource-scope .resource-status[data-attention='true'] {
+  color: var(--resource-warning);
+  background: var(--resource-warning-bg);
+}
+.resource-scope .resource-status[data-neutral='true'] {
+  color: var(--color-muted-foreground);
+  background: var(--color-muted);
+}
+.resource-scope .resource-metric-card {
+  min-width: 0;
+  border: 1px solid var(--resource-border);
+  border-radius: 0.625rem;
+  padding: 0.75rem;
+  background: var(--resource-surface);
+}
+.resource-scope .resource-gpu-card {
+  border-left: 3px solid var(--resource-gpu);
+}
+.resource-scope .resource-capacity {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.resource-scope .resource-metadata {
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.75rem;
+}
+.resource-scope table tbody tr:nth-child(even) {
+  background: var(--resource-surface);
+}

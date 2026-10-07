@@ -84,4 +84,25 @@ describe('Claude 原生会话管理', () => {
     });
     expect(renameSession).not.toHaveBeenCalled();
   });
+  it('历史只展示助手报告的非空模型，忽略用户字段和 synthetic 占位；列表不读全文', async () => {
+    vi.mocked(listSessions).mockResolvedValue([metadata]);
+    const api = {
+      list: async () => [metadata],
+      info: async () => metadata,
+      messages: vi.fn().mockResolvedValue([
+        { type: 'assistant', message: { role: 'assistant', model: 'native-model', content: [] } },
+        { type: 'assistant', message: { role: 'assistant', model: '<synthetic>', content: [] } },
+        { type: 'user', message: { role: 'user', model: 'user-value', content: [] } },
+        { type: 'assistant', parent_tool_use_id: 'child', message: { model: 'subagent-model', content: [] } },
+      ]),
+      rename: async () => undefined,
+      delete: async () => undefined,
+    };
+    const provider = createClaudeSessions(api);
+    await provider.list(dir);
+    expect(api.messages).not.toHaveBeenCalled();
+    expect((await provider.read(id, dir)).actualModel).toBe('native-model');
+    api.messages.mockResolvedValue([{ type: 'assistant', message: { model: '  ', content: [] } }]);
+    expect((await provider.read(id, dir)).actualModel).toBeUndefined();
+  });
 });

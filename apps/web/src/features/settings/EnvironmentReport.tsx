@@ -60,7 +60,7 @@ export function EnvironmentReport({ disabled }: { disabled: boolean }) {
     if (report) qc.setQueryData(queryKeys.environment, report);
   };
   return (
-    <section className="space-y-3 border-t border-border pt-5">
+    <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="font-medium">本机运行环境</h3>
         <button

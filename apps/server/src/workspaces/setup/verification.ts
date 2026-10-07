@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import {
   SyncSettingsSchema,
@@ -47,6 +47,22 @@ const changed = () => new WorkspaceSetupError('setup_verification_changed', '配
 
 export function createSetupVerification(deps: Deps) {
   const tickets = new Map<string, Ticket>();
+  // 独立于一次性票：到期/撤票后仍可比较，重启后自动失效，不暴露连接或凭据数据。
+  const bindingSecret = randomBytes(32);
+  function bindingFor(checked: Checked) {
+    return createHmac('sha256', bindingSecret)
+      .update(
+        JSON.stringify([
+          checked.signature,
+          checked.key,
+          checked.generation,
+          checked.authMode,
+          checked.local.identity,
+          checked.remote.path,
+        ]),
+      )
+      .digest('hex');
+  }
   let pending = 0;
   const local = deps.inspectLocal ?? inspectLocalRoot;
   const remote = deps.inspectRemote ?? inspectRemoteRoot;
@@ -95,18 +111,25 @@ export function createSetupVerification(deps: Deps) {
       throw changed();
   }
   return {
-    async verify(input: WorkspaceInput, signal: AbortSignal): Promise<WorkspaceSetupVerification> {
+    async verify(
+      input: WorkspaceInput,
+      signal: AbortSignal,
+      previousBinding?: string,
+    ): Promise<WorkspaceSetupVerification> {
       cleanup();
       if (tickets.size + pending >= 64)
         throw new WorkspaceSetupError('setup_verification_full', '待创建验证数量已满，请稍后重试');
       pending++;
       try {
         const checked = await check(input, signal);
+        const binding = bindingFor(checked);
+        if (previousBinding !== undefined && binding !== previousBinding) throw changed();
         const verification = randomUUID();
         const expiresAt = Date.now() + 5 * 60000;
         tickets.set(verification, { checked, expiresAt });
         return {
           verification,
+          binding,
           expiresAt,
           local: checked.local.info,
           remote: checked.remote,

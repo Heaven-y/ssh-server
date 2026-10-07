@@ -357,12 +357,12 @@ export const api = {
       cache: 'no-store',
       body: JSON.stringify(input),
     }),
-  verifyWorkspace: (input: WorkspaceInput, signal?: AbortSignal) =>
+  verifyWorkspace: (input: WorkspaceInput, signal?: AbortSignal, previousBinding?: string) =>
     request<WorkspaceSetupVerification>('/api/workspace-setup/verify', {
       method: 'POST',
       signal,
       cache: 'no-store',
-      body: JSON.stringify(input),
+      body: JSON.stringify({ input, previousBinding }),
     }),
   revokeWorkspaceVerification: (verification: string) =>
     request<{ revoked: true }>('/api/workspace-setup/revoke', {

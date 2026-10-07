@@ -11,6 +11,10 @@ const failures = {
   session_expired: [410, '服务器浏览连接已结束，请重新连接文件视图'],
   cursor_expired: [410, '目录分页已过期，请刷新当前目录'],
   too_many_sessions: [429, '打开的服务器文件视图过多，请关闭不用的面板后重试'],
+  directory_too_large: [
+    413,
+    '当前目录超过排序浏览上限（10000项或4 MiB元数据），未展示不完整列表；请输入更具体的子目录路径',
+  ],
   workspace_missing: [404, '工作区不存在'],
   not_found: [404, '服务器目录已不存在，请返回上级或工作区目录'],
   permission_denied: [403, '当前 SSH 账号无权读取该目录'],
