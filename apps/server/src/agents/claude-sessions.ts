@@ -26,12 +26,20 @@ const nativeApi: ClaudeSessionsApi = {
   delete: (id, dir) => deleteSession(id, { dir }),
 };
 
+function modelValue(message: object): string | undefined {
+  const model = 'model' in message && typeof message.model === 'string' ? message.model.trim() : '';
+  return model && model !== '<synthetic>' ? model : undefined;
+}
+function assistantModel(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object' || !('type' in value) || value.type !== 'assistant') return;
+  if ('parent_tool_use_id' in value && value.parent_tool_use_id) return;
+  if (!('message' in value) || !value.message || typeof value.message !== 'object') return;
+  return modelValue(value.message);
+}
 function lastModel(messages: unknown[]): string | undefined {
-  for (const value of messages.toReversed()) {
-    if (!value || typeof value !== 'object' || !('message' in value)) continue;
-    const message = value.message;
-    if (message && typeof message === 'object' && 'model' in message && typeof message.model === 'string')
-      return message.model;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const model = assistantModel(messages[index]);
+    if (model) return model;
   }
   return undefined;
 }

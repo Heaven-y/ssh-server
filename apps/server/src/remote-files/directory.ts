@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { FileEntryWithStats } from 'ssh2';
 import type { RemoteDirectory, SyncSettings } from '@ssh-server/shared';
 import type { SftpReader } from '../ssh/sftp';
+import { compareDirectoryEntries, createDirectoryBudget } from '../files/directory-order';
 import { directoryEntry, inside } from './paths';
 import { RemoteFilesError } from './errors';
 
@@ -15,8 +15,8 @@ export function createDirectoryCursor(
 ) {
   let closed = false;
   let expired = false;
-  let eof = false;
-  let buffered: FileEntryWithStats[] = [];
+  let snapshot: RemoteDirectory['entries'] | undefined;
+  let offset = 0;
   let expected: string | undefined;
   let previous: { cursor: string | undefined; page: RemoteDirectory } | undefined;
   const releaseHandle = async () => {
@@ -26,7 +26,7 @@ export function createDirectoryCursor(
   };
   const expire = () => {
     expired = true;
-    buffered = [];
+    snapshot = undefined;
     previous = undefined;
     reader.close();
     void releaseHandle();
@@ -38,23 +38,34 @@ export function createDirectoryCursor(
     timer = setTimeout(expire, DIRECTORY_IDLE_MS);
     timer.unref();
   };
-  async function collectPage(): Promise<RemoteDirectory['entries']> {
+  async function collectDirectory(): Promise<RemoteDirectory['entries']> {
     const entries: RemoteDirectory['entries'] = [];
-    while (entries.length < PAGE_SIZE && !eof) {
-      if (!buffered.length) {
-        const batch = await reader.readdir(handle);
-        if (!batch || !batch.length) {
-          eof = true;
-          break;
-        }
-        buffered = batch;
-      }
-      while (buffered.length && entries.length < PAGE_SIZE) {
-        const entry = directoryEntry(buffered.shift()!, directory, root, settings);
+    const withinBudget = createDirectoryBudget();
+    while (true) {
+      reader.signal.throwIfAborted();
+      const batch = await reader.readdir(handle);
+      reader.signal.throwIfAborted();
+      if (!batch || !batch.length) break;
+      for (const item of batch) {
+        const entry = directoryEntry(item, directory, root, settings);
+        if (!withinBudget(entry ?? item.filename)) throw new RemoteFilesError('directory_too_large');
         if (entry) entries.push(entry);
       }
     }
+    entries.sort(compareDirectoryEntries);
+    await releaseHandle();
+    reader.close();
     return entries;
+  }
+  async function ensureSnapshot() {
+    try {
+      snapshot ??= await collectDirectory();
+      if (expired) throw new RemoteFilesError('cursor_expired');
+      return snapshot;
+    } catch (error) {
+      expire();
+      throw error instanceof RemoteFilesError ? error : new RemoteFilesError('cursor_expired');
+    }
   }
   return {
     path: directory,
@@ -66,27 +77,20 @@ export function createDirectoryCursor(
       }
       if (cursor !== expected || (previous && !expected)) throw new RemoteFilesError('cursor_expired');
       clearTimeout(timer);
-      let entries: RemoteDirectory['entries'];
-      try {
-        entries = await collectPage();
-      } catch {
-        expire();
-        throw new RemoteFilesError('cursor_expired');
-      }
-      expected = eof ? undefined : randomUUID();
+      const current = await ensureSnapshot();
+      const entries = current.slice(offset, offset + PAGE_SIZE);
+      offset += entries.length;
+      expected = offset < current.length ? randomUUID() : undefined;
       const page = { path: directory, root, outsideWorkspace: !inside(root, directory), entries, nextCursor: expected };
       previous = { cursor, page };
-      if (eof) {
-        await releaseHandle();
-        reader.close();
-      }
+      if (!expected) snapshot = [];
       touch();
       return page;
     },
     async close() {
       clearTimeout(timer);
       expired = true;
-      buffered = [];
+      snapshot = undefined;
       previous = undefined;
       reader.close();
       await releaseHandle();

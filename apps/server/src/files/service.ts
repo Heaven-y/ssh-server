@@ -10,6 +10,7 @@ import type {
 import { fileOperation, WorkspaceFileError } from './errors';
 import { decodeText, digest, encodeText, readSnapshot, replaceFile } from './io';
 import { assertAllowedPath, assertDirectoriesUnchanged, resolveWorkspacePath, type FileLocation } from './paths';
+import { compareDirectoryEntries } from './directory-order';
 
 export const MAX_DIRECTORY_ENTRIES = 500;
 const MAX_SCANNED_ENTRIES = 5000;
@@ -45,18 +46,15 @@ async function listDirectory(location: FileLocation): Promise<WorkspaceDirectory
     }
     const entry = await directoryEntry(location, item.name);
     if (!entry) continue;
-    if (entries.length === MAX_DIRECTORY_ENTRIES) {
-      truncated = true;
-      break;
-    }
     entries.push(entry);
   }
   await assertDirectoriesUnchanged(location);
-  entries.sort((left, right) => {
-    if (left.kind !== right.kind) return left.kind === 'directory' ? -1 : 1;
-    return left.name.localeCompare(right.name, 'zh-CN');
-  });
-  return { path: location.relative, entries, truncated };
+  entries.sort(compareDirectoryEntries);
+  return {
+    path: location.relative,
+    entries: entries.slice(0, MAX_DIRECTORY_ENTRIES),
+    truncated: truncated || entries.length > MAX_DIRECTORY_ENTRIES,
+  };
 }
 
 export function createWorkspaceFilesService() {

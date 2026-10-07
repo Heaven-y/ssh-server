@@ -70,7 +70,10 @@ function DeleteServer({ server, done, cancel }: { server: ManagedServer; done():
 }
 
 type Screen =
-  { kind: 'view' | 'import' } | { kind: 'edit'; editor: Editor } | { kind: 'delete'; server: ManagedServer };
+  | { kind: 'view'; connectAfterSave?: boolean }
+  | { kind: 'import' }
+  | { kind: 'edit'; editor: Editor }
+  | { kind: 'delete'; server: ManagedServer };
 function ServerList({
   hosts,
   alias,
@@ -129,11 +132,13 @@ function ProfileDetails({
   locked,
   changeScreen,
   chooseServer,
+  connectAfterSave = false,
 }: {
   server: ManagedServer;
   locked: boolean;
   changeScreen(screen: Screen): void;
   chooseServer?: (alias: string) => void;
+  connectAfterSave?: boolean;
 }) {
   return (
     <>
@@ -155,7 +160,7 @@ function ProfileDetails({
           删除服务器
         </button>
       </div>
-      <ServerConnectionForm key={JSON.stringify(server)} server={server} />
+      <ServerConnectionForm key={JSON.stringify(server)} server={server} connectAfterSave={connectAfterSave} />
       {chooseServer && (
         <button type="button" className={`${buttonClass('primary')} w-full`} onClick={() => chooseServer(server.alias)}>
           使用此服务器
@@ -196,7 +201,13 @@ function ServerContent({
   if (screen.kind === 'delete')
     return <DeleteServer key={screen.server.alias} server={screen.server} done={reset} cancel={reset} />;
   return selected ? (
-    <ProfileDetails server={selected} locked={locked} changeScreen={changeScreen} chooseServer={chooseServer} />
+    <ProfileDetails
+      server={selected}
+      locked={locked}
+      changeScreen={changeScreen}
+      chooseServer={chooseServer}
+      connectAfterSave={screen.connectAfterSave}
+    />
   ) : null;
 }
 
@@ -269,7 +280,13 @@ export function ServerManagerDialog({
           selected={selected}
           locked={locked}
           changeScreen={setScreen}
-          saved={(server) => select(server.alias)}
+          saved={(server) => {
+            setAlias(server.alias);
+            setScreen({
+              kind: 'view',
+              connectAfterSave: server.authMode === 'password' && screen.kind === 'edit' && !screen.editor.expected,
+            });
+          }}
           reset={reset}
           chooseServer={chooseServer}
         />

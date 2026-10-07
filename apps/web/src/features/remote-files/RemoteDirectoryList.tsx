@@ -10,6 +10,7 @@ import type {
 } from '@ssh-server/shared';
 import { buttonClass } from '../../ui/styles';
 import { ACTION_LABELS } from './RemoteActionDialog';
+import { isContextMenuKey, navigateFileList } from '../../ui/file-list-navigation';
 
 const TYPE_LABELS = { file: '文件', directory: '目录', link: '符号链接', other: '其他类型' };
 const TYPE_ICONS = { file: File, directory: Folder, link: Link, other: Shapes };
@@ -66,6 +67,7 @@ export function RemoteDirectoryList({
   const menu = useMenuStore({ placement: 'bottom-start' });
   const [menuEntry, setMenuEntry] = useState<RemoteFileEntry>();
   const [dropPath, setDropPath] = useState<string>();
+  const [detailsPath, setDetailsPath] = useState<string>();
   const entries = showHidden ? directory.entries : directory.entries.filter((entry) => !entry.name.startsWith('.'));
   const selected = entries.find((entry) => entry.path === selectedPath);
   const request = (kind: RemoteFileActionKind, entry = selected) => {
@@ -75,6 +77,7 @@ export function RemoteDirectoryList({
   };
   const shortcut = (event: KeyboardEvent, entry?: RemoteFileEntry) => {
     if (loading) return;
+    if (navigateFileList(event)) return;
     const kind = shortcutAction(event);
     if (kind) {
       event.preventDefault();
@@ -84,13 +87,13 @@ export function RemoteDirectoryList({
       event.preventDefault();
       navigate(entry.path);
     }
-    if (event.shiftKey && event.key === 'F10' && entry) {
+    if (entry && isContextMenuKey(event)) {
       event.preventDefault();
       openMenu(entry, event.currentTarget as HTMLElement);
     }
   };
-  function openMenu(entry: RemoteFileEntry, anchor: HTMLElement) {
-    select(entry.path);
+  function openMenu(entry: RemoteFileEntry | undefined, anchor: HTMLElement) {
+    select(entry?.path);
     setMenuEntry(entry);
     menu.setAnchorElement(anchor);
     menu.show();
@@ -120,12 +123,17 @@ export function RemoteDirectoryList({
       <div
         className="min-h-0 flex-1 overflow-auto px-2 py-2"
         aria-busy={loading}
+        onContextMenu={(event) => {
+          if (event.target instanceof Element && event.target.closest('button')) return;
+          event.preventDefault();
+          if (!loading) openMenu(undefined, event.currentTarget);
+        }}
         onDragOver={(event) => {
           if (event.dataTransfer.types.includes('application/x-ssh-server-remote-file')) event.preventDefault();
         }}
         onDrop={(event) => dropped(event, directory.path)}
       >
-        <ul aria-label="服务器目录条目" className="space-y-1">
+        <ul aria-label="服务器目录条目" className="space-y-0.5">
           {entries.map((entry) => (
             <RemoteEntryRow
               key={entry.path}
@@ -168,7 +176,9 @@ export function RemoteDirectoryList({
           </p>
         )}
       </div>
-      {selected && <EntryDetails entry={selected} close={() => select(undefined)} />}
+      {selected && selected.path === detailsPath && (
+        <EntryDetails entry={selected} close={() => setDetailsPath(undefined)} />
+      )}
       <Menu
         store={menu}
         aria-label="服务器文件菜单"
@@ -176,42 +186,100 @@ export function RemoteDirectoryList({
         className="z-50 min-w-40 rounded-lg border border-border bg-card p-1 text-sm text-foreground shadow-xl"
         unmountOnHide
       >
-        {menuEntry?.type === 'directory' && (
-          <MenuItem
-            className={`${buttonClass('ghost')} w-full justify-start`}
-            onClick={() => {
-              menu.hide();
-              navigate(menuEntry.path);
-            }}
-          >
-            打开目录
-          </MenuItem>
-        )}
-        {(['rename', 'move', 'copy', 'delete'] as const).map((kind) => (
-          <MenuItem
-            key={kind}
-            disabled={loading || menuEntry?.type === 'other'}
-            className={`${buttonClass('ghost')} w-full justify-start`}
-            onClick={() => {
-              menu.hide();
-              request(kind, menuEntry);
-            }}
-          >
-            {ACTION_LABELS[kind]}
-          </MenuItem>
-        ))}
+        <RemoteMenuItems
+          entry={menuEntry}
+          loading={loading}
+          request={request}
+          navigate={navigate}
+          download={download}
+          details={setDetailsPath}
+          hide={() => menu.hide()}
+        />
+      </Menu>
+    </div>
+  );
+}
+
+function RemoteMenuItems({
+  entry,
+  loading,
+  request,
+  navigate,
+  download,
+  details,
+  hide,
+}: {
+  entry?: RemoteFileEntry;
+  loading: boolean;
+  request(kind: RemoteFileActionKind, entry?: RemoteFileEntry): void;
+  navigate(path: string): void;
+  download(entry: RemoteFileEntry): void;
+  details(path: string): void;
+  hide(): void;
+}) {
+  const itemClass = `${buttonClass('ghost')} w-full justify-start`;
+  if (!entry)
+    return (
+      <MenuItem
+        disabled={loading}
+        className={itemClass}
+        onClick={() => {
+          hide();
+          request('mkdir');
+        }}
+      >
+        新建文件夹
+      </MenuItem>
+    );
+  return (
+    <>
+      {entry.type === 'directory' && (
         <MenuItem
-          disabled={loading || menuEntry?.type !== 'file'}
-          className={`${buttonClass('ghost')} w-full justify-start`}
+          disabled={loading}
+          className={itemClass}
           onClick={() => {
-            menu.hide();
-            if (menuEntry) download(menuEntry);
+            hide();
+            navigate(entry.path);
+          }}
+        >
+          打开目录
+        </MenuItem>
+      )}
+      {(['rename', 'move', 'copy', 'delete'] as const).map((kind) => (
+        <MenuItem
+          key={kind}
+          disabled={loading || entry.type === 'other'}
+          className={itemClass}
+          onClick={() => {
+            hide();
+            request(kind, entry);
+          }}
+        >
+          {ACTION_LABELS[kind]}
+        </MenuItem>
+      ))}
+      {entry.type === 'file' && (
+        <MenuItem
+          disabled={loading}
+          className={itemClass}
+          onClick={() => {
+            hide();
+            download(entry);
           }}
         >
           下载…
         </MenuItem>
-      </Menu>
-    </div>
+      )}
+      <MenuItem
+        className={itemClass}
+        onClick={() => {
+          hide();
+          details(entry.path);
+        }}
+      >
+        属性
+      </MenuItem>
+    </>
   );
 }
 
@@ -245,13 +313,17 @@ function RemoteEntryRow({
   const Icon = TYPE_ICONS[entry.type];
   return (
     <li
-      className={`flex items-start rounded-lg ${draggedOver ? 'outline outline-primary' : ''}`}
+      className={`group flex items-center rounded-md ${draggedOver ? 'bg-accent/10 outline outline-accent' : ''}`}
       onDragOver={dragOver}
       onDragLeave={dragLeave}
       onDrop={drop}
     >
       <button
         type="button"
+        data-file-entry
+        aria-label={entry.name}
+        title={`${TYPE_LABELS[entry.type]} · ${SCOPE_LABELS[entry.scope]}`}
+        onFocus={onClick}
         onClick={onClick}
         onDoubleClick={open}
         onKeyDown={shortcut}
@@ -263,26 +335,22 @@ function RemoteEntryRow({
         onDragStart={drag}
         disabled={loading}
         aria-pressed={selected}
-        className={`flex w-full min-w-0 gap-2 rounded-lg px-2 py-2 text-left hover:bg-muted disabled:opacity-50 ${selected ? 'bg-muted' : ''}`}
+        className={`flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted disabled:opacity-50 ${selected ? 'bg-accent/10' : ''}`}
       >
-        <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm" title={entry.name}>
-            <bdi>{entry.name}</bdi>
-          </span>
-          <span className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-            <span>{TYPE_LABELS[entry.type]}</span>
-            <span>{SCOPE_LABELS[entry.scope]}</span>
-          </span>
-          <span className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-            {entry.type === 'file' && <span>{sizeLabel(entry)}</span>}
-            <span>{modifiedLabel(entry.modifiedAt)}</span>
-          </span>
+        <Icon
+          aria-hidden
+          className={`size-4 shrink-0 ${entry.type === 'directory' ? 'text-accent' : 'text-muted-foreground'}`}
+        />
+        <span className="min-w-0 flex-1 truncate text-sm" title={entry.name}>
+          <bdi>{entry.name}</bdi>
         </span>
+        {entry.type === 'file' && (
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{sizeLabel(entry)}</span>
+        )}
       </button>
       <button
         type="button"
-        className={`${buttonClass('ghost')} mt-1 shrink-0`}
+        className={`${buttonClass('ghost')} shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100`}
         aria-label={`${entry.name}的操作菜单`}
         disabled={loading}
         onClick={(event) => menu(event.currentTarget)}

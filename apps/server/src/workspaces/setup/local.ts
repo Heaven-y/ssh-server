@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { constants, type Dir, type Dirent } from 'node:fs';
+import { constants, type Dirent } from 'node:fs';
 import { access, lstat, opendir, realpath } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { LocalDirectory, SetupDirectoryInfo } from '@ssh-server/shared';
 import { WorkspaceSetupError } from './errors';
+import { compareDirectoryEntries, createDirectoryBudget } from '../../files/directory-order';
 
 const invalid = () =>
   new WorkspaceSetupError('local_directory_invalid', '本地同步根必须是可读写的普通绝对目录，且不能经过符号链接');
@@ -44,50 +45,66 @@ const entryType = (entry: Dirent): LocalDirectory['entries'][number]['type'] => 
   if (entry.isDirectory()) return 'directory';
   return entry.isFile() ? 'file' : 'other';
 };
-type Cursor = { directory: Dir; path: string; signature: string; next?: Dirent; expiresAt: number };
+type Cursor = { entries: LocalDirectory['entries']; path: string; signature: string; expiresAt: number };
+
+async function directoryRoots() {
+  if (process.platform !== 'win32') return [os.homedir(), '/'];
+  const drives = await Promise.all(
+    Array.from({ length: 26 }, (_, index) => String.fromCharCode(65 + index) + ':\\').map(async (drive) =>
+      (await access(drive).then(
+        () => true,
+        () => false,
+      ))
+        ? drive
+        : undefined,
+    ),
+  );
+  return [os.homedir(), ...drives.filter((drive): drive is string => Boolean(drive))];
+}
+
+async function directorySignature(directory: string) {
+  const stat = await lstat(directory);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) throw invalid();
+  return JSON.stringify([stat.dev, stat.ino, stat.mtimeMs]);
+}
+
+async function sortedDirectory(directoryPath: string, signal: AbortSignal) {
+  const entries: LocalDirectory['entries'] = [];
+  const withinBudget = createDirectoryBudget();
+  const directory = await opendir(directoryPath);
+  for await (const entry of directory) {
+    signal.throwIfAborted();
+    const item = { name: entry.name, path: path.join(directoryPath, entry.name), type: entryType(entry) };
+    if (!withinBudget(item))
+      throw new WorkspaceSetupError(
+        'local_directory_too_large',
+        '当前目录超过排序浏览上限（10000项或4 MiB元数据），请填写更具体的子目录路径',
+      );
+    entries.push(item);
+  }
+  signal.throwIfAborted();
+  return entries.sort(compareDirectoryEntries);
+}
 
 export function createLocalDirectoryBrowser() {
   const cursors = new Map<string, Cursor>();
+  const lifetime = new AbortController();
   let opening = 0;
-  async function close(cursor: Cursor) {
-    await cursor.directory.close().catch(() => undefined);
-  }
   const timer = setInterval(() => {
-    for (const [id, cursor] of cursors)
-      if (cursor.expiresAt <= Date.now()) {
-        cursors.delete(id);
-        void close(cursor);
-      }
+    for (const [id, cursor] of cursors) if (cursor.expiresAt <= Date.now()) cursors.delete(id);
   }, 60000);
   timer.unref();
-  async function roots() {
-    if (process.platform !== 'win32') return [os.homedir(), '/'];
-    const drives = await Promise.all(
-      Array.from({ length: 26 }, (_, index) => String.fromCharCode(65 + index) + ':\\').map(async (drive) =>
-        (await access(drive).then(
-          () => true,
-          () => false,
-        ))
-          ? drive
-          : undefined,
-      ),
-    );
-    return [os.homedir(), ...drives.filter((drive): drive is string => Boolean(drive))];
-  }
-  async function signature(directory: string) {
-    const stat = await lstat(directory);
-    if (!stat.isDirectory() || stat.isSymbolicLink()) throw invalid();
-    return JSON.stringify([stat.dev, stat.ino, stat.mtimeMs]);
-  }
   async function takeCursor(
     input: { cursor?: string },
     directoryPath: string,
-    currentSignature: string,
+    signature: string,
+    signal: AbortSignal,
   ): Promise<Cursor> {
     if (input.cursor) {
       const prior = cursors.get(input.cursor);
       cursors.delete(input.cursor);
-      if (!prior) throw new WorkspaceSetupError('local_cursor_expired', '本地目录分页已失效，请重新浏览');
+      if (!prior || prior.expiresAt <= Date.now())
+        throw new WorkspaceSetupError('local_cursor_expired', '本地目录分页已失效，请重新浏览');
       opening++;
       return prior;
     }
@@ -95,69 +112,49 @@ export function createLocalDirectoryBrowser() {
       throw new WorkspaceSetupError('local_cursor_full', '本地目录浏览数量已满，请稍后重试');
     opening++;
     try {
-      return {
-        directory: await opendir(directoryPath),
-        path: directoryPath,
-        signature: currentSignature,
-        expiresAt: 0,
-      };
+      return { entries: await sortedDirectory(directoryPath, signal), path: directoryPath, signature, expiresAt: 0 };
     } catch (error) {
       opening--;
       throw error;
     }
   }
-  async function readPage(cursor: Cursor, signal: AbortSignal) {
-    const entries: LocalDirectory['entries'] = [];
-    while (entries.length < 200) {
-      signal.throwIfAborted();
-      const entry = cursor.next ?? (await cursor.directory.read());
-      cursor.next = undefined;
-      if (!entry) break;
-      entries.push({ name: entry.name, path: path.join(cursor.path, entry.name), type: entryType(entry) });
-    }
-    cursor.next = (await cursor.directory.read()) ?? undefined;
-    return entries;
-  }
   return {
-    async list(input: { path?: string; cursor?: string }, signal: AbortSignal): Promise<LocalDirectory> {
+    async list(input: { path?: string; cursor?: string }, parent: AbortSignal): Promise<LocalDirectory> {
+      const signal = AbortSignal.any([parent, lifetime.signal, AbortSignal.timeout(20_000)]);
       signal.throwIfAborted();
       const directoryPath = path.resolve(input.path ?? os.homedir());
-      const currentSignature = await signature(directoryPath);
-      const cursor = await takeCursor(input, directoryPath, currentSignature);
+      const signature = await directorySignature(directoryPath);
+      const cursor = await takeCursor(input, directoryPath, signature, signal);
       try {
-        if (cursor.path !== directoryPath || cursor.signature !== currentSignature)
+        if (cursor.path !== directoryPath || cursor.signature !== (await directorySignature(directoryPath)))
           throw new WorkspaceSetupError('local_cursor_expired', '目录已变化，请重新浏览');
-        const entries = await readPage(cursor, signal);
         signal.throwIfAborted();
         const result: LocalDirectory = {
           path: directoryPath,
           parent: path.dirname(directoryPath),
-          roots: await roots(),
-          entries,
+          roots: await directoryRoots(),
+          entries: cursor.entries.splice(0, 200),
         };
         signal.throwIfAborted();
-        if (cursor.next) {
+        if (cursor.entries.length) {
           result.nextCursor = randomUUID();
           cursor.expiresAt = Date.now() + 15 * 60000;
           cursors.set(result.nextCursor, cursor);
-        } else await close(cursor);
+        }
         return result;
-      } catch (error) {
-        await close(cursor);
-        throw error;
       } finally {
         opening--;
       }
     },
-    async close(id: string) {
-      const cursor = cursors.get(id);
+    close(id: string) {
       cursors.delete(id);
-      if (cursor) await close(cursor);
+      return Promise.resolve();
     },
-    async dispose() {
+    dispose() {
+      lifetime.abort();
       clearInterval(timer);
-      await Promise.all([...cursors.values()].map(close));
       cursors.clear();
+      return Promise.resolve();
     },
   };
 }

@@ -40,6 +40,8 @@ type ChatState = {
   initialDefaultsEligible: boolean;
   reasoningEffort: string;
   actualModel?: string;
+  /** 仅保存本页已读取/运行的原生模型元数据，不从默认或显式选择推导。 */
+  sessionModels: Record<string, { actualModel?: string; nativeModel?: string }>;
   selectedCapability?: AgentCapability;
   contextUsage?: ContextUsage | null;
   compaction?: CompactionState;
@@ -181,6 +183,7 @@ export const useChat = create<ChatState>()((set, get) => ({
   initialDefaultsEligible: true,
   reasoningEffort: '',
   sessionOperations: {},
+  sessionModels: {},
   ...emptyConversation,
   selectWorkspace(id) {
     if (get().workspaceId === id) return;
@@ -196,7 +199,10 @@ export const useChat = create<ChatState>()((set, get) => ({
     if (lastWorkspaceId() === id) persistWorkspace();
     // 迟到的删除结果只清理所属状态，不能切走用户已经选择的其他工作区。
     if (get().workspaceId === id) get().selectWorkspace(nextId);
-    set({ sessionOperations });
+    set({
+      sessionOperations,
+      sessionModels: Object.fromEntries(Object.entries(get().sessionModels).filter(([key]) => !key.startsWith(prefix))),
+    });
   },
   newSession(agent = get().defaults.defaultAgent) {
     const conversationVersion = changeSelection();
@@ -221,6 +227,7 @@ export const useChat = create<ChatState>()((set, get) => ({
       ...emptyConversation,
       agent: session.agent,
       sessionId: session.sessionId,
+      actualModel: get().sessionModels[sessionActionKey(workspaceId, session)]?.actualModel,
       loadingHistory: true,
       conversationVersion: generation,
       modelOverrides: historicalModels(get()),
@@ -233,7 +240,20 @@ export const useChat = create<ChatState>()((set, get) => ({
         throw new Error('会话身份不匹配，未载入历史');
       const items = [...history.events, { type: 'turn_end', isError: false } as const].reduce(reduceChat, []);
       const statuses = history.events.reduce((result, event) => ({ ...result, ...nativeStatus(event) }), {});
-      set({ items, loadingHistory: false, actualModel: history.actualModel, ...statuses });
+      const actualModel = reportedModel(history.actualModel);
+      set((current) => ({
+        items,
+        loadingHistory: false,
+        actualModel,
+        ...statuses,
+        sessionModels: {
+          ...current.sessionModels,
+          [sessionActionKey(workspaceId, session)]: {
+            actualModel,
+            nativeModel: reportedModel(history.session.nativeModel),
+          },
+        },
+      }));
     } catch (error) {
       if (historyIsCurrent(controller, generation, workspaceId, session))
         set({ loadingHistory: false, banner: `加载会话失败：${error instanceof Error ? error.message : '请重试'}` });
@@ -312,6 +332,11 @@ export const useChat = create<ChatState>()((set, get) => ({
       }
       const operations = { ...get().sessionOperations };
       delete operations[key];
+      if (input.action === 'delete') {
+        const sessionModels = { ...get().sessionModels };
+        delete sessionModels[key];
+        set({ sessionModels });
+      }
       set({ sessionOperations: operations });
       void queryClient.invalidateQueries({ queryKey: queryKeys.sessions(workspaceId, session.agent) });
       return true;
@@ -408,6 +433,16 @@ function onTurnStarted(msg: Msg<'turn.started'>): void {
     return;
   useChat.setState({ turnId: msg.turnId, pendingClientTurnId: undefined });
 }
+function reportedSession(current: ChatState, event: AgentEvent): Partial<ChatState> {
+  if (event.type !== 'session' || !current.workspaceId) return {};
+  const actualModel = event.model.trim() || undefined;
+  const key = sessionActionKey(current.workspaceId, { agent: current.agent, sessionId: event.sessionId });
+  return {
+    sessionId: event.sessionId,
+    actualModel,
+    sessionModels: { ...current.sessionModels, [key]: { actualModel } },
+  };
+}
 function onAgentEvent(msg: Msg<'agent.event'>): void {
   const current = useChat.getState();
   if (msg.turnId !== current.turnId) return;
@@ -417,7 +452,7 @@ function onAgentEvent(msg: Msg<'agent.event'>): void {
   useChat.setState({
     items: reduceChat(current.items, event),
     ...nativeStatus(event),
-    ...(event.type === 'session' ? { sessionId: event.sessionId, actualModel: event.model } : {}),
+    ...reportedSession(current, event),
   });
 }
 function onTurnFinished(msg: Msg<'turn.finished'>): void {
@@ -480,3 +515,7 @@ export function startChatConnection(connect: Connect = connectChat): void {
   socket ??= connect({ onMessage: handleServerMessage, onStatus: handleStatus });
 }
 export const reconnectChat = () => socket?.reconnect();
+
+function reportedModel(model?: string): string | undefined {
+  return model?.trim() || undefined;
+}

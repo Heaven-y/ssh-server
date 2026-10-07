@@ -13,5 +13,10 @@ export type SessionActionInput = z.infer<typeof SessionActionSchema>;
 export type AgentKind = z.infer<typeof AgentKindSchema>;
 /** Codex 的 sessionId 对应 thread.id，不能使用分叉树根的 thread.sessionId。 */
 export type SessionRef = { agent: AgentKind; sessionId: string };
-export type SessionSummary = SessionRef & { summary: string; lastModified: number };
+export type SessionSummary = SessionRef & {
+  summary: string;
+  lastModified: number;
+  /** 原生会话记录的模型配置，不代表逐轮执行遥测。 */
+  nativeModel?: string;
+};
 export type SessionHistory = { session: SessionSummary; events: AgentEvent[]; actualModel?: string };

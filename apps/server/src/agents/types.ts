@@ -1,4 +1,4 @@
-import type { AgentEvent, Workspace } from '@ssh-server/shared';
+import type { AgentEvent, SessionSummary, Workspace } from '@ssh-server/shared';
 import type { NativeInvocation } from './capability-types';
 
 export type PermissionAnswer = { allow: boolean; message?: string };
@@ -16,7 +16,7 @@ export type AgentTurnInput = {
 };
 export type TurnHandle = { interrupt(): Promise<void>; done: Promise<void> };
 export type TurnRunner = (input: AgentTurnInput) => TurnHandle;
-export type NativeSessionSummary = { sessionId: string; summary: string; lastModified: number };
+export type NativeSessionSummary = Omit<SessionSummary, 'agent'>;
 export type NativeSessionRead = {
   session: NativeSessionSummary;
   cwd: string;

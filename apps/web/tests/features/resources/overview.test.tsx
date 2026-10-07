@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ProductSettingsSchema, type ResourceSnapshot, type Workspace } from '@ssh-server/shared';
@@ -134,4 +134,53 @@ it('产品设置读取失败不采样；陈旧目标错误停止轮询，不能�
   await tick(6000);
   expect(read).toHaveBeenCalledTimes(1);
   expect(screen.getByText('过期 / 不可用')).toBeTruthy();
+});
+
+it('概览展示利用率与已用总量，打开详情后仪表值、采样来源与进程边界可读', async () => {
+  const data = snapshot();
+  data.host.data = {
+    ...data.host.data!,
+    cpuPercent: 42.5,
+    memoryUsed: 8 * 1024 ** 3,
+    memoryTotal: 32 * 1024 ** 3,
+    gpus: [
+      {
+        uuid: 'gpu-0',
+        index: 0,
+        name: '示例 GPU',
+        utilization: 75,
+        memoryUsed: 6 * 1024 ** 3,
+        memoryTotal: 24 * 1024 ** 3,
+        temperature: 48,
+        power: 120,
+      },
+    ],
+  };
+  vi.spyOn(api, 'readResources').mockResolvedValue(data);
+  mount();
+  await tick();
+  const overview = screen.getByRole('button', { name: '服务器资源详情' });
+  expect(within(overview).getByText('内存（已用 / 总量）')).toBeTruthy();
+  expect(within(overview).getByText('8.0 / 32.0 GiB')).toBeTruthy();
+  expect(within(overview).getByText('显存 6.0 / 24.0 GiB')).toBeTruthy();
+  fireEvent.click(overview);
+  const details = within(screen.getByRole('dialog', { name: '服务器资源' }));
+  expect(details.getByRole('meter', { name: 'CPU利用率' }).getAttribute('aria-valuenow')).toBe('42.5');
+  expect(details.getByRole('meter', { name: 'GPU 0 利用率' }).getAttribute('aria-valuenow')).toBe('75');
+  expect(details.getByText(/采集主机：node/)).toBeTruthy();
+  expect(details.getByText(/共享账号下无法据此判断进程归属/)).toBeTruthy();
+  expect(details.getByText(/磁盘不可用/)).toBeTruthy();
+});
+
+it('真实零利用率可读，未知GPU指标不伪装成零仪表，空GPU列表有说明', async () => {
+  const data = snapshot();
+  data.host.data = { ...data.host.data!, cpuPercent: 0, gpus: [] };
+  vi.spyOn(api, 'readResources').mockResolvedValue(data);
+  mount();
+  await tick();
+  fireEvent.click(screen.getByRole('button', { name: '服务器资源详情' }));
+  const details = within(screen.getByRole('dialog', { name: '服务器资源' }));
+  expect(details.getByRole('meter', { name: 'CPU利用率' }).getAttribute('aria-valuenow')).toBe('0');
+  expect(details.queryByRole('meter', { name: /GPU/ })).toBeNull();
+  expect(details.getByText('未检测到GPU')).toBeTruthy();
 });

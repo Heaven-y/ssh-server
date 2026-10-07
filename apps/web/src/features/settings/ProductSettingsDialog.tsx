@@ -1,12 +1,13 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { RefreshCw, Save, Settings2, X } from 'lucide-react';
 import type { ProductSettingsDocument } from '@ssh-server/shared';
 import { api, queryKeys } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
 import { buttonClass } from '../../ui/styles';
-import { ProductSettingsForm } from './ProductSettingsForm';
+import { ProductSettingsForm, invalidSettingsCategory } from './ProductSettingsForm';
 import { EnvironmentReport } from './EnvironmentReport';
 import { parseSettingsDraft, settingsDraft, type ProductSettingsDraft } from './product-settings-draft';
+import { SettingsCategories, type SettingsCategory } from './SettingsCategories';
 
 type Phase = 'loading' | 'ready' | 'saving' | 'error';
 const errorMessage = (error: unknown, fallback: string) => (error instanceof Error ? error.message : fallback);
@@ -21,11 +22,18 @@ function SettingsFeedback({ phase, message }: { phase: Phase; message: string })
     </p>
   );
 }
+function focusInvalidField(dialog: HTMLDialogElement | null) {
+  const field = dialog?.querySelector<HTMLElement>('[aria-invalid="true"]');
+  field?.focus();
+  return !!field;
+}
 export default function ProductSettingsDialog({ onClose, onNative }: { onClose(): void; onNative(): void }) {
   const id = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const pending = useRef<AbortController | undefined>(undefined);
   const saving = useRef(false);
+  const focusInvalid = useRef(false);
+  const [category, setCategory] = useState<SettingsCategory>('conversation');
   const [document, setDocument] = useState<ProductSettingsDocument>();
   const [draft, setDraft] = useState<ProductSettingsDraft>();
   const [phase, setPhase] = useState<Phase>('loading');
@@ -34,6 +42,10 @@ export default function ProductSettingsDialog({ onClose, onNative }: { onClose()
   const [showErrors, setShowErrors] = useState(false);
   const dirty = !!document && JSON.stringify(draft) !== JSON.stringify(settingsDraft(document.settings));
   const busy = phase === 'saving' || phase === 'loading';
+  useLayoutEffect(() => {
+    if (!focusInvalid.current) return;
+    if (focusInvalidField(dialog.current)) focusInvalid.current = false;
+  });
   useEffect(() => {
     const element = dialog.current;
     element?.showModal();
@@ -76,6 +88,9 @@ export default function ProductSettingsDialog({ onClose, onNative }: { onClose()
     const parsed = parseSettingsDraft(draft);
     setShowErrors(true);
     if (!parsed.success) {
+      focusInvalid.current = true;
+      setCategory(invalidSettingsCategory(draft));
+      focusInvalidField(dialog.current);
       setMessage('请检查标出的字段。');
       return;
     }
@@ -132,10 +147,32 @@ export default function ProductSettingsDialog({ onClose, onNative }: { onClose()
           </button>
         </header>
         <div className="space-y-5 overflow-y-auto p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <SettingsCategories category={category} select={setCategory}>
+            {category === 'environment' ? (
+              <EnvironmentReport disabled={phase === 'saving'} />
+            ) : phase === 'loading' ? (
+              <p role="status" className="py-8 text-center text-sm text-muted-foreground">
+                正在读取产品设置…
+              </p>
+            ) : draft ? (
+              <ProductSettingsForm
+                category={category}
+                draft={draft}
+                disabled={phase === 'saving'}
+                showErrors={showErrors}
+                validate={() => setShowErrors(true)}
+                change={(patch) => {
+                  setDraft((current) => current && { ...current, ...patch });
+                  setMessage('');
+                }}
+              />
+            ) : null}
+          </SettingsCategories>
+          <SettingsFeedback phase={phase} message={message} />
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
             <button
               type="button"
-              className={buttonClass('outline')}
+              className={buttonClass('ghost')}
               disabled={phase === 'saving'}
               onClick={() => leave(onNative)}
             >
@@ -146,29 +183,11 @@ export default function ProductSettingsDialog({ onClose, onNative }: { onClose()
               重新读取
             </button>
           </div>
-          {phase === 'loading' ? (
-            <p role="status" className="py-8 text-center text-sm text-muted-foreground">
-              正在读取产品设置…
-            </p>
-          ) : (
-            draft && (
-              <ProductSettingsForm
-                draft={draft}
-                disabled={phase === 'saving'}
-                showErrors={showErrors}
-                validate={() => setShowErrors(true)}
-                change={(patch) => {
-                  setDraft((current) => current && { ...current, ...patch });
-                  setMessage('');
-                }}
-              />
-            )
-          )}
-          <SettingsFeedback phase={phase} message={message} />
-          <EnvironmentReport disabled={phase === 'saving'} />
         </div>
         <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-4">
-          <p className="text-xs text-muted-foreground">{dirty ? '有未保存修改' : '产品偏好保存在本机'}</p>
+          <p className="text-xs text-muted-foreground">
+            {dirty ? '有未保存修改 · 保存所有分类' : '产品偏好保存在本机'}
+          </p>
           <div className="flex gap-2">
             <button
               type="button"

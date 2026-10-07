@@ -10,9 +10,9 @@ import { SettingsLoadError } from '../settings/SettingsLoadError';
 
 function ResourceMetadata({ workspace, snapshot }: { workspace: Workspace; snapshot?: ResourceSnapshot }) {
   return (
-    <div className="space-y-1 text-xs leading-5 text-muted-foreground">
+    <div className="resource-metadata space-y-1 text-xs leading-5 text-muted-foreground">
       <p className="break-all">
-        {workspace.name} · Host {workspace.sshHost}
+        {workspace.name} · SSH 别名 {workspace.sshHost}
       </p>
       <p className="break-all">
         采集主机：{snapshot?.host.data?.hostname ?? '不可用'} · 项目目录：{workspace.remoteDir}
@@ -40,15 +40,20 @@ function ResourceDetails({
   const { stale, message } = readingState(query.data, query.error, now, timing.staleMs);
   return (
     <DetailDialog title="服务器资源" onClose={onClose}>
-      <div className="space-y-4">
+      <div className="resource-scope space-y-4">
         <ResourceMetadata workspace={workspace} snapshot={query.data} />
         <div className="flex items-center justify-between gap-2">
-          <p role="status" className="text-xs text-muted-foreground">
+          <p
+            role="status"
+            className="resource-status"
+            data-attention={stale}
+            data-neutral={!!pauseReason || query.isPending}
+          >
             {resourceLabel(query.isPending, stale)} · {pauseReason ?? `每${timing.intervalMs / 1000}秒检查`}
           </p>
           <button
             type="button"
-            className={buttonClass('outline')}
+            className={buttonClass('ghost')}
             disabled={query.isFetching || !active}
             onClick={() => void query.refetch()}
           >

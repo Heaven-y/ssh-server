@@ -176,7 +176,15 @@ function SyncDetails({ controller }: { controller: SyncController }) {
           </div>
           {status.message && <p className="mt-4 text-sm leading-6 wrap-anywhere">{status.message}</p>}
           <Decisions status={status} busy={busy} act={act} />
-          <SyncSettingsForm key={JSON.stringify(status.settings)} settings={status.settings} busy={busy} save={act} />
+          <SyncSettingsForm
+            key={JSON.stringify(status.settings)}
+            settings={status.settings}
+            busy={busy}
+            save={act}
+            defaultOpen
+            title="当前工作区同步规则"
+            saveLabel="保存当前工作区规则"
+          />
         </>
       ) : (
         <p className="text-sm text-muted-foreground">正在读取同步状态…</p>
@@ -234,10 +242,11 @@ export function SyncPanel({ workspace, ref }: { workspace: Workspace; ref?: Ref<
         onClick={() => setExpanded(true)}
       >
         <Icon aria-hidden className={`size-3.5 ${controller.busy ? 'motion-safe:animate-spin' : ''}`} />
-        <span className="text-xs">{summary.label}</span>
+        <span className="text-xs">{summary.label} · 规则</span>
       </button>
       {expanded && (
         <DetailDialog title="文件同步" busy={controller.busy} onClose={() => setExpanded(false)}>
+          <p className="mb-4 text-sm font-medium wrap-anywhere">当前工作区：{workspace.name}</p>
           <SyncDetails controller={controller} />
         </DetailDialog>
       )}

@@ -1,5 +1,5 @@
 import type { Workspace } from '@ssh-server/shared';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { buttonClass } from '../../ui/styles';
 import { LocalStep } from './setup/LocalStep';
 import { ServerStep } from './setup/ServerStep';
@@ -11,15 +11,15 @@ import { SetupError } from './setup/SetupError';
 import { SettingsLoadError } from '../settings/SettingsLoadError';
 
 type Setup = ReturnType<typeof useWorkspaceSetup>;
-function Step({ setup }: { setup: Setup }) {
+function Step({ setup, onBrowsingChange }: { setup: Setup; onBrowsingChange(blocked: boolean): void }) {
   const { input, change } = setup;
   switch (setup.step) {
     case 0:
-      return <LocalStep input={input} change={change} />;
+      return <LocalStep input={input} change={change} onBrowsingChange={onBrowsingChange} />;
     case 1:
       return <ServerStep input={input} change={change} />;
     case 2:
-      return <RemoteStep key={input.sshHost} input={input} change={change} />;
+      return <RemoteStep key={input.sshHost} input={input} change={change} onBrowsingChange={onBrowsingChange} />;
     case 3:
       return (
         <SyncStep
@@ -65,6 +65,14 @@ function Created({ setup }: { setup: Setup }) {
     </div>
   );
 }
+function SetupNotice({ message }: { message?: string }) {
+  if (!message) return null;
+  return (
+    <p role="status" className="text-sm leading-6 text-muted-foreground">
+      {message}
+    </p>
+  );
+}
 /** 五步配置只在最终验证后保存；创建与首次同步结果分别呈现。 */
 export function WorkspaceForm(props: {
   onCreated(workspace: Workspace): void;
@@ -72,6 +80,7 @@ export function WorkspaceForm(props: {
   onBusyChange?(busy: boolean): void;
 }) {
   const setup = useWorkspaceSetup(props);
+  const [browsing, setBrowsing] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     heading.current?.focus();
@@ -104,9 +113,10 @@ export function WorkspaceForm(props: {
       </h3>
       <fieldset disabled={setup.creating} className="min-w-0">
         <legend className="sr-only">当前步骤配置</legend>
-        <Step setup={setup} />
+        <Step setup={setup} onBrowsingChange={setBrowsing} />
       </fieldset>
       <SetupError message={setup.message} />
+      <SetupNotice message={setup.notice} />
       {setup.creating && (
         <p role="status" className="text-xs leading-5 text-muted-foreground">
           正在创建工作区并初始化同步，请等待首次同步结果…
@@ -130,7 +140,7 @@ export function WorkspaceForm(props: {
           <button
             type="button"
             className={buttonClass('primary')}
-            disabled={setup.creating}
+            disabled={setup.creating || browsing}
             onClick={() => setup.navigate(setup.step + 1)}
           >
             下一步

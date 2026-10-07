@@ -65,34 +65,52 @@ describe('SFTP 分页与范围', () => {
     expect(reader.closeHandle).toHaveBeenCalledOnce();
   });
 
-  it('分页中途失败后游标失效，不从已推进句柄继续并跳过条目', async () => {
+  it('完整目录读取失败时不返回半份有序列表，游标随即失效', async () => {
     const items = Array.from({ length: 240 }, (_, i) => entry(`file-${i}`));
     const { reader, cursor } = fixture([items, new Error('fixture-private-diagnostic')]);
-    const first = await cursor.page();
-    await expect(cursor.page(first.nextCursor)).rejects.toMatchObject({ code: 'cursor_expired' });
-    await expect(cursor.page(first.nextCursor)).rejects.toMatchObject({ code: 'cursor_expired' });
+    await expect(cursor.page()).rejects.toMatchObject({ code: 'cursor_expired' });
+    await expect(cursor.page()).rejects.toMatchObject({ code: 'cursor_expired' });
     expect(reader.readdir).toHaveBeenCalledTimes(2);
     expect(reader.signal.aborted).toBe(true);
   });
 
-  it('临近空闲期限发起下一页时，读取期间不关闭目录', async () => {
+  it('读取完成释放远端句柄，临近空闲期限翻页仍可读取有序快照', async () => {
     vi.useFakeTimers();
-    const { reader, cursor } = fixture([Array.from({ length: 200 }, (_, i) => entry(`file-${i}`))]);
+    const { reader, cursor } = fixture([Array.from({ length: 201 }, (_, i) => entry(`file-${i}`))]);
     const first = await cursor.page();
-    await vi.advanceTimersByTimeAsync(59_000);
-    let finish!: (items: false) => void;
-    vi.mocked(reader.readdir).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const next = cursor.page(first.nextCursor);
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(reader.closeHandle).not.toHaveBeenCalled();
-    finish(false);
-    expect((await next).entries).toEqual([]);
     expect(reader.closeHandle).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(59_000);
+    const next = await cursor.page(first.nextCursor);
+    expect(next.entries.map((item) => item.name)).toEqual(['file-200']);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(await cursor.page(first.nextCursor)).toEqual(next);
+    expect(reader.closeHandle).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(60_001);
+    await expect(cursor.page(first.nextCursor)).rejects.toMatchObject({ code: 'cursor_expired' });
+  });
+
+  it('分页前全局文件夹优先，按名称自然排序且保留大小写不同的条目', async () => {
+    const files = Array.from({ length: 201 }, (_, i) => entry(`file${201 - i}`));
+    const { cursor } = fixture([files, [entry('z10', 'directory'), entry('z2', 'directory'), entry('File2')]]);
+    const first = await cursor.page();
+    const second = await cursor.page(first.nextCursor);
+    expect(first.entries.slice(0, 6).map((item) => item.name)).toEqual([
+      'z2',
+      'z10',
+      'file1',
+      'File2',
+      'file2',
+      'file3',
+    ]);
+    expect(second.entries.map((item) => item.name)).toEqual(['file198', 'file199', 'file200', 'file201']);
+    expect(second.nextCursor).toBeUndefined();
+  });
+
+  it('单目录超过有界排序容量则拒绝展示并释放句柄', async () => {
+    const { reader, cursor } = fixture([Array.from({ length: 10_001 }, (_, i) => entry(`file${i}`))]);
+    await expect(cursor.page()).rejects.toMatchObject({ code: 'directory_too_large' });
+    expect(reader.closeHandle).toHaveBeenCalledOnce();
+    expect(reader.signal.aborted).toBe(true);
   });
 
   it('远端合法名称和大文件仍能显示，同步范围按既有规则单独判断', () => {
