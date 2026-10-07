@@ -17,6 +17,11 @@ import { registerHostTrustRoutes } from '../../apps/server/src/http/ssh-host-tru
 import { registerSshTargetRoutes } from '../../apps/server/src/http/ssh-targets.routes';
 import { registerSshRoutes } from '../../apps/server/src/http/ssh.routes';
 import { buildApp } from '../../apps/server/src/http/app';
+import { createServerProfiles } from '../../apps/server/src/ssh/profiles';
+import { createWorkspaceActivity } from '../../apps/server/src/workspaces/activity';
+import { createEnvironmentService } from '../../apps/server/src/settings/environment';
+import { createProductSettings } from '../../apps/server/src/settings/product-settings';
+import { registerProductSettingsRoutes } from '../../apps/server/src/http/product-settings.routes';
 
 export async function startSetupFixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'ssh-setup-'));
@@ -42,34 +47,35 @@ export async function startSetupFixture() {
       return target ? serverHostConfig(target) : undefined;
     },
   });
-  const listSshHosts = async () => [
-    {
-      alias: 'my-server',
-      hostname: '127.0.0.1',
-      port: ssh.port,
-      user: 'demo',
-      unsupported: [],
-      source: 'ssh-config' as const,
-    },
-    ...(await targets.list()).map((target) => ({
-      alias: target.alias,
-      name: target.name,
-      hostname: target.hostname,
-      port: target.port,
-      user: target.username,
-      unsupported: [],
-      source: 'manual' as const,
-    })),
-  ];
   const store = createWorkspaceStore({
     configDir,
-    knownHosts: async () => (await listSshHosts()).map((host) => host.alias),
+    knownHosts: async () => (await targets.list()).map((server) => server.alias),
     dirExists: (directory) =>
       stat(directory).then(
         (info) => info.isDirectory(),
         () => false,
       ),
   });
+  const activity = createWorkspaceActivity();
+  const profiles = createServerProfiles({
+    targets,
+    store,
+    activity,
+    pool,
+    resources: { blockers: () => Promise.resolve([]) },
+  });
+  const environment = createEnvironmentService(() =>
+    Promise.resolve({
+      checkedAt: Date.now(),
+      tools: [
+        { name: 'Node.js', available: true, version: process.versions.node, message: null },
+        { name: 'Claude Code', available: false, version: null, message: '隔离夹具未提供模型程序' },
+        { name: 'Codex', available: false, version: null, message: '隔离夹具未提供模型程序' },
+        { name: 'git', available: true, version: null, message: null },
+        { name: 'rclone', available: true, version: null, message: null },
+      ],
+    }),
+  );
   const state = {
     initializationFailure: false,
     initializations: 0,
@@ -111,11 +117,12 @@ export async function startSetupFixture() {
     port: 0,
     store,
     setup,
-    listSshHosts,
+    activity,
     webDir: fileURLToPath(new URL('../../apps/web/dist', import.meta.url)),
     routes: (server) => {
-      registerSshRoutes(server, { pool });
-      registerSshTargetRoutes(server, targets);
+      registerSshRoutes(server, { pool, profiles });
+      registerSshTargetRoutes(server, profiles);
+      registerProductSettingsRoutes(server, createProductSettings({ configDir }), environment);
       registerHostTrustRoutes(server, trust);
       registerWorkspaceSetupRoutes(server, setup);
       server.get('/api/workspaces/:id/sessions', () => []);
@@ -146,6 +153,8 @@ export async function startSetupFixture() {
     pool,
     store,
     targets,
+    profiles,
+    activity,
     trust,
     setup,
     state,
@@ -154,7 +163,7 @@ export async function startSetupFixture() {
     configDir,
     homeDir,
     localDir,
-    url: `${app.listeningOrigin}/auth?token=${token}`,
+    url: `${app.listeningOrigin}/`,
     async close() {
       trust.dispose();
       await app.close();

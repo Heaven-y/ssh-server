@@ -8,7 +8,8 @@ import { createCredentialVault } from './credentials';
 import { knownHostRecordsForTarget } from './known-hosts';
 import { parseSshConfig, resolveHost, type SshHostConfig } from './ssh-config';
 
-export type SshTarget = { alias: string; authMode: SshAuthMode };
+export type SshTarget = { alias: string };
+export type RegisteredSshHost = SshHostConfig & { authMode: SshAuthMode };
 export type SshErrorCode =
   | 'credentials_required'
   | 'authentication_failed'
@@ -48,18 +49,26 @@ export type ResolvedConnection = {
 export type ConnectionDeps = {
   homeDir?: string;
   readFile?: (file: string) => Promise<Buffer>;
-  lookupHost?: (alias: string) => Promise<SshHostConfig | undefined>;
+  lookupHost?: (alias: string) => Promise<RegisteredSshHost | undefined>;
 };
-export const workspaceTarget = (ws: Pick<Workspace, 'sshHost' | 'authMode'>): SshTarget => ({
-  alias: ws.sshHost,
-  authMode: ws.authMode ?? 'key',
-});
+export const workspaceTarget = (ws: Pick<Workspace, 'sshHost'>): SshTarget => ({ alias: ws.sshHost });
 export const targetAlias = (target: SshTarget): string => target.alias;
 const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 const DEFAULT_KEYS = ['id_ed25519', 'id_ecdsa', 'id_rsa'];
 const targetIdentity = (host: SshHostConfig, username: string) => JSON.stringify([host.hostname, host.port, username]);
-export const connectionIdentity = (config: ResolvedConnection): string =>
+export const connectionIdentity = (config: Pick<ResolvedConnection, 'hostname' | 'port' | 'username'>): string =>
   JSON.stringify([config.hostname, config.port, config.username]);
+
+/** 脚本可显式选择原生 SSH config 来源；生产档案解析器不作任何隐式回退。 */
+export function createSshConfigLookup(deps: Pick<ConnectionDeps, 'homeDir' | 'readFile'> & { authMode: SshAuthMode }) {
+  const homeDir = deps.homeDir ?? os.homedir();
+  const readFile = deps.readFile ?? fsReadFile;
+  return async (alias: string): Promise<RegisteredSshHost | undefined> => {
+    const text = (await readFile(path.join(homeDir, '.ssh', 'config'))).toString('utf8');
+    const host = resolveHost(parseSshConfig(text, homeDir), alias);
+    return host ? { ...host, authMode: deps.authMode } : undefined;
+  };
+}
 
 export function createConnectionResolver(deps: ConnectionDeps = {}) {
   const homeDir = deps.homeDir ?? os.homedir();
@@ -68,12 +77,9 @@ export function createConnectionResolver(deps: ConnectionDeps = {}) {
   const vault = createCredentialVault();
   let resetGeneration = 0;
 
-  async function loadHost(alias: string): Promise<SshHostConfig> {
-    const managed = await deps.lookupHost?.(alias);
-    if (managed) return managed;
-    const text = (await readFile(path.join(sshDir, 'config')).catch(() => Buffer.alloc(0))).toString('utf8');
-    const host = resolveHost(parseSshConfig(text, homeDir), alias);
-    if (!host) throw new SshConnectionError('unsupported_config', 'SSH config 中没有指定 Host');
+  async function loadHost(alias: string): Promise<RegisteredSshHost> {
+    const host = await deps.lookupHost?.(alias);
+    if (!host) throw new SshConnectionError('unsupported_config', '服务器未登记，请先在服务器管理中保存档案');
     if (host.unsupported.length)
       throw new SshConnectionError('unsupported_config', `暂不支持 SSH 选项：${host.unsupported.join('、')}`);
     return host;
@@ -101,8 +107,8 @@ export function createConnectionResolver(deps: ConnectionDeps = {}) {
       if (generation !== resetGeneration || revision !== vault.revision(alias))
         throw new SshConnectionError('connection_cancelled', '连接认证周期已结束，请重新连接');
     };
-    const authMode = target.authMode;
     const host = await loadHost(alias);
+    const authMode = host.authMode;
     assertCurrent();
     const username = host.user ?? os.userInfo().username;
     const identity = targetIdentity(host, username);
@@ -147,18 +153,24 @@ export function createConnectionResolver(deps: ConnectionDeps = {}) {
 
   return {
     resolve,
-    async fingerprint(alias: string, authMode?: SshAuthMode): Promise<string> {
+    async fingerprint(alias: string): Promise<string> {
       const host = await loadHost(alias);
       const knownHosts = await readFile(path.join(sshDir, 'known_hosts')).catch(() => Buffer.alloc(0));
-      const key = authMode === 'key' ? await loadKey(host).catch(() => undefined) : undefined;
+      const key = host.authMode === 'key' ? await loadKey(host).catch(() => undefined) : undefined;
       return digest(
         JSON.stringify([
           targetIdentity(host, host.user ?? os.userInfo().username),
+          host.authMode,
           host.identityFiles,
           knownHostRecordsForTarget(knownHosts.toString('utf8'), host.hostname, host.port),
           key ? [key.keyFile, digest(key.privateKey)] : null,
         ]),
       );
+    },
+    async authentication(alias: string): Promise<{ authMode: SshAuthMode; hasPassword: boolean }> {
+      const host = await loadHost(alias);
+      const password = vault.get(alias, targetIdentity(host, host.user ?? os.userInfo().username));
+      return { authMode: host.authMode, hasPassword: host.authMode === 'password' && password !== undefined };
     },
     async identity(alias: string): Promise<string> {
       const host = await loadHost(alias);

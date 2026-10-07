@@ -1,5 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createTerminalRuntime } from '../../../src/features/terminal/runtime';
+import type { ITheme } from '@xterm/xterm';
+import { useUiPreferences } from '../../../src/ui/ui-preferences';
 
 // 只替换渲染器与浏览器I/O；runtime和WS协议仍走产品实现。
 const xterm = vi.hoisted(() => {
@@ -7,7 +9,7 @@ const xterm = vi.hoisted(() => {
   class Terminal {
     cols = 80;
     rows = 24;
-    options = { disableStdin: true };
+    options = { disableStdin: true, theme: undefined as ITheme | undefined };
     modes = { bracketedPasteMode: true };
     parser = { registerOscHandler: vi.fn((_code: number, _handler: () => boolean) => ({ dispose: vi.fn() })) };
     data?: (text: string) => void;
@@ -15,7 +17,8 @@ const xterm = vi.hoisted(() => {
     key?: (event: KeyboardEvent) => boolean;
     written: Uint8Array[] = [];
     consumed: Array<() => void> = [];
-    constructor() {
+    constructor(options: { theme?: ITheme } = {}) {
+      this.options.theme = options.theme;
       instances.push(this);
     }
     loadAddon = vi.fn();
@@ -109,7 +112,7 @@ function fixture() {
   };
   vi.stubGlobal('navigator', { clipboard });
   const host = Object.assign(new EventTarget(), { clientWidth: 1000, clientHeight: 300 }) as unknown as HTMLElement;
-  const target = { workspaceId: 'w', sshHost: 'my-server', authMode: 'key' as const, remoteDir: '/demo' };
+  const target = { workspaceId: 'w', sshHost: 'my-server', remoteDir: '/demo' };
   const options = {
     host,
     target,
@@ -216,4 +219,28 @@ it('剪贴板仅经用户触发，IME不拦快捷键，粘贴使用当前模式�
   } finally {
     runtime.dispose();
   }
+});
+it('终端首次浅色，切换主题只更新现有实例配色，不重建PTY或丢失输出', () => {
+  const f = fixture();
+  useUiPreferences.setState({ theme: 'light' });
+  const runtime = createTerminalRuntime(f.options);
+  const terminal = xterm.instances[0]!;
+  try {
+    expect(terminal.options.theme?.background).toBe('#f5f6f8');
+    runtime.setVisible(true);
+    f.frame();
+    f.ready();
+    const output = new TextEncoder().encode('保留输出');
+    Socket.instances[0]!.receive(output.buffer);
+    useUiPreferences.getState().toggleTheme();
+    expect(terminal.options.theme?.background).toBe('#101114');
+    expect(xterm.instances).toHaveLength(1);
+    expect(Socket.instances).toHaveLength(1);
+    expect(terminal.written).toEqual([output]);
+  } finally {
+    runtime.dispose();
+  }
+  const theme = terminal.options.theme;
+  useUiPreferences.getState().toggleTheme();
+  expect(terminal.options.theme).toBe(theme);
 });

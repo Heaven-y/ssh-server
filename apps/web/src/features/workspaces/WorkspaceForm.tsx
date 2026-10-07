@@ -17,9 +17,9 @@ function Step({ setup }: { setup: Setup }) {
     case 0:
       return <LocalStep input={input} change={change} />;
     case 1:
-      return <ServerStep input={input} change={change} connection={setup.connection} />;
+      return <ServerStep input={input} change={change} />;
     case 2:
-      return <RemoteStep key={`${input.sshHost}:${input.authMode}`} input={input} change={change} />;
+      return <RemoteStep key={input.sshHost} input={input} change={change} />;
     case 3:
       return (
         <SyncStep
@@ -130,7 +130,7 @@ export function WorkspaceForm(props: {
           <button
             type="button"
             className={buttonClass('primary')}
-            disabled={setup.creating || setup.connection.busy}
+            disabled={setup.creating}
             onClick={() => setup.navigate(setup.step + 1)}
           >
             下一步

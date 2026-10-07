@@ -1,40 +1,38 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createConnectionResolver, workspaceTarget } from '../../src/ssh/connection';
+import { createConnectionResolver, createSshConfigLookup, workspaceTarget } from '../../src/ssh/connection';
 
 const HOME = path.resolve('test-home');
 const SSH = path.join(HOME, '.ssh');
 
-function fixture() {
+function fixture(authMode: 'key' | 'password' = 'password') {
   const files = new Map<string, Buffer>([
     [path.join(SSH, 'config'), Buffer.from('Host my-server\n HostName example.invalid\n Port 2222\n User demo\n')],
     [path.join(SSH, 'known_hosts'), Buffer.from('example.invalid ssh-ed25519 AAAA\n')],
     [path.join(SSH, 'id_ed25519'), Buffer.from('fixture-private-key')],
   ]);
   const reads: string[] = [];
+  const readFile = async (file: string) => {
+    reads.push(file);
+    const value = files.get(file);
+    if (!value) throw new Error('ENOENT');
+    return value;
+  };
   const resolver = createConnectionResolver({
     homeDir: HOME,
-    readFile: async (file) => {
-      reads.push(file);
-      const value = files.get(file);
-      if (!value) throw new Error('ENOENT');
-      return value;
-    },
+    readFile,
+    lookupHost: createSshConfigLookup({ homeDir: HOME, readFile, authMode }),
   });
   return { resolver, files, reads };
 }
 
 describe('SSH 共用连接解析器', () => {
-  it('工作区目标始终是对象，只在此解释未指定的私钥默认值', () => {
-    expect(workspaceTarget({ sshHost: 'my-server' })).toEqual({ alias: 'my-server', authMode: 'key' });
-    expect(workspaceTarget({ sshHost: 'my-server', authMode: 'password' })).toEqual({
-      alias: 'my-server',
-      authMode: 'password',
-    });
+  it('工作区目标只保留服务器引用', () => {
+    expect(workspaceTarget({ sshHost: 'my-server' })).toEqual({ alias: 'my-server' });
   });
   it('显式私钥目标解析私钥和同一 known_hosts 路径', async () => {
-    const { resolver } = fixture();
-    const value = await resolver.resolve({ alias: 'my-server', authMode: 'key' });
+    const { resolver } = fixture('key');
+    const value = await resolver.resolve({ alias: 'my-server' });
     expect(value).toMatchObject({
       alias: 'my-server',
       hostname: 'example.invalid',
@@ -50,7 +48,7 @@ describe('SSH 共用连接解析器', () => {
 
   it('密码模式未认证时不读取私钥', async () => {
     const { resolver, reads } = fixture();
-    await expect(resolver.resolve({ alias: 'my-server', authMode: 'password' })).rejects.toMatchObject({
+    await expect(resolver.resolve({ alias: 'my-server' })).rejects.toMatchObject({
       code: 'credentials_required',
     });
     expect(reads).not.toContain(path.join(SSH, 'id_ed25519'));
@@ -59,11 +57,11 @@ describe('SSH 共用连接解析器', () => {
   it('密码仅用于绑定的目标，替换后缓存身份变化', async () => {
     const { resolver } = fixture();
     await resolver.setPassword('my-server', 'first-secret');
-    const first = await resolver.resolve({ alias: 'my-server', authMode: 'password' });
+    const first = await resolver.resolve({ alias: 'my-server' });
     expect(first.password).toBe('first-secret');
     expect(first).not.toHaveProperty('privateKey');
     await resolver.setPassword('my-server', 'second-secret');
-    const second = await resolver.resolve({ alias: 'my-server', authMode: 'password' });
+    const second = await resolver.resolve({ alias: 'my-server' });
     expect(second.password).toBe('second-secret');
     expect(second.cacheKey).not.toBe(first.cacheKey);
     expect(second.cacheKey).not.toContain('secret');
@@ -77,11 +75,11 @@ describe('SSH 共用连接解析器', () => {
       path.join(SSH, 'config'),
       Buffer.from('Host my-server\n HostName other.invalid\n Port 2222\n User demo\n'),
     );
-    await expect(resolver.resolve({ alias: 'my-server', authMode: 'password' })).rejects.toMatchObject({
+    await expect(resolver.resolve({ alias: 'my-server' })).rejects.toMatchObject({
       code: 'credentials_required',
     });
     files.set(path.join(SSH, 'config'), before);
-    await expect(resolver.resolve({ alias: 'my-server', authMode: 'password' })).rejects.toMatchObject({
+    await expect(resolver.resolve({ alias: 'my-server' })).rejects.toMatchObject({
       code: 'credentials_required',
     });
   });
@@ -90,10 +88,10 @@ describe('SSH 共用连接解析器', () => {
     const { resolver } = fixture();
     await resolver.setPassword('my-server', 'test-secret');
     resolver.clear('my-server');
-    await expect(resolver.resolve({ alias: 'my-server', authMode: 'password' })).rejects.toThrow('重新输入');
+    await expect(resolver.resolve({ alias: 'my-server' })).rejects.toThrow('重新输入');
     await resolver.setPassword('my-server', 'test-secret');
     resolver.clearAll();
-    await expect(resolver.resolve({ alias: 'my-server', authMode: 'password' })).rejects.toMatchObject({
+    await expect(resolver.resolve({ alias: 'my-server' })).rejects.toMatchObject({
       code: 'credentials_required',
     });
   });
@@ -101,16 +99,16 @@ describe('SSH 共用连接解析器', () => {
   it('不支持的跳板选项明确拒绝，而非静默直连', async () => {
     const { resolver, files } = fixture();
     files.set(path.join(SSH, 'config'), Buffer.from('Host my-server\n HostName example.invalid\n ProxyJump jump\n'));
-    await expect(resolver.resolve({ alias: 'my-server', authMode: 'key' })).rejects.toMatchObject({
+    await expect(resolver.resolve({ alias: 'my-server' })).rejects.toMatchObject({
       code: 'unsupported_config',
     });
   });
 
   it('私钥和 known_hosts 修改后缓存身份变化', async () => {
-    const { resolver, files } = fixture();
-    const before = await resolver.resolve({ alias: 'my-server', authMode: 'key' });
+    const { resolver, files } = fixture('key');
+    const before = await resolver.resolve({ alias: 'my-server' });
     files.set(path.join(SSH, 'id_ed25519'), Buffer.from('changed-key'));
-    expect((await resolver.resolve({ alias: 'my-server', authMode: 'key' })).cacheKey).not.toBe(before.cacheKey);
+    expect((await resolver.resolve({ alias: 'my-server' })).cacheKey).not.toBe(before.cacheKey);
   });
   it.each(['disconnect', 'shutdown'] as const)('配置读取中 %s 后迟到的密码不会复活', async (action) => {
     const { files } = fixture();
@@ -119,14 +117,16 @@ describe('SSH 共用连接解析器', () => {
       release = resolve;
     });
     let waiting = true;
+    const readFile = async (file: string) => {
+      if (waiting) await gate;
+      const value = files.get(file);
+      if (!value) throw new Error('ENOENT');
+      return value;
+    };
     const resolver = createConnectionResolver({
       homeDir: HOME,
-      readFile: async (file) => {
-        if (waiting) await gate;
-        const value = files.get(file);
-        if (!value) throw new Error('ENOENT');
-        return value;
-      },
+      readFile,
+      lookupHost: createSshConfigLookup({ homeDir: HOME, readFile, authMode: 'password' }),
     });
     const setting = resolver.setPassword('my-server', 'late-secret');
     if (action === 'disconnect') resolver.clear('my-server');
@@ -134,12 +134,40 @@ describe('SSH 共用连接解析器', () => {
     waiting = false;
     release();
     await expect(setting).rejects.toMatchObject({ code: 'connection_cancelled' });
-    await expect(resolver.resolve({ alias: 'my-server', authMode: 'password' })).rejects.toMatchObject({
+    await expect(resolver.resolve({ alias: 'my-server' })).rejects.toMatchObject({
       code: 'credentials_required',
     });
   });
   it.each(['line\nsecond', 'line\rsecond', 'nul\0byte'])('拒绝同步子进程不能完整传递的密码', async (password) => {
     const { resolver } = fixture();
     await expect(resolver.setPassword('my-server', password)).rejects.toMatchObject({ code: 'credentials_required' });
+  });
+});
+
+describe('仅从集中档案决定认证', () => {
+  it('未登记 Host 不会回退读取 SSH config', async () => {
+    const resolver = createConnectionResolver({
+      readFile: async () => Buffer.from('Host my-server\n HostName example.invalid\n'),
+    });
+    await expect(resolver.identity('my-server')).rejects.toMatchObject({ code: 'unsupported_config' });
+  });
+  it('fingerprint 绑定档案认证方式，工作区不能覆盖它', async () => {
+    let authMode: 'key' | 'password' = 'key';
+    const resolver = createConnectionResolver({
+      lookupHost: async (alias) => ({
+        alias,
+        hostname: 'example.invalid',
+        port: 22,
+        user: 'demo',
+        identityFiles: [],
+        unsupported: [],
+        authMode,
+      }),
+      readFile: async () => Buffer.from('fixture'),
+    });
+    const before = await resolver.fingerprint('my-server');
+    authMode = 'password';
+    expect(await resolver.fingerprint('my-server')).not.toBe(before);
+    await expect(resolver.resolve({ alias: 'my-server' })).rejects.toMatchObject({ code: 'credentials_required' });
   });
 });

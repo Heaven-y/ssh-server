@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>本机入口与服务器档案：浏览器验收截图</title>
+  <style>
+    body {
+      margin: 24px auto;
+      padding: 0 24px;
+      max-width: 1500px;
+      font:
+        16px/1.65 system-ui,
+        sans-serif;
+      background: #f5f6f8;
+      color: #202329;
+    }
+    h1 {
+      font-size: 26px;
+    }
+    nav {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    figure {
+      margin: 32px 0;
+    }
+    img {
+      width: 100%;
+      height: auto;
+      border: 1px solid #ccd0d6;
+    }
+    figcaption {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    a {
+      color: #235ca5;
+    }
+  </style>
+  <h1>本机入口与统一服务器档案</h1>
+  <p>
+    2026-10-07，Edge 桌面浏览器，隔离配置与本机真实 SSH
+    协议夹具。同步结果和环境报告为合成数据；未调用模型或访问真实用户服务器。支持最小宽度为 960px。
+  </p>
+  <nav>
+    <a href="#light">首次浅色</a><a href="#dark">深色记忆</a><a href="#server">共享认证</a><a href="#refs">工作区引用</a
+    ><a href="#env">环境指引</a><a href="#terminal">终端主题</a>
+  </nav>
+  <figure id="light">
+    <figcaption>首次浅色：纯端口入口、服务器按钮与缺依赖提示</figcaption>
+    <img src="light-home.png" alt="默认浅色首页" />
+  </figure>
+  <figure id="dark">
+    <figcaption>深色：切换后刷新仍保持选择</figcaption>
+    <img src="dark-home.png" alt="深色首页" />
+  </figure>
+  <figure id="server">
+    <figcaption>统一认证：向导内打开同一服务器管理，密码由本机加密保存</figcaption>
+    <img src="shared-server.png" alt="统一服务器认证" />
+  </figure>
+  <figure>
+    <figcaption>工作区确认：复用服务器认证，只提交工作区字段和验证票</figcaption>
+    <img src="workspace-confirm.png" alt="工作区验证确认" />
+  </figure>
+  <figure id="refs">
+    <figcaption>960px：两个工作区共用档案，引用目标不可改且不能删除</figcaption>
+    <img src="references-960.png" alt="960像素服务器引用管理" />
+  </figure>
+  <figure>
+    <figcaption>1280px：统一服务器管理</figcaption>
+    <img src="references-1280.png" alt="1280像素服务器引用管理" />
+  </figure>
+  <figure>
+    <figcaption>1920px：统一服务器管理</figcaption>
+    <img src="references-1920.png" alt="1920像素服务器引用管理" />
+  </figure>
+  <figure id="env">
+    <figcaption>环境报告：官方安装/配置指引和手动重检，不判断模型登录</figcaption>
+    <img src="environment-guides.png" alt="环境指引" />
+  </figure>
+  <figure id="terminal">
+    <figcaption>浅色终端：使用现有 xterm 和真实 SSH PTY</figcaption>
+    <img src="terminal-light.png" alt="浅色终端" />
+  </figure>
+  <figure>
+    <figcaption>深色终端：同一实例、同一通道继续接收输入</figcaption>
+    <img src="terminal-dark.png" alt="深色终端" />
+  </figure>
+</html>

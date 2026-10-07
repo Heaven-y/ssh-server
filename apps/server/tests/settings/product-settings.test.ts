@@ -6,6 +6,7 @@ import { afterEach, expect, it } from 'vitest';
 import { ProductSettingsSchema, type ProductSettingsInput } from '@ssh-server/shared';
 import { createProductSettings } from '../../src/settings/product-settings';
 import { registerProductSettingsRoutes } from '../../src/http/product-settings.routes';
+import { createEnvironmentService } from '../../src/settings/environment';
 
 const roots: string[] = [];
 async function fixture() {
@@ -68,7 +69,7 @@ it('坏文件、非法字段和超界拒绝，不重建或覆盖原文', async (
 it('生产HTTP严格校验、摘要冲突与no-store贯通真实存储', async () => {
   const f = await fixture();
   const app = Fastify();
-  registerProductSettingsRoutes(app, f.store);
+  registerProductSettingsRoutes(app, f.store, createEnvironmentService());
   try {
     const read = await app.inject({ url: '/api/settings/product' });
     expect(read.statusCode).toBe(200);

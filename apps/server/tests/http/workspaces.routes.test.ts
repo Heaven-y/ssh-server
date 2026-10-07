@@ -24,6 +24,7 @@ afterEach(async () => {
 function setup(services: Partial<Pick<WorkspaceRoutesDeps, 'setup' | 'removal'>> = {}) {
   const list: Workspace[] = [{ ...WS }];
   const store: WorkspaceStore = {
+    withSnapshot: async (operation) => operation(list),
     list: async () => list,
     get: async (id) => list.find((workspace) => workspace.id === id),
     create: vi.fn<WorkspaceStore['create']>(async (input) => {
@@ -46,7 +47,6 @@ function setup(services: Partial<Pick<WorkspaceRoutesDeps, 'setup' | 'removal'>>
   apps.push(app);
   registerWorkspaceRoutes(app, {
     store,
-    listSshHosts: async () => [{ alias: 'my-server', unsupported: [] }],
     ...services,
   });
   return { app, store };
@@ -71,10 +71,10 @@ function removalService() {
 }
 
 describe('工作区接口', () => {
-  it('列表与 ssh-hosts', async () => {
+  it('工作区列表可用，旧ssh-hosts入口不存在', async () => {
     const { app } = setup();
     expect((await app.inject('/api/workspaces')).json()).toEqual([WS]);
-    expect((await app.inject('/api/ssh-hosts')).json()).toEqual([{ alias: 'my-server', unsupported: [] }]);
+    expect((await app.inject('/api/ssh-hosts')).statusCode).toBe(404);
   });
 
   it('缺少创建或移除服务时明确503，不退回存储写入', async () => {

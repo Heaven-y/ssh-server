@@ -22,7 +22,7 @@ export function RemoteStep({ input, change }: { input: WorkspaceInput; change(pa
     setSize(undefined);
     const result = await request.run(async (signal) => {
       if (!session.current) {
-        const opened = await api.openSetupRemote({ sshHost: input.sshHost, authMode: input.authMode ?? 'key' }, signal);
+        const opened = await api.openSetupRemote({ sshHost: input.sshHost }, signal);
         if (signal.aborted) {
           void api.closeSetupRemote(opened.id).catch(() => undefined);
           signal.throwIfAborted();

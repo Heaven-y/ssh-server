@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 type UiPreferences = { theme: 'dark' | 'light'; sidebarCollapsed: boolean; sidebarWidth: number; fileWidth: number };
 const KEY = 'ssh-server.ui.v1';
-const DEFAULTS: UiPreferences = { theme: 'dark', sidebarCollapsed: false, sidebarWidth: 240, fileWidth: 420 };
+const DEFAULTS: UiPreferences = { theme: 'light', sidebarCollapsed: false, sidebarWidth: 240, fileWidth: 420 };
 const bounded = (value: unknown, min: number, max: number) =>
   typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
 function isPreferences(value: unknown): value is UiPreferences & { version: 1 } {

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
-import type { SshAuthMode, Workspace, SetupDirectoryInfo } from '@ssh-server/shared';
+import type { Workspace, SetupDirectoryInfo } from '@ssh-server/shared';
 import { createRemoteFilesService } from '../../remote-files/service';
 import { remotePath } from '../../remote-files/paths';
 import { createSftpReader, type SftpReader } from '../../ssh/sftp';
@@ -11,7 +11,7 @@ import { executeMetadataCommand } from '../../ssh/metadata-exec';
 import { buildRemoteCommand } from '../../ssh/remote-command';
 import { WorkspaceSetupError } from './errors';
 
-export type SetupTarget = { sshHost: string; authMode?: SshAuthMode; remoteDir?: string };
+export type SetupTarget = { sshHost: string; remoteDir?: string };
 type Draft = { workspace: Workspace; session?: string; expiresAt: number };
 export function createSetupRemote(pool: SshPool) {
   const drafts = new Map<string, Draft>();
@@ -54,7 +54,6 @@ export function createSetupRemote(pool: SshPool) {
         name: '创建前目录浏览',
         localDir: os.homedir(),
         sshHost: target.sshHost,
-        authMode: workspaceTarget(target).authMode,
         remoteDir: target.remoteDir ?? '~',
       };
       const draft: Draft = { workspace, expiresAt: Date.now() + 15 * 60000 };

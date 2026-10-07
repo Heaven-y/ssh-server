@@ -14,8 +14,6 @@ import { api, queryKeys } from '../../../src/lib/api';
 import { useWorkspaceSetup } from '../../../src/features/workspaces/setup/use-workspace-setup';
 import { useCancelableRequest } from '../../../src/features/workspaces/setup/use-cancelable-request';
 
-const connection = vi.hoisted(() => ({ verified: true, reset: vi.fn(), clearPassword: vi.fn() }));
-vi.mock('../../../src/features/ssh/use-ssh-connection', () => ({ useSshConnection: () => connection }));
 const input: WorkspaceInput = {
   name: '演示',
   localDir: 'fixture-project',
@@ -60,7 +58,6 @@ beforeEach(() => {
     settings: ProductSettingsSchema.parse({}),
     revision: 'missing',
   });
-  connection.verified = true;
   vi.spyOn(api, 'revokeWorkspaceVerification').mockResolvedValue({ revoked: true });
   vi.spyOn(api, 'verifyWorkspace').mockResolvedValue({ ...ticket, expiresAt: Date.now() + 300000 });
   vi.spyOn(api, 'createVerifiedWorkspace').mockResolvedValue(created);
@@ -72,6 +69,16 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 describe('向导Hook的生命周期', () => {
+  it('只选择服务器档案就能继续，工作区草稿与验证请求不携带认证字段', async () => {
+    const f = setup();
+    expect(f.result.current.input).not.toHaveProperty('authMode');
+    act(() => f.result.current.change(input));
+    act(() => f.result.current.navigate(1));
+    act(() => f.result.current.navigate(2));
+    expect(f.result.current.step).toBe(2);
+    await act(() => f.result.current.verify());
+    expect(vi.mocked(api.verifyWorkspace).mock.calls[0]?.[0]).not.toHaveProperty('authMode');
+  });
   it('没有可用默认快照时失败阻止验证，重读复制一次后全局刷新不覆盖草稿', async () => {
     vi.mocked(api.readProductSettings).mockRejectedValueOnce(new Error('偏好读取失败'));
     const f = setup(false);
@@ -104,10 +111,10 @@ describe('向导Hook的生命周期', () => {
     expect(f.result.current.message).toContain('名称');
     act(() => f.result.current.change(input));
     act(() => f.result.current.navigate(1));
-    connection.verified = false;
+    act(() => f.result.current.change({ sshHost: '' }));
     act(() => f.result.current.navigate(2));
-    expect(f.result.current.message).toContain('测试');
-    connection.verified = true;
+    expect(f.result.current.message).toContain('选择');
+    act(() => f.result.current.change({ sshHost: input.sshHost }));
     act(() => f.result.current.navigate(2));
     act(() => f.result.current.change({ remoteDir: 'invalid' }));
     act(() => f.result.current.navigate(3));
@@ -126,7 +133,7 @@ describe('向导Hook的生命周期', () => {
     expect(api.revokeWorkspaceVerification).toHaveBeenCalled();
     act(() => f.result.current.cancel());
     expect(f.callbacks.onCancel).toHaveBeenCalledTimes(1);
-    expect(connection.reset).toHaveBeenCalled();
+    expect(f.result.current.input).not.toHaveProperty('authMode');
   });
   it('预览和验证的迟到响应不能复活修改后的草稿，迟到票主动撤销', async () => {
     const f = setup();

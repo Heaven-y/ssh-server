@@ -12,7 +12,7 @@ function channel() {
   return value;
 }
 const input: HelperInput = { action: 'execute', kind: 'delete', roots: [] };
-const target = { alias: 'my-server', authMode: 'key' as const };
+const target = { alias: 'my-server' };
 
 it('固定执行器按顺序处理阶段与结果，参数通过 base64 传递且不转发 stderr', async () => {
   const connection = channel();

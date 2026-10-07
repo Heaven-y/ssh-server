@@ -1,7 +1,5 @@
 // 后端入口：读取配置、组装依赖、只在本机地址上启动
-import { mkdir, readFile, stat } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
+import { mkdir, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createSessionRegistry } from './chat/registry';
 import { TurnManager } from './chat/turn-manager';
@@ -50,11 +48,11 @@ import { registerResourcesRoutes } from './http/resources.routes';
 import { createResourcesService } from './resources/service';
 import { createSshPool } from './ssh/pool';
 import { createServerTargets, serverHostConfig } from './ssh/targets';
+import { createServerProfiles } from './ssh/profiles';
 import { registerSshTargetRoutes } from './http/ssh-targets.routes';
 import { registerHostTrustRoutes } from './http/ssh-host-trust.routes';
 import { createHostTrust } from './ssh/host-trust';
 import { createPasswordStore } from './ssh/password-store';
-import { listHosts, parseSshConfig } from './ssh/ssh-config';
 import { createWorkspaceStore } from './workspaces/store';
 import { createWorkspacePolicy } from './workspaces/policy';
 import { registerWorkspacePolicyRoutes } from './http/workspace-policy.routes';
@@ -68,6 +66,7 @@ import { createSyncManager } from './sync/manager';
 import { createNativeConfigService } from './settings/native-config';
 import { createProductSettings } from './settings/product-settings';
 import { registerProductSettingsRoutes } from './http/product-settings.routes';
+import { createEnvironmentService } from './settings/environment';
 
 const WEB_DIST = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
@@ -78,43 +77,24 @@ async function dirExists(p: string): Promise<boolean> {
   );
 }
 
-/** 每次调用都重新读取 ~/.ssh/config，用户修改后无需重启 */
-async function listConfiguredSshHosts() {
-  const home = os.homedir();
-  const text = await readFile(path.join(home, '.ssh', 'config'), 'utf8').catch(() => '');
-  return listHosts(parseSshConfig(text, home));
-}
-
 const hostForUrl = (host: string) => (host === '::1' ? '[::1]' : '127.0.0.1');
 
-function accessUrl(host: string, port: number, token: string, devOrigin?: string): string {
-  const base = devOrigin ?? `http://${hostForUrl(host)}:${port}`;
-  return `${base}/auth?token=${encodeURIComponent(token)}`;
+function accessUrl(host: string, port: number, devOrigin?: string): string {
+  return `${devOrigin ?? `http://${hostForUrl(host)}:${port}`}/`;
 }
 
 async function main(): Promise<void> {
   const config = loadConfig(process.env, process.argv.slice(2));
   await mkdir(config.configDir, { recursive: true });
   const productSettings = createProductSettings({ configDir: config.configDir });
+  const environment = createEnvironmentService();
+  const startupEnvironment = environment.read();
 
   const targets = createServerTargets({ configDir: config.configDir });
-  const listSshHosts = async () => [
-    ...(await listConfiguredSshHosts()).map((host) => ({ ...host, source: 'ssh-config' as const })),
-    ...(await targets.list()).map((server) => ({
-      alias: server.alias,
-      name: server.name,
-      hostname: server.hostname,
-      user: server.username,
-      port: server.port,
-      source: 'manual' as const,
-      unsupported: [],
-    })),
-  ];
-
   const store = createWorkspaceStore({
     configDir: config.configDir,
     dirExists,
-    knownHosts: async () => (await listSshHosts()).map((h) => h.alias),
+    knownHosts: async () => (await targets.list()).map((server) => server.alias),
   });
   const pool = createSshPool({
     passwordStore: createPasswordStore({ configDir: config.configDir }),
@@ -164,11 +144,9 @@ async function main(): Promise<void> {
     acquireWorkspace,
     onCorrupt: (name) => console.warn('文件任务记录损坏，已保留原文件，未重放操作：', name),
   });
-  const removal = createWorkspaceRemoval({
-    store,
-    activity,
-    ...createWorkspaceRemovalResources({ editors, browse, preflights, tasks, sync, terminals }),
-  });
+  const removalResources = createWorkspaceRemovalResources({ editors, browse, preflights, tasks, sync, terminals });
+  const profiles = createServerProfiles({ targets, store, activity, resources: removalResources, pool });
+  const removal = createWorkspaceRemoval({ store, activity, ...removalResources });
   const capabilities = createCapabilitiesService({
     claude: (dir, signal) => discoverClaudeCapabilities(dir, { signal }),
     codex: (dir, signal) => discoverCodexCapabilities(dir, { signal }),
@@ -203,7 +181,6 @@ async function main(): Promise<void> {
     port: config.port,
     devOrigin: config.devOrigin,
     store,
-    listSshHosts,
     setup,
     activity,
     removal,
@@ -212,12 +189,12 @@ async function main(): Promise<void> {
       registerInternalRoutes(a, { registry, getWorkspace: (id) => store.get(id), pool, sync });
       registerSessionRoutes(a, { store, sessions });
       registerCapabilityRoutes(a, { store, capabilities });
-      registerSshRoutes(a, { pool });
-      registerSshTargetRoutes(a, targets);
+      registerSshRoutes(a, { pool, profiles });
+      registerSshTargetRoutes(a, profiles);
       registerWorkspaceSetupRoutes(a, setup);
       registerHostTrustRoutes(a, createHostTrust({ pool }));
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
-      registerProductSettingsRoutes(a, productSettings);
+      registerProductSettingsRoutes(a, productSettings, environment);
       registerWorkspacePolicyRoutes(a, createWorkspacePolicy(store));
       registerFileRoutes(a, { store, files: createWorkspaceFilesService(), sync });
       registerFileEditorRoutes(a, { store, editors, acquireWorkspace });
@@ -237,7 +214,13 @@ async function main(): Promise<void> {
   const addr = app.server.address();
   port = addr && typeof addr === 'object' ? addr.port : config.port;
   console.log(`ssh-server 已启动，只监听 ${config.host}:${port}`);
-  console.log(`访问地址：${accessUrl(config.host, port, config.token, config.devOrigin)}`);
+  console.log(`访问地址：${accessUrl(config.host, port, config.devOrigin)}`);
+  const report = await startupEnvironment;
+  for (const tool of report.tools)
+    console.log(
+      `${tool.name}：${tool.available ? `可执行（版本 ${tool.version ?? '未知'}）` : '不可执行，请打开产品设置查看安装与配置指引'}`,
+    );
+  console.log('环境检测仅验证程序可执行，未检查模型登录或调用模型，也未安装、升级软件。');
 
   const shutdown = () => {
     terminals.dispose();

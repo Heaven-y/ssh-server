@@ -10,7 +10,7 @@
 |---|---|
 | Node.js | 22+，运行本地 TypeScript + Fastify 后端，沿用现有 tsx 启动方式 |
 | Git | 2.43+，本地版本恢复需要 `GIT_ATTR_SOURCE` 支持目标提交属性 |
-| Claude Code、Codex CLI | 已安装并配置好，产品沿用本机原生配置；Codex app-server 最新真实验收版本为 0.160.0，验收使用指定配置的隔离副本 |
+| Claude Code、Codex CLI | Claude通过SDK随包平台程序运行，Codex通过本机CLI；使用模型时沿用已配置的原生设置。缺少Agent不妨碍服务器管理，历史Codex真实验收版本为0.160.0 |
 | 本机 Python | 3.x，仅部分开发 skill 的脚本按需使用（用 `python` 调用，见 4.3）；网页后端不依赖 Python |
 | rclone | 本机固定 1.75.1；通过 PATH 或 `SSH_SERVER_RCLONE` 指定，服务器无需安装 |
 
@@ -262,9 +262,9 @@ skills-lock.json              # 记录每个 skill 的来源和内容哈希
 
 ## 5. 开发运行与验收说明
 
-- Windows PowerShell 可用 `npm.cmd run dev` 启动后端与 Vite，或用 `npm.cmd start` 构建前端后启动本地服务；访问控制和启动参数见 [M1 设计](../superpowers/specs/2026-10-01-m1-minimal-chain-design.md)。
+- Windows PowerShell 用`npm.cmd start`构建并启动，直接打开`http://127.0.0.1:4317/`；开发热更新用`npm.cmd run dev`并打开5173端口。无需令牌链接，同源自动握手后才启动业务查询；刷新可重建后端重启后失效的会话。安全契约见[D37设计](../superpowers/specs/2026-10-07-local-entry-server-profiles-design.md)。
 - 设置 `SSH_SERVER_RCLONE` 后，真实验收用 `npm.cmd run e2e:m1 -- --host my-server --remote-dir ~/projects/test --local-dir C:\Projects\test --report <私有报告路径>`；M2 将脚本名换为 `e2e:m2`，要求两端专用测试根目录为空，创建并清理自身随机子目录。
-- 认证读取本机 Host 与 known_hosts。私钥模式需要可读私钥，密码模式不回退私钥或 SSH Agent；临时密码不进入工作区 JSON、浏览器缓存、Agent、日志或 argv。
+- 先在顶栏“服务器”保存连接档案并认证；SSH config只作为显式导入来源，生产工作区不直接使用未登记Host。私钥模式需要可读私钥，密码模式不回退私钥或SSH Agent；认证保存在服务器层，工作区只选目录和档案。已引用或有活动的服务器变更受保护，密码不进入工作区JSON、浏览器缓存、Agent、日志或argv。
 - 同步元数据、信任副本、缓存与临时目录在后端配置目录，`.git` 永不传输；只同步代码和小文件，排除范围变化需确认重建基线。
 - `/` 命令、压缩和资源状态按官方接口 / 服务器实际能力验证。终端测试使用服务器已有工具，不为了 `nvitop` 或监控而在服务器安装软件。
 - Codex正式启动使用原生`CODEX_HOME/config.toml`，可通过`SSH_SERVER_CODEX`指定已安装入口。真实模型验收使用隔离配置并核对源摘要，只清理自身副本；历史策略拒绝事项见原验收，不改用其他工具绕过。原生MCP内部令牌只通过进程环境传递，轮次结束撤销。
@@ -272,3 +272,6 @@ skills-lock.json              # 记录每个 skill 的来源和内容哈希
 - 文档修改只检查链接、编号、编码、冲突表述与变更范围；代码改动再按受影响范围运行相关测试及工程检查，不重复未受影响的全量测试。
 - 远端文件管理验收复用指定 SSH 目标的专用目录，覆盖未同步大文件、混合目录、同名冲突、链接、跨文件系统及取消；不可用的文件系统/权限场景单独标为未验证。核对本机未出现隐式文件副本、无模型调用，显式下载不进入工作区同步/Git；参照 A20–A23 和架构 V18，不能用文档布局图替代实际浏览器与 SSH 验收。
 - 每项能力只有当前实现。测试替身和开发脚本必须跟随必填Agent、对象SshTarget、runners注册表等正式契约，不能为旧替身恢复兼容分支。外部客户端只是可选检查工具，不开发插件或CLI同步界面，不新增自动监测、打包或工具升级任务。
+- 启动检测Node.js、Claude实际入口、Codex、Git、rclone能否执行；每项5秒、输出2KiB，命令成功但版本未知仍可用。产品设置“本机运行环境”复用报告并提供重新检测和安装指引；不证明模型已登录，也不调用模型或自动安装。Git2.43+/rclone1.75.1为原有业务要求，不新增启动兼容性矩阵。
+- 默认配置目录为`%LOCALAPPDATA%\ssh-server`，`SSH_SERVER_CONFIG_DIR`可指定隔离目录；`SSH_SERVER_PORT`更改监听端口，`SSH_SERVER_HOST`仅允许本机地址。开发来源用`SSH_SERVER_DEV_ORIGIN`或`--dev-origin`显式设置；`SSH_SERVER_CODEX`和`SSH_SERVER_RCLONE`只选择已有程序。开发skills与其锁文件不属于产品启动依赖，不在启动时安装或检测。
+- 仅维护新档案和工作区格式，不自动迁移。若配置不合法，保留原文并拒绝；不要用删除配置的方法掩盖错误。隔离验收使用临时目录和合成SSH，不读取或清理用户真实服务器配置。

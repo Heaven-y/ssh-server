@@ -4,6 +4,7 @@ import type { AgentKind } from '@ssh-server/shared';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { useChat } from './chat-store';
 import { useAgentCapabilities } from './use-agent-capabilities';
+import { agentUnavailable, useEnvironment } from '../settings/use-environment';
 
 export const AGENT_LABELS: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex' };
 
@@ -95,6 +96,7 @@ export function AgentControls() {
   const fixed = useChat((state) => !!state.sessionId || state.running || state.loadingHistory);
   const actual = useChat((state) => state.actualModel);
   const setAgent = useChat((state) => state.setAgent);
+  const environment = useEnvironment();
   return (
     <div className="flex min-w-0 max-w-full flex-col items-end gap-1.5 text-xs text-muted-foreground">
       <div className="flex max-w-full flex-wrap items-start justify-end gap-2">
@@ -108,12 +110,19 @@ export function AgentControls() {
             title={fixed ? '会话固定使用原 Agent；使用另一 Agent 请新建会话' : undefined}
             onChange={(event) => setAgent(event.target.value as AgentKind)}
           >
-            <option value="claude">Claude</option>
-            <option value="codex">Codex</option>
+            {(['claude', 'codex'] as const).map((kind) => (
+              <option key={kind} value={kind} disabled={agentUnavailable(environment.data, kind)}>
+                {AGENT_LABELS[kind]}
+                {agentUnavailable(environment.data, kind) ? ' · 不可用' : ''}
+              </option>
+            ))}
           </select>
         </label>
         <ModelControls />
       </div>
+      {agentUnavailable(environment.data, agent) && (
+        <p role="status">{AGENT_LABELS[agent]} 当前不可用，请到设置查看安装与配置指引；已有会话仍可查看和管理。</p>
+      )}
       {actual && (
         <span className="max-w-full truncate" title={actual}>
           实际模型：{actual}

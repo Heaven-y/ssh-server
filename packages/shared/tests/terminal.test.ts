@@ -10,7 +10,7 @@ it('严格限制行列、控制字段与canonical base64', () => {
   expect(TerminalClientMessageSchema.safeParse({ type: 'close', extra: true }).success).toBe(false);
 });
 
-it('工作区目标默认私钥且仅包含固定身份字段', () => {
+it('工作区目标仅包含固定身份字段，不复制服务器认证方式', () => {
   expect(
     workspaceTerminalTarget({
       id: 'w',
@@ -19,5 +19,5 @@ it('工作区目标默认私钥且仅包含固定身份字段', () => {
       sshHost: 'my-server',
       remoteDir: '~/projects/demo',
     }),
-  ).toEqual({ workspaceId: 'w', sshHost: 'my-server', authMode: 'key', remoteDir: '~/projects/demo' });
+  ).toEqual({ workspaceId: 'w', sshHost: 'my-server', remoteDir: '~/projects/demo' });
 });

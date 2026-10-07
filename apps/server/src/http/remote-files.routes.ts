@@ -7,7 +7,6 @@ const Params = z.object({ id: z.string().min(1), sessionId: z.string().uuid().op
 const Target = z
   .object({
     sshHost: z.string().min(1),
-    authMode: z.enum(['key', 'password']).optional(),
     remoteDir: z.string().min(1).max(4096),
     localDir: z.string().min(1),
   })

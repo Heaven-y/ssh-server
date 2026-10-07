@@ -49,6 +49,15 @@ async function fixture() {
   ]);
   const pool: SshPool = createSshPool({
     homeDir,
+    lookupHost: async (alias) => ({
+      alias,
+      hostname: '127.0.0.1',
+      port,
+      user: 'demo',
+      authMode: 'password',
+      identityFiles: [],
+      unsupported: [],
+    }),
     readFile: async (file) => {
       const value = files.get(file);
       if (!value) throw new Error('ENOENT');
@@ -60,7 +69,7 @@ async function fixture() {
     for (const peer of peers) peer.end();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
-  const target = { alias: 'my-server', authMode: 'password' as const };
+  const target = { alias: 'my-server' };
   const exec = () => pool.exec(target, 'fixture-command', { localTimeoutMs: 1000, outputCap: 1000 });
   return { pool, files, methods, commands, target, exec, knownFile: path.join(ssh, 'known_hosts'), key, port };
 }
@@ -114,5 +123,27 @@ describe('SSH 密码与主机密钥真实握手', () => {
     expect(changed).toHaveBeenCalledTimes(1);
     await expect(exec()).rejects.toMatchObject({ code: 'connection_paused' });
     unsubscribe();
+  });
+});
+
+it('重复连接检查只访问home并复用代次和连接，断开后状态不暴露密码', async () => {
+  const { pool, methods, commands } = await fixture();
+  await pool.connect({ sshHost: 'my-server', password: 'fixture-secret' });
+  const generation = pool.generation('my-server');
+  const changed = vi.fn();
+  pool.onCredentialsChanged('my-server', changed);
+  await pool.connect({ sshHost: 'my-server' });
+  expect(pool.generation('my-server')).toBe(generation);
+  expect(changed).not.toHaveBeenCalled();
+  expect(methods.filter((method) => method === 'password')).toHaveLength(1);
+  expect(commands).toHaveLength(2);
+  expect(commands[0]).toContain('cd "$HOME"');
+  expect(commands[0]).not.toContain('test -w');
+  expect(await pool.credentialStatus('my-server')).toMatchObject({ connected: true, hasPassword: true });
+  pool.disconnect('my-server');
+  expect(await pool.credentialStatus('my-server')).toMatchObject({
+    connected: false,
+    hasPassword: false,
+    paused: true,
   });
 });

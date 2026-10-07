@@ -11,13 +11,12 @@ import { createTerminalManager } from '../../src/terminal/manager';
 import type { SshPool } from '../../src/ssh/pool';
 
 afterEach(() => vi.useRealTimers());
-const target: TerminalTarget = { workspaceId: 'w', sshHost: 'my-server', authMode: 'password', remoteDir: '/demo' };
+const target: TerminalTarget = { workspaceId: 'w', sshHost: 'my-server', remoteDir: '/demo' };
 const workspace: Workspace = {
   id: 'w',
   name: '工作区',
   localDir: 'fixture',
   sshHost: 'my-server',
-  authMode: 'password',
   remoteDir: '/demo',
 };
 const token = `1.12345.${'a'.repeat(32)}.${'b'.repeat(64)}`;

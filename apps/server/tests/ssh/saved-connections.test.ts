@@ -11,6 +11,7 @@ import { createPasswordStore } from '../../src/ssh/password-store';
 import { createSshPool } from '../../src/ssh/pool';
 import { storageFailure } from '../../src/ssh/credential-storage-error';
 import { createWindowsProtector, type SecretProtector } from '../../src/ssh/windows-protection';
+import { createSshConfigLookup } from '../../src/ssh/connection';
 
 const closers: Array<() => Promise<void>> = [];
 function deferred() {
@@ -111,10 +112,18 @@ async function fixture() {
   });
   const pools: ReturnType<typeof createSshPool>[] = [];
   const apps: FastifyInstance[] = [];
+  const authentication: { authMode: 'key' | 'password' } = { authMode: 'password' };
+  const readConfig = async (file: string) => {
+    const data = files.get(file);
+    if (!data) throw new Error('ENOENT');
+    return data;
+  };
   const restart = () => {
     const pool = createSshPool({
       homeDir,
       passwordStore: store,
+      lookupHost: (alias) =>
+        createSshConfigLookup({ homeDir, readFile: readConfig, authMode: authentication.authMode })(alias),
       readFile: (file) => {
         const data = files.get(file);
         return data ? Promise.resolve(data) : Promise.reject(new Error('ENOENT'));
@@ -122,7 +131,7 @@ async function fixture() {
     });
     pools.push(pool);
     const app = Fastify();
-    registerSshRoutes(app, { pool });
+    registerSshRoutes(app, { pool, profiles: { connection: async (_alias, _changing, operation) => operation() } });
     apps.push(app);
     const post = (url: string, payload: object) => app.inject({ method: 'POST', url, payload });
     const status = async () => (await app.inject({ url: '/api/ssh/credentials?sshHost=my-server' })).json<unknown>();
@@ -148,6 +157,7 @@ async function fixture() {
     homeDir,
     delays,
     store,
+    authentication,
     handshakes: () => handshakes,
     rotatePassword: () => {
       acceptedPassword = 'changed-secret';
@@ -157,9 +167,9 @@ async function fixture() {
     },
   };
 }
-const input = { sshHost: 'my-server', authMode: 'password', remoteDir: '~/projects/demo' };
+const input = { sshHost: 'my-server' };
 const supplied = { ...input, password: 'fixture-secret', savePassword: true };
-const target = { alias: 'my-server', authMode: 'password' as const };
+const target = { alias: 'my-server' };
 
 describe('保存密码的实际 SSH 与网页接口链路', () => {
   it('验证成功后写密文，断开暂停自动连接，显式重连和新后端实例复用', async () => {
@@ -205,8 +215,9 @@ describe('保存密码的实际 SSH 与网页接口链路', () => {
     expect((await connection.post('/api/ssh/connect', supplied)).statusCode).toBe(200);
     expect((await connection.post('/api/ssh/connect', input)).json()).toMatchObject({ saved: true });
     expect(
-      (await connection.post('/api/ssh/connect', { ...input, authMode: 'key', savePassword: false })).json(),
-    ).toMatchObject({ saved: true });
+      (await connection.post('/api/ssh/connect', { ...input, authMode: 'key', savePassword: false })).statusCode,
+    ).toBe(400);
+    expect(await connection.status()).toMatchObject({ saved: true });
     expect((await connection.post('/api/ssh/connect', { ...input, savePassword: false })).json()).toMatchObject({
       saved: false,
       connected: true,
@@ -283,13 +294,13 @@ describe('保存密码的实际 SSH 与网页接口链路', () => {
     first.pool.dispose();
     f.rotatePassword();
     const next = f.restart();
-    await next.pool.resolveConnection({ alias: 'my-alias', authMode: 'password' });
+    await next.pool.resolveConnection({ alias: 'my-alias' });
     const response = await next.post('/api/ssh/connect', input);
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ code: 'authentication_failed' });
     expect(await next.status()).toMatchObject({ saved: false });
     expect((await next.post('/api/ssh/connect', input)).json()).toMatchObject({ code: 'credentials_required' });
-    await expect(next.pool.resolveConnection({ alias: 'my-alias', authMode: 'password' })).rejects.toMatchObject({
+    await expect(next.pool.resolveConnection({ alias: 'my-alias' })).rejects.toMatchObject({
       code: 'credentials_required',
     });
   }, 20_000);
@@ -368,7 +379,8 @@ describe('保存密码的实际 SSH 与网页接口链路', () => {
     await pending;
     await closed.promise;
     await expect(connection.pool.resolveConnection(target)).rejects.toMatchObject({ code: 'connection_paused' });
-    const next = connection.post('/api/ssh/connect', { ...input, authMode: 'key' }).then((response) => response);
+    f.authentication.authMode = 'key';
+    const next = connection.post('/api/ssh/connect', input).then((response) => response);
     await new Promise<void>((resolve) => setImmediate(resolve));
     gate.resolve();
     expect((await next).json()).toMatchObject({ connected: true, authMode: 'key', saved: false, paused: false });

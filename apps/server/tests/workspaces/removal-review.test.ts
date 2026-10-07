@@ -40,11 +40,11 @@ it('活动Hook不改变静态页面及资产的回调式发送行为', async () 
     store,
     webDir,
     activity: createWorkspaceActivity(),
-    listSshHosts: async () => [],
   });
   cleanups.unshift(() => app.close());
-  expect((await app.inject('/')).body).toBe(html);
-  expect((await app.inject('/app.js')).body).toBe('console.log("工作区");');
+  const headers = { host: '127.0.0.1:0' };
+  expect((await app.inject({ url: '/', headers })).body).toBe(html);
+  expect((await app.inject({ url: '/app.js', headers })).body).toBe('console.log("工作区");');
 });
 
 it('普通HTTP伪造Upgrade头仍保护实际原生会话写入，收尾后才允许移除', async () => {
@@ -86,7 +86,6 @@ it('普通HTTP伪造Upgrade头仍保护实际原生会话写入，收尾后才�
     store,
     activity,
     removal,
-    listSshHosts: async () => [],
     routes: (server) => registerSessionRoutes(server, { store, sessions }),
   });
   cleanups.unshift(() => app.close());

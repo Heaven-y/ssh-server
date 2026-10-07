@@ -7,7 +7,7 @@ import type { SshPool } from '../../src/ssh/pool';
 
 vi.mock('../../src/ssh/exec', () => ({ runExec: vi.fn() }));
 afterEach(() => vi.resetAllMocks());
-const target = { alias: 'my-server', authMode: 'key' as const };
+const target = { alias: 'my-server' };
 const success: ExecResult = {
   stdout: '采样结果',
   stderr: '',

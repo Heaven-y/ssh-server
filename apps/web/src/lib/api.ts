@@ -1,4 +1,4 @@
-// REST 接口封装：Cookie 由 /auth 设置，同源请求自动携带
+// REST 接口封装：启动同源本机会话后，Cookie 由浏览器自动携带。
 import { WorkspaceInputSchema } from '@ssh-server/shared';
 import type {
   AgentKind,
@@ -60,13 +60,15 @@ import type {
 
 export type { SessionSummary } from '@ssh-server/shared';
 
-export type SshConnectionTarget = { sshHost: string; remoteDir: string; authMode: SshAuthMode };
-export type SshConnectInput = Omit<SshConnectionTarget, 'authMode'> &
-  (
-    | { authMode: 'key'; password?: never; savePassword?: never }
-    | { authMode: 'password'; password?: string; savePassword?: boolean }
-  );
-export type SshCredentialStatus = { saved: boolean; savingAvailable: boolean; paused: boolean };
+export type SshConnectionTarget = { sshHost: string; authMode: SshAuthMode };
+export type SshConnectInput = { sshHost: string; password?: string; savePassword?: boolean };
+export type SshCredentialStatus = {
+  saved: boolean;
+  savingAvailable: boolean;
+  paused: boolean;
+  connected: boolean;
+  hasPassword: boolean;
+};
 export type SshConnectResult = { connected: true; authMode: SshAuthMode } & SshCredentialStatus;
 
 /** 接口错误；field 用于工作区字段校验，code 用于 SSH 错误分类 */
@@ -92,7 +94,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: init?.body ? { 'content-type': 'application/json' } : undefined,
   });
-  if (res.status === 401) throw new ApiError(401, '未登录：请打开后端启动时打印的访问地址');
+  if (res.status === 401) throw new ApiError(401, '本机会话已失效，请刷新页面重新连接本机服务');
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as {
       message?: string;
@@ -118,6 +120,8 @@ export const api = {
     request<ProductSettingsDocument>('/api/settings/product', { signal, cache: 'no-store' }),
   saveProductSettings: (input: ProductSettingsInput, signal?: AbortSignal) =>
     request<ProductSettingsDocument>('/api/settings/product', { method: 'PUT', body: JSON.stringify(input), signal }),
+  readEnvironment: (signal?: AbortSignal) =>
+    request<EnvironmentReport>('/api/settings/environment', { signal, cache: 'no-store' }),
   detectEnvironment: (signal?: AbortSignal) =>
     request<EnvironmentReport>('/api/settings/environment', { method: 'POST', body: '{}', signal }),
   readResources: (target: TerminalTarget, signal?: AbortSignal) =>
@@ -305,7 +309,9 @@ export const api = {
       cache: 'no-store',
       body: JSON.stringify(input),
     }),
-  listSshHosts: () => request<SshHostInfo[]>('/api/ssh-hosts'),
+  listSshHosts: (signal?: AbortSignal) => request<ManagedServer[]>('/api/ssh-targets', { signal, cache: 'no-store' }),
+  sshImportOptions: (signal?: AbortSignal) =>
+    request<Array<SshHostInfo & { keyFile?: string }>>('/api/ssh-targets/import-options', { signal }),
   setupLocalDirectory: (input: { path?: string; cursor?: string }, signal?: AbortSignal) =>
     request<LocalDirectory>('/api/workspace-setup/local-directory', {
       method: 'POST',
@@ -318,7 +324,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ cursor }),
     }),
-  openSetupRemote: (input: { sshHost: string; authMode: SshAuthMode }, signal?: AbortSignal) =>
+  openSetupRemote: (input: { sshHost: string }, signal?: AbortSignal) =>
     request<RemoteBrowseSession>('/api/workspace-setup/remote/open', {
       method: 'POST',
       signal,
@@ -377,6 +383,18 @@ export const api = {
     }),
   saveSshTarget: (input: ManualServerInput, signal?: AbortSignal) =>
     request<ManagedServer>('/api/ssh-targets', { method: 'POST', signal, body: JSON.stringify(input) }),
+  updateSshTarget: (alias: string, input: ManualServerInput, expected: ManagedServer, signal?: AbortSignal) =>
+    request<ManagedServer>(`/api/ssh-targets/${encodeURIComponent(alias)}`, {
+      method: 'PUT',
+      signal,
+      body: JSON.stringify({ input, expected }),
+    }),
+  deleteSshTarget: (expected: ManagedServer, signal?: AbortSignal) =>
+    request<void>(`/api/ssh-targets/${encodeURIComponent(expected.alias)}`, {
+      method: 'DELETE',
+      signal,
+      body: JSON.stringify({ expected, confirmed: true }),
+    }),
   probeHostKey: (sshHost: string, signal?: AbortSignal) =>
     request<HostTrustStatus>('/api/ssh/host-key', {
       method: 'POST',
@@ -398,10 +416,8 @@ export const api = {
       signal,
       body: JSON.stringify({
         sshHost: input.sshHost,
-        authMode: input.authMode,
-        remoteDir: input.remoteDir,
-        password: input.authMode === 'password' ? input.password : undefined,
-        savePassword: input.authMode === 'password' ? input.savePassword : undefined,
+        password: input.password,
+        savePassword: input.savePassword,
       }),
     }),
   sshCredentials: (sshHost: string, signal?: AbortSignal) =>
@@ -450,10 +466,12 @@ export const api = {
 /** react-query 的缓存键，集中定义便于失效刷新 */
 export const queryKeys = {
   productSettings: ['product-settings'] as const,
+  environment: ['environment'] as const,
+  sshImportOptions: ['ssh-import-options'] as const,
   agentCapabilities: (workspaceId: string, agent: AgentKind) => ['agent-capabilities', workspaceId, agent] as const,
   workspaces: ['workspaces'] as const,
   workspaceRemoval: (id: string) => ['workspace-removal', id] as const,
-  sshHosts: ['ssh-hosts'] as const,
+  sshHosts: ['ssh-targets'] as const,
   sshCredentials: (sshHost: string) => ['ssh-credentials', sshHost] as const,
   sessions: (workspaceId: string, agent: AgentKind, archived = false) =>
     archived ? (['sessions', workspaceId, agent, 'archived'] as const) : (['sessions', workspaceId, agent] as const),

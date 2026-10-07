@@ -81,7 +81,8 @@ describe('工作区配置移除的核心边界', () => {
       path.join(f.root, 'native-history.json'),
     ];
     for (const file of files) await writeFile(file, '保留内容');
-    const other = await f.store.create({ ...f.workspace, name: '其他工作区' });
+    const { id: _id, ...input } = f.workspace;
+    const other = await f.store.create({ ...input, name: '其他工作区' });
     expect(await f.removal.remove(f.workspace.id, f.input)).toEqual({ removed: true });
     expect(await f.store.list()).toEqual([other]);
     for (const file of files) expect(await readFile(file, 'utf8')).toBe('保留内容');
