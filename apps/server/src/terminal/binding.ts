@@ -23,7 +23,7 @@ export function createTerminalBindings(deps: {
     if (!workspace) throw new TerminalError('workspace_missing');
     if (terminalTargetKey(workspaceTerminalTarget(workspace)) !== terminalTargetKey(target))
       throw new TerminalError('target_changed');
-    const fingerprint = await deps.pool.fingerprint(target.sshHost, target.authMode);
+    const fingerprint = await deps.pool.fingerprint(target.sshHost);
     signal.throwIfAborted();
     if (generation !== deps.pool.generation(target.sshHost)) throw new TerminalError('target_changed');
     return { workspace, fingerprint, generation };

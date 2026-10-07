@@ -15,6 +15,12 @@ import { startTerminalFixture } from './terminal-fixture';
 import { createResourceFixture } from './resource-fixture';
 import { createResourcesService } from '../../apps/server/src/resources/service';
 import { registerResourcesRoutes } from '../../apps/server/src/http/resources.routes';
+import { createServerProfiles } from '../../apps/server/src/ssh/profiles';
+import { createWorkspaceActivity } from '../../apps/server/src/workspaces/activity';
+import { registerSshTargetRoutes } from '../../apps/server/src/http/ssh-targets.routes';
+import { createEnvironmentService } from '../../apps/server/src/settings/environment';
+import { createProductSettings } from '../../apps/server/src/settings/product-settings';
+import { registerProductSettingsRoutes } from '../../apps/server/src/http/product-settings.routes';
 
 async function main() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'ssh-terminal-'));
@@ -29,6 +35,8 @@ async function main() {
   const bindings = createTerminalBindings(fixture);
   const terminals = createTerminalManager({ ...fixture, bindings });
   const resources = createResourcesService(fixture);
+  const activity = createWorkspaceActivity();
+  const profiles = createServerProfiles({ ...fixture, activity, resources: { blockers: () => Promise.resolve([]) } });
   const syncStatus = () =>
     Promise.resolve({
       phase: 'uninitialized',
@@ -41,11 +49,17 @@ async function main() {
   const app = await buildApp({
     token,
     port: 0,
+    activity,
     store: fixture.store,
-    listSshHosts: () => Promise.resolve([]),
     webDir: fileURLToPath(new URL('../../apps/web/dist', import.meta.url)),
     routes: (server) => {
-      registerSshRoutes(server, fixture);
+      registerSshRoutes(server, { ...fixture, profiles });
+      registerSshTargetRoutes(server, profiles);
+      registerProductSettingsRoutes(
+        server,
+        createProductSettings({ configDir: path.join(root, 'config') }),
+        createEnvironmentService(() => Promise.resolve({ checkedAt: Date.now(), tools: [] })),
+      );
       registerTerminalRoutes(server, { terminals, bindings });
       registerResourcesRoutes(server, resources);
       server.get('/api/workspaces/:id/sessions', () => Promise.resolve([]));
@@ -61,7 +75,6 @@ async function main() {
       server.get('/__fixture/sftp', async () => {
         const connection = await fixture.pool.resolveConnection({
           alias: fixture.workspace.sshHost,
-          authMode: 'password',
         });
         const root = await resolveTerminalDirectory({
           workspace: fixture.workspace,
@@ -81,7 +94,7 @@ async function main() {
     },
   });
   await app.listen({ host: '127.0.0.1', port: 0 });
-  console.log(`网页终端验收地址：${app.listeningOrigin}/auth?token=${token}`);
+  console.log(`网页终端验收地址：${app.listeningOrigin}/`);
   let closing = false;
   const close = async () => {
     if (closing) return;

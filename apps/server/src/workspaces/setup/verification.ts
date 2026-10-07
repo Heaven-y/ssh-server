@@ -22,6 +22,7 @@ type Checked = {
   signature: string;
   key: string;
   generation: number;
+  authMode: WorkspaceSetupVerification['target']['authMode'];
   local: Awaited<ReturnType<typeof inspectLocalRoot>>;
   remote: WorkspaceSetupVerification['remote'];
 };
@@ -39,7 +40,6 @@ export function normalizeSetupInput(input: WorkspaceInput): WorkspaceInput {
   return {
     ...parsed,
     localDir: path.resolve(parsed.localDir),
-    authMode: workspaceTarget(parsed).authMode,
     sync: SyncSettingsSchema.parse(parsed.sync ?? {}),
   };
 }
@@ -77,6 +77,7 @@ export function createSetupVerification(deps: Deps) {
       signature: JSON.stringify(input),
       key: config.cacheKey,
       generation,
+      authMode: config.authMode,
       local: localAfter,
       remote: remoteInfo,
     };
@@ -109,7 +110,7 @@ export function createSetupVerification(deps: Deps) {
           expiresAt,
           local: checked.local.info,
           remote: checked.remote,
-          target: { sshHost: checked.input.sshHost, authMode: workspaceTarget(checked.input).authMode },
+          target: { sshHost: checked.input.sshHost, authMode: checked.authMode },
         };
       } finally {
         pending--;

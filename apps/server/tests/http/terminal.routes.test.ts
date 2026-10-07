@@ -23,7 +23,6 @@ async function fixture() {
     token: 'fixture-token',
     port: 0,
     store: ssh.store,
-    listSshHosts: async () => [],
     routes: (app) => {
       registerTerminalRoutes(app, { terminals, bindings });
       app.get('/ws', { websocket: true }, (socket) => {

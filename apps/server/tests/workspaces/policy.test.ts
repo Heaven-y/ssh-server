@@ -60,7 +60,7 @@ it('实际HTTP拒绝非法/陈旧输入与通用PATCH绕过，坏规则保留，
   const f = await fixture();
   const app = Fastify();
   registerWorkspacePolicyRoutes(app, f.service);
-  registerWorkspaceRoutes(app, { store: f.store, listSshHosts: async () => [] });
+  registerWorkspaceRoutes(app, { store: f.store });
   const url = `/api/workspaces/${f.workspace.id}/policy`;
   try {
     const read = await app.inject({ method: 'GET', url });

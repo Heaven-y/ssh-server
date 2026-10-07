@@ -38,6 +38,7 @@ async function setup() {
     remoteDir: '~/projects/demo',
   };
   const store: Parameters<typeof buildApp>[0]['store'] = {
+    withSnapshot: async (operation) => operation([workspace]),
     list: async () => [],
     get: async (id: string) => (id === 'a' ? workspace : undefined),
     create: async () => {
@@ -50,7 +51,6 @@ async function setup() {
     token,
     port: 0,
     store,
-    listSshHosts: async () => [],
     routes: (app) => registerFileEditorRoutes(app, { store, editors }),
   });
   apps.push(app);

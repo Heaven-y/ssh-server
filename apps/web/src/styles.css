@@ -29,10 +29,10 @@
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 
-:root {
+:root[data-theme='dark'] {
   color-scheme: dark;
 }
-:root[data-theme='light'] {
+:root:not([data-theme='dark']) {
   color-scheme: light;
   --color-background: #f5f6f8;
   --color-card: #ffffff;
@@ -75,7 +75,9 @@
 .terminal-host .xterm {
   height: 100%;
 }
-.terminal-host .xterm-viewport {
+/* xterm 的滚动层默认黑色，需与绘制层一起跟随主题，避免底部残留黑条。 */
+.terminal-host .xterm .xterm-viewport {
+  background-color: var(--color-background);
   overscroll-behavior: contain;
 }
 

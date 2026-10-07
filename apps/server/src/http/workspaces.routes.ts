@@ -1,6 +1,5 @@
-// 工作区与 SSH Host 接口
+// 工作区接口；服务器档案由独立路由统一管理。
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { SshHostInfo } from '@ssh-server/shared';
 import type { WorkspaceStore } from '../workspaces/store';
 import type { WorkspaceSetup } from '../workspaces/setup/service';
 import { createVerifiedWorkspace } from './workspace-setup.routes';
@@ -10,7 +9,6 @@ import { WorkspaceRemovalError } from '../workspaces/activity';
 
 export type WorkspaceRoutesDeps = {
   store: WorkspaceStore;
-  listSshHosts(): Promise<SshHostInfo[]>;
   setup?: WorkspaceSetup;
   removal?: WorkspaceRemoval;
 };
@@ -36,8 +34,6 @@ export function registerWorkspaceRoutes(app: FastifyInstance, deps: WorkspaceRou
       return reply.code(400).send({ code: 'workspace_confirmation_required', message: '请读取当前配置并明确确认移除' });
     return withRemoval(reply, () => deps.removal!.remove(req.params.id, parsed.data));
   });
-
-  app.get('/api/ssh-hosts', async () => deps.listSshHosts());
 }
 
 async function withRemoval<T>(reply: FastifyReply, operation: () => Promise<T>) {

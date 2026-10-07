@@ -348,7 +348,6 @@ const snapshotConfiguration = (input: Input) =>
     JSON.stringify([
       input.ws.id,
       input.ws.sshHost,
-      input.ws.authMode,
       input.ws.remoteDir,
       path.resolve(input.ws.localDir),
       input.settings,

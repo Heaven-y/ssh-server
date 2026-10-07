@@ -5,8 +5,15 @@ import { api, ApiError, queryKeys, type SshConnectionTarget, type SshCredentialS
 
 type Phase = 'idle' | 'connecting' | 'verified' | 'error' | 'disconnecting' | 'disconnected' | 'updating';
 type ConnectionState = { targetId: string; phase: Phase; message?: string };
+const EMPTY_STATUS: SshCredentialStatus = {
+  saved: false,
+  savingAvailable: false,
+  paused: false,
+  connected: false,
+  hasPassword: false,
+};
 
-const TARGET_SCHEMA = WorkspaceInputSchema.pick({ sshHost: true, remoteDir: true, authMode: true });
+const TARGET_SCHEMA = WorkspaceInputSchema.pick({ sshHost: true });
 const SSH_ERRORS: Record<string, string> = {
   host_key_unknown: '尚未登记服务器主机密钥。请点击“检查实际指纹”，通过可信渠道核对并确认后重新测试连接。',
   host_key_mismatch: '服务器主机密钥与 known_hosts 不一致，已拒绝连接。请核实密钥变化原因后再重试。',
@@ -23,9 +30,9 @@ const SSH_ERRORS: Record<string, string> = {
   protocol_error: '连接接口返回了无效状态，请重新测试连接。',
 };
 const HTTP_SSH_ERRORS: Record<number, string> = {
-  400: '连接参数无效。请检查 Host、认证方式及服务器目录。',
+  400: '连接参数无效。请检查服务器档案。',
   409: 'SSH 认证或主机密钥校验失败。请核对凭据与 known_hosts 后重试。',
-  502: 'SSH 连接或目录检查失败。请检查网络、Host 及服务器目录的访问权限。',
+  502: 'SSH 连接失败。请检查网络与服务器档案。',
 };
 
 function sshErrorMessage(error: unknown, authMode: SshAuthMode): string {
@@ -41,29 +48,27 @@ function sshErrorMessage(error: unknown, authMode: SshAuthMode): string {
   );
 }
 
-/** 只校验连接目标；测试连接不要求先填写工作区名称与本地目录。 */
-export function sshTargetErrors(target: SshConnectionTarget): Partial<Record<'sshHost' | 'remoteDir', string>> {
-  const result = TARGET_SCHEMA.safeParse(target);
+/** 认证目标仅为已保存服务器，不依赖工作区目录。 */
+export function sshTargetErrors(target: SshConnectionTarget): Partial<Record<'sshHost', string>> {
+  const result = TARGET_SCHEMA.safeParse({ sshHost: target.sshHost });
   if (result.success) return {};
-  const errors: Partial<Record<'sshHost' | 'remoteDir', string>> = {};
+  const errors: Partial<Record<'sshHost', string>> = {};
   for (const issue of result.error.issues) {
     if (issue.path[0] === 'sshHost') errors.sshHost = '请选择服务器 Host';
-    if (issue.path[0] === 'remoteDir') errors.remoteDir ??= issue.message;
   }
   return errors;
 }
 
-function feedbackState(current: ConnectionState, paused: boolean, error: unknown, authMode: SshAuthMode) {
-  return {
-    phase: current.phase === 'idle' && paused ? ('disconnected' as const) : current.phase,
-    message: current.message ?? (error && current.phase === 'idle' ? sshErrorMessage(error, authMode) : undefined),
-  };
+function feedbackState(current: ConnectionState, status: SshCredentialStatus, error: unknown, authMode: SshAuthMode) {
+  if (!['idle', 'verified', 'disconnected'].includes(current.phase)) return current;
+  const phase = status.connected ? 'verified' : status.paused ? 'disconnected' : 'idle';
+  return { phase, message: error ? sshErrorMessage(error, authMode) : undefined } as const;
 }
 
 /** 认证请求独立执行；React 状态仅保存是否有输入和验证结果，不保存密码文本。 */
 export function useSshConnection(target: SshConnectionTarget) {
-  const { sshHost, remoteDir, authMode } = target;
-  const targetId = JSON.stringify([sshHost, authMode, remoteDir]);
+  const { sshHost, authMode } = target;
+  const targetId = JSON.stringify([sshHost, authMode]);
   const queryClient = useQueryClient();
   const credentials = useQuery({
     queryKey: queryKeys.sshCredentials(sshHost),
@@ -71,16 +76,18 @@ export function useSshConnection(target: SshConnectionTarget) {
     enabled: Boolean(sshHost),
     retry: false,
     staleTime: 0,
+    refetchInterval: 10000,
   });
+  const status = credentials.data ?? EMPTY_STATUS;
   const [preference, setPreference] = useState<{ targetId: string; save: boolean }>();
-  const savePassword = preference?.targetId === targetId ? preference.save : (credentials.data?.saved ?? false);
+  const savePassword = preference?.targetId === targetId ? preference.save : status.saved;
   const [state, setState] = useState<ConnectionState>({ targetId, phase: 'idle' });
   const [hasPassword, setHasPassword] = useState(false);
   const passwordInput = useRef<HTMLInputElement | null>(null);
   const activeRequest = useRef<AbortController | null>(null);
   const current = state.targetId === targetId ? state : { targetId, phase: 'idle' as const };
   const busy = ['connecting', 'disconnecting', 'updating'].includes(current.phase);
-  const saved = credentials.data?.saved === true;
+  const saved = status.saved;
 
   const clearPassword = useCallback(() => {
     if (passwordInput.current) passwordInput.current.value = '';
@@ -151,12 +158,12 @@ export function useSshConnection(target: SshConnectionTarget) {
 
   const connect = async () => {
     const errors = sshTargetErrors(target);
-    const message = errors.sshHost ?? errors.remoteDir;
+    const message = errors.sshHost;
     if (message) {
       setState({ targetId, phase: 'error', message });
       return;
     }
-    if (authMode === 'password' && !passwordInput.current?.value && !saved) {
+    if (authMode === 'password' && !passwordInput.current?.value && !saved && !status.hasPassword) {
       setState({ targetId, phase: 'error', message: '请先输入 SSH 密码，再测试连接。' });
       passwordInput.current?.focus();
       return;
@@ -166,8 +173,12 @@ export function useSshConnection(target: SshConnectionTarget) {
         api
           .connectSsh(
             authMode === 'password'
-              ? { sshHost, remoteDir, authMode, password: passwordInput.current?.value || undefined, savePassword }
-              : { sshHost, remoteDir, authMode },
+              ? {
+                  sshHost,
+                  password: passwordInput.current?.value || undefined,
+                  savePassword: passwordInput.current?.value || savePassword !== saved ? savePassword : undefined,
+                }
+              : { sshHost },
             signal,
           )
           .then((result) => {
@@ -203,13 +214,14 @@ export function useSshConnection(target: SshConnectionTarget) {
   };
 
   return {
-    ...feedbackState(current, credentials.data?.paused === true, credentials.error, authMode),
+    ...feedbackState(current, status, credentials.error, authMode),
     busy,
-    verified: current.phase === 'verified',
+    verified: status.connected,
+    reusablePassword: status.hasPassword,
     hasPassword,
     saved,
     savePassword,
-    savingAvailable: credentials.data?.savingAvailable === true,
+    savingAvailable: status.savingAvailable,
     loadingCredentials: credentials.isFetching,
     changeSaving,
     passwordRef,

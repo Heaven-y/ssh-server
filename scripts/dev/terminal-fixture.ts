@@ -5,6 +5,7 @@ import path from 'node:path';
 import ssh2, { type Connection, type ServerChannel, type Session, type SFTPWrapper } from 'ssh2';
 import { createSshPool } from '../../apps/server/src/ssh/pool';
 import { createWorkspaceStore } from '../../apps/server/src/workspaces/store';
+import { createServerTargets, serverHostConfig } from '../../apps/server/src/ssh/targets';
 
 const HOME = '/home/demo';
 const ROOT = `${HOME}/projects/demo`;
@@ -136,37 +137,45 @@ export async function startTerminalFixture({
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('夹具未监听TCP');
   const sshDir = path.join(configDir, '.ssh');
+  const targets = createServerTargets({ configDir, homeDir: configDir });
+  const target = await targets.save({
+    name: '本机终端夹具',
+    hostname: '127.0.0.1',
+    port: address.port,
+    username: 'demo',
+    authMode: 'password',
+  });
   const files = new Map<string, Buffer>([
-    [
-      path.join(sshDir, 'config'),
-      Buffer.from(`Host my-server\n HostName 127.0.0.1\n Port ${address.port}\n User demo\n`),
-    ],
     [path.join(sshDir, 'known_hosts'), Buffer.from(`[127.0.0.1]:${address.port} ${key.public}\n`)],
   ]);
   const pool = createSshPool({
     homeDir: configDir,
+    lookupHost: async (alias) => {
+      const current = await targets.get(alias);
+      return current ? serverHostConfig(current) : undefined;
+    },
     readFile: (file) => {
       const value = files.get(file);
       if (!value) return Promise.reject(new Error('ENOENT'));
       return Promise.resolve(value);
     },
   });
-  await pool.setPassword('my-server', 'fixture-only');
+  await pool.setPassword(target.alias, 'fixture-only');
   const store = createWorkspaceStore({
     configDir,
-    knownHosts: () => Promise.resolve(['my-server']),
+    knownHosts: async () => (await targets.list()).map((server) => server.alias),
     dirExists: (dir) => Promise.resolve(dir === path.resolve(workspaceDir)),
   });
   const workspace = await store.create({
     name: '终端验收',
     localDir: path.resolve(workspaceDir),
-    sshHost: 'my-server',
-    authMode: 'password',
+    sshHost: target.alias,
     remoteDir: ROOT,
   });
   return {
     pool,
     store,
+    targets,
     workspace,
     shells,
     async close() {

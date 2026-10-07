@@ -1,9 +1,36 @@
-import { Terminal } from '@xterm/xterm';
+import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { TERMINAL_LIMITS, type TerminalTarget, type TerminalServerMessage } from '@ssh-server/shared';
 import { createTerminalConnection, type TerminalConnection } from './connection';
 import { createTerminalPaste, prepareTerminalPaste } from './paste';
+import { useUiPreferences } from '../../ui/ui-preferences';
+
+const TERMINAL_THEMES: Record<'light' | 'dark', ITheme> = {
+  dark: { background: '#101114', foreground: '#eeeff3', cursor: '#9cb5ff', selectionBackground: '#303d65' },
+  light: {
+    background: '#f5f6f8',
+    foreground: '#1b2230',
+    cursor: '#254dc6',
+    selectionBackground: '#cbd6f7',
+    black: '#1b2230',
+    red: '#a51c34',
+    green: '#23613e',
+    yellow: '#805100',
+    blue: '#254dc6',
+    magenta: '#7b358c',
+    cyan: '#1a6270',
+    white: '#505968',
+    brightBlack: '#505968',
+    brightRed: '#b6273f',
+    brightGreen: '#23613e',
+    brightYellow: '#805100',
+    brightBlue: '#254dc6',
+    brightMagenta: '#7b358c',
+    brightCyan: '#1a6270',
+    brightWhite: '#1b2230',
+  },
+};
 
 export type TerminalPaneStatus = {
   phase: 'connecting' | 'ready' | 'paused' | 'exited' | 'error' | 'disconnected';
@@ -27,11 +54,15 @@ export function createTerminalRuntime(options: {
     screenReaderMode: true,
     cursorBlink: true,
     disableStdin: true,
-    theme: { background: '#101114', foreground: '#eeeff3', cursor: '#9cb5ff', selectionBackground: '#303d65' },
+    theme: TERMINAL_THEMES[useUiPreferences.getState().theme],
   });
   const fit = new FitAddon();
   terminal.loadAddon(fit);
   terminal.open(host);
+  // 仅替换 xterm 配色，保留缓冲区、选择、输入状态与现有 PTY。
+  const unsubscribeTheme = useUiPreferences.subscribe((state, previous) => {
+    if (state.theme !== previous.theme) terminal.options.theme = TERMINAL_THEMES[state.theme];
+  });
   let connection: TerminalConnection | undefined;
   let visible = false;
   let composing = false;
@@ -195,6 +226,7 @@ export function createTerminalRuntime(options: {
     },
     dispose() {
       disposed = true;
+      unsubscribeTheme();
       lifetime.abort();
       observer.disconnect();
       cancelAnimationFrame(frame);

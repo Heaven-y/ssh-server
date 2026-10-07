@@ -32,7 +32,7 @@ async function verificationFixture() {
   const state = { generation: 1, key: 'original' };
   const pool = {
     generation: () => state.generation,
-    resolveConnection: () => Promise.resolve({ cacheKey: state.key }),
+    resolveConnection: () => Promise.resolve({ cacheKey: state.key, authMode: 'password' }),
   } as unknown as SshPool;
   const store = createWorkspaceStore({
     configDir: path.join(root, 'config'),
@@ -71,13 +71,14 @@ describe('创建验证与只读草稿的核心契约', () => {
         hostname: '127.0.0.1',
         port: f.ssh.port,
         username: 'demo',
+        authMode: 'password',
       });
       const checked = await f.trust.probe(target.alias, new AbortController().signal);
       await f.trust.confirm(
         { challenge: checked.challenge!, fingerprint: checked.fingerprint, confirmed: true },
         new AbortController().signal,
       );
-      const input = { sshHost: target.alias, authMode: 'password' as const, remoteDir: f.ssh.root };
+      const input = { sshHost: target.alias };
       expect(await f.pool.connect({ ...input, password: 'fixture-secret', savePassword: true })).toMatchObject({
         connected: true,
         saved: true,
@@ -94,7 +95,7 @@ describe('创建验证与只读草稿的核心契约', () => {
       const browser = createSetupRemote(restarted);
       try {
         expect(await restarted.connect(input)).toMatchObject({ connected: true, saved: true });
-        const session = await browser.open(input, new AbortController().signal);
+        const session = await browser.open({ ...input, remoteDir: f.ssh.root }, new AbortController().signal);
         expect(
           (await browser.list(session.id, { path: f.ssh.root }, new AbortController().signal)).entries.length,
         ).toBeGreaterThan(0);
@@ -197,18 +198,22 @@ describe('创建验证与只读草稿的核心契约', () => {
   it('真实无认证指纹、草稿SFTP分页关闭与生产HTTP票据不可绕过', async () => {
     const f = await startSetupFixture();
     closers.push(() => f.close());
-    const checked = await f.trust.probe('my-server', new AbortController().signal);
+    const server = await f.targets.save({
+      name: '演示',
+      hostname: '127.0.0.1',
+      port: f.ssh.port,
+      username: 'demo',
+      authMode: 'password',
+    });
+    const checked = await f.trust.probe(server.alias, new AbortController().signal);
     expect(f.ssh.audit.authentications).toBe(0);
     await f.trust.confirm(
       { challenge: checked.challenge!, fingerprint: checked.fingerprint, confirmed: true },
       new AbortController().signal,
     );
     expect(f.ssh.audit.authentications).toBe(0);
-    await f.pool.setPassword('my-server', 'fixture-secret');
-    const session = await f.setup.openRemote(
-      { sshHost: 'my-server', authMode: 'password', remoteDir: '~' },
-      new AbortController().signal,
-    );
+    await f.pool.setPassword(server.alias, 'fixture-secret');
+    const session = await f.setup.openRemote({ sshHost: server.alias, remoteDir: '~' }, new AbortController().signal);
     const page = await f.setup.readRemote(
       session.id,
       { path: path.posix.join(path.posix.sep, 'fixture-home', 'datasets') },
@@ -216,18 +221,30 @@ describe('创建验证与只读草稿的核心契约', () => {
     );
     expect(page.entries).toHaveLength(200);
     f.setup.closeRemote(session.id);
+    const generation = f.pool.generation(server.alias);
+    const otherDirectory = await f.setup.openRemote(
+      { sshHost: server.alias, remoteDir: f.ssh.root },
+      new AbortController().signal,
+    );
+    expect(f.ssh.audit.authentications).toBe(1);
+    expect(f.pool.generation(server.alias)).toBe(generation);
+    f.setup.closeRemote(otherDirectory.id);
     await expect(
       f.setup.readRemote(session.id, { path: session.root }, new AbortController().signal),
     ).rejects.toMatchObject({ code: 'setup_session_expired' });
     expect(f.ssh.audit.bodyReads).toBe(0);
-    const login = await f.app.inject({ url: new URL(f.url).pathname + new URL(f.url).search });
+    const login = await f.app.inject({
+      method: 'POST',
+      url: '/api/local-session',
+      payload: {},
+      headers: { host: new URL(f.url).host, origin: new URL(f.url).origin },
+    });
     const cookie = String(login.headers['set-cookie']).split(';')[0]!;
     const headers = { cookie, host: new URL(f.url).host, origin: new URL(f.url).origin };
     const input = {
       name: 'HTTP演示',
       localDir: f.localDir,
-      sshHost: 'my-server',
-      authMode: 'password',
+      sshHost: server.alias,
       remoteDir: f.ssh.root,
     };
     const rejected = await f.app.inject({ method: 'POST', url: '/api/workspaces', payload: input, headers });

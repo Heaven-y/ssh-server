@@ -1,9 +1,6 @@
-import type { SshAuthMode } from './workspace';
-
 /** 面板打开时的配置快照；只用于绑定目标，不用于更新工作区。 */
 export type RemoteBrowseTarget = {
   sshHost: string;
-  authMode?: SshAuthMode;
   remoteDir: string;
   localDir: string;
 };

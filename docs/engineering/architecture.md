@@ -196,11 +196,13 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 
 ### 5.4 ssh
 
-- 连接入口支持从 `~/.ssh/config` 导入 HostName、Port、User、IdentityFile，也支持手动配置地址、端口、账号。不支持的选项（如 ProxyJump）在界面上提示，不静默忽略后宣称连接成功。
+- 顶栏“服务器”统一管理本机档案，支持从 `~/.ssh/config` 显式导入HostName、Port、User、IdentityFile，也可手动填写。未登记Host不参与生产连接解析；不支持的选项（如ProxyJump）保留提示，不改写SSH config。
 - 认证支持账号密码和已有私钥；密码经受本机访问控制保护的接口进入后端内存，可选择使用 Windows 当前用户加密保存。主动断开只关闭连接并清理内存，取消保存密码时移除保存项并断开；认证失败时提示重新输入，不回显密码、不交给 Agent。
 - 保持 `known_hosts` 校验。未知主机通过网页指纹挑战明确确认，已有可信密钥变化或吊销时拒绝连接。
-- 内部连接入口统一 `SshTarget = { alias, authMode }`；工作区缺省私钥只在 `workspaceTarget` 解释，不保留字符串重载。连接按实际地址、端口、账号、认证方式、可信记录与凭据代次复用；执行、同步、浏览、终端和资源共用 resolver，参数变化不能复用旧连接。
+- 内部连接入口统一 `SshTarget = { alias }`，认证方式仅从已登记服务器解析；工作区、终端和浏览目标不携带`authMode`旧字段。连接按实际地址、端口、账号、认证方式、可信记录与凭据代次复用；执行、同步、浏览、终端和资源共用resolver，参数变化不能复用旧连接。
 - 终端：`shell()` 打开 PTY，数据经 WebSocket 与 xterm.js 双向转发，支持窗口尺寸变化、多标签和可调整布局。视觉与分屏交互参考 Pebrel，仅参考设计。
+- `ssh/profiles`在工作区存储快照、活动排他和档案写队列内检查expected、引用与阻断。被引用目标不能删除或改变地址/端口/账号/私钥；重新认证及断开必须等待活动与未解决持久任务处理。复用移除资源的同步/编辑/任务检查；回调不得重入前置锁。管理界面显示受影响工作区。
+- 普通留空连接不发送未改变的savePassword，复用检查取消不关闭共享连接。删除档案在提交前通过`pool.forgetServerCredentials`使用已核对的hostname/port/username身份清理内存和磁盘凭据，不重新解析alias或重入档案队列；清理失败保留档案。
 
 终端的目标绑定、目录确认、独立 WebSocket、背压与释放规则见[网页终端设计](../superpowers/specs/2026-10-04-web-terminal-design.md)；模块职责和稳定窗格宿主见[实施计划](../superpowers/plans/2026-10-04-web-terminal.md)。核心回归、本机真实SSH和网页交互通过；SFTP移交、EOF/退出、preClose和粘贴模式取舍见[实施决策](web-terminal-decisions.md)。实际服务器全屏工具、并发和密码后端重建见[完整链路验收](../guides/real-workflow-acceptance.md)；OS输入法未观察属于历史证据边界，不自动列为待办。
 
@@ -260,8 +262,8 @@ shared/policy提供严格规则目录/schema；policy支持工作区默认启停
 ### 5.9 http：访问控制
 
 - 只监听 `127.0.0.1`。
-- 启动时生成随机访问令牌，打开浏览器时带在地址里，之后保存在会话 Cookie（HttpOnly、SameSite=Strict）。
-- 校验 `Host` 为本机地址，校验 WebSocket 与修改类请求的 `Origin`，防止其他网页借浏览器调用本地后端（DNS 重绑定、跨站请求）。
+- 启动生成内部随机会话秘密，直接打开干净首页。网页先同源 `POST /api/local-session {}`，成功后才挂载业务查询与WebSocket；失败提供重试。仅该握手免已有Cookie，旧`/auth`入口不存在。
+- 精确核对本机Host与实际端口（含显式开发来源）；修改类请求和WebSocket校验允许Origin，握手拒绝缺失/null/跨站Origin及cross-site元数据。HttpOnly/SameSite=Strict Cookie不向JS暴露秘密；页面和错误响应设置frame-ancestors none与X-Frame-Options DENY。
 - remote-tools 调后端内部接口时使用单独的会话令牌。
 - 工作区POST只走setup验证创建，DELETE只走removal确认服务；模块未注入时503，不回退store CRUD。同步及policy使用各自专用接口，通用PATCH不存在。
 - 工作区存储只将ENOENT视为空；其他读取、JSON及条目结构错误原样阻断，不过滤坏项、备份重置或覆盖原文。
@@ -318,7 +320,7 @@ shared/policy提供严格规则目录/schema；policy支持工作区默认启停
 
 ### 5.13 workspaces/setup：创建前向导与验证
 
-手动目标存储在本机servers.json，以稳定managed-ssh-UUID别名接入共享resolver；不改写SSH config，密码继续使用独立凭据存储。host-trust通过独立无认证握手取得实际公钥，只接受显式确认后的未知公钥追加，变化/吊销拒绝；挑战两分钟、一次消费、有界32项。
+服务器档案存储在本机servers.json，以稳定managed-ssh-UUID别名接入共享resolver，认证方式为必填字段；不改写SSH config，密码继续使用独立凭据存储。host-trust通过独立无认证握手取得实际公钥，只接受显式确认后的未知公钥追加，变化/吊销拒绝；挑战两分钟、一次消费、有界32项。向导只选择档案及两端目录，缺少档案时打开同一管理入口并保留草稿。
 
 local/remote提供只读草稿目录浏览，每页200项、最多32组、15分钟空闲过期；remote复用RemoteFilesService独立SFTP通道，du按需执行。preview复用同步过滤，使用本地目录迭代和独立临时rclone lsjson清单，不读正文、不创建同步基线；20000项/30秒上限和20项排除例子，finally清理。
 
@@ -335,7 +337,7 @@ verification生成五分钟/64项一次性快照票，绑定配置、认证代�
 
 chat-store区分default/explicit模型来源，新会话复制默认，历史清除默认覆盖，首次迟到仅应用未操作空白。新向导复制一次有效sync快照，没有快照时设置读取失败阻止继续。同步调度替换旧计时器而不增加立即同步；资源后端和网页消费同一间隔/超时/过期参数，缓存键不包含参数，成功有效期按当前间隔重算，失败保留退避。
 
-环境POST仅在用户点击时并行执行现有版本参数，每工具5秒/2KiB；只回传版本或通用失败。Claude SDK 0.3.286平台原生路径在claude-launch统一，并传给query和检测；Codex沿用实际启动resolver，git/rclone沿用现有运行入口。不执行模型、SSH、安装或初始化。裁定见[D23](decisions.md)及[产品P01–P11](../superpowers/specs/2026-10-05-product-settings-design.md)，证据见[设置验收](../guides/product-settings-acceptance.md)。
+启动创建唯一environment service并开始一次并行检测，每工具5秒/2KiB；GET复用报告，POST手动刷新并拒绝并行刷新。正常执行即为可用，版本仅提取展示，无法解析显示未知；非零、启动失败、超时和输出超限不能标可用，输出/私有路径不回传。Claude平台原生路径在claude-launch统一，并传给query和检测；Codex沿用实际启动resolver。Node.js取当前进程；Git/rclone沿用现有入口，业务版本硬要求不变。网页共享查询、展示缺失安装/配置指引，全部Agent不可用仍可管理服务器。不执行模型、SSH、安装或初始化，现行约定见[D37](decisions.md)。
 
 ## 6. 关键流程
 
@@ -365,7 +367,7 @@ chat-store区分default/explicit模型来源，新会话复制默认，历史清
 
 ## 7. 设计决策
 
-完整记录见[设计决策](decisions.md)，集中维护D01–D36。当前实现以D36的收敛规则为准，早期取舍和被替代路径保留供复盘，不作为并行维护方案。主要约定包括：
+完整记录见[设计决策](decisions.md)，集中维护D01–D37。当前实现以D36收敛规则及D37直接入口/服务器档案为准，早期取舍和被替代路径保留供复盘，不作为并行维护方案。主要约定包括：
 
 - 会话固定 Agent，沿用原生上下文、skills 与可接入的 `/` 命令。
 - 账号密码与私钥均支持，可选择本机系统加密保存密码；断开保留保存项，取消保存时清除并断开。

@@ -3,6 +3,7 @@
 // 默认不打印主机名本身（只打印长度与哈希前缀），避免把服务器信息带进日志；加 --show 才显示。
 import { createHash } from 'node:crypto';
 import { createSshPool } from '../../apps/server/src/ssh/pool';
+import { createSshConfigLookup } from '../../apps/server/src/ssh/connection';
 import { buildRemoteCommand, OUTPUT_CAP_BYTES } from '../../apps/server/src/ssh/remote-command';
 
 const [alias, flag] = process.argv.slice(2);
@@ -11,9 +12,9 @@ if (!alias) {
   process.exit(2);
 }
 
-const pool = createSshPool();
+const pool = createSshPool({ lookupHost: createSshConfigLookup({ authMode: 'key' }) });
 try {
-  const r = await pool.exec({ alias, authMode: 'key' }, buildRemoteCommand('~', 'hostname', 30), {
+  const r = await pool.exec({ alias }, buildRemoteCommand('~', 'hostname', 30), {
     localTimeoutMs: 60_000,
     outputCap: OUTPUT_CAP_BYTES,
   });

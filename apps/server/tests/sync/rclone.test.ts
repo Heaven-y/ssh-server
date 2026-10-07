@@ -19,7 +19,6 @@ const ws: Workspace = {
   localDir: path.resolve('fixture-project'),
   sshHost: 'my-server',
   remoteDir: '~/projects/demo',
-  authMode: 'password',
 };
 const key = Buffer.concat([
   Buffer.from([0, 0, 0, 11]),
@@ -219,7 +218,7 @@ describe('rclone 隔离 SFTP 驱动', () => {
       '-----BEGIN OPENSSH PRIVATE KEY-----\r\nfixture-key\r\n-----END OPENSSH PRIVATE KEY-----\r\n',
     );
     pool.resolveConnection.mockResolvedValue({ ...connection, authMode: 'key', password: undefined, privateKey });
-    const context = await driver.open({ ...ws, authMode: 'key' }, SyncSettingsSchema.parse({}));
+    const context = await driver.open(ws, SyncSettingsSchema.parse({}));
     await context.bisync({ resync: true, allowAllDeletes: false });
     const transfer = calls.find((call) => call.args[0] === 'bisync')!;
     expect(transfer.options.env!.RCLONE_CONFIG_WORKSPACE_KEY_PEM).toBe(

@@ -11,6 +11,7 @@ async function preferences() {
 }
 it('偏好保存主题和折叠前宽度，折叠零宽与极端数值不污染重开布局', async () => {
   const store = await preferences();
+  expect(store.getState().theme).toBe('light');
   store.getState().toggleTheme();
   store.getState().setWidth('sidebarWidth', 280);
   store.getState().setWidth('fileWidth', 480);
@@ -19,7 +20,7 @@ it('偏好保存主题和折叠前宽度，折叠零宽与极端数值不污染�
   store.getState().setWidth('fileWidth', Infinity);
   const restored = await preferences();
   expect(restored.getState()).toMatchObject({
-    theme: 'light',
+    theme: 'dark',
     sidebarCollapsed: true,
     sidebarWidth: 280,
     fileWidth: 480,
@@ -32,7 +33,7 @@ it.each([
 ])('坏或不支持的存储恢复可用默认布局：%s', async (value) => {
   localStorage.setItem('ssh-server.ui.v1', value);
   expect((await preferences()).getState()).toMatchObject({
-    theme: 'dark',
+    theme: 'light',
     sidebarCollapsed: false,
     sidebarWidth: 240,
     fileWidth: 420,
@@ -51,5 +52,5 @@ it('读写存储均失败时主题、折叠和宽度仍在内存可用', async (
     store.getState().setSidebarCollapsed(true);
     store.getState().setWidth('fileWidth', 400);
   }).not.toThrow();
-  expect(store.getState()).toMatchObject({ theme: 'light', sidebarCollapsed: true, fileWidth: 400 });
+  expect(store.getState()).toMatchObject({ theme: 'dark', sidebarCollapsed: true, fileWidth: 400 });
 });

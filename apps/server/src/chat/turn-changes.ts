@@ -17,16 +17,7 @@ type Deps = {
   versions: Pick<VersionsService, 'turnScope' | 'captureTurn' | 'diffTurn' | 'releaseTurn'>;
 };
 const binding = (ws: Workspace) =>
-  sha256(
-    JSON.stringify([
-      ws.id,
-      ws.localDir,
-      ws.sshHost,
-      ws.remoteDir,
-      ws.authMode,
-      SyncSettingsSchema.parse(ws.sync ?? {}),
-    ]),
-  );
+  sha256(JSON.stringify([ws.id, ws.localDir, ws.sshHost, ws.remoteDir, SyncSettingsSchema.parse(ws.sync ?? {})]));
 const unavailable = (error: unknown) =>
   error instanceof VersionError ? error.message : '本轮文件快照不可用，请检查本地版本记录';
 function publicRecord(record: StoredTurn): TurnChangesRecord {

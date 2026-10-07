@@ -19,16 +19,20 @@ import type { PasswordStore } from './password-store';
 import { buildRemoteCommand } from './remote-command';
 import { openSftpChannel, protectSftpChannel } from './sftp';
 
-export type CredentialStatus = { saved: boolean; savingAvailable: boolean; paused: boolean };
+export type CredentialStatus = {
+  saved: boolean;
+  savingAvailable: boolean;
+  paused: boolean;
+  connected: boolean;
+  hasPassword: boolean;
+};
 export type ConnectInput = {
   sshHost: string;
-  authMode: SshAuthMode;
-  remoteDir: string;
   password?: string;
   savePassword?: boolean;
 };
 export type SshPool = {
-  fingerprint(alias: string, authMode?: SshAuthMode): Promise<string>;
+  fingerprint(alias: string): Promise<string>;
   identity(alias: string): Promise<string>;
   openExec(target: SshTarget, command: string, signal?: AbortSignal): Promise<ClientChannel>;
   openSftp(target: SshTarget, guard?: SshChannelGuard): Promise<SFTPWrapper>;
@@ -38,6 +42,7 @@ export type SshPool = {
   connect(input: ConnectInput): Promise<CredentialStatus & { connected: true; authMode: SshAuthMode }>;
   credentialStatus(alias: string): Promise<CredentialStatus>;
   clearSavedPassword(alias: string): Promise<CredentialStatus>;
+  forgetServerCredentials(server: Pick<ResolvedConnection, 'alias' | 'hostname' | 'port' | 'username'>): Promise<void>;
   invalidateCredentials(alias: string, expectedGeneration?: number): Promise<void>;
   setPassword(alias: string, password: string): Promise<void>;
   generation(alias: string): number;
@@ -47,7 +52,7 @@ export type SshPool = {
 };
 export type SshPoolDeps = ConnectionDeps & { resolver?: ConnectionResolver; passwordStore?: PasswordStore };
 export type SshChannelGuard = { generation: number; cacheKey: string; signal: AbortSignal };
-type Cached = { alias: string; key: string; pending: Promise<Client> };
+type Cached = { alias: string; key: string; pending: Promise<Client>; ready: boolean };
 type CredentialAttempt = { generation: number; order: number };
 type CredentialChange = { order: number; owner?: string; generation?: number };
 const cancelled = () => new SshConnectionError('connection_cancelled', '连接认证周期已结束，请重新连接');
@@ -126,8 +131,10 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
     const identity = await resolver.identity(alias);
     // 失效只阻止认证复用；删除失败时仍显示磁盘保存项，让用户能够重试清除。
     const saved = (await store?.has(identity)) === true;
+    const { hasPassword } = await resolver.authentication(alias);
     if (generation !== epoch(alias)) throw cancelled();
-    return { saved, savingAvailable: store?.available === true, paused: paused.has(alias) };
+    const connected = [...clients.values()].some((client) => client.alias === alias && client.ready);
+    return { saved, savingAvailable: store?.available === true, paused: paused.has(alias), connected, hasPassword };
   }
   async function invalidateIdentity(identity: string): Promise<void> {
     credentialChanges.set(identity, { order: ++credentialOrder });
@@ -209,11 +216,13 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
         }
       },
     });
-    clients.set(slot, { alias, key: config.cacheKey, pending });
+    const entry: Cached = { alias, key: config.cacheKey, pending, ready: false };
+    clients.set(slot, entry);
     const remove = () => {
       if (clients.get(slot)?.pending === pending) clients.delete(slot);
     };
     void pending.then((client) => {
+      entry.ready = true;
       client.once('close', remove);
     }, remove);
     return pending;
@@ -236,7 +245,7 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
     config: ResolvedConnection,
     attempt: CredentialAttempt,
   ): Promise<void> {
-    if (input.authMode !== 'password' || input.savePassword === undefined) return;
+    if (config.authMode !== 'password' || input.savePassword === undefined) return;
     const identity = connectionIdentity(config);
     if (input.savePassword) {
       beginCredentialChange(identity, input.sshHost, attempt);
@@ -254,10 +263,24 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
       invalidated.delete(identity);
     } else await store?.forget(identity);
   }
+  async function checkAuthenticationInput(input: ConnectInput, generation: number) {
+    const { authMode } = await resolver.authentication(input.sshHost);
+    assertCurrent(input.sshHost, generation);
+    if (authMode !== 'password' && (input.password !== undefined || input.savePassword !== undefined))
+      throw new SshConnectionError('credentials_required', '该服务器档案使用私钥认证，不能提交密码或密码保存选项');
+  }
+  function clearFailedConnect(alias: string, generation: number, replacing: boolean) {
+    const connected = [...clients.values()].some((client) => client.alias === alias && client.ready);
+    if (epoch(alias) !== generation || (!replacing && connected)) return;
+    resolver.clear(alias);
+    closeAlias(alias);
+  }
   async function connect(input: ConnectInput): Promise<CredentialStatus & { connected: true; authMode: SshAuthMode }> {
     if (disposed) throw cancelled();
     const alias = input.sshHost;
-    closeAlias(alias);
+    // 无新凭据的连接测试复用当前连接，不打断同服务器其他工作区。
+    const replacing = input.password !== undefined;
+    if (replacing) closeAlias(alias);
     paused.delete(alias);
     if (input.password !== undefined) resolver.clear(alias);
     const generation = epoch(alias);
@@ -267,18 +290,18 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
       identity = await resolver.identity(alias);
       assertCurrent(alias, generation);
       identities.set(alias, identity);
+      await checkAuthenticationInput(input, generation);
       if (input.password !== undefined) {
         beginCredentialChange(identity, alias, attempt);
         await resolver.setPassword(alias, input.password, identity);
       }
       assertCurrent(alias, generation);
-      const target = { alias, authMode: input.authMode };
+      const target = { alias };
       const config = await resolveConnection(target);
-      const result = await exec(
-        target,
-        buildRemoteCommand(input.remoteDir, 'test -d . && test -r . && test -x .', 20),
-        { localTimeoutMs: 30_000, outputCap: 1000 },
-      );
+      const result = await exec(target, buildRemoteCommand('~', 'test -d . && test -r . && test -x .', 20), {
+        localTimeoutMs: 30_000,
+        outputCap: 1000,
+      });
       await assertIdentity(alias, identity, generation);
       if (result.exitCode !== 0 || result.timedOut)
         throw new SshConnectionError('remote_directory_unavailable', '服务器目录不存在、无法进入或连接测试超时');
@@ -286,19 +309,16 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
       await assertIdentity(alias, identity, generation);
       const status = await credentialStatus(alias);
       assertCurrent(alias, generation);
-      return { connected: true, authMode: input.authMode, ...status };
+      return { ...status, connected: true, authMode: config.authMode };
     } catch (error) {
-      if (epoch(alias) === generation) {
-        resolver.clear(alias);
-        closeAlias(alias);
-      }
+      clearFailedConnect(alias, generation, replacing);
       throw error;
     } finally {
       finishCredentialChange(identity, alias, generation);
     }
   }
   return {
-    fingerprint: (alias, authMode) => resolver.fingerprint(alias, authMode),
+    fingerprint: (alias) => resolver.fingerprint(alias),
     identity: (alias) => resolver.identity(alias),
     async openExec(target, command, signal) {
       const alias = targetAlias(target);
@@ -388,6 +408,13 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
     credentialStatus,
     invalidateCredentials,
     disconnect,
+    async forgetServerCredentials(server) {
+      // 使用档案事务已核对的身份，不重入档案队列或重新解析已删除的别名。
+      disconnect(server.alias);
+      const identity = connectionIdentity(server);
+      identities.set(server.alias, identity);
+      await invalidateIdentity(identity);
+    },
     async clearSavedPassword(alias) {
       disconnect(alias);
       const generation = epoch(alias);

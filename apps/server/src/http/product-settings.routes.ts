@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { ProductSettingsInputSchema } from '@ssh-server/shared';
 import { ProductSettingsError, type ProductSettingsStore } from '../settings/product-settings';
 import { anonymousConfigError } from '../settings/errors';
-import { detectEnvironment } from '../settings/environment';
+import type { EnvironmentService } from '../settings/environment';
 import { requestSignal } from './remote-files.routes';
 
 const Empty = z.strictObject({});
@@ -16,7 +16,11 @@ async function respond(reply: FastifyReply, operation: () => Promise<unknown>) {
     return reply.code(failure.status).send({ code: failure.code, message: failure.message });
   }
 }
-export function registerProductSettingsRoutes(app: FastifyInstance, settings: ProductSettingsStore) {
+export function registerProductSettingsRoutes(
+  app: FastifyInstance,
+  settings: ProductSettingsStore,
+  environment: EnvironmentService,
+) {
   app.get('/api/settings/product', (request, reply) =>
     respond(reply, async () => {
       if (!Empty.safeParse(request.query).success)
@@ -32,18 +36,18 @@ export function registerProductSettingsRoutes(app: FastifyInstance, settings: Pr
       return settings.save(input.data);
     }),
   );
-  let detecting = false;
+  app.get('/api/settings/environment', (request, reply) =>
+    respond(reply, async () => {
+      if (!Empty.safeParse(request.query).success)
+        throw new ProductSettingsError('invalid_request', 400, '环境检测请求格式不正确');
+      return environment.read();
+    }),
+  );
   app.post('/api/settings/environment', { bodyLimit: 1024 }, (request, reply) =>
     respond(reply, async () => {
       if (!Empty.safeParse(request.body).success || !Empty.safeParse(request.query).success)
         throw new ProductSettingsError('invalid_request', 400, '环境检测请求格式不正确');
-      if (detecting) throw new ProductSettingsError('invalid_request', 409, '环境检测正在进行，请等待完成');
-      detecting = true;
-      try {
-        return await detectEnvironment({ signal: requestSignal(request, reply) });
-      } finally {
-        detecting = false;
-      }
+      return environment.refresh(requestSignal(request, reply));
     }),
   );
 }

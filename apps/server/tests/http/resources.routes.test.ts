@@ -22,7 +22,6 @@ it('真实SSH资源通道贯通安全HTTP、固定目标及关闭服务生命周
     token: 'fixture-token',
     port: 0,
     store: ssh.store,
-    listSshHosts: async () => [],
     routes: (server) => registerResourcesRoutes(server, resources),
   });
   await app.listen({ host: '127.0.0.1', port: 0 });
@@ -35,7 +34,7 @@ it('真实SSH资源通道贯通安全HTTP、固定目标及关闭服务生命周
   const base = `/api/workspaces/${ssh.workspace.id}/resources`;
   const url = `${base}?target=${encodeURIComponent(JSON.stringify(target))}`;
   try {
-    expect((await app.inject({ url })).statusCode).toBe(401);
+    expect((await app.inject({ url, headers: { host: headers.host } })).statusCode).toBe(401);
     expect((await app.inject({ url, headers: { ...headers, host: 'invalid.example' } })).statusCode).toBe(403);
     expect((await app.inject({ url: base, headers })).statusCode).toBe(400);
     expect(

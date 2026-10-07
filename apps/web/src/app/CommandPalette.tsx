@@ -37,7 +37,7 @@ function commonActions(actions: PaletteActions, id: string): Action[] {
     { id: 'settings', label: '打开设置', run: actions.settings },
     {
       id: 'theme',
-      label: '切换亮色 / 暗色主题',
+      label: '切换浅色 / 深色主题',
       run: () => {
         useUiPreferences.getState().toggleTheme();
         return true;

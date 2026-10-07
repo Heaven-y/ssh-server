@@ -20,7 +20,7 @@ function PaneHeader({
   paste: () => void;
 }) {
   const interactive = status.phase === 'ready' || status.phase === 'paused';
-  const label = `${name} · ${target.sshHost} · ${target.authMode === 'password' ? '密码' : '私钥'} · 起始目录 ${status.startDir ?? target.remoteDir}`;
+  const label = `${name} · ${target.sshHost} · 起始目录 ${status.startDir ?? target.remoteDir}`;
   return (
     <header className="flex shrink-0 items-center gap-2 overflow-hidden border-b border-border px-2 py-1 text-xs">
       <span className="min-w-0 flex-1 truncate" title={label}>

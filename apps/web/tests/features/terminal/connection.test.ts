@@ -30,7 +30,7 @@ afterEach(() => {
   vi.useRealTimers();
   Socket.instances = [];
 });
-const target: TerminalTarget = { workspaceId: 'w', sshHost: 'my-server', authMode: 'key', remoteDir: '/demo' };
+const target: TerminalTarget = { workspaceId: 'w', sshHost: 'my-server', remoteDir: '/demo' };
 function fixture() {
   vi.stubGlobal('WebSocket', Socket);
   vi.stubGlobal('location', { href: 'http://localhost/', protocol: 'http:' });
