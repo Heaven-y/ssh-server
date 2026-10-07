@@ -103,6 +103,7 @@ export {
   ManagedServerSchema,
   HostTrustConfirmationSchema,
   WorkspaceSetupInputSchema,
+  WorkspaceSetupVerifySchema,
   WorkspaceSetupCreateSchema,
 } from './setup';
 export type {

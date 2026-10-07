@@ -129,6 +129,8 @@ export function useSshConnection(target: SshConnectionTarget) {
     success: 'verified' | 'disconnected',
   ) => {
     if (activeRequest.current) return;
+    // 即使重认证后的可见状态相同，也要让旧的工作区创建验证失效。
+    void queryClient.invalidateQueries({ queryKey: queryKeys.sshCredentials(sshHost), refetchType: 'none' });
     void queryClient.cancelQueries({ queryKey: queryKeys.sshCredentials(sshHost) });
     const controller = new AbortController();
     activeRequest.current = controller;

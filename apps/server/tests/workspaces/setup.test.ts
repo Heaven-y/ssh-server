@@ -132,6 +132,42 @@ describe('创建验证与只读草稿的核心契约', () => {
     expect(await f.store.list()).toEqual([]);
     expect(f.sync.initialize).not.toHaveBeenCalled();
   });
+  it.each(['连接身份', '认证代次', '目录身份'] as const)('过期后同别名同路径的%s变化拒绝自动续验', async (change) => {
+    const f = await verificationFixture();
+    const signal = new AbortController().signal;
+    const prior = await f.service.verify(f.input, signal);
+    vi.spyOn(Date, 'now').mockReturnValue(prior.expiresAt + 1);
+    f.service.revoke(prior.verification);
+    if (change === '连接身份') f.state.key = 'different-connection';
+    if (change === '认证代次') f.state.generation++;
+    if (change === '目录身份') {
+      await rename(f.input.localDir, `${f.input.localDir}-old`);
+      await mkdir(f.input.localDir);
+    }
+    await expect(f.service.verify(f.input, signal, prior.binding)).rejects.toMatchObject({
+      code: 'setup_verification_changed',
+    });
+    expect(await f.store.list()).toEqual([]);
+    expect(f.sync.initialize).not.toHaveBeenCalled();
+  });
+  it('过期与撤票不丢失续验绑定，绑定不是可用于创建的票', async () => {
+    const f = await verificationFixture();
+    const signal = new AbortController().signal;
+    const prior = await f.service.verify(f.input, signal);
+    expect(prior.binding).toMatch(/^[a-f0-9]{64}$/);
+    vi.spyOn(Date, 'now').mockReturnValue(prior.expiresAt + 1);
+    f.service.revoke(prior.verification);
+    const renewed = await f.service.verify(f.input, signal, prior.binding);
+    expect(renewed.binding).toBe(prior.binding);
+    expect(renewed.verification).not.toBe(prior.verification);
+    await expect(
+      f.service.create({ input: f.input, verification: prior.binding, initializationConfirmed: true }, signal),
+    ).rejects.toMatchObject({ code: 'setup_verification_expired' });
+    await expect(f.service.verify(f.input, signal, '0'.repeat(64))).rejects.toMatchObject({
+      code: 'setup_verification_changed',
+    });
+    expect(await f.store.list()).toEqual([]);
+  });
   it('初始化抛错保留配置且并发重放只创建一次', async () => {
     const f = await verificationFixture();
     const ticket = await f.service.verify(f.input, new AbortController().signal);
@@ -250,7 +286,25 @@ describe('创建验证与只读草稿的核心契约', () => {
     const rejected = await f.app.inject({ method: 'POST', url: '/api/workspaces', payload: input, headers });
     expect(rejected.statusCode).toBe(400);
     expect(rejected.json()).toMatchObject({ code: 'setup_verification_required' });
-    const ticket = await f.app.inject({ method: 'POST', url: '/api/workspace-setup/verify', payload: input, headers });
+    for (const payload of [input, { input, previousBinding: '' }, { input, extra: true }]) {
+      expect(
+        (await f.app.inject({ method: 'POST', url: '/api/workspace-setup/verify', payload, headers })).statusCode,
+      ).toBe(400);
+    }
+    const ticket = await f.app.inject({
+      method: 'POST',
+      url: '/api/workspace-setup/verify',
+      payload: { input },
+      headers,
+    });
+    const refused = await f.app.inject({
+      method: 'POST',
+      url: '/api/workspace-setup/verify',
+      payload: { input, previousBinding: '0'.repeat(64) },
+      headers,
+    });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toMatchObject({ code: 'setup_verification_changed' });
     expect(ticket.statusCode).toBe(200);
     f.state.initializationFailure = true;
     const created = await f.app.inject({

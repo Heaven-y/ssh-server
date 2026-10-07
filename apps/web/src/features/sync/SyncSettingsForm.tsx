@@ -8,6 +8,7 @@ export function SyncSettingsForm({
   save,
   defaultOpen = false,
   saveLabel = '保存规则',
+  title = '同步过滤设置',
   onDirtyChange,
 }: {
   settings: SyncSettings;
@@ -15,6 +16,7 @@ export function SyncSettingsForm({
   save(settings: SyncSettings): void;
   defaultOpen?: boolean;
   saveLabel?: string;
+  title?: string;
   onDirtyChange?(dirty: boolean): void;
 }) {
   const id = useId();
@@ -36,10 +38,15 @@ export function SyncSettingsForm({
     save(parsed.data);
   };
   return (
-    <details open={defaultOpen || undefined} className="mt-2 text-xs">
-      <summary className="w-fit cursor-pointer rounded px-1 py-2 text-muted-foreground">同步过滤设置</summary>
+    <details open={defaultOpen || undefined} className="mt-4 rounded-lg border border-border p-3 text-xs">
+      <summary className="cursor-pointer rounded py-1 text-sm font-medium focus-visible:outline-2 focus-visible:outline-accent">
+        {title}
+      </summary>
+      <p className="mt-2 leading-5 text-muted-foreground">
+        仅影响当前工作区，不修改全局默认值；全局默认值也不会覆盖这里的规则。
+      </p>
       <form
-        aria-label="同步过滤设置"
+        aria-label={title}
         onSubmit={submit}
         className="mt-2 grid max-w-2xl gap-3 sm:grid-cols-[160px_minmax(0,1fr)]"
       >

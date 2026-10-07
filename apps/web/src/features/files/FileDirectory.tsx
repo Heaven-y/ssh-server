@@ -1,9 +1,10 @@
 import type { WorkspaceDirectory } from '@ssh-server/shared';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
-import { ArrowUp, FileCode2, Folder, RefreshCw } from 'lucide-react';
+import { ArrowUp, FolderRoot, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
+import { LocalDirectoryEntries } from './LocalDirectoryEntries';
 
 export function FileDirectory({
   workspaceId,
@@ -33,8 +34,18 @@ export function FileDirectory({
         >
           <ArrowUp aria-hidden className="size-4" />
         </button>
-        <span className="min-w-0 flex-1 truncate font-mono text-xs" title={directory || '/'}>
-          {directory || '/'}
+        <button
+          type="button"
+          className={buttonClass('ghost')}
+          aria-label="返回工作区根目录"
+          title="返回工作区根目录"
+          disabled={disabled || !directory}
+          onClick={() => setDirectory('')}
+        >
+          <FolderRoot aria-hidden className="size-4" />
+        </button>
+        <span className="min-w-0 flex-1 truncate font-mono text-xs" title={directory || '工作区根目录'}>
+          {directory || '工作区根目录'}
         </span>
         <button
           type="button"
@@ -48,27 +59,12 @@ export function FileDirectory({
           <RefreshCw aria-hidden className="size-4" />
         </button>
       </div>
-      <ul className="max-h-40 overflow-auto px-2 pb-2">
-        {list.data?.entries.map((entry) => {
-          const Icon = entry.kind === 'directory' ? Folder : FileCode2;
-          return (
-            <li key={entry.path}>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => (entry.kind === 'directory' ? setDirectory(entry.path) : openFile(entry.path))}
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted disabled:opacity-50"
-              >
-                <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-                <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-                {entry.size !== undefined && (
-                  <span className="shrink-0 text-xs text-muted-foreground">{Math.ceil(entry.size / 1024)} KiB</span>
-                )}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      <LocalDirectoryEntries
+        key={directory}
+        entries={list.data?.entries ?? []}
+        disabled={disabled || list.isFetching}
+        open={(entry) => (entry.kind === 'directory' ? setDirectory(entry.path) : openFile(entry.path))}
+      />
       <DirectoryFeedback list={list} />
     </section>
   );

@@ -7,6 +7,7 @@ import { buttonClass } from '../../ui/styles';
 import { sessionActionKey, useChat } from '../chat/chat-store';
 import { AGENT_LABELS } from '../chat/AgentControls';
 import { SessionActionsDialog } from './SessionActionsDialog';
+import { useSessionModel } from '../chat/use-session-model';
 
 const timeFormat = new Intl.DateTimeFormat('zh-CN', {
   month: 'numeric',
@@ -37,27 +38,6 @@ function SessionSourceNotice({ agent, query }: { agent: AgentKind; query: UseQue
     );
   return null;
 }
-function SessionMetadata({
-  session,
-  archived,
-  pending,
-  active,
-}: {
-  session: SessionSummary;
-  archived: boolean;
-  pending: boolean;
-  active: boolean;
-}) {
-  return (
-    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-      <span>{AGENT_LABELS[session.agent]}</span>
-      <time dateTime={new Date(session.lastModified).toISOString()}>{timeFormat.format(session.lastModified)}</time>
-      {active && <span className="text-accent">运行中</span>}
-      {archived && <span>已归档 · 恢复后继续</span>}
-      {pending && <span className="text-warning">操作处理中</span>}
-    </span>
-  );
-}
 function SessionMoreButton({
   session,
   pending,
@@ -72,7 +52,7 @@ function SessionMoreButton({
   return (
     <button
       type="button"
-      className={`${buttonClass('ghost')} mt-2 shrink-0 px-1.5`}
+      className={`${buttonClass('ghost')} shrink-0 px-1.5`}
       aria-label={`${AGENT_LABELS[session.agent]} 会话“${session.summary || '无标题会话'}”的更多操作`}
       aria-haspopup="dialog"
       title={active ? '会话运行中，结束后可管理' : '更多会话操作'}
@@ -106,27 +86,33 @@ function SessionEntry({
   const pending = useChat((state) => state.sessionOperations[sessionActionKey(workspaceId, session)]?.pending === true);
   const active = current && running;
   const title = session.summary || '无标题会话';
+  const { model, description } = useSessionModel(workspaceId, session);
+  const details = `${title} · 运行来源：${AGENT_LABELS[session.agent]} · ${description} · ${timeFormat.format(session.lastModified)}`;
   return (
-    <li className="flex items-start gap-0.5">
+    <li className="flex items-center gap-0.5">
       <button
         type="button"
         aria-current={current ? 'true' : undefined}
-        title={title}
+        title={details}
+        aria-label={`${details}${archived ? ' · 已归档，恢复后继续' : ''}${pending ? ' · 操作处理中' : ''}${active ? ' · 运行中' : ''}`}
         disabled={pending}
         onClick={() => {
           if (archived) manage(session);
           else void openSession(session);
         }}
-        className="group flex min-h-16 min-w-0 flex-1 items-start gap-2.5 rounded-lg border-l-2 border-transparent px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:cursor-wait aria-[current]:border-accent aria-[current]:bg-muted aria-[current]:text-foreground"
+        className="group flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border-l-2 border-transparent px-2 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:cursor-wait aria-[current]:border-accent aria-[current]:bg-muted aria-[current]:text-foreground"
       >
         {active ? (
-          <LoaderCircle aria-hidden className="mt-0.5 size-4 shrink-0 motion-safe:animate-spin text-accent" />
+          <LoaderCircle aria-hidden className="size-4 shrink-0 motion-safe:animate-spin text-accent" />
         ) : (
-          <MessageSquare aria-hidden className="mt-0.5 size-4 shrink-0 group-aria-[current]:text-accent" />
+          <MessageSquare aria-hidden className="size-4 shrink-0 group-aria-[current]:text-accent" />
         )}
-        <span className="min-w-0 flex-1">
-          <span className="line-clamp-2 leading-5 group-aria-[current]:font-medium">{title}</span>
-          <SessionMetadata session={session} archived={archived} pending={pending} active={active} />
+        <span className="min-w-0 flex-1 truncate leading-5 group-aria-[current]:font-medium">{title}</span>
+        <span
+          className="max-w-[45%] shrink-0 truncate rounded bg-muted px-1.5 py-0.5 font-mono text-xs"
+          title={description}
+        >
+          {model || '模型未报告'}
         </span>
       </button>
       <SessionMoreButton session={session} pending={pending} active={active} manage={manage} />
@@ -217,7 +203,11 @@ function WorkspaceSessions({ workspaceId }: { workspaceId: string }) {
         <SessionActionsDialog
           key={JSON.stringify([workspaceId, selected.session.agent, selected.session.sessionId, selected.archived])}
           workspaceId={workspaceId}
-          session={selected.session}
+          session={
+            list.find(
+              (session) => session.agent === selected.session.agent && session.sessionId === selected.session.sessionId,
+            ) ?? selected.session
+          }
           archived={selected.archived}
           onClose={() => setSelected(undefined)}
           onCompleted={(action) => {

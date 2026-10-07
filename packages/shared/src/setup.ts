@@ -51,6 +51,15 @@ export const WorkspaceSetupInputSchema = WorkspaceInputSchema.extend({
   sshHost: z.string().min(1).max(200),
   remoteDir: WorkspaceInputSchema.shape.remoteDir.max(4096),
 }).strict();
+export const WorkspaceSetupVerifySchema = z
+  .object({
+    input: WorkspaceSetupInputSchema,
+    previousBinding: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
+  })
+  .strict();
 export const WorkspaceSetupCreateSchema = z
   .object({
     input: WorkspaceSetupInputSchema,
@@ -69,6 +78,8 @@ export type LocalDirectory = {
 export type SetupDirectoryInfo = { path: string; empty: boolean; git: boolean };
 export type WorkspaceSetupVerification = {
   verification: string;
+  /** 仅用于自动重验的进程内不透明绑定，不能用于创建。 */
+  binding: string;
   expiresAt: number;
   local: SetupDirectoryInfo;
   remote: SetupDirectoryInfo;

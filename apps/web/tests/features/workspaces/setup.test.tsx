@@ -10,7 +10,7 @@ import {
   type WorkspaceSetupResult,
   type WorkspaceInput,
 } from '@ssh-server/shared';
-import { api, queryKeys } from '../../../src/lib/api';
+import { api, ApiError, queryKeys } from '../../../src/lib/api';
 import { useWorkspaceSetup } from '../../../src/features/workspaces/setup/use-workspace-setup';
 import { useCancelableRequest } from '../../../src/features/workspaces/setup/use-cancelable-request';
 
@@ -22,6 +22,7 @@ const input: WorkspaceInput = {
 };
 const ticket: WorkspaceSetupVerification = {
   verification: '00000000-0000-4000-8000-000000000000',
+  binding: 'a'.repeat(64),
   expiresAt: Date.now() + 300000,
   local: { path: input.localDir, empty: false, git: false },
   remote: { path: input.remoteDir, empty: false, git: false },
@@ -65,6 +66,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   clients.splice(0).forEach((client) => client.clear());
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.clearAllMocks();
 });
@@ -103,6 +105,7 @@ describe('向导Hook的生命周期', () => {
     expect(api.verifyWorkspace).toHaveBeenCalledWith(
       expect.objectContaining({ sync: edited }),
       expect.any(AbortSignal),
+      undefined,
     );
   });
   it('步骤校验、未应用规则、返回撤票及取消均执行各自边界', async () => {
@@ -193,14 +196,9 @@ describe('向导Hook的生命周期', () => {
     expect(f.callbacks.onCreated).toHaveBeenCalledWith(created.workspace);
     expect(f.result.current.ticket).toBeUndefined();
   });
-  it('验证过期及创建失败均撤票，允许重新验证', async () => {
+  it('创建失败撤票，允许重新验证', async () => {
     const f = setup();
     act(() => f.result.current.change(input));
-    vi.mocked(api.verifyWorkspace).mockResolvedValueOnce({ ...ticket, expiresAt: 1 });
-    await act(() => f.result.current.verify());
-    act(() => f.result.current.setConfirmed(true));
-    act(() => f.result.current.submit());
-    expect(f.result.current.message).toContain('过期');
     vi.mocked(api.createVerifiedWorkspace).mockRejectedValueOnce(new Error('目标变化'));
     await act(() => f.result.current.verify());
     act(() => f.result.current.setConfirmed(true));
@@ -236,6 +234,164 @@ describe('向导Hook的生命周期', () => {
     expect(f.result.current.message).toBe('服务器不可达');
     await act(() => f.result.current.verify());
     expect(f.result.current.ticket).toBeTruthy();
+  });
+  it('到期就地重新验证保留草稿，要求重新核对且不自动创建', async () => {
+    vi.useFakeTimers();
+    const f = setup();
+    act(() => f.result.current.change(input));
+    await act(() => f.result.current.verify());
+    act(() => f.result.current.setConfirmed(true));
+    vi.mocked(api.verifyWorkspace).mockResolvedValueOnce({
+      ...ticket,
+      verification: 'renewed',
+      expiresAt: Date.now() + 600000,
+    });
+    await act(() => vi.advanceTimersByTimeAsync(300000));
+    expect(api.verifyWorkspace).toHaveBeenLastCalledWith(
+      expect.objectContaining(input),
+      expect.any(AbortSignal),
+      ticket.binding,
+    );
+    expect(f.result.current.ticket?.verification).toBe('renewed');
+    expect(f.result.current.notice).toContain('重新核对');
+    expect(f.result.current.confirmed).toBe(false);
+    expect(f.result.current.input).toMatchObject(input);
+    expect(api.createVerifiedWorkspace).not.toHaveBeenCalled();
+  });
+  it('点击创建撞上到期时先重验，不提交旧票', async () => {
+    const f = setup();
+    act(() => f.result.current.change(input));
+    await act(() => f.result.current.verify());
+    act(() => f.result.current.setConfirmed(true));
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 300001);
+    vi.mocked(api.verifyWorkspace).mockResolvedValueOnce({
+      ...ticket,
+      verification: 'renewed',
+      expiresAt: Date.now() + 300000,
+    });
+    await act(async () => f.result.current.submit());
+    expect(f.result.current.ticket?.verification).toBe('renewed');
+    expect(f.result.current.confirmed).toBe(false);
+    expect(api.createVerifiedWorkspace).not.toHaveBeenCalled();
+  });
+  it('服务端判定过期时重新验证，但不重放创建', async () => {
+    const f = setup();
+    act(() => f.result.current.change(input));
+    await act(() => f.result.current.verify());
+    vi.mocked(api.createVerifiedWorkspace).mockRejectedValueOnce(
+      new ApiError(409, '验证已过期', { code: 'setup_verification_expired' }),
+    );
+    vi.mocked(api.verifyWorkspace).mockResolvedValueOnce({
+      ...ticket,
+      verification: 'renewed',
+      expiresAt: Date.now() + 300000,
+    });
+    act(() => f.result.current.setConfirmed(true));
+    act(() => f.result.current.submit());
+    await waitFor(() => expect(f.result.current.ticket?.verification).toBe('renewed'));
+    expect(api.createVerifiedWorkspace).toHaveBeenCalledTimes(1);
+    expect(f.result.current.confirmed).toBe(false);
+  });
+  it('重验发现目录目标变化时拒绝新票，不静默换目标', async () => {
+    vi.useFakeTimers();
+    const f = setup();
+    act(() => f.result.current.change(input));
+    await act(() => f.result.current.verify());
+    vi.mocked(api.verifyWorkspace).mockResolvedValueOnce({
+      ...ticket,
+      verification: 'changed',
+      expiresAt: Date.now() + 600000,
+      remote: { ...ticket.remote, path: '/other' },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(300000));
+    expect(f.result.current.ticket).toBeUndefined();
+    expect(f.result.current.message).toContain('目标');
+    expect(f.result.current.input.remoteDir).toBe(input.remoteDir);
+    expect(api.revokeWorkspaceVerification).toHaveBeenCalledWith('changed');
+  });
+  it('服务端拒绝同名目标的新绑定时保留草稿并清除确认，不降级成无绑定重试', async () => {
+    vi.useFakeTimers();
+    const f = setup();
+    act(() => f.result.current.change(input));
+    await act(() => f.result.current.verify());
+    act(() => f.result.current.setConfirmed(true));
+    vi.mocked(api.verifyWorkspace).mockRejectedValueOnce(
+      new ApiError(409, '配置、目录或认证已变化，请重新验证后创建', { code: 'setup_verification_changed' }),
+    );
+    await act(() => vi.advanceTimersByTimeAsync(300000));
+    expect(api.verifyWorkspace).toHaveBeenLastCalledWith(
+      expect.objectContaining(input),
+      expect.any(AbortSignal),
+      ticket.binding,
+    );
+    expect(api.verifyWorkspace).toHaveBeenCalledTimes(2);
+    expect(f.result.current.ticket).toBeUndefined();
+    expect(f.result.current.confirmed).toBe(false);
+    expect(f.result.current.input).toMatchObject(input);
+    expect(f.result.current.message).toContain('认证已变化');
+    expect(api.createVerifiedWorkspace).not.toHaveBeenCalled();
+  });
+  it.each(['cancel', 'change', 'unmount'] as const)('自动重验期间%s使迟到票失效且不再定时验证', async (action) => {
+    vi.useFakeTimers();
+    const f = setup();
+    act(() => f.result.current.change(input));
+    await act(() => f.result.current.verify());
+    const late = deferred<WorkspaceSetupVerification>();
+    vi.mocked(api.verifyWorkspace).mockReturnValueOnce(late.promise);
+    await act(() => vi.advanceTimersByTimeAsync(300000));
+    expect(api.verifyWorkspace).toHaveBeenCalledTimes(2);
+    act(() => {
+      if (action === 'cancel') f.result.current.cancel();
+      else if (action === 'change') f.result.current.change({ remoteDir: '/new' });
+      else f.unmount();
+    });
+    await act(async () => late.resolve({ ...ticket, verification: 'late', expiresAt: Date.now() + 300000 }));
+    expect(api.revokeWorkspaceVerification).toHaveBeenCalledWith('late');
+    await act(() => vi.advanceTimersByTimeAsync(300000));
+    expect(api.verifyWorkspace).toHaveBeenCalledTimes(2);
+  });
+  it('当前服务器认证失效立即撤票，其他服务器不影响草稿', async () => {
+    const f = setup();
+    f.client.setQueryData(queryKeys.sshCredentials(input.sshHost), { connected: true });
+    act(() => f.result.current.change(input));
+    await act(() => f.result.current.verify());
+    await act(() => f.client.invalidateQueries({ queryKey: queryKeys.sshCredentials('other-server') }));
+    expect(f.result.current.ticket).toBeTruthy();
+    await act(() => f.client.invalidateQueries({ queryKey: queryKeys.sshCredentials(input.sshHost) }));
+    expect(f.result.current.ticket).toBeUndefined();
+    expect(f.result.current.confirmed).toBe(false);
+  });
+  it('自动重验失败显示真实错误，不被正在验证提示遮挡', async () => {
+    vi.useFakeTimers();
+    const f = setup();
+    act(() => f.result.current.change(input));
+    await act(() => f.result.current.verify());
+    vi.mocked(api.verifyWorkspace).mockRejectedValueOnce(new Error('目录不可访问'));
+    await act(() => vi.advanceTimersByTimeAsync(300000));
+    expect(f.result.current.message).toBe('目录不可访问');
+    expect(f.result.current.ticket).toBeUndefined();
+    expect(f.result.current.confirmed).toBe(false);
+  });
+  it('服务端过期后的重验不锁住关闭，也不把迟到票装回已取消向导', async () => {
+    const f = setup();
+    act(() => f.result.current.change(input));
+    await act(() => f.result.current.verify());
+    vi.mocked(api.createVerifiedWorkspace).mockRejectedValueOnce(
+      new ApiError(409, '过期', { code: 'setup_verification_expired' }),
+    );
+    const late = deferred<WorkspaceSetupVerification>();
+    vi.mocked(api.verifyWorkspace).mockReturnValueOnce(late.promise);
+    act(() => f.result.current.setConfirmed(true));
+    act(() => {
+      void f.result.current.submit();
+    });
+    await waitFor(() => expect(api.verifyWorkspace).toHaveBeenCalledTimes(2));
+    expect(f.result.current.creating).toBe(false);
+    act(() => f.result.current.cancel());
+    await act(async () => late.resolve({ ...ticket, verification: 'late', expiresAt: Date.now() + 300000 }));
+    expect(f.callbacks.onCancel).toHaveBeenCalledOnce();
+    expect(f.result.current.ticket).toBeUndefined();
+    expect(api.revokeWorkspaceVerification).toHaveBeenCalledWith('late');
   });
 });
 describe('可取消请求Hook', () => {

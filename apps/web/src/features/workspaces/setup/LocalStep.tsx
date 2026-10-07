@@ -5,7 +5,15 @@ import { buttonClass, inputClass } from '../../../ui/styles';
 import { DirectoryPicker } from './DirectoryPicker';
 import { useCancelableRequest } from './use-cancelable-request';
 
-export function LocalStep({ input, change }: { input: WorkspaceInput; change(patch: Partial<WorkspaceInput>): void }) {
+export function LocalStep({
+  input,
+  change,
+  onBrowsingChange,
+}: {
+  input: WorkspaceInput;
+  change(patch: Partial<WorkspaceInput>): void;
+  onBrowsingChange?(blocked: boolean): void;
+}) {
   const id = useId();
   const [directory, setDirectory] = useState<LocalDirectory>();
   const cursor = useRef<string | undefined>(undefined);
@@ -16,7 +24,9 @@ export function LocalStep({ input, change }: { input: WorkspaceInput; change(pat
     },
     [],
   );
+  useEffect(() => () => onBrowsingChange?.(false), [onBrowsingChange]);
   const browse = async (path?: string, nextCursor?: string) => {
+    onBrowsingChange?.(true);
     if (cursor.current && cursor.current !== nextCursor)
       void api.closeSetupLocal(cursor.current).catch(() => undefined);
     cursor.current = undefined;
@@ -30,6 +40,8 @@ export function LocalStep({ input, change }: { input: WorkspaceInput; change(pat
     if (result) {
       cursor.current = result.nextCursor;
       setDirectory(result);
+      change({ localDir: result.path });
+      onBrowsingChange?.(false);
     }
   };
   return (
@@ -56,7 +68,12 @@ export function LocalStep({ input, change }: { input: WorkspaceInput; change(pat
           id={`${id}-path`}
           className={`${inputClass} font-mono`}
           value={input.localDir}
-          onChange={(event) => change({ localDir: event.target.value })}
+          onChange={(event) => {
+            request.abort();
+            setDirectory(undefined);
+            onBrowsingChange?.(false);
+            change({ localDir: event.target.value });
+          }}
           autoComplete="off"
           spellCheck={false}
         />
@@ -73,12 +90,7 @@ export function LocalStep({ input, change }: { input: WorkspaceInput; change(pat
         {request.busy ? '正在浏览…' : '浏览本地文件夹'}
       </button>
       {directory && (
-        <DirectoryPicker
-          {...directory}
-          busy={request.busy}
-          browse={(path, cursor) => void browse(path, cursor)}
-          choose={(localDir) => change({ localDir })}
-        />
+        <DirectoryPicker {...directory} busy={request.busy} browse={(path, cursor) => void browse(path, cursor)} />
       )}
       {request.error && (
         <p role="alert" className="text-xs text-destructive-foreground">

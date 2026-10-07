@@ -22,6 +22,7 @@ function summary(thread: RecordValue): NativeSessionSummary {
     sessionId: text(thread.id),
     summary: text(thread.name) || text(thread.preview) || 'Codex 会话',
     lastModified: typeof thread.updatedAt === 'number' ? thread.updatedAt * 1_000 : 0,
+    ...(text(thread.model).trim() ? { nativeModel: text(thread.model).trim() } : {}),
   };
 }
 
@@ -72,7 +73,6 @@ export async function readCodexSession(
       session: summary(thread),
       cwd: text(thread.cwd),
       events: completeTurns(thread).flatMap((turn) => mapper.history(turn)),
-      ...(text(thread.model) ? { actualModel: text(thread.model) } : {}),
     };
   });
 }

@@ -5,7 +5,7 @@ import { buttonClass } from '../../../ui/styles';
 function VerifiedDirectories({ ticket }: { ticket: WorkspaceSetupVerification }) {
   return (
     <div role="status" className="rounded border border-border p-3 text-xs leading-5">
-      <p>认证与两端目录已验证；修改配置后需重新验证。</p>
+      <p>验证通过：目录与连接可用；修改配置后需重新验证。</p>
       <p>
         本地：{ticket.local.empty ? '空目录' : '非空目录'}
         {ticket.local.git ? '，已有 .git' : ''}
@@ -14,7 +14,6 @@ function VerifiedDirectories({ ticket }: { ticket: WorkspaceSetupVerification })
         远端：{ticket.remote.empty ? '空目录' : '非空目录'}
         {ticket.remote.git ? '，已有 .git' : ''}
       </p>
-      <p>有效期至 {new Date(ticket.expiresAt).toLocaleTimeString()}</p>
     </div>
   );
 }
@@ -36,11 +35,11 @@ export function ConfirmStep(props: {
         <dt className="text-muted-foreground">名称</dt>
         <dd className="wrap-anywhere">{props.input.name}</dd>
         <dt className="text-muted-foreground">本地副本</dt>
-        <dd className="font-mono wrap-anywhere">{props.input.localDir}</dd>
+        <dd className="font-mono wrap-anywhere">{props.ticket?.local.path ?? props.input.localDir}</dd>
         <dt className="text-muted-foreground">服务器</dt>
         <dd className="wrap-anywhere">{props.input.sshHost} · 使用服务器档案认证</dd>
         <dt className="text-muted-foreground">远端目录</dt>
-        <dd className="font-mono wrap-anywhere">{props.input.remoteDir}</dd>
+        <dd className="font-mono wrap-anywhere">{props.ticket?.remote.path ?? props.input.remoteDir}</dd>
         <dt className="text-muted-foreground">同步规则</dt>
         <dd className="wrap-anywhere">
           单文件 {(settings.maxFileBytes / 1024 / 1024).toFixed(2)} MiB，排除{' '}

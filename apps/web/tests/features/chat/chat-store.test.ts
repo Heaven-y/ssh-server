@@ -75,6 +75,7 @@ beforeEach(() => {
     modelOverrides: { claude: '', codex: '' },
     reasoningEffort: '',
     sessionOperations: {},
+    sessionModels: {},
     defaults: { defaultAgent: 'claude', defaultModels: { claude: '', codex: '' } },
     modelSources: { claude: 'default', codex: 'default' },
     initialDefaultsEligible: false,
@@ -470,6 +471,17 @@ describe('chat-store', () => {
     expect(useChat.getState().banner).toContain('未发送');
   });
 
+  it('运行时模型按工作区和来源缓存，选择值不冒充报告；空报告清除旧值', () => {
+    useChat.getState().setModel('requested');
+    const turnId = startTurn();
+    const key = sessionActionKey('w1', { agent: 'claude', sessionId: 's1' });
+    expect(useChat.getState().sessionModels?.[key]).toBeUndefined();
+    emit({ type: 'agent.event', turnId, event: { type: 'session', sessionId: 's1', model: ' actual ', cwd: '/' } });
+    expect(useChat.getState().sessionModels?.[key]).toMatchObject({ actualModel: 'actual' });
+    emit({ type: 'agent.event', turnId, event: { type: 'session', sessionId: 's1', model: ' ', cwd: '/' } });
+    expect(useChat.getState().actualModel).toBeUndefined();
+    expect(useChat.getState().sessionModels?.[key]?.actualModel).toBeUndefined();
+  });
   it('只接收当前轮的事件；session 事件更新会话与模型；结束后停止运行', () => {
     const turnId = startTurn();
     emit({ type: 'agent.event', turnId: 'other', event: { type: 'text', delta: '别的' } });
