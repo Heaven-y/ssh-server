@@ -14,6 +14,7 @@
 | [路线图](roadmap.md) | 当前功能完成状态，不重复历史任务流水 |
 | [范围核对](engineering/remaining-scope-audit.md) | 全仓整理的覆盖、结论与边界 |
 | [本机入口与服务器档案验收](guides/local-entry-server-profiles-acceptance.md) | 当前D37入口、认证、主题及启动环境证据 |
+| [界面流程一致性验收](guides/ui-workflow-consistency-acceptance.md) | D38分类设置、创建重验、会话模型、资源与文件交互证据 |
 
 冲突时，以用户最新确认及上述当前规范为准。现行实现只维护一种业务路径；不为已移除的客户端契约、存储布局或浏览器分支保留迁移兼容。当前格式的重启恢复、错误处理、取消及数据保护不是迁移兼容。
 

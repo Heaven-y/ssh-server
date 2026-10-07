@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>界面与流程一致性 · 截图验收</title>
+    <style>
+      body {
+        margin: 0;
+        background: #eef0f4;
+        color: #20242c;
+        font:
+          14px/1.6 system-ui,
+          sans-serif;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        padding: 12px 20px;
+        background: #fff;
+        border-bottom: 1px solid #cdd2dc;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 6px;
+      }
+      select {
+        padding: 6px;
+        max-width: 100%;
+        font: inherit;
+      }
+      p {
+        margin: 6px 0;
+        color: #596273;
+      }
+      main {
+        padding: 12px;
+      }
+      img {
+        display: block;
+        width: 100%;
+        height: auto;
+        box-shadow: 0 2px 12px #15204422;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>界面与流程一致性 · 实际网页截图</h1>
+      <label
+        >查看页面
+        <select id="page">
+          <option value="home-light-1280">主界面 · 浅色 1280</option>
+          <option value="home-light-960">主界面 · 浅色 960</option>
+          <option value="home-light-1920">主界面 · 浅色 1920</option>
+          <option value="home-dark">主界面 · 深色</option>
+          <option value="settings-light">分类设置 · 浅色</option>
+          <option value="settings-dark">分类设置 · 深色</option>
+          <option value="directory-light">创建目录选择</option>
+          <option value="password-next-step">密码服务器保存后的引导</option>
+          <option value="confirm-light">创建验证与重新确认</option>
+          <option value="resources-light">资源详情 · 浅色</option>
+          <option value="resources-dark">资源详情 · 深色</option>
+          <option value="resources-stale">资源过期状态</option>
+          <option value="files-light">服务器文件 · 浅色选中态</option>
+          <option value="files-dark">服务器文件 · 深色选中态</option>
+          <option value="files-context-dark">文件右键菜单</option>
+          <option value="files-drag-confirm">拖动后的移动确认</option>
+          <option value="files-dark-960">文件面板 · 960</option>
+          <option value="files-dark-1280">文件面板 · 1280</option>
+          <option value="files-dark-1920">文件面板 · 1920</option>
+        </select></label
+      >
+      <p>
+        Edge 154；临时本机配置与受控
+        SSH。资源、会话和同步结果为合成样本，不代表真实用户服务器或模型调用。截图缩放展示，点击可查看原图。
+      </p>
+    </header>
+    <main>
+      <a id="original" href="home-light-1280.png" target="_blank" rel="noopener"
+        ><img id="view" src="home-light-1280.png" alt="主界面 · 浅色 1280"
+      /></a>
+    </main>
+    <script>
+      const picker = document.getElementById('page');
+      picker.addEventListener('change', () => {
+        const src = picker.value + '.png';
+        document.getElementById('view').src = src;
+        document.getElementById('view').alt = picker.selectedOptions[0].text;
+        document.getElementById('original').href = src;
+      });
+    </script>
+  </body>
+</html>
