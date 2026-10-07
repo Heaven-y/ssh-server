@@ -111,7 +111,11 @@ describe('真实 SFTP 服务器目录集成', () => {
       const fresh = await remote.bind();
       expect(fresh.binding).not.toBe(previous.binding);
       await remote.authenticate();
-      const session = await remote.service.open(remote.workspace.id, { ...remote.target, ...fresh });
+      await expect(remote.service.open(remote.workspace.id, { ...remote.target, ...fresh })).rejects.toMatchObject({
+        code: 'target_changed',
+      });
+      const authenticated = await remote.bind();
+      const session = await remote.service.open(remote.workspace.id, { ...remote.target, ...authenticated });
       expect((await remote.service.list(remote.workspace.id, session.id, { path: '' })).path).toBe(remote.root);
     },
     15_000,

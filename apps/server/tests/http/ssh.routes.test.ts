@@ -12,19 +12,24 @@ afterEach(async () => {
 function setup() {
   const app = Fastify();
   apps.push(app);
-  const state = { saved: false, savingAvailable: true, paused: false };
+  const state = { saved: false, savingAvailable: true, paused: false, connected: false, hasPassword: false };
   const pool = {
-    connect: vi.fn<SshPool['connect']>(async (input) => ({ connected: true, authMode: input.authMode, ...state })),
+    connect: vi.fn<SshPool['connect']>(async () => ({
+      ...state,
+      connected: true,
+      hasPassword: true,
+      authMode: 'password',
+    })),
     credentialStatus: vi.fn<SshPool['credentialStatus']>(async () => state),
     clearSavedPassword: vi.fn<SshPool['clearSavedPassword']>(async () => ({ ...state, paused: true })),
     disconnect: vi.fn(),
     generation: vi.fn(() => 0),
   };
-  registerSshRoutes(app, { pool });
+  registerSshRoutes(app, { pool, profiles: { connection: async (_alias, _changing, operation) => operation() } });
   const post = (url: string, payload: object) => app.inject({ method: 'POST', url, payload });
   return { app, pool, post };
 }
-const input = { sshHost: 'my-server', authMode: 'password', remoteDir: '~/projects/demo' };
+const input = { sshHost: 'my-server' };
 describe('SSH 连接与保存状态接口', () => {
   it('非法认证模式、目录、保存选项与私钥附带密码不进入连接流程', async () => {
     const { post, pool } = setup();
@@ -44,6 +49,7 @@ describe('SSH 连接与保存状态接口', () => {
     expect(result.statusCode).toBe(200);
     expect(result.json()).toEqual({
       connected: true,
+      hasPassword: true,
       authMode: 'password',
       saved: false,
       savingAvailable: true,
@@ -58,7 +64,13 @@ describe('SSH 连接与保存状态接口', () => {
   it('状态查询和取消保存不提供密码，取消接口只接受 false', async () => {
     const { app } = setup();
     const status = await app.inject({ url: '/api/ssh/credentials?sshHost=my-server' });
-    expect(status.json()).toEqual({ saved: false, savingAvailable: true, paused: false });
+    expect(status.json()).toEqual({
+      saved: false,
+      savingAvailable: true,
+      paused: false,
+      connected: false,
+      hasPassword: false,
+    });
     expect(status.headers['cache-control']).toBe('no-store');
     expect(
       (
@@ -103,4 +115,56 @@ describe('SSH 连接与保存状态接口', () => {
     expect((await post('/api/ssh/connect', { ...input, password })).statusCode).toBe(400);
     expect(pool.connect).not.toHaveBeenCalled();
   });
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+it('取消普通复用检查不会断开已有共享连接', async () => {
+  const { app, pool } = setup();
+  pool.credentialStatus.mockResolvedValue({
+    saved: true,
+    savingAvailable: true,
+    paused: false,
+    connected: true,
+    hasPassword: true,
+  });
+  const started = deferred<void>();
+  const closed = deferred<void>();
+  const pending = deferred<Awaited<ReturnType<SshPool['connect']>>>();
+  pool.connect.mockImplementationOnce(() => {
+    started.resolve();
+    return pending.promise;
+  });
+  app.addHook('onRequest', (_req, reply, done) => {
+    reply.raw.once('close', () => closed.resolve());
+    done();
+  });
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const port = (app.server.address() as { port: number }).port;
+  const controller = new AbortController();
+  const request = fetch(`http://127.0.0.1:${port}/api/ssh/connect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+    signal: controller.signal,
+  }).catch(() => undefined);
+  await started.promise;
+  controller.abort();
+  await closed.promise;
+  expect(pool.disconnect).not.toHaveBeenCalled();
+  pending.resolve({
+    saved: true,
+    savingAvailable: true,
+    paused: false,
+    connected: true,
+    hasPassword: true,
+    authMode: 'password',
+  });
+  await request;
 });

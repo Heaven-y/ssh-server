@@ -38,9 +38,7 @@ export function ConfirmStep(props: {
         <dt className="text-muted-foreground">本地副本</dt>
         <dd className="font-mono wrap-anywhere">{props.input.localDir}</dd>
         <dt className="text-muted-foreground">服务器</dt>
-        <dd className="wrap-anywhere">
-          {props.input.sshHost} · {props.input.authMode === 'password' ? '账号密码' : '已有私钥'}
-        </dd>
+        <dd className="wrap-anywhere">{props.input.sshHost} · 使用服务器档案认证</dd>
         <dt className="text-muted-foreground">远端目录</dt>
         <dd className="font-mono wrap-anywhere">{props.input.remoteDir}</dd>
         <dt className="text-muted-foreground">同步规则</dt>

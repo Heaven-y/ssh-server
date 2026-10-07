@@ -17,6 +17,7 @@ function memoryStore(): WorkspaceStore {
   const items: Workspace[] = [];
   return {
     list: async () => items,
+    withSnapshot: async (operation) => operation(items),
     get: async (id) => items.find((w) => w.id === id),
     create: async (input: WorkspaceInput) => {
       const ws = { ...input, id: `w${items.length + 1}` };
@@ -34,7 +35,6 @@ async function make(): Promise<FastifyInstance> {
     token: TOKEN,
     port: 4317,
     store: memoryStore(),
-    listSshHosts: async () => [],
     routes: (a) => {
       // 测试用的内部接口：自行要求 Bearer
       a.get('/internal/ping', async (req, reply) =>
@@ -75,21 +75,70 @@ describe('访问控制', () => {
     expect(r.statusCode).toBe(401);
   });
 
-  it('令牌正确时设置 Cookie 并跳转', async () => {
+  it('同源空对象自动建立HttpOnly会话，不向正文或URL泄露秘密', async () => {
     const app = await make();
-    const r = await app.inject({ method: 'GET', url: `/auth?token=${TOKEN}`, headers: { host: HOST } });
-    expect(r.statusCode).toBe(302);
-    expect(r.headers.location).toBe('/');
+    const r = await app.inject({
+      method: 'POST',
+      url: '/api/local-session',
+      headers: { host: HOST, origin: ORIGIN },
+      payload: {},
+    });
+    expect(r.statusCode).toBe(204);
+    expect(r.body).toBe('');
+    expect(r.headers.location).toBeUndefined();
     const setCookie = String(r.headers['set-cookie']);
     expect(setCookie).toContain(`${SESSION_COOKIE}=`);
     expect(setCookie).toContain('HttpOnly');
     expect(setCookie).toContain('SameSite=Strict');
+    expect(r.headers['cache-control']).toBe('no-store');
+    const response = await app.inject({
+      url: '/api/workspaces',
+      headers: { host: HOST, cookie: setCookie.split(';')[0]! },
+    });
+    expect(response.statusCode).toBe(200);
   });
 
-  it('令牌错误时 401', async () => {
+  it('握手拒绝不可信来源、异常Host和跨站Fetch Metadata', async () => {
     const app = await make();
-    const r = await app.inject({ method: 'GET', url: '/auth?token=wrong', headers: { host: HOST } });
-    expect(r.statusCode).toBe(401);
+    for (const headers of [
+      { host: HOST },
+      { host: HOST, origin: 'null' },
+      { host: HOST, origin: 'http://evil.com' },
+      { host: 'evil.com', origin: ORIGIN },
+      { host: '127.0.0.1:9999', origin: ORIGIN },
+      { host: 'evil@127.0.0.1:4317', origin: ORIGIN },
+      { host: HOST, origin: ORIGIN, 'sec-fetch-site': 'cross-site' },
+    ]) {
+      const response = await app.inject({ method: 'POST', url: '/api/local-session', headers, payload: {} });
+      expect(response.statusCode).toBe(403);
+      expect(response.headers['set-cookie']).toBeUndefined();
+    }
+  });
+
+  it('握手只接受空对象且旧auth入口不存在', async () => {
+    const app = await make();
+    for (const [url, payload] of [
+      ['/api/local-session', { token: TOKEN }],
+      ['/api/local-session?token=x', {}],
+    ] as const) {
+      const response = await app.inject({ method: 'POST', url, headers: { host: HOST, origin: ORIGIN }, payload });
+      expect(response.statusCode).toBe(400);
+      expect(response.headers['set-cookie']).toBeUndefined();
+    }
+    expect((await app.inject({ url: `/auth?token=${TOKEN}`, headers: { host: HOST } })).statusCode).toBe(404);
+  });
+
+  it('旧SSH主机列表入口不再提供，只维护统一服务器档案', async () => {
+    const app = await make();
+    const response = await app.inject({ url: '/api/ssh-hosts', headers: { host: HOST, cookie: COOKIE } });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('页面和错误响应都禁止外部iframe嵌入', async () => {
+    const app = await make();
+    const response = await app.inject({ url: '/', headers: { host: HOST } });
+    expect(response.headers['x-frame-options']).toBe('DENY');
+    expect(response.headers['content-security-policy']).toContain("frame-ancestors 'none'");
   });
 
   it('带 Cookie 的 GET 可以访问 /api', async () => {

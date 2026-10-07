@@ -1,6 +1,6 @@
 // 真实链路验收：Claude → MCP → 本地后端 → SSH；只执行 hostname，不打印服务器身份。
 import { spawn, type ChildProcess } from 'node:child_process';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,12 +10,15 @@ import type {
   AgentEvent,
   ClientMessage,
   ServerMessage,
+  ManagedServer,
+  SshHostInfo,
   WorkspaceInput,
   WorkspaceSetupResult,
   WorkspaceSetupVerification,
 } from '../../packages/shared/src/index';
 import { createSshPool } from '../../apps/server/src/ssh/pool';
 import { buildRemoteCommand } from '../../apps/server/src/ssh/remote-command';
+import { createSshConfigLookup } from '../../apps/server/src/ssh/connection';
 
 const TURN_TIMEOUT_MS = 180_000;
 const START_TIMEOUT_MS = 30_000;
@@ -32,7 +35,7 @@ function requireArg(name: string): string {
   return value;
 }
 
-function launchServer(configDir: string, token: string): ChildProcess {
+function launchServer(configDir: string): ChildProcess {
   return spawn(process.execPath, ['--import', 'tsx', 'apps/server/src/main.ts'], {
     cwd: ROOT,
     windowsHide: true,
@@ -42,7 +45,6 @@ function launchServer(configDir: string, token: string): ChildProcess {
       SSH_SERVER_CONFIG_DIR: configDir,
       SSH_SERVER_PORT: '0',
       SSH_SERVER_HOST: '127.0.0.1',
-      SSH_SERVER_TOKEN: token,
       SSH_SERVER_DEV_ORIGIN: '',
     },
   });
@@ -56,7 +58,7 @@ function waitForServer(child: ChildProcess): Promise<string> {
     child.once('exit', () => reject(new Error('后端在验收前退出，请检查本机启动环境')));
     child.stdout?.on('data', (chunk: Buffer) => {
       output = (output + chunk.toString('utf8')).slice(-10_000);
-      const match = /http:\/\/127\.0\.0\.1:\d+\/auth\?token=[\w-]+/.exec(output);
+      const match = /http:\/\/127\.0\.0\.1:\d+\//.exec(output);
       if (match) {
         clearTimeout(timer);
         resolve(match[0]);
@@ -79,10 +81,15 @@ async function stopServer(child: ChildProcess): Promise<void> {
 }
 
 async function login(accessUrl: string): Promise<{ origin: string; cookie: string }> {
-  const response = await fetch(accessUrl, { redirect: 'manual' });
+  const origin = new URL(accessUrl).origin;
+  const response = await fetch(`${origin}/api/local-session`, {
+    method: 'POST',
+    headers: { origin, 'content-type': 'application/json' },
+    body: '{}',
+  });
   const cookie = response.headers.get('set-cookie')?.split(';')[0];
-  if (response.status !== 302 || !cookie) throw new Error('访问令牌换取登录 Cookie 失败');
-  return { origin: new URL(accessUrl).origin, cookie };
+  if (response.status !== 204 || !cookie) throw new Error('本机会话握手失败');
+  return { origin, cookie };
 }
 
 async function jsonRequest<T>(url: string, cookie: string, body?: unknown): Promise<T> {
@@ -175,6 +182,26 @@ function assertResult(result: TurnResult, hostname: string): { model: string; se
 }
 let stage = '参数与环境';
 
+async function importServer(origin: string, cookie: string, host: string) {
+  const options = await jsonRequest<Array<SshHostInfo & { keyFile?: string }>>(
+    `${origin}/api/ssh-targets/import-options`,
+    cookie,
+  );
+  const selected = options.find((item) => item.alias === host);
+  if (!selected || selected.unsupported.length || !selected.user)
+    throw new Error('所选SSH配置不能导入，请检查账号和不支持的选项');
+  const server = await jsonRequest<ManagedServer>(`${origin}/api/ssh-targets`, cookie, {
+    name: host,
+    hostname: selected.hostname,
+    port: selected.port,
+    username: selected.user,
+    authMode: 'key',
+    ...(selected.keyFile ? { keyFile: selected.keyFile } : {}),
+  });
+  await jsonRequest(`${origin}/api/ssh/connect`, cookie, { sshHost: server.alias });
+  return server;
+}
+
 async function run(): Promise<void> {
   if (process.argv.includes('--help')) {
     console.log('用法：npm run e2e:m1 -- --host my-server --remote-dir ~/projects/demo [--local-dir <专用空目录>]');
@@ -186,24 +213,24 @@ async function run(): Promise<void> {
   const temp = await mkdtemp(path.join(process.env.PI_SCRATCH_DIR ?? os.tmpdir(), 'ssh-server-e2e-'));
   const localDir = arg('--local-dir') ?? path.join(temp, 'project');
   if (!arg('--local-dir')) await mkdir(localDir);
-  const token = randomBytes(32).toString('base64url');
-  const pool = createSshPool();
-  const child = launchServer(path.join(temp, 'config'), token);
+  const pool = createSshPool({ lookupHost: createSshConfigLookup({ authMode: 'key' }) });
+  const child = launchServer(path.join(temp, 'config'));
   let socket: WebSocket | undefined;
   try {
     stage = '后端启动与登录';
     const { origin, cookie } = await login(await waitForServer(child));
     stage = '直接 SSH';
-    const direct = await pool.exec({ alias: host, authMode: 'key' }, buildRemoteCommand(remoteDir, 'hostname', 30), {
+    const direct = await pool.exec({ alias: host }, buildRemoteCommand(remoteDir, 'hostname', 30), {
       localTimeoutMs: 60_000,
       outputCap: 10_000,
     });
     const hostname = direct.stdout.trim();
     if (direct.exitCode !== 0 || !hostname) throw new Error('直接 SSH 只读检查失败');
+    const server = await importServer(origin, cookie, host);
     const workspace = await createWorkspace(origin, cookie, {
       name: '链路验收',
       localDir,
-      sshHost: host,
+      sshHost: server.alias,
       remoteDir,
     });
     socket = new WebSocket(`${origin.replace('http:', 'ws:')}/ws`, { headers: { origin, cookie } });

@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { SyncSettingsSchema, type Workspace } from '../../packages/shared/src/index';
-import { workspaceTarget } from '../../apps/server/src/ssh/connection';
+import { createSshConfigLookup, workspaceTarget } from '../../apps/server/src/ssh/connection';
 import { createSshPool } from '../../apps/server/src/ssh/pool';
 import { buildRemoteCommand, sq as quotePosix } from '../../apps/server/src/ssh/remote-command';
 import { localInventory } from '../../apps/server/src/sync/inventory';
@@ -43,7 +43,7 @@ async function fixture() {
   };
   const configDir = await mkdtemp(path.join(process.env.PI_SCRATCH_DIR ?? os.tmpdir(), 'ssh-server-m2-'));
   const prefix = `ssh-server-e2e-${randomUUID()}`;
-  const pool = createSshPool();
+  const pool = createSshPool({ lookupHost: createSshConfigLookup({ authMode: 'key' }) });
   const driver = createRcloneDriver({
     configDir,
     pool,

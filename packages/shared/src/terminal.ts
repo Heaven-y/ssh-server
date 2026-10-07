@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SshAuthModeSchema, type Workspace } from './workspace';
+import type { Workspace } from './workspace';
 
 /** 终端专用限制；正文不进入聊天协议或持久存储。 */
 export const TERMINAL_LIMITS = {
@@ -24,7 +24,6 @@ export const TERMINAL_LIMITS = {
 export const TerminalTargetSchema = z.strictObject({
   workspaceId: z.string().min(1).max(200),
   sshHost: z.string().min(1).max(4096),
-  authMode: SshAuthModeSchema,
   remoteDir: z
     .string()
     .min(1)
@@ -93,8 +92,7 @@ export type TerminalServerMessage = z.infer<typeof TerminalServerMessageSchema>;
 export const workspaceTerminalTarget = (workspace: Workspace): TerminalTarget => ({
   workspaceId: workspace.id,
   sshHost: workspace.sshHost,
-  authMode: workspace.authMode ?? 'key',
   remoteDir: workspace.remoteDir,
 });
 export const terminalTargetKey = (target: TerminalTarget): string =>
-  JSON.stringify([target.workspaceId, target.sshHost, target.authMode, target.remoteDir]);
+  JSON.stringify([target.workspaceId, target.sshHost, target.remoteDir]);

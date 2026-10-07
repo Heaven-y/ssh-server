@@ -25,20 +25,27 @@ it('Claude检测复用实际已安装的SDK原生入口，探测只传版本参�
   });
 });
 
-it('非零、格式异常和探测失败不标可用，也不回传内部输出', async () => {
-  for (const result of [
-    { stdout: Buffer.from('secret-private-path 1.2.3'), stderr: Buffer.alloc(0), exitCode: 0 },
-    { stdout: Buffer.from('git version 1.2.3'), stderr: Buffer.from('secret'), exitCode: 1 },
-  ]) {
+it('执行成功即为可用，未知版本只隐藏输出而不判定不兼容', async () => {
+  const report = await detectEnvironment({
+    run: async () => ({ stdout: Buffer.from('secret-private-path 1.2.3'), stderr: Buffer.alloc(0), exitCode: 0 }),
+  });
+  expect(report.tools.slice(1).every((tool) => tool.available && tool.version === null)).toBe(true);
+  expect(JSON.stringify(report)).not.toContain('secret');
+});
+
+it('非零、超时、输出超限和探测失败不标可用，也不回传内部输出', async () => {
+  for (const result of [{ stdout: Buffer.from('git version 1.2.3'), stderr: Buffer.from('secret'), exitCode: 1 }]) {
     const report = await detectEnvironment({ run: async () => result });
     expect(report.tools.slice(1).every((tool) => !tool.available && tool.version === null)).toBe(true);
     expect(JSON.stringify(report)).not.toContain('secret');
   }
-  const report = await detectEnvironment({
-    run: async () => {
-      throw new Error('secret-private-path');
-    },
-  });
-  expect(report.tools.slice(1).every((tool) => !tool.available)).toBe(true);
-  expect(JSON.stringify(report)).not.toContain('secret');
+  for (const code of ['timeout', 'output_limit', 'executable_missing']) {
+    const report = await detectEnvironment({
+      run: async () => {
+        throw Object.assign(new Error('secret-private-path'), { code });
+      },
+    });
+    expect(report.tools.slice(1).every((tool) => !tool.available)).toBe(true);
+    expect(JSON.stringify(report)).not.toContain('secret');
+  }
 });

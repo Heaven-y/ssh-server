@@ -2,6 +2,7 @@ import type { EnvironmentReport, EnvironmentTool } from '@ssh-server/shared';
 import { resolveCodexCommand } from '../agents/codex/launch';
 import { runProcess, type ProcessRunner } from '../sync/process';
 import { resolveClaudeExecutable } from '../agents/claude-launch';
+import { ProductSettingsError } from './product-settings';
 
 type Command = { command: string; args: string[] };
 type Probe = { name: EnvironmentTool['name']; command(): Command | Promise<Command>; args: string[]; version: RegExp };
@@ -9,7 +10,7 @@ const missing = (name: EnvironmentTool['name']): EnvironmentTool => ({
   name,
   available: false,
   version: null,
-  message: '无法确认工具版本，请检查本机安装与启动路径；没有安装或修改软件。',
+  message: '程序缺失或无法执行，请检查安装与启动路径；没有安装或修改软件。',
 });
 async function probe(tool: Probe, run: ProcessRunner, signal?: AbortSignal): Promise<EnvironmentTool> {
   try {
@@ -22,7 +23,7 @@ async function probe(tool: Probe, run: ProcessRunner, signal?: AbortSignal): Pro
     if (result.exitCode !== 0) return missing(tool.name);
     // 只提取版本号，不回传工具输出、私有路径或环境变量。
     const version = result.stdout.toString('utf8').match(tool.version)?.[1];
-    return version ? { name: tool.name, available: true, version, message: null } : missing(tool.name);
+    return { name: tool.name, available: true, version: version ?? null, message: null };
   } catch {
     return missing(tool.name);
   }
@@ -63,5 +64,35 @@ export async function detectEnvironment(
   return {
     checkedAt: Date.now(),
     tools: [{ name: 'Node.js', available: true, version: process.versions.node, message: null }, ...tools],
+  };
+}
+
+export type EnvironmentService = {
+  read(): Promise<EnvironmentReport>;
+  refresh(signal?: AbortSignal): Promise<EnvironmentReport>;
+};
+
+/** 启动与网页共享一个报告；并发读取复用检测，手动刷新不能重复启动进程。 */
+export function createEnvironmentService(detect: typeof detectEnvironment = detectEnvironment): EnvironmentService {
+  let report: EnvironmentReport | undefined;
+  let pending: Promise<EnvironmentReport> | undefined;
+  const start = (signal?: AbortSignal) => {
+    pending = detect({ signal })
+      .then((value) => {
+        signal?.throwIfAborted();
+        report = value;
+        return value;
+      })
+      .finally(() => {
+        pending = undefined;
+      });
+    return pending;
+  };
+  return {
+    read: () => pending ?? (report ? Promise.resolve(report) : start()),
+    refresh: async (signal) => {
+      if (pending) throw new ProductSettingsError('invalid_request', 409, '环境检测正在进行，请等待完成');
+      return start(signal);
+    },
   };
 }

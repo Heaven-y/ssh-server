@@ -11,14 +11,12 @@ const remoteDirSchema = z
 export const SshAuthModeSchema = z.enum(['key', 'password']);
 export type SshAuthMode = z.infer<typeof SshAuthModeSchema>;
 
-export const WorkspaceInputSchema = z.object({
+export const WorkspaceInputSchema = z.strictObject({
   name: z.string().trim().min(1).max(100),
   /** 本地文件夹的绝对路径，是否存在由后端检查 */
   localDir: z.string().min(1),
-  /** ~/.ssh/config 或本工具独立连接表中的稳定别名 */
+  /** 本工具集中服务器档案中的稳定别名 */
   sshHost: z.string().min(1),
-  /** 不传时复用已有私钥；密码只通过独立认证接口提交 */
-  authMode: SshAuthModeSchema.optional(),
   remoteDir: remoteDirSchema,
   sync: SyncSettingsSchema.optional(),
   policy: WorkspacePolicySchema.optional(),

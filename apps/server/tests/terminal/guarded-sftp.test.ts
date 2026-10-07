@@ -20,10 +20,10 @@ it('guarded SFTP回调同一调用栈报错只结束该通道，共享SSH仍可�
     });
   });
   try {
-    const target = { alias: 'my-server', authMode: 'password' as const };
+    const target = { alias: f.workspace.sshHost };
     const connection = await f.pool.resolveConnection(target);
     const channel = await f.pool.openSftp(target, {
-      generation: f.pool.generation('my-server'),
+      generation: f.pool.generation(target.alias),
       cacheKey: connection.cacheKey,
       signal: new AbortController().signal,
     });

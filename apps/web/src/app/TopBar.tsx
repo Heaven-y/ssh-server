@@ -8,6 +8,7 @@ import {
   PanelLeftOpen,
   RefreshCw,
   Settings2,
+  Server,
   Sun,
   TerminalSquare,
   Wifi,
@@ -25,7 +26,7 @@ const STATUS = {
   closed: { label: '本机服务已断开', icon: WifiOff, cls: 'text-destructive-foreground' },
 } as const;
 
-function AppearanceActions() {
+export function AppearanceActions() {
   const collapsed = useUiPreferences((state) => state.sidebarCollapsed);
   const theme = useUiPreferences((state) => state.theme);
   const setCollapsed = useUiPreferences((state) => state.setSidebarCollapsed);
@@ -46,10 +47,11 @@ function AppearanceActions() {
       <button
         type="button"
         className={buttonClass('ghost')}
-        aria-label={theme === 'dark' ? '切换亮色主题' : '切换暗色主题'}
+        aria-label={theme === 'dark' ? '切换浅色主题' : '切换深色主题'}
         onClick={toggleTheme}
       >
         <ThemeIcon aria-hidden className="size-4" />
+        {theme === 'dark' ? '浅色' : '深色'}
       </button>
     </>
   );
@@ -59,6 +61,7 @@ function AppearanceActions() {
 export function TopBar({
   workspace,
   onOpenSettings,
+  onOpenServers,
   onOpenFiles,
   filesOpen,
   onOpenTerminal,
@@ -68,6 +71,7 @@ export function TopBar({
 }: {
   workspace?: Workspace;
   onOpenSettings(): void;
+  onOpenServers(): void;
   onOpenFiles(): void;
   filesOpen: boolean;
   onOpenTerminal(): void;
@@ -130,6 +134,10 @@ export function TopBar({
         >
           <FileCode2 aria-hidden className="size-4" />
           文件
+        </button>
+        <button type="button" className={buttonClass('ghost')} onClick={onOpenServers} aria-haspopup="dialog">
+          <Server aria-hidden className="size-4" />
+          服务器
         </button>
         <button type="button" className={buttonClass('ghost')} onClick={onOpenSettings}>
           <Settings2 aria-hidden className="size-4" />

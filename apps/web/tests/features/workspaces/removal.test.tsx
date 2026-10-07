@@ -136,7 +136,6 @@ it('迟到移除只清理所属缓存和终端，保留新选择及另一工作�
   const target = (id: string) => ({
     workspaceId: id,
     sshHost: 'my-server',
-    authMode: 'key' as const,
     remoteDir: '~/projects/demo',
   });
   useTerminalStore.setState({

@@ -17,6 +17,8 @@ import { WorkspaceColumns, WorkspaceLayout } from './WorkspaceLayout';
 import { useCommandPalette } from './use-command-palette';
 import type { PaletteActions } from './CommandPalette';
 import type { ChangesRequest } from '../features/changes/types';
+import { ServerManagerDialog } from '../features/ssh/ServerManagerDialog';
+import { EnvironmentSummary } from '../features/settings/EnvironmentReport';
 
 const SettingsDialog = lazy(() => import('../features/settings/SettingsDialog'));
 const FilesPanel = lazy(() => import('../features/files/FilesPanel'));
@@ -71,6 +73,7 @@ export function App() {
     if (productSettings.data) setDefaults(productSettings.data.settings);
   }, [productSettings.data, setDefaults]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [serversOpen, setServersOpen] = useState(false);
   const [filesWorkspace, setFilesWorkspace] = useState<Workspace>();
   const [changesRequest, setChangesRequest] = useState<ChangesRequest>();
   const [terminalLoaded, setTerminalLoaded] = useState(false);
@@ -129,11 +132,14 @@ export function App() {
           )
         }
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenServers={() => setServersOpen(true)}
         filesOpen={!!filesWorkspace}
         onOpenFiles={openFiles}
         terminalOpen={terminalVisible}
         onOpenTerminal={openTerminal}
       />
+      <EnvironmentSummary onOpenSettings={() => setSettingsOpen(true)} />
+      {serversOpen && <ServerManagerDialog onClose={() => setServersOpen(false)} />}
       <OpenPalette
         opened={palette.opened}
         workspace={current}
@@ -211,7 +217,7 @@ export function App() {
                     className="flex min-h-11 shrink-0 flex-wrap items-center gap-1 border-b border-border/60 px-4"
                   >
                     <SshConnectionPanel
-                      key={JSON.stringify([current.id, current.sshHost, current.authMode ?? 'key', current.remoteDir])}
+                      key={JSON.stringify([current.id, current.sshHost, current.remoteDir])}
                       workspace={current}
                     />
                     <SyncPanel key={current.id} workspace={current} ref={sync} />

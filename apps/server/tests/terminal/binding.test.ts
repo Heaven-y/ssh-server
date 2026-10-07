@@ -4,6 +4,7 @@ import type { Workspace } from '@ssh-server/shared';
 import { workspaceTerminalTarget } from '@ssh-server/shared';
 import { createTerminalBindings } from '../../src/terminal/binding';
 import { createConnectionResolver } from '../../src/ssh/connection';
+import { createBrowseBinding } from '../../src/remote-files/binding';
 
 afterEach(() => vi.useRealTimers());
 const workspace: Workspace = {
@@ -51,6 +52,15 @@ it('更改IdentityFile或所选私钥内容后拒绝旧标签刷新', async () =
   let key = Buffer.from('key-one');
   const resolver = createConnectionResolver({
     homeDir,
+    lookupHost: async (alias) => ({
+      alias,
+      hostname: 'fixture',
+      port: 22,
+      user: 'demo',
+      authMode: 'key',
+      identityFiles: [keyFile],
+      unsupported: [],
+    }),
     readFile: async (file) => {
       if (file === path.join(homeDir, '.ssh', 'config'))
         return Buffer.from(`Host my-server\n HostName fixture\n User demo\n IdentityFile ${keyFile}\n`);
@@ -72,4 +82,43 @@ it('更改IdentityFile或所选私钥内容后拒绝旧标签刷新', async () =
   await expect(bindings.issue(target, { signal, previousBinding: second.binding })).rejects.toMatchObject({
     code: 'target_changed',
   });
+});
+
+it('中央认证方式变化使旧终端和浏览绑定失效，调用目标不能覆盖档案认证', async () => {
+  let authMode: 'key' | 'password' = 'key';
+  const resolver = createConnectionResolver({
+    lookupHost: async (alias) => ({
+      alias,
+      hostname: 'fixture',
+      port: 22,
+      user: 'demo',
+      authMode,
+      identityFiles: [],
+      unsupported: [],
+    }),
+    readFile: async () => Buffer.from('fixture-key'),
+  });
+  const store = { get: async () => workspace };
+  const pool = { fingerprint: resolver.fingerprint, generation: () => 0 };
+  const terminal = createTerminalBindings({ store, pool });
+  const browse = createBrowseBinding(store, pool);
+  const before = await terminal.issue(target, { signal });
+  const browser = await browse(workspace.id, workspace, signal);
+  authMode = 'password';
+  await expect(terminal.verify(target, before.binding, signal)).rejects.toMatchObject({ code: 'target_changed' });
+  expect((await browse(workspace.id, workspace, signal)).binding).not.toBe(browser.binding);
+  await resolver.setPassword(workspace.sshHost, 'fixture-password');
+  const uncheckedTarget = { alias: workspace.sshHost, authMode: 'key' };
+  expect(await resolver.resolve(uncheckedTarget)).toMatchObject({ authMode: 'password', password: 'fixture-password' });
+});
+
+it('重认证代次变化也使未打开的浏览绑定失效', async () => {
+  let generation = 0;
+  const browse = createBrowseBinding(
+    { get: async () => workspace },
+    { fingerprint: async () => 'same-profile', generation: () => generation },
+  );
+  const before = await browse(workspace.id, workspace, signal);
+  generation++;
+  expect((await browse(workspace.id, workspace, signal)).binding).not.toBe(before.binding);
 });

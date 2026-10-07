@@ -14,13 +14,7 @@ function useTarget(workspaceId: string) {
   return targetIdentity(workspace);
 }
 function targetIdentity(workspace?: Workspace): string {
-  return JSON.stringify([
-    workspace?.localDir,
-    workspace?.sshHost,
-    workspace?.remoteDir,
-    workspace?.authMode,
-    workspace?.sync,
-  ]);
+  return JSON.stringify([workspace?.localDir, workspace?.sshHost, workspace?.remoteDir, workspace?.sync]);
 }
 function availableRecords(input: {
   current: boolean;

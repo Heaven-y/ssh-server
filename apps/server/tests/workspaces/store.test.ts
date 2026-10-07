@@ -53,7 +53,7 @@ describe('createWorkspaceStore', () => {
     );
   });
 
-  it('SSH Host 不在 ~/.ssh/config 中时报 sshHost 字段错误', async () => {
+  it('未登记的服务器时报 sshHost 字段错误', async () => {
     await expect(make().create({ ...input(), sshHost: 'unknown' })).rejects.toMatchObject({ field: 'sshHost' });
   });
 
@@ -95,9 +95,9 @@ describe('createWorkspaceStore', () => {
   });
 
   it('当前可选字段与默认配置合法，不要求SSH或目录仍在线', async () => {
-    const valid = await make().create({ ...input(), authMode: 'password' });
+    const valid = await make().create(input());
     expect(await make({ dirExists: false }).list()).toEqual([valid]);
-    expect(await make().update(valid.id, { name: 'renamed' })).toMatchObject({ authMode: 'password' });
+    expect(await make().update(valid.id, { name: 'renamed' })).toMatchObject({ sshHost: valid.sshHost });
   });
 
   it('update 只改指定字段，id 不变', async () => {

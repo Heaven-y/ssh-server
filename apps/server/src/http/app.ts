@@ -1,9 +1,8 @@
-// 组装 Fastify 应用：WebSocket 插件、访问控制、登录、工作区接口、静态页面
+// 组装 Fastify 应用：WebSocket 插件、访问控制、本机会话、工作区接口、静态页面
 import { existsSync } from 'node:fs';
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
-import type { SshHostInfo } from '@ssh-server/shared';
 import type { WorkspaceStore } from '../workspaces/store';
 import { registerAuthRoute } from './auth';
 import { registerSecurity } from './security';
@@ -18,7 +17,6 @@ export type AppDeps = {
   port: number;
   devOrigin?: string;
   store: WorkspaceStore;
-  listSshHosts(): Promise<SshHostInfo[]>;
   setup?: WorkspaceSetup;
   activity?: WorkspaceActivity;
   removal?: WorkspaceRemoval;
@@ -39,7 +37,6 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   if (deps.activity) registerWorkspaceActivity(app, deps.activity);
   registerWorkspaceRoutes(app, {
     store: deps.store,
-    listSshHosts: () => deps.listSshHosts(),
     setup: deps.setup,
     removal: deps.removal,
   });

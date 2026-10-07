@@ -86,16 +86,16 @@ describe('POST /internal/remote-exec', () => {
     const { post, calls } = setup();
     const r = await post('/internal/remote-exec', { command: 'hostname' });
     expect(r.json()).toMatchObject({ stdout: 'h1\n', exitCode: 0 });
-    expect(calls[0]!.alias).toEqual({ alias: 'my-server', authMode: 'key' });
+    expect(calls[0]!.alias).toEqual({ alias: 'my-server' });
     expect(calls[0]!.cmd.startsWith('cd ')).toBe(true);
     expect(calls[0]!.cmd).toContain("bash -lc 'hostname'");
     expect(calls[0]!.localTimeoutMs).toBe((600 + 30) * 1000);
   });
 
-  it('密码工作区向执行层传递认证方式', async () => {
-    const { post, calls } = setup({ workspace: { ...ws, authMode: 'password' } });
+  it('执行层只接受服务器档案引用', async () => {
+    const { post, calls } = setup({ workspace: ws });
     await post('/internal/remote-exec', { command: 'hostname' });
-    expect(calls[0]!.alias).toEqual({ alias: 'my-server', authMode: 'password' });
+    expect(calls[0]!.alias).toEqual({ alias: 'my-server' });
   });
 
   it('超时上限为 3600 秒', async () => {

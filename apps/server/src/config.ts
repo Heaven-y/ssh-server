@@ -7,7 +7,7 @@ export type ServerConfig = {
   port: number;
   host: string;
   configDir: string;
-  /** 访问令牌，打开页面时通过 /auth?token= 换取 Cookie */
+  /** 进程内部会话秘密，仅通过受保护的HttpOnly Cookie交付给本机浏览器 */
   token: string;
   /** 开发时 Vite 的来源，如 http://127.0.0.1:5173 */
   devOrigin?: string;

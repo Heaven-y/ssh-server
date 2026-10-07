@@ -220,6 +220,18 @@ export async function startRemoteSftpFixture(options: { downloads?: boolean } = 
   let knownHosts = `[${identity.hostname}]:${identity.port} ${key.public}\n`;
   const pool = createSshPool({
     homeDir: localHome,
+    lookupHost: async (alias) =>
+      alias === 'my-server'
+        ? {
+            alias,
+            hostname: identity.hostname,
+            port: identity.port,
+            user: identity.username,
+            authMode: 'password',
+            identityFiles: [],
+            unsupported: [],
+          }
+        : undefined,
     readFile: async (file) => {
       if (file === configFile)
         return Buffer.from(
@@ -234,13 +246,11 @@ export async function startRemoteSftpFixture(options: { downloads?: boolean } = 
     id: 'fixture-workspace',
     name: '合成工作区',
     sshHost: 'my-server',
-    authMode: 'password',
     remoteDir: root,
     localDir: path.join(localHome, 'mirror'),
   };
   const target: RemoteBrowseTarget = {
     sshHost: workspace.sshHost,
-    authMode: workspace.authMode,
     remoteDir: workspace.remoteDir,
     localDir: workspace.localDir,
   };

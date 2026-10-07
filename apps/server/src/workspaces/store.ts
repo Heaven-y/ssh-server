@@ -25,6 +25,8 @@ export class WorkspaceStorageError extends Error {
 export type WorkspaceStore = {
   list(): Promise<Workspace[]>;
   get(id: string): Promise<Workspace | undefined>;
+  /** 锁住工作区列表供跨档案事务使用；回调不得重入本存储。锁序始终为工作区→服务器档案。 */
+  withSnapshot<T>(operation: (workspaces: readonly Workspace[]) => Promise<T>): Promise<T>;
   create(input: WorkspaceInput, beforePersist?: (workspace: Workspace) => Promise<void>): Promise<Workspace>;
   update(
     id: string,
@@ -37,7 +39,7 @@ export type WorkspaceStore = {
 export type WorkspaceStoreDeps = {
   configDir: string;
   dirExists(p: string): Promise<boolean>;
-  /** ~/.ssh/config 中可用的 Host 别名 */
+  /** 已登记服务器档案的稳定别名 */
   knownHosts(): Promise<string[]>;
 };
 
@@ -92,12 +94,13 @@ export function createWorkspaceStore(deps: WorkspaceStoreDeps): WorkspaceStore {
     const localDir = path.resolve(value.localDir);
     if (!(await deps.dirExists(localDir))) throw new WorkspaceValidationError('localDir', '本地文件夹不存在');
     if (!(await deps.knownHosts()).includes(value.sshHost)) {
-      throw new WorkspaceValidationError('sshHost', `~/.ssh/config 中没有 Host ${value.sshHost}`);
+      throw new WorkspaceValidationError('sshHost', '服务器未登记，请先保存服务器档案');
     }
     return { ...value, localDir };
   }
 
   return {
+    withSnapshot: (operation) => serial(async () => operation(await load())),
     list: () => serial(load),
     get: (id) => serial(async () => (await load()).find((w) => w.id === id)),
     create: (input, beforePersist) =>

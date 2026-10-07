@@ -4,8 +4,6 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 
 export const SESSION_COOKIE = 'ssh_server_session';
 
-const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
-
 export type SecurityOptions = {
   token: string;
   /** 配置的端口；真实监听后以实际端口为准（端口 0 时尤其重要） */
@@ -21,15 +19,6 @@ export function safeEqual(a: string, b: string): boolean {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-function hostnameOf(hostHeader: string | undefined): string | undefined {
-  if (!hostHeader) return undefined;
-  try {
-    return new URL(`http://${hostHeader}`).hostname;
-  } catch {
-    return undefined;
-  }
-}
-
 export function readCookie(header: string | undefined, name: string): string | undefined {
   for (const part of (header ?? '').split(';')) {
     const idx = part.indexOf('=');
@@ -41,8 +30,6 @@ export function readCookie(header: string | undefined, name: string): string | u
 const pathOf = (req: FastifyRequest) => req.url.split('?', 1)[0]!;
 
 export function registerSecurity(app: FastifyInstance, opts: SecurityOptions): void {
-  const devHostname = opts.devOrigin ? new URL(opts.devOrigin).hostname : undefined;
-
   const allowedOrigins = (): Set<string> => {
     const addr = app.server.address();
     const port = addr && typeof addr === 'object' ? addr.port : opts.port;
@@ -51,14 +38,13 @@ export function registerSecurity(app: FastifyInstance, opts: SecurityOptions): v
     return set;
   };
 
-  const isLoopbackHost = (host: string | undefined) => {
-    const hostname = hostnameOf(host);
-    return !!hostname && (LOOPBACK_HOSTNAMES.has(hostname) || hostname === devHostname);
-  };
+  const isLoopbackHost = (host: string | undefined) =>
+    !!host && [...allowedOrigins()].some((origin) => new URL(origin).host === host.toLowerCase());
 
   /** 修改类请求与 WebSocket 必须带允许的 Origin；/internal 只给本机 MCP 子进程调用，由路由自己校验会话令牌 */
   const originRejected = (req: FastifyRequest, path: string) => {
     if (path.startsWith('/internal/')) return false;
+    if (req.headers['sec-fetch-site'] === 'cross-site') return true;
     const isUpgrade = req.headers.upgrade?.toLowerCase() === 'websocket';
     const isRead = req.method === 'GET' || req.method === 'HEAD';
     if (!isUpgrade && isRead) return false;
@@ -68,13 +54,16 @@ export function registerSecurity(app: FastifyInstance, opts: SecurityOptions): v
 
   /** /api 与 /ws 需要有效的登录 Cookie */
   const loginRejected = (req: FastifyRequest, path: string) => {
+    if (path === '/api/local-session' && req.method === 'POST') return false;
     if (!path.startsWith('/api/') && path !== '/ws') return false;
     const value = readCookie(req.headers.cookie, SESSION_COOKIE);
     return !value || !safeEqual(value, opts.token);
   };
 
   app.addHook('onRequest', async (req, reply) => {
-    // 1. Host 必须是本机地址：挡住 DNS 重绑定
+    reply.header('X-Frame-Options', 'DENY');
+    reply.header('Content-Security-Policy', "frame-ancestors 'none'");
+    // 1. Host必须匹配本机监听端口或显式开发来源，拒绝URL解析归一化旁路。
     if (!isLoopbackHost(req.headers.host)) {
       return reply.code(403).send({ message: '拒绝访问：Host 不是本机地址' });
     }
@@ -85,7 +74,7 @@ export function registerSecurity(app: FastifyInstance, opts: SecurityOptions): v
     }
     // 3. 登录检查
     if (loginRejected(req, path)) {
-      return reply.code(401).send({ message: '未登录：请使用启动时打印的访问地址打开页面' });
+      return reply.code(401).send({ message: '本机会话已失效，请刷新页面重新连接' });
     }
     return undefined;
   });

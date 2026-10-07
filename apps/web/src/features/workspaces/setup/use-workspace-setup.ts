@@ -11,17 +11,15 @@ import {
   type WorkspaceSetupCreate,
 } from '@ssh-server/shared';
 import { api, queryKeys } from '../../../lib/api';
-import { useSshConnection } from '../../ssh/use-ssh-connection';
 import { useCancelableRequest } from './use-cancelable-request';
 import { useProductSettings } from '../../settings/use-product-settings';
 
-export const SETUP_STEPS = ['本地副本', '服务器认证', '远端目录', '同步规则', '确认创建'] as const;
+export const SETUP_STEPS = ['本地副本', '选择服务器', '远端目录', '同步规则', '确认创建'] as const;
 const EMPTY: WorkspaceInput = {
   name: '',
   localDir: '',
   sshHost: '',
   remoteDir: '~',
-  authMode: 'key',
   sync: SyncSettingsSchema.parse({}),
 };
 export function useWorkspaceSetup({
@@ -54,11 +52,6 @@ export function useWorkspaceSetup({
   const ticketRef = useRef<string | undefined>(undefined);
   const mounted = useRef(false);
   const request = useCancelableRequest();
-  const connection = useSshConnection({
-    sshHost: input.sshHost,
-    authMode: input.authMode ?? 'key',
-    remoteDir: input.remoteDir,
-  });
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -71,7 +64,6 @@ export function useWorkspaceSetup({
     onSuccess: async (created) => {
       await qc.invalidateQueries({ queryKey: queryKeys.workspaces });
       if (mounted.current) {
-        connection.clearPassword();
         setResult(created);
         setTicket(undefined);
         ticketRef.current = undefined;
@@ -101,7 +93,6 @@ export function useWorkspaceSetup({
     revoke();
     setPreview(undefined);
     setMessage(undefined);
-    if ('sshHost' in patch || 'authMode' in patch || 'remoteDir' in patch) connection.reset();
     setInput((current) => ({ ...current, ...patch }));
   };
   const navigate = (next: number) => {
@@ -111,7 +102,7 @@ export function useWorkspaceSetup({
       return;
     }
     if (next > step) {
-      const error = stepError(step, input, connection.verified, syncDirty);
+      const error = stepError(step, input, syncDirty);
       if (error) {
         setMessage(error);
         return;
@@ -119,7 +110,6 @@ export function useWorkspaceSetup({
     }
     request.abort();
     revoke();
-    connection.clearPassword();
     setMessage(undefined);
     if (step === 3 && next < step) setSyncDirty(false);
     setStep(next);
@@ -161,7 +151,6 @@ export function useWorkspaceSetup({
   const cancel = () => {
     if (create.isPending) return;
     request.abort();
-    connection.reset();
     revoke();
     onCancel();
   };
@@ -173,7 +162,6 @@ export function useWorkspaceSetup({
     change,
     step,
     navigate,
-    connection,
     ticket,
     confirmed,
     setConfirmed,
@@ -194,9 +182,9 @@ export function useWorkspaceSetup({
     retryDefaults: defaults.refetch,
   };
 }
-function stepError(step: number, input: WorkspaceInput, verified: boolean, syncDirty: boolean) {
+function stepError(step: number, input: WorkspaceInput, syncDirty: boolean) {
   if (step === 0 && (!input.name.trim() || !input.localDir)) return '请填写名称并选择本地目录';
-  if (step === 1 && !verified) return '请先测试当前服务器的认证与连接';
+  if (step === 1 && !input.sshHost) return '请选择已保存的服务器';
   if (step === 2 && !WorkspaceSetupInputSchema.shape.remoteDir.safeParse(input.remoteDir).success)
     return '服务器目录须以 / 或 ~/ 开头';
   if (step === 3 && syncDirty) return '请先应用修改后的同步规则';

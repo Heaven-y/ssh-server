@@ -18,7 +18,6 @@ export function useRemoteDirectory(workspace: Workspace, active: boolean) {
     workspaceId: workspace.id,
     target: {
       sshHost: workspace.sshHost,
-      authMode: workspace.authMode,
       remoteDir: workspace.remoteDir,
       localDir: workspace.localDir,
     } satisfies RemoteBrowseTarget,

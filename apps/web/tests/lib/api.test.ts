@@ -80,9 +80,9 @@ describe('api', () => {
     expect(JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string)).toMatchObject({ confirmed: true });
   });
 
-  it('401 提示打开访问地址；无 JSON 的错误给出状态码', async () => {
+  it('401 提示刷新本机会话；无 JSON 的错误给出状态码', async () => {
     respond(401);
-    await expect(api.listSshHosts()).rejects.toThrow('访问地址');
+    await expect(api.listSshHosts()).rejects.toThrow('刷新页面');
     respond(500);
     await expect(api.listSshHosts()).rejects.toThrow('请求失败（500）');
   });
@@ -134,8 +134,6 @@ describe('api', () => {
     respond(200, { connected: true, authMode: 'password', saved: true, savingAvailable: true, paused: false });
     await api.connectSsh({
       sshHost: 'my-server',
-      remoteDir: '~/projects/demo',
-      authMode: 'password',
       password: 'fixture-secret',
       savePassword: true,
     });
@@ -145,8 +143,6 @@ describe('api', () => {
         method: 'POST',
         body: JSON.stringify({
           sshHost: 'my-server',
-          authMode: 'password',
-          remoteDir: '~/projects/demo',
           password: 'fixture-secret',
           savePassword: true,
         }),
@@ -181,8 +177,6 @@ describe('api', () => {
       localDir,
       sshHost: 'h',
       remoteDir: '~',
-      password: 'never-save',
-      savePassword: true,
       sync: { maxFileBytes: 100, excludedExtensions: [] },
     };
     await api.createVerifiedWorkspace({
@@ -198,5 +192,13 @@ describe('api', () => {
       verification: '11111111-1111-4111-8111-111111111111',
       initializationConfirmed: true,
     });
+    const legacy = { ...input, authMode: 'password' };
+    expect(() =>
+      api.createVerifiedWorkspace({
+        input: legacy,
+        verification: '11111111-1111-4111-8111-111111111111',
+        initializationConfirmed: true,
+      }),
+    ).toThrow();
   });
 });

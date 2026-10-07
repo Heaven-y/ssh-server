@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { SshAuthModeSchema, WorkspaceSetupCreateSchema, WorkspaceSetupInputSchema } from '@ssh-server/shared';
+import { WorkspaceSetupCreateSchema, WorkspaceSetupInputSchema } from '@ssh-server/shared';
 import { WorkspaceSetupError } from '../workspaces/setup/errors';
 import { SshConnectionError } from '../ssh/connection';
 import { RemoteFilesError } from '../remote-files/errors';
@@ -14,7 +14,6 @@ const DirectorySchema = z
 const TargetSchema = z
   .object({
     sshHost: z.string().min(1).max(200),
-    authMode: SshAuthModeSchema.optional(),
     remoteDir: WorkspaceSetupInputSchema.shape.remoteDir.optional(),
   })
   .strict();
