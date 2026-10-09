@@ -7,7 +7,7 @@ import { CLAUDE_CONTROL_TIMEOUT_MS, type QueryFn } from '../../src/agents/claude
 
 const directory = path.join(os.tmpdir(), 'ssh-server-fixture', 'capabilities');
 const fixture = { name: 'fixture', description: '项目技能', argumentHint: '<任务>' };
-function discovery(readCommands: () => Promise<SlashCommand[]>) {
+function discovery(readCommands: () => Promise<SlashCommand[]>, models?: ModelInfo[]) {
   const calls: Array<Parameters<QueryFn>[0]> = [];
   const close = vi.fn();
   const queryFn: QueryFn = (input) => {
@@ -16,14 +16,15 @@ function discovery(readCommands: () => Promise<SlashCommand[]>) {
       interrupt: async () => undefined,
       close,
       supportedCommands: readCommands,
-      supportedModels: async (): Promise<ModelInfo[]> => [
-        {
-          value: 'native-suggestion',
-          displayName: '原生建议',
-          description: '仅建议',
-          supportedEffortLevels: ['low', 'high'],
-        },
-      ],
+      supportedModels: async (): Promise<ModelInfo[]> =>
+        models ?? [
+          {
+            value: 'native-suggestion',
+            displayName: '原生建议',
+            description: '仅建议',
+            supportedEffortLevels: ['low', 'high'],
+          },
+        ],
       getContextUsage: async () => {
         throw new Error('能力发现不应读取上下文');
       },
@@ -113,4 +114,41 @@ describe('Claude 原生能力发现', () => {
     });
     await expect(discover(directory)).rejects.toThrow('初始化失败');
   });
+});
+
+it('原生明确不支持effort时不提供档位，不把缺失元数据猜成支持', async () => {
+  const fake = discovery(
+    async () => [],
+    [
+      {
+        value: 'disabled',
+        displayName: '禁用',
+        description: '',
+        supportsEffort: false,
+        supportedEffortLevels: ['high'],
+      },
+      { value: 'unknown', displayName: '未知', description: '' },
+    ],
+  );
+  const catalog = await fake.discover(directory);
+  expect(catalog.models.find((model) => model.id === 'disabled')?.reasoningEfforts).toEqual([]);
+  expect(catalog.models.find((model) => model.id === 'unknown')?.reasoningEfforts).toBeUndefined();
+});
+
+it('已存在网页等价操作的命令指向具体入口，未接入不冒称原生不支持', async () => {
+  const fake = discovery(async () =>
+    ['model', 'config', 'clear', 'custom-command'].map((name) => ({
+      name,
+      description: '原生命令',
+      argumentHint: '',
+      builtin: true,
+    })),
+  );
+  const catalog = await fake.discover(directory);
+  const reason = (name: string) => catalog.entries.find((entry) => entry.name === name)?.unavailableReason;
+  expect(reason('model')).toMatch(/模型选项/);
+  expect(reason('config')).toMatch(/设置/);
+  expect(reason('clear')).toMatch(/新会话/);
+  expect(reason('custom-command')).toMatch(/尚未接入/);
+  expect(reason('custom-command')).not.toMatch(/请使用.*CLI/);
 });

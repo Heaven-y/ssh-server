@@ -1,10 +1,9 @@
 import { lazy, Suspense, useId, useState } from 'react';
-import { CircleAlert, FileCode2, FileDiff, RefreshCw, Save, Server, X } from 'lucide-react';
+import { FileCode2, FileDiff, Save, Server, X } from 'lucide-react';
 import type { Workspace } from '@ssh-server/shared';
-import { CodeEditor, type CodeFormat } from '../../ui/CodeEditor';
+import { FileEditorContent } from './FileEditorContent';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { FileDirectory } from './FileDirectory';
-import { FilePanelFrame } from './FilePanelFrame';
 import { useFileEditor } from './use-file-editor';
 import { RemoteFilesPanel } from '../remote-files/RemoteFilesPanel';
 import { DisconnectedEditors } from './DisconnectedEditors';
@@ -13,27 +12,6 @@ import type { ChangesRequest } from '../changes/types';
 
 const ChangesPanel = lazy(() => import('../changes/ChangesPanel'));
 type FileView = 'local' | 'remote' | 'changes';
-
-const FORMATS: Record<string, CodeFormat> = {
-  py: 'python',
-  js: 'javascript',
-  jsx: 'javascript',
-  mjs: 'javascript',
-  cjs: 'javascript',
-  ts: 'typescript',
-  tsx: 'typescript',
-  sh: 'shell',
-  bash: 'shell',
-  slurm: 'shell',
-  json: 'json',
-  toml: 'toml',
-  yaml: 'yaml',
-  yml: 'yaml',
-  md: 'markdown',
-};
-function formatOf(file: string): CodeFormat {
-  return FORMATS[file.split('.').at(-1)?.toLowerCase() ?? ''] ?? 'text';
-}
 
 function useFileView(workspace: Workspace, changesRequest?: ChangesRequest) {
   const conversationVersion = useChat((state) => state.conversationVersion);
@@ -61,11 +39,13 @@ function ChangesArea({
   workspace,
   fileView,
   dirty,
+  active,
 }: {
   id: string;
   workspace: Workspace;
   fileView: ReturnType<typeof useFileView>;
   dirty: boolean;
+  active: boolean;
 }) {
   return (
     <div
@@ -84,7 +64,7 @@ function ChangesArea({
           <ChangesPanel
             key={fileView.conversationVersion}
             workspace={workspace}
-            active={fileView.view === 'changes'}
+            active={active && fileView.view === 'changes'}
             request={fileView.request}
             dirty={dirty}
           />
@@ -99,33 +79,37 @@ export default function FilesPanel({
   workspace: initialWorkspace,
   onClose,
   changesRequest,
+  active,
 }: {
   workspace: Workspace;
   onClose(): void;
   changesRequest?: ChangesRequest;
+  active: boolean;
 }) {
   const id = useId();
   const [workspace] = useState(initialWorkspace);
   const fileView = useFileView(workspace, changesRequest);
   const { view, setView } = fileView;
-  const editor = useFileEditor(workspace.id);
+  const editor = useFileEditor(workspace.id, active && view === 'local');
   const editingDisabled = !!editor.busy || !!editor.protection;
   const [pathInput, setPathInput] = useState('');
   const close = () => {
     if (editor.canClose()) onClose();
   };
   return (
-    <FilePanelFrame close={close}>
-      <header className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3">
-        <FileCode2 aria-hidden className="size-4" />
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold">文件</h2>
-          <p className="truncate text-xs text-muted-foreground">工作区：{workspace.name}</p>
-        </div>
+    <section
+      aria-label="工作区文件"
+      hidden={!active}
+      inert={!active}
+      className={active ? 'flex h-full min-h-0 flex-1 flex-col' : 'hidden'}
+    >
+      <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">
+        <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">工作区：{workspace.name}</p>
         <button
           type="button"
           className={buttonClass('ghost')}
           aria-label="关闭文件面板"
+          title="关闭文件并释放编辑登记"
           disabled={!!editor.busy}
           onClick={close}
         >
@@ -142,6 +126,7 @@ export default function FilesPanel({
         <FileDirectory
           workspaceId={workspace.id}
           disabled={editingDisabled}
+          active={active && view === 'local'}
           openFile={(relative) => {
             void editor.open(relative);
           }}
@@ -168,53 +153,7 @@ export default function FilesPanel({
             打开
           </button>
         </form>
-        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-          {editor.file ? (
-            <>
-              <div className="flex shrink-0 items-center gap-2 px-3 py-2">
-                <span className="min-w-0 flex-1 truncate font-mono text-xs" title={editor.file.path}>
-                  {editor.file.path}
-                </span>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {editor.dirty ? '未保存' : '已读取'} · {formatOf(editor.file.path)}
-                </span>
-                <button
-                  type="button"
-                  className={buttonClass('ghost')}
-                  disabled={editingDisabled}
-                  aria-label="重新读取文件"
-                  onClick={() => {
-                    void editor.open(editor.file!.path);
-                  }}
-                >
-                  <RefreshCw aria-hidden className="size-4" />
-                </button>
-              </div>
-              {editor.external && (
-                <p role="alert" className="flex gap-2 border-y border-border p-3 text-xs text-destructive-foreground">
-                  <CircleAlert aria-hidden className="size-4 shrink-0" />
-                  {editor.external}
-                </p>
-              )}
-              <div className="min-h-56 flex-1">
-                <CodeEditor
-                  key={editor.file.path}
-                  value={editor.content}
-                  format={formatOf(editor.file.path)}
-                  label="项目文件内容"
-                  height="100%"
-                  disabled={editingDisabled}
-                  lineSeparator={editor.file.content.includes('\r\n') ? '\r\n' : '\n'}
-                  onChange={editor.edit}
-                />
-              </div>
-            </>
-          ) : (
-            <p className="m-auto max-w-xs p-6 text-sm leading-6 text-muted-foreground">
-              选择本地脚本或配置文件开始编辑。文件列表沿用同步范围，编辑仅支持不超过 2 MiB 的 UTF-8 文本。
-            </p>
-          )}
-        </div>
+        <FileEditorContent editor={editor} disabled={editingDisabled} />
         <EditorFooter editor={editor} />
       </section>
       <div
@@ -222,11 +161,11 @@ export default function FilesPanel({
         hidden={view !== 'remote'}
         className={view === 'remote' ? 'flex min-h-0 min-w-0 flex-1 flex-col' : 'hidden'}
       >
-        <RemoteFilesPanel workspace={workspace} active={view === 'remote'} />
+        <RemoteFilesPanel workspace={workspace} active={active && view === 'remote'} />
       </div>
-      <ChangesArea id={id} workspace={workspace} fileView={fileView} dirty={editor.dirty} />
-      <DisconnectedEditors workspaceId={workspace.id} />
-    </FilePanelFrame>
+      <ChangesArea id={id} workspace={workspace} fileView={fileView} dirty={editor.dirty} active={active} />
+      <DisconnectedEditors workspaceId={workspace.id} active={active} />
+    </section>
   );
 }
 

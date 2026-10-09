@@ -1,11 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { workspaceTerminalTarget, terminalTargetKey, type Workspace } from '@ssh-server/shared';
+import type { Workspace } from '@ssh-server/shared';
 import { ChatView } from '../features/chat/ChatView';
 import { lastWorkspaceId, useChat } from '../features/chat/chat-store';
 import { SyncPanel, type SyncActions } from '../features/sync/SyncPanel';
 import { SshConnectionPanel } from '../features/ssh/SshConnectionPanel';
-import { ResourcesPanel, type ResourcesActions } from '../features/resources/ResourcesPanel';
 import { WorkspaceSidebar } from '../features/workspaces/WorkspaceSidebar';
 import { VersionsPanel, type VersionsActions } from '../features/versions/VersionsPanel';
 import { api, queryKeys } from '../lib/api';
@@ -13,15 +12,16 @@ import { TopBar } from './TopBar';
 import { WorkspaceArea } from './WorkspaceArea';
 import { useProductSettings } from '../features/settings/use-product-settings';
 import { useUiPreferences } from '../ui/ui-preferences';
-import { WorkspaceColumns, WorkspaceLayout } from './WorkspaceLayout';
+import { WorkspaceLayout } from './WorkspaceLayout';
 import { useCommandPalette } from './use-command-palette';
 import type { PaletteActions } from './CommandPalette';
 import type { ChangesRequest } from '../features/changes/types';
 import { ServerManagerDialog } from '../features/ssh/ServerManagerDialog';
 import { EnvironmentSummary } from '../features/settings/EnvironmentReport';
+import { WorkspacePanels } from './WorkspacePanels';
+import type { WorkspacePanelKind } from './floating-panel-geometry';
 
 const SettingsDialog = lazy(() => import('../features/settings/SettingsDialog'));
-const FilesPanel = lazy(() => import('../features/files/FilesPanel'));
 const CommandPalette = lazy(() => import('./CommandPalette'));
 function OpenPalette({
   opened,
@@ -57,9 +57,8 @@ function OpenPalette({
   );
 }
 
-/** 对话保持主区，文件面板按需打开；窄窗口以覆盖层承载编辑。 */
+/** 对话保持主区；资源和文件独立浮动，收起不关闭编辑或终端。 */
 export function App() {
-  const resources = useRef<ResourcesActions>(null);
   const sync = useRef<SyncActions>(null);
   const versions = useRef<VersionsActions>(null);
   const palette = useCommandPalette();
@@ -75,6 +74,9 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [serversOpen, setServersOpen] = useState(false);
   const [filesWorkspace, setFilesWorkspace] = useState<Workspace>();
+  const [resourcesOpen, setResourcesOpen] = useState(() => window.matchMedia('(min-width: 1280px)').matches);
+  const [filesOpen, setFilesOpen] = useState(false);
+  const [frontPanel, setFrontPanel] = useState<WorkspacePanelKind>('resources');
   const [changesRequest, setChangesRequest] = useState<ChangesRequest>();
   const [terminalLoaded, setTerminalLoaded] = useState(false);
   const [terminalVisible, setTerminalVisible] = useState(false);
@@ -83,6 +85,8 @@ export function App() {
   const workspaceId = useChat((s) => s.workspaceId);
   const selectWorkspace = useChat((s) => s.selectWorkspace);
   const current = workspaces.data?.find((w) => w.id === workspaceId);
+  const resourcesVisible = resourcesOpen && !!current;
+  const filesVisible = filesOpen && !!filesWorkspace;
   const workspaceRemoved = useCallback((id: string) => {
     setFilesWorkspace((opened) => (opened?.id === id ? undefined : opened));
     setChangesRequest((opened) => (opened?.workspaceId === id ? undefined : opened));
@@ -91,7 +95,11 @@ export function App() {
     setTerminalLoaded(true);
     setTerminalVisible(true);
   };
-  const openFiles = () => setFilesWorkspace((opened) => opened ?? current);
+  const openFiles = () => {
+    setFilesWorkspace((opened) => opened ?? current);
+    setFilesOpen(true);
+    setFrontPanel('files');
+  };
   const openChanges = (turnId: string) => {
     const conversation = useChat.getState();
     if (!current || conversation.workspaceId !== current.id) return;
@@ -107,6 +115,8 @@ export function App() {
       nonce: crypto.randomUUID(),
     });
     setFilesWorkspace((opened) => opened ?? current);
+    setFilesOpen(true);
+    setFrontPanel('files');
   };
 
   // 首次加载后恢复上次的工作区，否则选第一个
@@ -122,19 +132,15 @@ export function App() {
       <TopBar
         workspace={current}
         onOpenCommands={palette.open}
-        resources={
-          current && (
-            <ResourcesPanel
-              key={terminalTargetKey(workspaceTerminalTarget(current))}
-              workspace={current}
-              ref={resources}
-            />
-          )
-        }
+        resourcesOpen={resourcesVisible}
+        onOpenResources={() => {
+          setResourcesOpen((opened) => !opened);
+          setFrontPanel('resources');
+        }}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenServers={() => setServersOpen(true)}
-        filesOpen={!!filesWorkspace}
-        onOpenFiles={openFiles}
+        filesOpen={filesVisible}
+        onOpenFiles={() => (filesOpen && filesWorkspace ? setFilesOpen(false) : openFiles())}
         terminalOpen={terminalVisible}
         onOpenTerminal={openTerminal}
       />
@@ -160,7 +166,12 @@ export function App() {
           },
           sync: (id) => sync.current?.run(id) ?? false,
           versions: (id) => versions.current?.open(id) ?? false,
-          resources: (id) => resources.current?.open(id) ?? false,
+          resources: (id) => {
+            if (id !== current?.id) return false;
+            setResourcesOpen(true);
+            setFrontPanel('resources');
+            return true;
+          },
         }}
       />
       {settingsOpen && (
@@ -186,54 +197,45 @@ export function App() {
           terminalVisible={terminalVisible}
           onHideTerminal={hideTerminal}
         >
-          <WorkspaceColumns
-            opened={!!filesWorkspace}
-            files={
-              filesWorkspace && (
-                <Suspense
-                  fallback={
-                    <p role="status" className="p-4 text-sm">
-                      正在打开文件…
-                    </p>
-                  }
+          <main className="flex min-w-0 flex-1 flex-col">
+            {current ? (
+              <>
+                <div
+                  aria-label="工作区状态"
+                  className="flex min-h-11 shrink-0 flex-wrap items-center gap-1 border-b border-border/60 px-4"
                 >
-                  <FilesPanel
-                    workspace={filesWorkspace}
-                    changesRequest={changesRequest}
-                    onClose={() => {
-                      setFilesWorkspace(undefined);
-                      setChangesRequest(undefined);
-                    }}
+                  <SshConnectionPanel
+                    key={JSON.stringify([current.id, current.sshHost, current.remoteDir])}
+                    workspace={current}
                   />
-                </Suspense>
-              )
-            }
-          >
-            <main className="flex min-w-0 flex-1 flex-col">
-              {current ? (
-                <>
-                  <div
-                    aria-label="工作区状态"
-                    className="flex min-h-11 shrink-0 flex-wrap items-center gap-1 border-b border-border/60 px-4"
-                  >
-                    <SshConnectionPanel
-                      key={JSON.stringify([current.id, current.sshHost, current.remoteDir])}
-                      workspace={current}
-                    />
-                    <SyncPanel key={current.id} workspace={current} ref={sync} />
-                    <VersionsPanel key={current.id} workspace={current} ref={versions} />
-                  </div>
-                  <ChatView workspace={current} onOpenChanges={openChanges} />
-                </>
-              ) : (
-                <div className="m-auto max-w-sm text-center text-sm text-muted-foreground">
-                  {workspaces.isPending ? '正在加载工作区…' : '在左侧新建或选择一个工作区后开始对话。'}
+                  <SyncPanel key={`sync:${current.id}`} workspace={current} ref={sync} />
+                  <VersionsPanel key={`versions:${current.id}`} workspace={current} ref={versions} />
                 </div>
-              )}
-            </main>
-          </WorkspaceColumns>
+                <ChatView workspace={current} onOpenChanges={openChanges} />
+              </>
+            ) : (
+              <div className="m-auto max-w-sm text-center text-sm text-muted-foreground">
+                {workspaces.isPending ? '正在加载工作区…' : '在左侧新建或选择一个工作区后开始对话。'}
+              </div>
+            )}
+          </main>
         </WorkspaceArea>
       </WorkspaceLayout>
+      <WorkspacePanels
+        resourcesOpen={resourcesVisible}
+        filesOpen={filesVisible}
+        front={frontPanel}
+        workspace={current}
+        filesWorkspace={filesWorkspace}
+        changesRequest={changesRequest}
+        activate={setFrontPanel}
+        hide={(kind) => (kind === 'resources' ? setResourcesOpen(false) : setFilesOpen(false))}
+        closeFiles={() => {
+          setFilesOpen(false);
+          setFilesWorkspace(undefined);
+          setChangesRequest(undefined);
+        }}
+      />
     </div>
   );
 }

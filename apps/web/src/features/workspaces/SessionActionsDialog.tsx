@@ -14,6 +14,7 @@ type Props = {
   workspaceId: string;
   session: SessionSummary;
   archived: boolean;
+  action: Action;
   onClose(): void;
   onCompleted(action: Action): void;
 };
@@ -132,7 +133,24 @@ function SessionActionError({
   );
 }
 
-export function SessionActionsDialog({ workspaceId, session, archived, onClose, onCompleted }: Props) {
+function SessionActionForm({
+  action,
+  session,
+  archived,
+  submit,
+}: Pick<Props, 'action' | 'session' | 'archived'> & { submit: Submit }) {
+  switch (action) {
+    case 'rename':
+      return archived ? null : <RenameSession session={session} submit={submit} />;
+    case 'archive':
+    case 'unarchive':
+      return session.agent === 'codex' ? <ArchiveSession archived={action === 'unarchive'} submit={submit} /> : null;
+    case 'delete':
+      return <DeleteSession submit={submit} />;
+  }
+}
+
+export function SessionActionsDialog({ workspaceId, session, archived, action, onClose, onCompleted }: Props) {
   const key = sessionActionKey(workspaceId, session);
   const { description } = useSessionModel(workspaceId, session);
   const operation = useChat((state) => state.sessionOperations[key]);
@@ -159,7 +177,7 @@ export function SessionActionsDialog({ workspaceId, session, archived, onClose, 
     });
   };
   return (
-    <DetailDialog title="会话管理" busy={busy} onClose={onClose}>
+    <DetailDialog title={`${ACTION_LABELS[action]}会话`} busy={busy} onClose={onClose}>
       <div className="space-y-4">
         <div>
           <p className="text-sm font-medium wrap-anywhere">{session.summary || '无标题会话'}</p>
@@ -187,9 +205,7 @@ export function SessionActionsDialog({ workspaceId, session, archived, onClose, 
         )}
         <SessionActionError workspaceId={workspaceId} session={session} error={operation?.error} />
         <fieldset disabled={busy || running} className="min-w-0 space-y-5">
-          {!archived && <RenameSession session={session} submit={submit} />}
-          {session.agent === 'codex' && <ArchiveSession archived={archived} submit={submit} />}
-          <DeleteSession submit={submit} />
+          <SessionActionForm action={action} session={session} archived={archived} submit={submit} />
         </fieldset>
         <div className="flex justify-end border-t border-border pt-4">
           <button type="button" className={buttonClass('ghost')} disabled={busy} onClick={onClose}>

@@ -1,6 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ModelInfo } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentEvent, Workspace } from '@ssh-server/shared';
 import { PERMISSION_TIMEOUT_MS, runClaudeTurn, type QueryFn } from '../../src/agents/claude-adapter';
 
@@ -19,7 +20,7 @@ type CanUseTool = (
   o: { signal: AbortSignal },
 ) => Promise<{ behavior: string; message?: string }>;
 
-function fakeQuery(messages: unknown[] = [], fail?: Error) {
+function fakeQuery(messages: unknown[] = [], fail?: Error, models: ModelInfo[] | Error = []) {
   const state: { options?: Record<string, unknown>; prompt?: unknown; interrupted: boolean } = { interrupted: false };
   const queryFn: QueryFn = ({ prompt, options }) => {
     state.options = options;
@@ -33,7 +34,10 @@ function fakeQuery(messages: unknown[] = [], fail?: Error) {
     return Object.assign(gen(), {
       close: vi.fn(),
       supportedCommands: async () => [],
-      supportedModels: async () => [],
+      supportedModels: async () => {
+        if (models instanceof Error) throw models;
+        return models;
+      },
       getContextUsage: async () => {
         throw new Error('原生上下文暂不可用');
       },
@@ -93,6 +97,8 @@ describe('runClaudeTurn：调用参数', () => {
     expect('model' in o).toBe(false);
     expect('env' in o).toBe(false);
     expect('resume' in o).toBe(false);
+    expect(o).not.toHaveProperty('effort');
+    expect(o).not.toHaveProperty('thinking');
   });
 
   it('继续会话时传 resume，指定模型时传 model', async () => {
@@ -200,5 +206,66 @@ describe('runClaudeTurn：权限', () => {
     const p = fn('Bash', { command: 'ls' }, { signal });
     await vi.advanceTimersByTimeAsync(PERMISSION_TIMEOUT_MS);
     expect((await p).behavior).toBe('deny');
+  });
+});
+
+describe('Claude 推理强度', () => {
+  const models: ModelInfo[] = [
+    {
+      value: 'supported-model',
+      displayName: '支持模型',
+      description: '',
+      supportsEffort: true,
+      supportedEffortLevels: ['low', 'high'],
+    },
+    {
+      value: 'no-effort',
+      displayName: '不支持模型',
+      description: '',
+      supportsEffort: false,
+      supportedEffortLevels: ['high'],
+    },
+  ];
+  it('所选档位进入SDK effort且不改变thinking与权限，正常投递正文', async () => {
+    const fake = fakeQuery([], undefined, models);
+    await run(fake, { model: 'supported-model', reasoningEffort: 'high' }).handle.done;
+    expect(fake.state.options).toMatchObject({ model: 'supported-model', effort: 'high' });
+    expect(fake.state.options).not.toHaveProperty('thinking');
+    expect(fake.state.options).not.toHaveProperty('permissionMode');
+    expect(fake.state.prompt).toBe('你好');
+  });
+  it('SDK未知档位明确拒绝，不创建Query或丢弃参数后继续', () => {
+    const fake = fakeQuery([], undefined, models);
+    expect(() => run(fake, { model: 'supported-model', reasoningEffort: 'turbo' })).toThrow(/推理强度/);
+    expect(fake.state.options).toBeUndefined();
+  });
+  it.each([
+    { model: 'supported-model', reasoningEffort: 'max' },
+    { model: 'no-effort', reasoningEffort: 'high' },
+    { model: 'unknown-model', reasoningEffort: 'high' },
+    { reasoningEffort: 'high' },
+  ])('常用档位交给原生运行时，不以目录元数据阻止发送：%j', async (input) => {
+    const fake = fakeQuery([], undefined, models);
+    await run(fake, input).handle.done;
+    expect(fake.state.options).toMatchObject({ effort: input.reasoningEffort });
+    expect(fake.state.prompt).toBe('你好');
+  });
+
+  it.each(['low', 'medium', 'high', 'xhigh', 'max'])('默认模型支持直接传递%s，不要求读取模型目录', async (effort) => {
+    const fake = fakeQuery([], undefined, new Error('模型目录读取失败'));
+    await run(fake, { reasoningEffort: effort }).handle.done;
+    expect(fake.state.options).toMatchObject({ effort });
+    expect(fake.state.options).not.toHaveProperty('model');
+    expect(fake.state.prompt).toBe('你好');
+  });
+
+  it('原生拒绝强度时保留原始失败，不降级参数重试', async () => {
+    const fake = fakeQuery([], new Error('模型不支持 high'), new Error('模型目录读取失败'));
+    const { handle, events } = run(fake, { model: 'custom-model', reasoningEffort: 'high' });
+    await handle.done;
+    expect(fake.state.prompt).toBe('你好');
+    expect(fake.state.options).toMatchObject({ model: 'custom-model', effort: 'high' });
+    expect(events).toContainEqual({ type: 'error', message: '模型不支持 high' });
+    expect(events.at(-1)).toEqual({ type: 'turn_end', isError: true });
   });
 });

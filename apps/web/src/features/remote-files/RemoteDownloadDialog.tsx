@@ -64,7 +64,7 @@ export function RemoteDownloadDialog({
       await writable.close();
       writable = undefined;
       active.signal.throwIfAborted();
-      setMessage('下载流已写入并关闭。保存位置由你选择，未加入工作区同步或版本记录。');
+      setMessage('下载完成，已保存到所选位置。');
     } catch (reason) {
       active.abort();
       await writable?.abort().catch(() => undefined);
@@ -82,7 +82,7 @@ export function RemoteDownloadDialog({
           服务器：<span className="font-mono">{session.sshHost}</span>
         </p>
         <p className="break-all font-mono">{entry.path}</p>
-        <p>目录记录大小：{entry.size?.toLocaleString() ?? '未知'} 字节。开始下载时会重新核对文件。</p>
+        <p>文件大小：{entry.size?.toLocaleString() ?? '未知'} 字节（目录记录）</p>
         <p className="leading-5 text-muted-foreground">
           下载只保存所选普通文件，不递归下载目录；文件不会自动进入本地工作区、同步或 Git。
         </p>

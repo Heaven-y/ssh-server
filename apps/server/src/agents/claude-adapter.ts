@@ -7,6 +7,7 @@ import type { QueryFn } from './claude-query';
 import { runClaudeQuery } from './claude-turn';
 import { isInsideDir } from './edit-scope';
 import { buildInstructions } from './instructions';
+import { claudeEffort } from './claude-effort';
 
 export type { QueryFn } from './claude-query';
 export type ClaudeTurnInput = AgentTurnInput & { queryFn?: QueryFn };
@@ -57,6 +58,7 @@ function waitAnswer(pending: Promise<PermissionAnswer>, signal: AbortSignal): Pr
 
 export function runClaudeTurn(input: ClaudeTurnInput): TurnHandle {
   const { workspace } = input;
+  const effort = claudeEffort(input.reasoningEffort);
   const remoteTools = resolveRemoteToolsCommand();
   const abortController = new AbortController();
 
@@ -92,6 +94,7 @@ export function runClaudeTurn(input: ClaudeTurnInput): TurnHandle {
     abortController,
     ...(input.sessionId ? { resume: input.sessionId } : {}),
     ...(input.model ? { model: input.model } : {}),
+    ...(effort ? { effort } : {}),
   } as unknown as Options;
 
   return runClaudeQuery(input, options, abortController);

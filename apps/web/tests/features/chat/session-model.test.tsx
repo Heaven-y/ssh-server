@@ -36,31 +36,35 @@ function showList() {
     </QueryClientProvider>,
   );
 }
+async function openDetails(agent: string, title: string) {
+  fireEvent.click(screen.getByRole('button', { name: `${agent} 会话“${title}”的更多操作` }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: '重命名' }));
+}
 it('会话标题单行截断，列表不把来源、默认或显式模型当作实际模型，不逐条读取历史', () => {
   const read = vi.spyOn(api, 'sessionEvents');
   useChat.getState().setDefaults(ProductSettingsSchema.parse({ defaultModels: { claude: 'default-model' } }));
   useChat.getState().setModel('requested-model');
   showList();
-  expect(screen.getAllByText('模型未报告')).toHaveLength(2);
+  expect(screen.queryByText('模型未报告')).toBeNull();
   expect(screen.getByText(claude.summary).classList.contains('truncate')).toBe(true);
   expect(screen.getByText(claude.summary).classList.contains('line-clamp-2')).toBe(false);
   expect(screen.queryByText('requested-model')).toBeNull();
   expect(screen.queryByText('default-model')).toBeNull();
   expect(read).not.toHaveBeenCalled();
 });
-it('已加载历史模型立即进入所属来源的列表，切换及列表刷新后保留，管理详情可读完整模型', async () => {
+it('已加载历史模型保留于所属来源缓存，切换及刷新后仅在管理详情显示', async () => {
   const model = 'claude-sonnet-5-long-native-id';
   vi.spyOn(api, 'sessionEvents').mockResolvedValue({ session: claude, events: [], actualModel: model });
   showList();
   await act(() => useChat.getState().openSession(claude));
-  expect(screen.getByText(model)).toBeTruthy();
-  expect(screen.getAllByText('模型未报告')).toHaveLength(1);
+  expect(screen.queryByText(model)).toBeNull();
+  expect(screen.queryByText('模型未报告')).toBeNull();
   act(() => useChat.getState().newSession('codex'));
   act(() => {
     client.setQueryData(queryKeys.sessions('workspace', 'claude'), [{ ...claude }]);
   });
-  expect(screen.getByText(model)).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: `Claude 会话“${claude.summary}”的更多操作` }));
+  expect(screen.queryByText(model)).toBeNull();
+  await openDetails('Claude', claude.summary);
   expect(within(screen.getByRole('dialog')).getByText(model, { exact: false })).toBeTruthy();
   expect(within(screen.getByRole('dialog')).getByText(/运行来源：Claude/)).toBeTruthy();
 });
@@ -89,35 +93,42 @@ it('迟到默认不覆盖历史模型，空模型和迟到旧历史不污染另�
     resolve({ session: claude, events: [], actualModel: 'stale-model' });
     await old;
   });
-  expect(screen.getAllByText('模型未报告')).toHaveLength(2);
+  expect(screen.queryByText('模型未报告')).toBeNull();
   expect(screen.queryByText('stale-model')).toBeNull();
   expect(useChat.getState().modelOverrides.codex).toBe('');
   expect(useChat.getState().actualModel).toBeUndefined();
 });
-it('Codex 列表直接显示原生会话模型，同时明确不是逐轮执行报告', () => {
+it('Codex原生模型不占列表标题行，详情仍区分原生会话模型与执行报告', async () => {
   client.setQueryData(queryKeys.sessions('workspace', 'codex'), [{ ...codex, nativeModel: 'gpt-native-session' }]);
   const read = vi.spyOn(api, 'sessionEvents');
   showList();
-  expect(screen.getByText('gpt-native-session').getAttribute('title')).toContain('原生会话模型');
-  expect(screen.getByText('gpt-native-session').getAttribute('title')).toContain('非逐轮执行');
+  expect(screen.queryByText('gpt-native-session')).toBeNull();
+  await openDetails('Codex', codex.summary);
+  expect(
+    within(screen.getByRole('dialog')).getByText('原生会话模型：gpt-native-session（非逐轮执行报告）'),
+  ).toBeTruthy();
   expect(read).not.toHaveBeenCalled();
 });
-it('历史缓存 A 后列表刷新 B，已打开详情和列表同步采用 B；列表未提供时回退历史', async () => {
+it('历史缓存A后列表刷新B，已打开详情采用B；列表缺失时回退历史而标题行始终无模型标签', async () => {
   vi.spyOn(api, 'sessionEvents').mockResolvedValue({ session: { ...codex, nativeModel: 'model-A' }, events: [] });
   showList();
   await act(() => useChat.getState().openSession(codex));
-  expect(screen.getByText('model-A')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: `Codex 会话“${codex.summary}”的更多操作` }));
+  expect(screen.queryByText('model-A')).toBeNull();
+  await openDetails('Codex', codex.summary);
   expect(within(screen.getByRole('dialog')).getByText('原生会话模型：model-A（非逐轮执行报告）')).toBeTruthy();
   act(() => {
     client.setQueryData(queryKeys.sessions('workspace', 'codex'), [{ ...codex, nativeModel: 'model-B' }]);
   });
-  await waitFor(() => expect(screen.getByText('model-B')).toBeTruthy());
-  expect(within(screen.getByRole('dialog')).getByText('原生会话模型：model-B（非逐轮执行报告）')).toBeTruthy();
+  await waitFor(() =>
+    expect(within(screen.getByRole('dialog')).getByText('原生会话模型：model-B（非逐轮执行报告）')).toBeTruthy(),
+  );
+  expect(screen.queryByText('model-B')).toBeNull();
   expect(useChat.getState().actualModel).toBeUndefined();
   act(() => {
     client.setQueryData(queryKeys.sessions('workspace', 'codex'), [codex]);
   });
-  await waitFor(() => expect(screen.getByText('model-A')).toBeTruthy());
-  expect(within(screen.getByRole('dialog')).getByText('原生会话模型：model-A（非逐轮执行报告）')).toBeTruthy();
+  await waitFor(() =>
+    expect(within(screen.getByRole('dialog')).getByText('原生会话模型：model-A（非逐轮执行报告）')).toBeTruthy(),
+  );
+  expect(screen.queryByText('model-A')).toBeNull();
 });

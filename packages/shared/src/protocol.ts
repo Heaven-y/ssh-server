@@ -4,6 +4,8 @@ import { CapabilitySelectionSchema } from './capabilities';
 import type { AgentEvent } from './events';
 import type { TurnChangesRecord } from './turn-changes';
 
+const ClaudeEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
+
 // 前端 → 后端的 WebSocket 消息，后端用 schema 校验
 export const ClientMessageSchema = z.discriminatedUnion('type', [
   z
@@ -17,14 +19,24 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
       selection: CapabilitySelectionSchema.optional(),
       /** 不传表示跟随本地配置 */
       model: z.string().min(1).optional(),
-      /** Codex 原生推理强度；未指定时沿用本机配置。 */
+      /** 下轮推理强度；Claude 映射 SDK effort，实际支持由原生运行时决定；不传沿用原生配置。 */
       reasoningEffort: z.string().min(1).max(40).optional(),
       /** 前端生成，用于把 turn.started 与本次发送对应起来 */
       clientTurnId: z.string().min(1),
     })
     .refine((message) => message.text.trim().length > 0 || !!message.selection, {
       message: '请输入消息或选择技能与命令',
-    }),
+    })
+    .refine(
+      (message) =>
+        message.agent !== 'claude' ||
+        message.reasoningEffort === undefined ||
+        ClaudeEffortSchema.safeParse(message.reasoningEffort).success,
+      {
+        path: ['reasoningEffort'],
+        message: 'Claude 推理强度必须为 low、medium、high、xhigh 或 max',
+      },
+    ),
   z.object({
     type: z.literal('chat.interrupt'),
     turnId: z.string().min(1),

@@ -1,7 +1,7 @@
 import { Combobox, ComboboxItem, ComboboxPopover, useComboboxStore } from '@ariakit/react/combobox';
 import { useRef, useState } from 'react';
 import type { AgentCapability } from '@ssh-server/shared';
-import { capabilityRestriction } from './capability-selection';
+import { capabilityRestriction, isInvocableCapability } from './capability-selection';
 import { useChat } from './chat-store';
 import { matchesCapability, slashCompletion } from './slash-completion';
 import { useAgentCapabilities } from './use-agent-capabilities';
@@ -39,8 +39,8 @@ function Suggestion({ entry, select }: { entry: AgentCapability; select(): void 
   );
 }
 
-function SuggestionsFooter({ count, ready }: { count: number; ready: boolean }) {
-  if (!ready) return null;
+function SuggestionsFooter({ count, catalog }: { count: number; catalog: ReturnType<typeof useAgentCapabilities> }) {
+  if (!catalog.data || catalog.isError || catalog.isFetching || catalog.data.warnings.length) return null;
   if (!count) return <p className="px-3 py-2 text-sm text-muted-foreground">没有匹配的技能或命令。</p>;
   return count > MAX_SUGGESTIONS ? (
     <p className="px-3 py-2 text-xs text-muted-foreground">显示前 {MAX_SUGGESTIONS} 项，继续输入可缩小范围。</p>
@@ -59,7 +59,9 @@ function ScopedInput({ id, text, onChange, onSend, placeholder, busy }: InputPro
   const eligible = !busy && !selection && !!completion && !composing;
   const open = requested && eligible;
   const catalog = useAgentCapabilities(open);
-  const matches = (catalog.data?.entries ?? []).filter((entry) => matchesCapability(entry, completion?.query ?? ''));
+  const matches = (catalog.data?.entries ?? []).filter(
+    (entry) => isInvocableCapability(entry) && matchesCapability(entry, completion?.query ?? ''),
+  );
   const store = useComboboxStore({
     inputValue: text,
     setInputValue: onChange,
@@ -125,7 +127,7 @@ function ScopedInput({ id, text, onChange, onSend, placeholder, busy }: InputPro
           onSend();
         }}
         placeholder={placeholder}
-        className="max-h-60 min-h-16 w-full min-w-0 resize-none bg-transparent text-[15px] leading-7 text-foreground placeholder:text-muted-foreground focus-visible:outline-none [field-sizing:content]"
+        className="max-h-60 min-h-20 w-full min-w-0 resize-none bg-transparent px-1 text-base leading-7 text-foreground placeholder:text-muted-foreground focus-visible:outline-none [field-sizing:content]"
       />
       <ComboboxPopover
         store={store}
@@ -143,10 +145,15 @@ function ScopedInput({ id, text, onChange, onSend, placeholder, busy }: InputPro
             能力目录暂不可用，可按 Esc 关闭后继续输入。
           </p>
         )}
+        {catalog.data?.warnings.map((warning, index) => (
+          <p key={index} role="status" className="px-3 py-2 text-xs leading-5 text-warning">
+            {warning}
+          </p>
+        ))}
         {matches.slice(0, MAX_SUGGESTIONS).map((entry) => (
           <Suggestion key={entry.id} entry={entry} select={() => choose(entry)} />
         ))}
-        <SuggestionsFooter count={matches.length} ready={!!catalog.data} />
+        <SuggestionsFooter count={matches.length} catalog={catalog} />
       </ComboboxPopover>
     </>
   );

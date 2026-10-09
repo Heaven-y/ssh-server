@@ -5,8 +5,8 @@ import {
   type WorkspacePolicy,
   type CustomPolicyRule,
 } from '@ssh-server/shared';
-import type { Dispatch, SetStateAction } from 'react';
-import { Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import { ChevronDown, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { buttonClass, inputClass } from '../../ui/styles';
 
 export type PolicyFieldError = { path: string; message: string };
@@ -57,8 +57,48 @@ function RuleField({
   );
 }
 
+function PolicyRuleHelp() {
+  return (
+    <div className="space-y-3 rounded-md bg-muted/30 p-3 text-sm leading-6 text-muted-foreground">
+      <p>追加规则后，选择匹配方式并填写拒绝原因，保存生效。</p>
+      <dl className="space-y-2">
+        <div>
+          <dt className="font-medium text-foreground">程序名（program）</dt>
+          <dd>
+            填写 <code>scancel</code> 等程序基本名，不含路径或参数；拒绝原因可写“作业取消由我在终端确认”。
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium text-foreground">命令包含字符串（contains）</dt>
+          <dd>
+            填写 <code>--purge-cache</code>，可拦截包含该字面串的命令，如 cleanup-tool --purge-cache。
+          </dd>
+        </div>
+      </dl>
+      <p>
+        区分大小写，不支持正则或通配符。程序名按基本名比较，并处理已识别的包装命令；包含字符串是字面匹配，引号内的说明文字也可能命中并误拦。
+      </p>
+      <p>保存后用于后续检查，已通过检查的命令继续执行。</p>
+    </div>
+  );
+}
+
 export function WorkspacePolicyForm({ draft, setDraft, errors, prefix }: Props) {
   const custom = draft.customRules ?? [];
+  const [customOpen, setCustomOpen] = useState(false);
+  const customError = errors.find((error) => error.path.startsWith('customRules'))?.path;
+  const expanded = customOpen || !!customError;
+  useEffect(() => {
+    if (!customError) return;
+    // 等错误摘要完成焦点提示后，将焦点定位到已展开的具体字段。
+    const frame = requestAnimationFrame(() => {
+      // 用户修正最后一个错误后仍保持展开，避免输入中途失焦。
+      setCustomOpen(true);
+      const field = document.getElementById(`${prefix}-${customError}`);
+      (field ?? document.getElementById(`${prefix}-custom-fields`))?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [customError, prefix]);
   const update = (index: number, patch: Partial<CustomPolicyRule>) =>
     setDraft(
       (current) =>
@@ -85,9 +125,12 @@ export function WorkspacePolicyForm({ draft, setDraft, errors, prefix }: Props) 
             恢复默认规则
           </button>
         </div>
-        <p className="text-xs leading-5 text-muted-foreground">
-          勾选表示启用。恢复默认规则会重新启用全部默认项，保留自定义规则。
-        </p>
+        <p className="text-xs leading-5 text-muted-foreground">恢复默认规则会启用全部默认项，保留自定义规则。</p>
+        {(draft.disabledRules?.length ?? 0) > 0 && (
+          <p className="text-sm text-warning">
+            部分默认保护已关闭，相关误操作将不再由这些规则拦截；可随时恢复默认规则。
+          </p>
+        )}
         {DEFAULT_POLICY_RULE_IDS.map((ruleId) => (
           <label
             key={ruleId}
@@ -114,85 +157,104 @@ export function WorkspacePolicyForm({ draft, setDraft, errors, prefix }: Props) 
         ))}
       </section>
       <section aria-labelledby={`${prefix}-custom`} className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <h3 id={`${prefix}-custom`} className="font-medium">
-            自定义规则（{custom.length}/{MAX_CUSTOM_POLICY_RULES}）
-          </h3>
+        <h3 id={`${prefix}-custom`}>
           <button
             type="button"
-            className={buttonClass()}
-            disabled={custom.length >= MAX_CUSTOM_POLICY_RULES}
-            onClick={() =>
-              setDraft(
-                (current) =>
-                  current && {
-                    ...current,
-                    customRules: [
-                      ...(current.customRules ?? []),
-                      { id: `custom-${crypto.randomUUID()}`, kind: 'program', pattern: '', reason: '' },
-                    ],
-                  },
-              )
-            }
+            aria-expanded={expanded}
+            aria-controls={`${prefix}-custom-fields`}
+            disabled={!!customError}
+            onClick={() => setCustomOpen(!expanded)}
+            className="flex min-h-11 w-full items-center justify-between gap-3 rounded-md px-2 text-left font-medium hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-accent"
           >
-            <Plus aria-hidden className="size-4" />
-            追加规则
+            <span>
+              高级：自定义拦截
+              <span className="ml-2 text-sm font-normal text-muted-foreground">（可选 · {custom.length} 条）</span>
+            </span>
+            <ChevronDown aria-hidden className={`size-4 shrink-0 ${expanded ? 'rotate-180' : ''}`} />
           </button>
-        </div>
-        <p className="text-xs leading-5 text-muted-foreground">
-          区分大小写，不支持正则。程序名会忽略目录与包装命令；字符串可命中引号内文字和参数。
-        </p>
-        {custom.length === 0 && <p className="text-sm text-muted-foreground">尚无自定义规则。</p>}
-        {custom.map((rule, index) => (
-          <div key={rule.id} className="flex flex-col gap-3 rounded-lg border border-border p-4">
+        </h3>
+        <p className="text-xs leading-5 text-muted-foreground">需要额外限制时，可添加自定义规则。</p>
+        <div id={`${prefix}-custom-fields`} hidden={!expanded} tabIndex={-1}>
+          <div className="flex flex-col gap-3">
+            <PolicyRuleHelp />
             <div className="flex items-center justify-between gap-3">
-              <label className="flex min-w-0 flex-1 items-center gap-3 text-sm">
-                <span className="shrink-0 whitespace-nowrap">匹配方式</span>
-                <select
-                  aria-label={`规则${index + 1}匹配方式`}
-                  className={inputClass}
-                  value={rule.kind}
-                  onChange={(event) => update(index, { kind: event.target.value as CustomPolicyRule['kind'] })}
-                >
-                  <option value="program">程序名</option>
-                  <option value="contains">命令包含字符串</option>
-                </select>
-              </label>
+              <p className="text-sm text-muted-foreground">
+                自定义规则（{custom.length}/{MAX_CUSTOM_POLICY_RULES}）
+              </p>
               <button
                 type="button"
-                className={buttonClass('ghost')}
-                aria-label={`移除规则${index + 1}`}
+                className={buttonClass()}
+                disabled={custom.length >= MAX_CUSTOM_POLICY_RULES}
                 onClick={() =>
                   setDraft(
                     (current) =>
                       current && {
                         ...current,
-                        customRules: (current.customRules ?? []).filter((item) => item.id !== rule.id),
+                        customRules: [
+                          ...(current.customRules ?? []),
+                          { id: `custom-${crypto.randomUUID()}`, kind: 'program', pattern: '', reason: '' },
+                        ],
                       },
                   )
                 }
               >
-                <Trash2 aria-hidden className="size-4" />
+                <Plus aria-hidden className="size-4" />
+                追加规则
               </button>
             </div>
-            <RuleField
-              field="pattern"
-              index={index}
-              rule={rule}
-              prefix={prefix}
-              errors={errors}
-              update={(patch) => update(index, patch)}
-            />
-            <RuleField
-              field="reason"
-              index={index}
-              rule={rule}
-              prefix={prefix}
-              errors={errors}
-              update={(patch) => update(index, patch)}
-            />
+            {custom.length === 0 && <p className="text-sm text-muted-foreground">尚无自定义规则。</p>}
+            {custom.map((rule, index) => (
+              <div key={rule.id} className="flex flex-col gap-3 rounded-lg border border-border p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <label className="flex min-w-0 flex-1 items-center gap-3 text-sm">
+                    <span className="shrink-0 whitespace-nowrap">匹配方式</span>
+                    <select
+                      aria-label={`规则${index + 1}匹配方式`}
+                      className={inputClass}
+                      value={rule.kind}
+                      onChange={(event) => update(index, { kind: event.target.value as CustomPolicyRule['kind'] })}
+                    >
+                      <option value="program">程序名</option>
+                      <option value="contains">命令包含字符串</option>
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className={buttonClass('ghost')}
+                    aria-label={`移除规则${index + 1}`}
+                    onClick={() =>
+                      setDraft(
+                        (current) =>
+                          current && {
+                            ...current,
+                            customRules: (current.customRules ?? []).filter((item) => item.id !== rule.id),
+                          },
+                      )
+                    }
+                  >
+                    <Trash2 aria-hidden className="size-4" />
+                  </button>
+                </div>
+                <RuleField
+                  field="pattern"
+                  index={index}
+                  rule={rule}
+                  prefix={prefix}
+                  errors={errors}
+                  update={(patch) => update(index, patch)}
+                />
+                <RuleField
+                  field="reason"
+                  index={index}
+                  rule={rule}
+                  prefix={prefix}
+                  errors={errors}
+                  update={(patch) => update(index, patch)}
+                />
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
       </section>
     </div>
   );

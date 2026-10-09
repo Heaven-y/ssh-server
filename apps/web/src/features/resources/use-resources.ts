@@ -11,8 +11,9 @@ import {
 import { api, ApiError } from '../../lib/api';
 import { useProductSettings } from '../settings/use-product-settings';
 import { useChat } from '../chat/chat-store';
+import { useServerObservationVersion } from './use-server-observation';
 
-function usePageVisible(intervalMs: number) {
+function usePageVisible(intervalMs: number, enabled: boolean) {
   const [visible, setVisible] = useState(() => document.visibilityState === 'visible');
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -24,29 +25,31 @@ function usePageVisible(intervalMs: number) {
     return () => document.removeEventListener('visibilitychange', change);
   }, []);
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || !enabled) return;
     const timer = setInterval(() => setNow(Date.now()), intervalMs);
     return () => clearInterval(timer);
-  }, [visible, intervalMs]);
+  }, [visible, intervalMs, enabled]);
   return { visible, now };
 }
 
-/** 概览和详情只持有一个查询；禁用时取消在途网页请求，停止后续检查。 */
-export function useResources(workspace: Workspace) {
+/** 资源面板只持有一个查询；自身隐藏时取消在途请求，停止采样与时钟刷新。 */
+export function useResources(workspace: Workspace, panelVisible: boolean) {
   const settings = useProductSettings();
   const connection = useChat((state) => state.connection);
   const client = useQueryClient();
   const timing = settings.data ? resourceTiming(settings.data.settings.resources) : RESOURCE_LIMITS;
   const target = workspaceTerminalTarget(workspace);
   const targetKey = terminalTargetKey(target);
-  const { visible, now } = usePageVisible(timing.intervalMs);
-  const active = visible && connection === 'open' && settings.isSuccess;
+  const version = useServerObservationVersion(workspace.sshHost);
+  const { visible, now } = usePageVisible(timing.intervalMs, panelVisible);
+  const canRead = panelVisible && visible && connection === 'open';
+  const active = canRead && settings.isSuccess;
   const query = useQuery({
-    queryKey: ['resources', workspace.id, targetKey],
+    queryKey: ['resources', workspace.id, targetKey, version],
     queryFn: ({ signal }) => api.readResources(target, signal),
     enabled: active,
     staleTime: 0,
-    gcTime: RESOURCE_LIMITS.idleMs,
+    gcTime: 0,
     retry: false,
     refetchInterval: (state) => {
       if (!active) return false;
@@ -58,16 +61,16 @@ export function useResources(workspace: Workspace) {
     refetchIntervalInBackground: false,
   });
   useEffect(() => {
-    if (!active) void client.cancelQueries({ queryKey: ['resources', workspace.id, targetKey], exact: true });
-  }, [active, client, workspace.id, targetKey]);
-  const pauseReason = !visible
-    ? '页面隐藏，已暂停'
-    : connection !== 'open'
-      ? '网页断线，已暂停'
-      : !settings.isSuccess
-        ? '产品设置未就绪，已暂停'
-        : undefined;
-  return { query, target, visible, now, timing, settings, active, pauseReason };
+    if (!active) void client.cancelQueries({ queryKey: ['resources', workspace.id, targetKey, version], exact: true });
+  }, [active, client, workspace.id, targetKey, version]);
+  const pauseReason = resourcePauseReason(panelVisible, visible, connection === 'open', settings.isSuccess);
+  return { query, target, visible, now, timing, settings, active, canRead, pauseReason };
+}
+function resourcePauseReason(panel: boolean, page: boolean, connected: boolean, ready: boolean) {
+  if (!panel) return '资源已隐藏，已暂停';
+  if (!page) return '页面隐藏，已暂停';
+  if (!connected) return '网页断线，已暂停';
+  return ready ? undefined : '产品设置未就绪，已暂停';
 }
 export type ResourcesController = ReturnType<typeof useResources>;
 export function readingState(

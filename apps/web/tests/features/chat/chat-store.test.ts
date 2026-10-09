@@ -73,7 +73,7 @@ beforeEach(() => {
     workspaceId: undefined,
     connection: 'open',
     modelOverrides: { claude: '', codex: '' },
-    reasoningEffort: '',
+    reasoningEfforts: { claude: '', codex: '' },
     sessionOperations: {},
     sessionModels: {},
     defaults: { defaultAgent: 'claude', defaultModels: { claude: '', codex: '' } },
@@ -368,13 +368,13 @@ describe('原生能力状态', () => {
     expect(useChat.getState()).toMatchObject({ contextUsage: undefined, compaction: undefined });
   });
 
-  it('历史保留原生压缩边界，不把候选或实际模型写成模型与推理覆盖', async () => {
+  it('历史保留原生压缩边界，不从候选或执行报告推导模型与强度', async () => {
     useChat.getState().newSession('codex');
     queryClient.setQueryData(queryKeys.agentCapabilities('w1', 'codex'), {
       agent: 'codex',
       entries: [],
       warnings: [],
-      models: [{ id: 'catalog-model', label: '候选', reasoningEfforts: ['high'] }],
+      models: [{ id: 'catalog-model', label: '候选', reasoningEfforts: ['low'] }],
     });
     vi.spyOn(api, 'sessionEvents').mockResolvedValue({
       ...history('codex', '原生历史'),
@@ -388,7 +388,7 @@ describe('原生能力状态', () => {
     ]);
     expect(useChat.getState().contextUsage).toBeUndefined();
     expect(useChat.getState().send('继续')).toBe(true);
-    expect(sent[0]).toMatchObject({ agent: 'codex', model: undefined, reasoningEffort: undefined });
+    expect(sent[0]).toMatchObject({ agent: 'codex', model: undefined, reasoningEffort: 'high' });
     expect(useChat.getState().compaction).toMatchObject({ status: 'completed' });
     queryClient.removeQueries({ queryKey: queryKeys.agentCapabilities('w1', 'codex') });
   });
@@ -584,7 +584,7 @@ describe('chat-store', () => {
     expect(sent.at(-1)).toMatchObject({
       agent: 'claude',
       model: undefined,
-      reasoningEffort: undefined,
+      reasoningEffort: 'high',
       sessionId: undefined,
     });
   });
@@ -648,4 +648,36 @@ describe('chat-store', () => {
     expect(sent.at(-1)).toEqual({ type: 'chat.interrupt', turnId: 'old-turn' });
     expect(useChat.getState()).toMatchObject({ agent: 'claude', running: false, turnId: undefined });
   });
+});
+
+it('Claude与Codex推理强度隔离，切回恢复选择且发送真实字段', () => {
+  useChat.getState().setModel('claude-supported');
+  useChat.getState().setReasoningEffort('high');
+  useChat.getState().setAgent('codex');
+  useChat.getState().setReasoningEffort('low');
+  useChat.getState().setAgent('claude');
+  expect(useChat.getState().send('Claude正文')).toBe(true);
+  expect(sent.at(-1)).toMatchObject({ agent: 'claude', model: 'claude-supported', reasoningEffort: 'high' });
+  useChat.setState({ running: false, pendingClientTurnId: undefined });
+  useChat.getState().setAgent('codex');
+  expect(useChat.getState().send('Codex正文')).toBe(true);
+  expect(sent.at(-1)).toMatchObject({ agent: 'codex', reasoningEffort: 'low' });
+});
+
+it.each(['claude', 'codex'] as const)('初始页面的%s消息默认发送high，不猜模型', (agent) => {
+  useChat.setState({ ...useChat.getInitialState(), workspaceId: 'w1', connection: 'open' }, true);
+  useChat.getState().setAgent(agent);
+  expect(useChat.getState().send('使用默认强度')).toBe(true);
+  expect(sent.at(-1)).toMatchObject({ agent, model: undefined, reasoningEffort: 'high' });
+});
+
+it.each(['claude', 'codex'] as const)('新建%s会话恢复high，也允许明确选择原生自动强度', (agent) => {
+  useChat.getState().setReasoningEffort('low');
+  useChat.getState().newSession(agent);
+  expect(useChat.getState().send('新会话默认')).toBe(true);
+  expect(sent.at(-1)).toMatchObject({ agent, reasoningEffort: 'high' });
+  useChat.getState().newSession(agent);
+  useChat.getState().setReasoningEffort('');
+  expect(useChat.getState().send('使用原生自动强度')).toBe(true);
+  expect(sent.at(-1)).toMatchObject({ agent, reasoningEffort: undefined });
 });

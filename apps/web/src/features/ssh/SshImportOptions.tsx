@@ -11,9 +11,7 @@ export function SshImportOptions({ select }: { select(input: ManualServerInput):
   });
   return (
     <section aria-label="SSH 配置导入" className="space-y-3">
-      <p className="text-sm leading-6">
-        从本机 ~/.ssh/config 填入表单。核对后明确保存才会成为可选服务器；不会修改 SSH 配置。
-      </p>
+      <p className="text-sm leading-6">从本机 ~/.ssh/config 填入表单，核对后保存。</p>
       {options.isPending && <p role="status">正在读取 SSH 配置…</p>}
       {options.error && <p role="alert">{options.error.message}</p>}
       {options.data?.length === 0 && <p>未找到 SSH Host，可手动新增服务器。</p>}

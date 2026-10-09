@@ -1,6 +1,5 @@
-import { SendHorizontal, Square } from 'lucide-react';
+import { ArrowUp, Square } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
-import { buttonClass } from '../../ui/styles';
 import { managementPending, useChat } from './chat-store';
 import { CapabilityPicker } from './CapabilityPicker';
 import { selectionRestriction } from './capability-selection';
@@ -18,7 +17,7 @@ function ComposerActions({ disabled }: { disabled: boolean }) {
   const interrupt = useChat((s) => s.interrupt);
   const hint = loading ? '正在读取历史，请稍候…' : managing ? '正在管理当前会话，请稍候…' : undefined;
   return (
-    <div className="ml-auto flex shrink-0 items-center gap-2">
+    <div className="flex shrink-0 items-center gap-2">
       {hint && (
         <p role="status" className="max-w-36 text-xs leading-5 text-muted-foreground">
           {hint}
@@ -27,17 +26,24 @@ function ComposerActions({ disabled }: { disabled: boolean }) {
       {running ? (
         <button
           type="button"
-          className={`${buttonClass('danger')} shrink-0 whitespace-nowrap`}
+          aria-label={stopping ? '正在停止' : '停止'}
+          title={stopping ? '正在停止…' : '停止'}
+          className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-colors hover:bg-foreground/80 disabled:cursor-not-allowed disabled:opacity-45"
           disabled={stopping}
           onClick={interrupt}
         >
           <Square aria-hidden className="size-4" />
-          {stopping ? '正在停止…' : '停止'}
+          <span className="sr-only">{stopping ? '正在停止…' : '停止'}</span>
         </button>
       ) : (
-        <button type="submit" className={`${buttonClass('primary')} shrink-0 whitespace-nowrap`} disabled={disabled}>
-          <SendHorizontal aria-hidden className="size-4" />
-          发送
+        <button
+          type="submit"
+          aria-label="发送"
+          title="发送"
+          className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-colors hover:bg-foreground/80 disabled:cursor-not-allowed disabled:opacity-35"
+          disabled={disabled}
+        >
+          <ArrowUp aria-hidden className="size-5" />
         </button>
       )}
     </div>
@@ -86,7 +92,7 @@ export function Composer() {
   return (
     <form onSubmit={submit} className="shrink-0 space-y-2 px-4 pt-2 pb-4 sm:px-6">
       <ContextStatus />
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 rounded-xl border border-border-strong bg-card p-3 transition-colors focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20 sm:p-4">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 rounded-[28px] border border-border-strong bg-card p-3 shadow-sm transition-colors focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/15 sm:p-4">
         <PendingFeedback />
         <label htmlFor={id} className="sr-only">
           输入消息
@@ -103,14 +109,12 @@ export function Composer() {
           placeholder={placeholder(connected, selection?.argumentHint)}
         />
         {restriction && <p className="text-xs leading-5 text-warning">{restriction}</p>}
-        <div
-          role="group"
-          aria-label="消息选项"
-          className="flex flex-wrap items-center gap-2 border-t border-border/70 pt-2"
-        >
-          <AgentControls disabled={busy} />
+        <div role="group" aria-label="消息选项" className="flex flex-wrap items-center gap-2">
           <CapabilityPicker disabled={busy} />
-          <ComposerActions disabled={blocked} />
+          <div className="ml-auto flex min-w-0 items-center justify-end gap-1">
+            <AgentControls disabled={busy} />
+            <ComposerActions disabled={blocked} />
+          </div>
         </div>
       </div>
     </form>

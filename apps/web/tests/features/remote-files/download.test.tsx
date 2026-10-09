@@ -91,9 +91,9 @@ describe('服务器文件下载的唯一保存路径', () => {
     expect(writable.write).toHaveBeenCalledOnce();
     expect(Array.from(writable.write.mock.calls[0]![0])).toEqual([1, 2, 3]);
     expect(screen.getByRole('status').textContent).toContain('3 字节');
-    expect(screen.queryByText(/下载流已写入并关闭/)).toBeNull();
+    expect(screen.queryByText(/下载完成/)).toBeNull();
     await act(async () => finish());
-    expect((await screen.findByRole('status')).textContent).toContain('下载流已写入并关闭');
+    expect((await screen.findByRole('status')).textContent).toContain('下载完成，已保存到所选位置。');
     expect(writable.abort).not.toHaveBeenCalled();
   });
 
