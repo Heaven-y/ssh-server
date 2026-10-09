@@ -65,7 +65,7 @@ it('从同步入口可直接发现当前工作区规则，修改只写当前工�
   fireEvent.click(screen.getByRole('button', { name: '文件同步详情' }));
   const form = await screen.findByRole('form', { name: '当前工作区同步规则' });
   expect(form.closest('details')?.open).toBe(true);
-  expect(screen.getByText(/仅影响当前工作区/)).toBeTruthy();
+  expect(screen.getByText(/仅用于当前工作区.*全局默认值仅复制到新工作区/)).toBeTruthy();
   expect(screen.getByLabelText<HTMLInputElement>('单文件上限（MiB）').value).toBe('3');
   await client.invalidateQueries({ queryKey: queryKeys.productSettings });
   expect(screen.getByLabelText<HTMLInputElement>('单文件上限（MiB）').value).toBe('3');

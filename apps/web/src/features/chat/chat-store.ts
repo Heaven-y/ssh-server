@@ -26,6 +26,7 @@ import {
 } from '../changes/types';
 
 const LAST_WORKSPACE_KEY = 'ssh-server.lastWorkspace';
+const DEFAULT_REASONING_EFFORTS: Record<AgentKind, string> = { claude: 'high', codex: 'high' };
 export type SessionOperation = { action: SessionActionInput['action']; pending: boolean; error?: string };
 export const sessionActionKey = (workspaceId: string, session: SessionRef): string =>
   JSON.stringify([workspaceId, session.agent, session.sessionId]);
@@ -38,7 +39,7 @@ type ChatState = {
   modelSources: Record<AgentKind, 'default' | 'explicit'>;
   defaults: Pick<ProductSettings, 'defaultAgent' | 'defaultModels'>;
   initialDefaultsEligible: boolean;
-  reasoningEffort: string;
+  reasoningEfforts: Record<AgentKind, string>;
   actualModel?: string;
   /** 仅保存本页已读取/运行的原生模型元数据，不从默认或显式选择推导。 */
   sessionModels: Record<string, { actualModel?: string; nativeModel?: string }>;
@@ -146,7 +147,7 @@ function newDefaults(current: ChatState) {
     agent: current.defaults.defaultAgent,
     modelOverrides: { ...current.defaults.defaultModels },
     modelSources: { claude: 'default', codex: 'default' } as const,
-    reasoningEffort: '',
+    reasoningEfforts: { ...DEFAULT_REASONING_EFFORTS },
   };
 }
 function historicalModels(current: ChatState) {
@@ -181,7 +182,7 @@ export const useChat = create<ChatState>()((set, get) => ({
   modelSources: { claude: 'default', codex: 'default' },
   defaults: { defaultAgent: 'claude', defaultModels: { claude: '', codex: '' } },
   initialDefaultsEligible: true,
-  reasoningEffort: '',
+  reasoningEfforts: { ...DEFAULT_REASONING_EFFORTS },
   sessionOperations: {},
   sessionModels: {},
   ...emptyConversation,
@@ -283,7 +284,11 @@ export const useChat = create<ChatState>()((set, get) => ({
       modelSources: { ...current.modelSources, [current.agent]: 'explicit' },
       initialDefaultsEligible: false,
     })),
-  setReasoningEffort: (reasoningEffort) => set({ reasoningEffort, initialDefaultsEligible: false }),
+  setReasoningEffort: (reasoningEffort) =>
+    set((current) => ({
+      reasoningEfforts: { ...current.reasoningEfforts, [current.agent]: reasoningEffort },
+      initialDefaultsEligible: false,
+    })),
   selectCapability(capability) {
     const current = get();
     if (current.running || current.loadingHistory || managementPending(current)) return;
@@ -372,7 +377,7 @@ export const useChat = create<ChatState>()((set, get) => ({
       text: message,
       ...(current.selectedCapability ? { selection: { id: current.selectedCapability.id } } : {}),
       model: current.modelOverrides[current.agent].trim() || undefined,
-      reasoningEffort: current.agent === 'codex' ? current.reasoningEffort.trim() || undefined : undefined,
+      reasoningEffort: current.reasoningEfforts[current.agent].trim() || undefined,
       clientTurnId,
     });
     if (!sent) {

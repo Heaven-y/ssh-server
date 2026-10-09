@@ -1,10 +1,10 @@
-import { LoaderCircle, RefreshCw, Search, Sparkles, X } from 'lucide-react';
+import { LoaderCircle, Plus, RefreshCw, Sparkles, X } from 'lucide-react';
 import { useId, useState } from 'react';
 import type { AgentCapability } from '@ssh-server/shared';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { useChat } from './chat-store';
-import { capabilityRestriction } from './capability-selection';
+import { capabilityRestriction, isInvocableCapability } from './capability-selection';
 import { useAgentCapabilities } from './use-agent-capabilities';
 import { matchesCapability } from './slash-completion';
 
@@ -36,19 +36,41 @@ function CapabilityEntry({ entry, disabled, select }: { entry: AgentCapability; 
   );
 }
 
+function CapabilityEmpty({
+  query,
+  count,
+  phrase,
+  restrictedCount,
+}: {
+  query: ReturnType<typeof useAgentCapabilities>;
+  count: number;
+  phrase: string;
+  restrictedCount: number;
+}) {
+  if (!query.data || query.isError || query.isFetching || query.data.warnings.length || count) return null;
+  return (
+    <p className="text-sm text-muted-foreground">
+      {phrase ? '没有匹配结果。' : restrictedCount ? '暂无可用技能或命令。' : '暂无技能或命令。'}
+    </p>
+  );
+}
+
 function CapabilityDialog({ disabled, onClose }: { disabled: boolean; onClose(): void }) {
   const id = useId();
   const [search, setSearch] = useState('');
+  const [showUnavailable, setShowUnavailable] = useState(false);
   const query = useAgentCapabilities(true);
   const select = useChat((state) => state.selectCapability);
   const phrase = search.trim().toLocaleLowerCase();
-  const entries = (query.data?.entries ?? []).filter((entry) => matchesCapability(entry, phrase));
+  const matches = (query.data?.entries ?? []).filter((entry) => matchesCapability(entry, phrase));
+  const restrictedCount = matches.filter((entry) => !isInvocableCapability(entry)).length;
+  const entries = matches.filter((entry) => showUnavailable || isInvocableCapability(entry));
   return (
     <DetailDialog title="技能与命令" onClose={onClose}>
       <div className="space-y-4">
         <div className="flex items-end gap-2">
           <label htmlFor={id} className="min-w-0 flex-1 text-sm">
-            搜索原生能力
+            搜索技能与命令
             <input
               id={id}
               value={search}
@@ -73,12 +95,12 @@ function CapabilityDialog({ disabled, onClose }: { disabled: boolean; onClose():
         {query.isFetching && (
           <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
             <LoaderCircle aria-hidden className="size-4 motion-safe:animate-spin" />
-            正在读取原生能力…
+            正在加载…
           </p>
         )}
         {query.isError && (
           <p role="alert" className="text-sm text-destructive-foreground">
-            能力目录读取失败，请刷新重试；仍可关闭后发送普通消息。
+            加载失败，请刷新重试。
           </p>
         )}
         {query.data?.warnings.map((warning, index) => (
@@ -86,6 +108,16 @@ function CapabilityDialog({ disabled, onClose }: { disabled: boolean; onClose():
             {warning}
           </p>
         ))}
+        {restrictedCount > 0 && (
+          <button
+            type="button"
+            className={buttonClass('ghost')}
+            aria-expanded={showUnavailable}
+            onClick={() => setShowUnavailable(!showUnavailable)}
+          >
+            {showUnavailable ? '收起不可用能力说明' : `查看不可用能力（${restrictedCount}）`}
+          </button>
+        )}
         <ul aria-label="原生技能与命令" className="space-y-2">
           {entries.map((entry) => (
             <CapabilityEntry
@@ -99,11 +131,7 @@ function CapabilityDialog({ disabled, onClose }: { disabled: boolean; onClose():
             />
           ))}
         </ul>
-        {query.data && entries.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            {phrase ? '没有匹配的技能或命令。' : '当前运行时未提供技能或命令。'}
-          </p>
-        )}
+        <CapabilityEmpty query={query} count={entries.length} phrase={phrase} restrictedCount={restrictedCount} />
       </div>
     </DetailDialog>
   );
@@ -117,19 +145,22 @@ function ScopedPicker({ disabled }: { disabled: boolean }) {
     <div className="flex min-w-0 flex-wrap items-center gap-2">
       <button
         type="button"
+        aria-label="技能与命令"
+        title="技能与命令（也可输入 /）"
         aria-haspopup="dialog"
         aria-expanded={open}
-        className={`${buttonClass('ghost')} px-2 text-xs`}
+        className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
         disabled={disabled}
         onClick={() => setOpen(true)}
       >
-        <Search aria-hidden className="size-4" />
-        技能与命令
+        <Plus aria-hidden className="size-5" />
       </button>
       {selection && (
-        <span className="flex min-w-0 max-w-full items-center gap-2 rounded-md bg-muted px-2 py-1 text-xs">
+        <span className="flex min-w-0 max-w-40 items-center gap-2 rounded-full bg-muted px-2 py-1 text-xs">
           <Sparkles aria-hidden className="size-3.5 shrink-0" />
-          <span className="min-w-0 break-all">{selection.name}</span>
+          <span className="min-w-0 truncate" title={selection.name}>
+            {selection.name}
+          </span>
           <button
             type="button"
             aria-label="移除所选能力"

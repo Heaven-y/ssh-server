@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { RemoteFileActionInput } from '@ssh-server/shared';
+import type { RemoteDirectory, RemoteFileActionInput, RemoteFileEntry } from '@ssh-server/shared';
 import { RemoteActionToolbar } from '../../../src/features/remote-files/RemoteActionToolbar';
 import { RemoteDirectoryList } from '../../../src/features/remote-files/RemoteDirectoryList';
 
@@ -19,21 +19,24 @@ const directory = {
 function Harness({
   action = vi.fn(),
   navigate = vi.fn(),
+  download = vi.fn(),
+  listing = directory,
 }: {
   action?: (input: RemoteFileActionInput) => void;
   navigate?: (path: string) => void;
+  download?: (entry: RemoteFileEntry) => void;
+  listing?: RemoteDirectory;
 }) {
   const [selected, select] = useState<string>();
   return (
     <RemoteDirectoryList
-      directory={directory}
-      showHidden={false}
+      directory={listing}
       loading={false}
       selectedPath={selected}
       select={select}
       action={action}
       navigate={navigate}
-      download={vi.fn()}
+      download={download}
       sessionId="session"
     />
   );
@@ -101,4 +104,43 @@ it('同一浏览会话拖放只提交待确认操作，外部与其他会话拖�
     source: '/project/file2.py',
     destination: '/project/folder/file2.py',
   });
+});
+
+it('默认按服务返回顺序显示点文件和点目录，打开与菜单操作仍可用', async () => {
+  const navigate = vi.fn();
+  const action = vi.fn();
+  const download = vi.fn();
+  const hiddenDirectory = {
+    name: '.git',
+    path: '/project/.git',
+    type: 'directory' as const,
+    scope: 'excluded' as const,
+  };
+  const hiddenFile = { name: '.env', path: '/project/.env', type: 'file' as const, scope: 'excluded' as const };
+  const listing = { ...directory, entries: [hiddenDirectory, hiddenFile, ...directory.entries], nextCursor: 'page-2' };
+  render(<Harness listing={listing} navigate={navigate} action={action} download={download} />);
+  expect(screen.getAllByRole('button', { pressed: false }).map((button) => button.getAttribute('aria-label'))).toEqual([
+    '.git',
+    '.env',
+    'folder',
+    'file2.py',
+  ]);
+  const folder = screen.getByRole('button', { name: '.git' });
+  fireEvent.click(folder);
+  expect(navigate).not.toHaveBeenCalled();
+  fireEvent.keyDown(folder, { key: 'Enter' });
+  expect(navigate).toHaveBeenLastCalledWith('/project/.git');
+  fireEvent.contextMenu(folder);
+  fireEvent.click(await screen.findByRole('menuitem', { name: '打开目录' }));
+  expect(navigate).toHaveBeenCalledTimes(2);
+  fireEvent.click(screen.getByRole('button', { name: '.env的操作菜单' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: '重命名' }));
+  expect(action).toHaveBeenCalledExactlyOnceWith({
+    kind: 'rename',
+    source: '/project/.env',
+    destination: '/project/.env',
+  });
+  fireEvent.contextMenu(screen.getByRole('button', { name: '.env' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: '下载…' }));
+  expect(download).toHaveBeenCalledExactlyOnceWith(hiddenFile);
 });

@@ -73,7 +73,7 @@ function ChangeNotices({ model, dirty }: { model: ChangesPanelModel; dirty: bool
         </p>
       )}
       {!model.turns.records.length && model.turns.current && (
-        <p className="text-xs text-muted-foreground">此会话尚无已保存的本轮快照；未采集的历史不会用当前差异替代。</p>
+        <p className="text-xs text-muted-foreground">此会话暂无本轮改动记录</p>
       )}
       {model.error && (
         <p role="alert" className="text-xs text-destructive-foreground">
@@ -110,7 +110,7 @@ function ChangeFiles({ model }: { model: ChangesPanelModel }) {
       </ul>
       {!model.changes.length && !model.status.isFetching && (
         <p className="text-xs text-muted-foreground">
-          {model.selection.turnId ? '此轮没有可展示的文件净差异。' : '当前没有可展示的本地差异。'}
+          {model.selection.turnId ? '此轮暂无可显示的改动' : '暂无可显示的本地改动'}
         </p>
       )}
       <ExcludedChanges model={model} />
@@ -155,9 +155,7 @@ export default function ChangesPanel(input: ChangesPanelInput) {
   const model = useChangesPanel(input);
   return (
     <div className="min-h-0 min-w-0 flex-1 space-y-3 overflow-auto p-3" aria-label="工作区改动">
-      <p className="text-xs leading-5 text-muted-foreground">
-        本轮比较启动前和同步收尾后的本地快照，包含期间外部编辑的净差异。
-      </p>
+      <p className="text-xs leading-5 text-muted-foreground">本轮改动对比执行前后的本地快照，含期间的外部编辑。</p>
       <ChangeControls model={model} />
       <ChangeNotices model={model} dirty={input.dirty} />
       <ChangeFiles model={model} />

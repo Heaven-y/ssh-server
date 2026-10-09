@@ -24,9 +24,7 @@ export default function WorkspacePolicyDialog({
         }}
         className="flex flex-col gap-5"
       >
-        <p className="text-sm leading-6 text-muted-foreground">
-          规则用于防止Agent远程执行的误操作，不能防止刻意绕过；网页终端不受此规则约束。已通过检查的在途命令继续执行。
-        </p>
+        <p className="text-sm leading-6 text-muted-foreground">拦截 Agent 在服务器执行的指定命令。</p>
         {phase === 'loading' && <p role="status">正在读取命令规则…</p>}
         {message && (
           <p

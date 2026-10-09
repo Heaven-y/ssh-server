@@ -2,62 +2,37 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { ProductSettingsSchema, type ResourceSnapshot, type Workspace } from '@ssh-server/shared';
 import { ResourcesPanel } from '../../../src/features/resources/ResourcesPanel';
 import { useChat } from '../../../src/features/chat/chat-store';
-import { api, ApiError } from '../../../src/lib/api';
+import { api, ApiError, queryKeys } from '../../../src/lib/api';
+import { credentials, server, settings, snapshot, workspace } from './fixtures';
 
-const workspace: Workspace = {
-  id: 'w1',
-  name: '示例项目',
-  sshHost: 'my-server',
-  remoteDir: '~/projects/demo',
-  localDir: 'project',
-};
-const settings = { settings: ProductSettingsSchema.parse({ resources: { intervalSeconds: 2 } }), revision: 'missing' };
-const snapshot = (): ResourceSnapshot => ({
-  workspaceId: 'w1',
-  sshHost: 'my-server',
-  remoteDir: '~/projects/demo',
-  host: {
-    data: {
-      hostname: 'node',
-      cpuPercent: null,
-      memoryUsed: null,
-      memoryTotal: null,
-      load: null,
-      gpus: null,
-      processes: null,
-      gpuProcessesAvailable: false,
-    },
-    sampledAt: Date.now(),
-    stale: false,
-    message: null,
-    retryAt: null,
-  },
-  disk: { data: null, sampledAt: null, stale: true, message: '磁盘不可用', retryAt: null },
-});
 let client: QueryClient;
 let visible: 'visible' | 'hidden';
 beforeEach(() => {
   vi.useFakeTimers();
   visible = 'visible';
   vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visible);
-  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
-    configurable: true,
-    value: function (this: HTMLDialogElement) {
-      this.setAttribute('open', '');
-    },
-  });
-  Object.defineProperty(HTMLDialogElement.prototype, 'close', {
-    configurable: true,
-    value: function (this: HTMLDialogElement) {
-      this.removeAttribute('open');
-    },
-  });
   useChat.setState({ connection: 'open' });
   vi.spyOn(api, 'readProductSettings').mockResolvedValue(settings);
+  vi.spyOn(api, 'listSshHosts').mockResolvedValue([server]);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            status: 'available',
+            sampledAt: Date.now(),
+            output: '',
+            truncated: false,
+          }),
+        ),
+    ),
+  );
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(queryKeys.sshHosts, [server]);
+  client.setQueryData(queryKeys.sshCredentials(server.alias), credentials);
 });
 afterEach(async () => {
   cleanup();
@@ -65,43 +40,67 @@ afterEach(async () => {
   client.clear();
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 async function tick(ms = 20) {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(ms);
   });
 }
-function mount() {
-  return render(
+function panel(active = true) {
+  return (
     <QueryClientProvider client={client}>
-      <ResourcesPanel workspace={workspace} />
-    </QueryClientProvider>,
+      <ResourcesPanel workspace={workspace} active={active} />
+    </QueryClientProvider>
   );
 }
-it('概览和详情只有一次查询与一个轮询，空值和过期状态可读', async () => {
+it('资源在右栏只保留一个控制器，目标详情可核对且不再显示节点进程', async () => {
   const read = vi.spyOn(api, 'readResources').mockResolvedValue(snapshot());
-  mount();
+  render(panel());
   await tick();
   expect(read).toHaveBeenCalledTimes(1);
-  expect(screen.getByText('CPU 不可用')).toBeTruthy();
-  expect(screen.getByText('GPU 不可用')).toBeTruthy();
-  expect(screen.getByText('过期 / 不可用')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: '服务器资源详情' }));
-  await tick();
-  expect(read).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole('dialog', { name: '服务器资源' })).toBeTruthy();
+  const region = within(screen.getByRole('region', { name: '服务器资源' }));
+  expect(region.getByText('实验服务器')).toBeTruthy();
+  expect(region.getByText('当前 SSH 节点；CPU 利用率需连续两次采样。')).toBeTruthy();
+  expect(region.queryByText(/采样不运行模型/)).toBeNull();
+  fireEvent.click(region.getByText('目标与采样详情'));
+  expect(region.getByText(/researcher@example.invalid:22/)).toBeTruthy();
+  expect(region.getByText(/采集主机：node/)).toBeTruthy();
+  expect(region.getByText(/已过期 \/ 部分不可用/)).toBeTruthy();
+  expect(region.queryByRole('meter', { name: 'CPU利用率' })).toBeNull();
+  expect(region.queryByText('节点进程')).toBeNull();
+  expect(screen.queryByRole('dialog')).toBeNull();
   await tick(2000);
   expect(read).toHaveBeenCalledTimes(2);
 });
-it('隐藏/网页断线取消在途请求并暂停，恢复可见与连接后才检查', async () => {
+it('隐藏右栏取消在途资源请求，恢复后仅恢复一份轮询', async () => {
   const signals: AbortSignal[] = [];
   const read = vi.spyOn(api, 'readResources').mockImplementation((_target, signal) => {
     signals.push(signal!);
     return new Promise(() => undefined);
   });
-  mount();
+  const view = render(panel(false));
+  await tick(4000);
+  expect(read).not.toHaveBeenCalled();
+  view.rerender(panel());
   await tick();
   expect(read).toHaveBeenCalledTimes(1);
+  view.rerender(panel(false));
+  await tick(4000);
+  expect(signals[0]!.aborted).toBe(true);
+  expect(read).toHaveBeenCalledTimes(1);
+  view.rerender(panel());
+  await tick();
+  expect(read).toHaveBeenCalledTimes(2);
+});
+it('页面隐藏与网页断线暂停读取，恢复可见与连接后才检查', async () => {
+  const signals: AbortSignal[] = [];
+  const read = vi.spyOn(api, 'readResources').mockImplementation((_target, signal) => {
+    signals.push(signal!);
+    return new Promise(() => undefined);
+  });
+  render(panel());
+  await tick();
   visible = 'hidden';
   fireEvent(document, new Event('visibilitychange'));
   await tick(4000);
@@ -112,20 +111,20 @@ it('隐藏/网页断线取消在途请求并暂停，恢复可见与连接后才
   fireEvent(document, new Event('visibilitychange'));
   await tick(4000);
   expect(read).toHaveBeenCalledTimes(1);
-  expect(screen.getByText('网页断线，已暂停')).toBeTruthy();
+  expect(screen.getByText(/网页断线，已暂停/)).toBeTruthy();
   act(() => useChat.setState({ connection: 'open' }));
   await tick();
   expect(read).toHaveBeenCalledTimes(2);
 });
-it('产品设置读取失败不采样；陈旧目标错误停止轮询，不能伪造正常指标', async () => {
+it('设置未就绪不采样；陈旧目标错误停止轮询，不伪造正常指标', async () => {
   vi.spyOn(api, 'readProductSettings').mockRejectedValueOnce(new Error('设置不可用'));
   const read = vi
     .spyOn(api, 'readResources')
     .mockRejectedValue(new ApiError(409, '目标已改变', { code: 'target_changed' }));
-  mount();
+  render(panel());
   await tick(4000);
   expect(read).not.toHaveBeenCalled();
-  expect(screen.getByText('产品设置未就绪，已暂停')).toBeTruthy();
+  expect(screen.getByText(/产品设置未就绪，已暂停/)).toBeTruthy();
   await act(async () => {
     await client.invalidateQueries({ queryKey: ['product-settings'] });
   });
@@ -133,14 +132,13 @@ it('产品设置读取失败不采样；陈旧目标错误停止轮询，不能�
   expect(read).toHaveBeenCalledTimes(1);
   await tick(6000);
   expect(read).toHaveBeenCalledTimes(1);
-  expect(screen.getByText('过期 / 不可用')).toBeTruthy();
+  expect(screen.getByText(/目标已改变/)).toBeTruthy();
 });
-
-it('概览展示利用率与已用总量，打开详情后仪表值、采样来源与进程边界可读', async () => {
+it('GPU优先、真实高利用率不等于故障；零值与未知值明确区分', async () => {
   const data = snapshot();
   data.host.data = {
     ...data.host.data!,
-    cpuPercent: 42.5,
+    cpuPercent: 0,
     memoryUsed: 8 * 1024 ** 3,
     memoryTotal: 32 * 1024 ** 3,
     gpus: [
@@ -148,39 +146,44 @@ it('概览展示利用率与已用总量，打开详情后仪表值、采样来�
         uuid: 'gpu-0',
         index: 0,
         name: '示例 GPU',
-        utilization: 75,
+        utilization: 99,
         memoryUsed: 6 * 1024 ** 3,
         memoryTotal: 24 * 1024 ** 3,
         temperature: 48,
         power: 120,
       },
     ],
+    processes: [{ pid: 123, command: '不要展示的节点进程', cpuPercent: 0, memoryBytes: 0, gpus: [] }],
   };
   vi.spyOn(api, 'readResources').mockResolvedValue(data);
-  mount();
+  render(panel());
   await tick();
-  const overview = screen.getByRole('button', { name: '服务器资源详情' });
-  expect(within(overview).getByText('内存（已用 / 总量）')).toBeTruthy();
-  expect(within(overview).getByText('8.0 / 32.0 GiB')).toBeTruthy();
-  expect(within(overview).getByText('显存 6.0 / 24.0 GiB')).toBeTruthy();
-  fireEvent.click(overview);
-  const details = within(screen.getByRole('dialog', { name: '服务器资源' }));
-  expect(details.getByRole('meter', { name: 'CPU利用率' }).getAttribute('aria-valuenow')).toBe('42.5');
-  expect(details.getByRole('meter', { name: 'GPU 0 利用率' }).getAttribute('aria-valuenow')).toBe('75');
-  expect(details.getByText(/采集主机：node/)).toBeTruthy();
-  expect(details.getByText(/共享账号下无法据此判断进程归属/)).toBeTruthy();
-  expect(details.getByText(/磁盘不可用/)).toBeTruthy();
+  const cpu = screen.getByRole('meter', { name: 'CPU利用率' });
+  const gpu = screen.getByRole('meter', { name: 'GPU 0 利用率' });
+  expect(cpu.getAttribute('aria-valuenow')).toBe('0');
+  expect(gpu.getAttribute('aria-valuenow')).toBe('99');
+  expect(gpu.compareDocumentPosition(cpu) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.getByText('8.0 GiB / 32.0 GiB')).toBeTruthy();
+  expect(screen.queryByText('不要展示的节点进程')).toBeNull();
+  expect(screen.queryByText(/GPU.*故障/)).toBeNull();
 });
-
-it('真实零利用率可读，未知GPU指标不伪装成零仪表，空GPU列表有说明', async () => {
+it('已知认证或实际档案变化后不展示旧资源，同名不变状态刷新不制造新查询', async () => {
   const data = snapshot();
-  data.host.data = { ...data.host.data!, cpuPercent: 0, gpus: [] };
-  vi.spyOn(api, 'readResources').mockResolvedValue(data);
-  mount();
+  data.host.data!.cpuPercent = 42.5;
+  const read = vi.spyOn(api, 'readResources').mockResolvedValue(data);
+  render(panel());
   await tick();
-  fireEvent.click(screen.getByRole('button', { name: '服务器资源详情' }));
-  const details = within(screen.getByRole('dialog', { name: '服务器资源' }));
-  expect(details.getByRole('meter', { name: 'CPU利用率' }).getAttribute('aria-valuenow')).toBe('0');
-  expect(details.queryByRole('meter', { name: /GPU/ })).toBeNull();
-  expect(details.getByText('未检测到GPU')).toBeTruthy();
+  expect(screen.getByRole('meter', { name: 'CPU利用率' }).getAttribute('aria-valuenow')).toBe('42.5');
+  act(() => {
+    client.setQueryData(queryKeys.sshCredentials(server.alias), { ...credentials });
+  });
+  await tick();
+  expect(read).toHaveBeenCalledTimes(1);
+  read.mockImplementation(() => new Promise(() => undefined));
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: queryKeys.sshCredentials(server.alias), refetchType: 'none' });
+  });
+  await tick();
+  expect(screen.queryByRole('meter', { name: 'CPU利用率' })).toBeNull();
+  expect(read).toHaveBeenCalledTimes(2);
 });

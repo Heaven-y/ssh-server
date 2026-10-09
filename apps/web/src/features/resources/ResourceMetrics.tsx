@@ -52,10 +52,6 @@ function ResourceSummary({ host, disk }: { host: ResourceHost; disk: ResourceDis
     <dl className="grid grid-cols-2 gap-3">
       <Metric label="CPU利用率" value={decimal(host.cpuPercent, '%')} percent={host.cpuPercent} />
       <Metric
-        label="负载（1 / 5 / 15分钟）"
-        value={host.load?.map((value) => value.toFixed(2)).join(' / ') ?? '不可用'}
-      />
-      <Metric
         label="内存（已用 / 总量）"
         value={capacity(host.memoryUsed, host.memoryTotal)}
         percent={capacityPercent(host.memoryUsed, host.memoryTotal)}
@@ -65,6 +61,10 @@ function ResourceSummary({ host, disk }: { host: ResourceHost; disk: ResourceDis
         label="项目磁盘（可用 / 总量）"
         value={capacity(disk?.availableBytes ?? null, disk?.totalBytes ?? null)}
       />
+      <div className="col-span-2 text-xs text-muted-foreground">
+        <dt className="inline">负载（1 / 5 / 15分钟）：</dt>
+        <dd className="inline font-mono">{host.load?.map((value) => value.toFixed(2)).join(' / ') ?? '不可用'}</dd>
+      </div>
     </dl>
   );
 }
@@ -129,64 +129,12 @@ function GpuList({ gpus }: { gpus: ResourceHost['gpus'] }) {
     </section>
   );
 }
-function gpuName(host: ResourceHost, uuid: string) {
-  const gpu = host.gpus?.find((item) => item.uuid === uuid);
-  return gpu ? `GPU ${gpu.index}` : uuid.slice(0, 12);
-}
-function ProcessTable({ host }: { host: ResourceHost }) {
-  return (
-    <section aria-labelledby="resource-processes">
-      <h3 id="resource-processes" className="text-sm font-semibold">
-        节点进程
-      </h3>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">
-        按CPU排序，最多50条。共享账号下无法据此判断进程归属；这里不标记工作区任务。GPU关联
-        {host.gpuProcessesAvailable ? '仅来自实际计算进程记录' : '不可用'}。
-      </p>
-      {host.processes ? (
-        <div className="mt-2 max-h-64 overflow-auto rounded-md border border-border">
-          <table className="w-full text-left text-xs">
-            <thead className="sticky top-0 bg-card text-muted-foreground">
-              <tr>
-                {['PID', '命令', 'CPU', '内存', 'GPU / 显存'].map((label) => (
-                  <th key={label} scope="col" className="whitespace-nowrap p-2 font-medium">
-                    {label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {host.processes.map((process) => (
-                <tr key={process.pid} className="border-t border-border">
-                  <td className="p-2 font-mono">{process.pid}</td>
-                  <td className="max-w-40 break-words p-2">{process.command}</td>
-                  <td className="whitespace-nowrap p-2">{decimal(process.cpuPercent, '%')}</td>
-                  <td className="whitespace-nowrap p-2">{size(process.memoryBytes)}</td>
-                  <td className="p-2">
-                    {process.gpus.length
-                      ? process.gpus.map((gpu) => `${gpuName(host, gpu.uuid)} / ${size(gpu.memoryBytes)}`).join('；')
-                      : host.gpuProcessesAvailable
-                        ? '未记录'
-                        : '不可用'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="mt-2 text-sm text-muted-foreground">进程信息不可用。</p>
-      )}
-    </section>
-  );
-}
-export function ResourceMetrics({ host, disk }: { host: ResourceHost | null; disk: ResourceDisk | null }) {
+export function ResourceMetrics({ host, disk = null }: { host?: ResourceHost | null; disk?: ResourceDisk | null }) {
   const data = host ?? EMPTY_HOST;
   return (
     <div className="resource-scope space-y-5">
-      <ResourceSummary host={data} disk={disk} />
       <GpuList gpus={data.gpus} />
-      <ProcessTable host={data} />
+      <ResourceSummary host={data} disk={disk} />
     </div>
   );
 }

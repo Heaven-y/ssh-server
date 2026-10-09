@@ -1,4 +1,4 @@
-// 可见工作区每 15 秒同步；隐藏、待确认或正在处理请求时不发起传输。
+// 可见工作区默认每 60 秒同步；隐藏、待确认或正在处理请求时不发起传输。
 type Page = Pick<Document, 'visibilityState' | 'addEventListener' | 'removeEventListener'>;
 type Options = { page: Page; sync(): Promise<void>; shouldSync(): boolean; intervalMs?: number; immediate?: boolean };
 export function scheduleVisibleSync(options: Options): () => void {
@@ -23,7 +23,7 @@ export function scheduleVisibleSync(options: Options): () => void {
     if (immediate) void tick();
     timer = setInterval(() => {
       void tick();
-    }, options.intervalMs ?? 15_000);
+    }, options.intervalMs ?? 60_000);
   };
   const changed = () => visibleChanged();
   options.page.addEventListener('visibilitychange', changed);

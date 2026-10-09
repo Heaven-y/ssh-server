@@ -14,16 +14,12 @@ type Browser = ReturnType<typeof useRemoteDirectory>;
 
 export function RemoteFilesPanel({ workspace, active }: { workspace: Workspace; active: boolean }) {
   const browser = useRemoteDirectory(workspace, active);
-  const [showHidden, setShowHidden] = useState(false);
   const directory = browser.directory;
   const targetChanged = browser.error?.code === 'target_changed';
   const root = browser.session?.root ?? workspace.remoteDir;
   return (
     <section aria-label="服务器文件" className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div
-        className="shrink-0 space-y-1 border-b border-border px-3 py-2"
-        title="浏览只读取目录元数据，不修改同步根。在同步范围内不代表已经同步。"
-      >
+      <div className="shrink-0 space-y-1 border-b border-border px-3 py-2">
         <div className="flex min-w-0 items-center gap-2 text-sm">
           <Server aria-hidden className="size-4 shrink-0" />
           <span className="shrink-0 text-muted-foreground">Host</span>
@@ -35,32 +31,20 @@ export function RemoteFilesPanel({ workspace, active }: { workspace: Workspace; 
           )}
         </div>
         <p className="flex min-w-0 gap-1 text-xs text-muted-foreground">
-          <span className="shrink-0">固定同步根：</span>
+          <span className="shrink-0">同步目录：</span>
           <span className="truncate font-mono" dir="ltr" title={root}>
             {root}
           </span>
         </p>
       </div>
       <RemoteNavigation browser={browser} disabled={!browser.session || targetChanged} />
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
-        <label className="flex min-h-9 cursor-pointer items-center gap-2 text-xs">
-          <input type="checkbox" checked={showHidden} onChange={(event) => setShowHidden(event.target.checked)} />
-          显示隐藏项
-        </label>
-        {directory && (
-          <span role="status" className="text-xs text-muted-foreground">
-            第 {browser.page} 页 · {directory.entries.length} 项
-          </span>
-        )}
-      </div>
+      {directory && (
+        <p role="status" className="shrink-0 border-b border-border px-3 py-2 text-xs text-muted-foreground">
+          第 {browser.page} 页 · {directory.entries.length} 项
+        </p>
+      )}
       <RemoteFeedback browser={browser} />
-      <RemoteOperations
-        workspace={workspace}
-        browser={browser}
-        active={active}
-        showHidden={showHidden}
-        targetChanged={targetChanged}
-      />
+      <RemoteOperations workspace={workspace} browser={browser} active={active} targetChanged={targetChanged} />
     </section>
   );
 }
@@ -202,13 +186,11 @@ function RemoteOperations({
   workspace,
   browser,
   active,
-  showHidden,
   targetChanged,
 }: {
   workspace: Workspace;
   browser: Browser;
   active: boolean;
-  showHidden: boolean;
   targetChanged: boolean;
 }) {
   const directory = browser.directory;
@@ -226,7 +208,6 @@ function RemoteOperations({
       {directory && browser.session && (
         <RemoteDirectoryList
           directory={directory}
-          showHidden={showHidden}
           loading={disabled}
           navigate={browser.navigate}
           selectedPath={selectedPath}

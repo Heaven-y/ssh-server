@@ -13,7 +13,7 @@ function isPreferences(value: unknown): value is UiPreferences & { version: 1 } 
     (fields.theme === 'dark' || fields.theme === 'light') &&
     typeof fields.sidebarCollapsed === 'boolean' &&
     bounded(fields.sidebarWidth, 200, 320) &&
-    bounded(fields.fileWidth, 360, 520)
+    bounded(fields.fileWidth, 360, 960)
   );
 }
 function read(): UiPreferences {
@@ -62,7 +62,7 @@ export const useUiPreferences = create<State>((set, get) => {
       if (value !== get().sidebarCollapsed) update({ sidebarCollapsed: value });
     },
     setWidth: (panel, value) => {
-      const [min, max] = panel === 'sidebarWidth' ? [200, 320] : [360, 520];
+      const [min, max] = panel === 'sidebarWidth' ? [200, 320] : [360, 960];
       if (bounded(value, min, max) && value !== get()[panel]) update({ [panel]: value });
     },
   };

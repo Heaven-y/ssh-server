@@ -42,9 +42,7 @@ function Messages() {
     return (
       <div className="m-auto max-w-md px-6 py-12 text-center">
         <h2 className="text-xl font-medium tracking-tight">从一条消息开始</h2>
-        <p className="mt-3 text-[15px] leading-7 text-muted-foreground">
-          描述你想完成的任务。Agent 会结合当前项目，在服务器目录中执行命令。
-        </p>
+        <p className="mt-3 text-[15px] leading-7 text-muted-foreground">描述你想完成的任务。</p>
       </div>
     );
 
@@ -72,9 +70,11 @@ export function ChatView({ workspace, onOpenChanges }: { workspace: Workspace; o
             {AGENT_LABELS[agent]} · {workspace.name}
           </p>
         </div>
-        <span className="max-w-[50%] truncate text-xs text-muted-foreground" title={actualModel}>
-          实际模型：{actualModel || '未报告'}
-        </span>
+        {actualModel && (
+          <span className="max-w-[50%] truncate text-xs text-muted-foreground" title={actualModel}>
+            实际模型：{actualModel}
+          </span>
+        )}
       </div>
       <Banner />
       <div className="flex min-h-0 flex-1 flex-col">

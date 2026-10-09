@@ -25,6 +25,7 @@ const GUIDES: Record<EnvironmentTool['name'], { url: string; hint: string }> = {
 export function EnvironmentSummary({ onOpenSettings }: { onOpenSettings(): void }) {
   const query = useEnvironment();
   const missing = query.data?.tools.filter((tool) => !tool.available) ?? [];
+  if (query.isSuccess && missing.length === 0) return null;
   return (
     <section
       aria-label="启动环境摘要"
@@ -32,16 +33,14 @@ export function EnvironmentSummary({ onOpenSettings }: { onOpenSettings(): void 
     >
       <p role="status">
         {query.isPending
-          ? '正在读取启动环境检测…'
+          ? '正在读取环境…'
           : query.isError
-            ? '启动环境报告读取失败，请打开设置重试。'
-            : missing.length
-              ? `缺少或不可用：${missing.map((tool) => tool.name).join('、')}。可继续管理服务器和工作区。`
-              : '基础工具均可用；此检测不代表模型已登录。'}
+            ? '环境读取失败'
+            : `缺少或不可用：${missing.map((tool) => tool.name).join('、')}`}
       </p>
       {(query.isError || !!missing.length) && (
         <button type="button" className={`${buttonClass('ghost')} text-xs`} onClick={onOpenSettings}>
-          查看安装与配置指引
+          查看设置
         </button>
       )}
     </section>
@@ -74,10 +73,9 @@ export function EnvironmentReport({ disabled }: { disabled: boolean }) {
         </button>
       </div>
       <p className="text-xs leading-5 text-muted-foreground">
-        只检查现有工具能否执行，不判断版本兼容、不检查模型登录；不安装软件、不连接
-        SSH、不调用模型。安装或配置后重新检测；修改 PATH 后可能需要重启本机服务。
+        检查本机工具的可用状态。安装或配置后可重新检测；修改 PATH 后可能需要重启本机服务。
       </p>
-      {query.isPending && <p role="status">正在读取启动报告…</p>}
+      {query.isPending && <p role="status">正在读取环境…</p>}
       {(request.error || query.error) && (
         <p role="alert" className="text-sm text-destructive-foreground">
           {request.error ?? query.error?.message}

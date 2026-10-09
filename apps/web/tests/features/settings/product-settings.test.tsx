@@ -178,3 +178,31 @@ it('跨分类保存冲突保留草稿，关闭、原生视图、重读与Esc均�
   fireEvent.click(screen.getByRole('button', { name: '重新读取' }));
   await waitFor(() => expect(screen.getByLabelText<HTMLInputElement>(/Claude 默认模型/).value).toBe(''));
 });
+
+it('同步缺省显示60秒，保存明确15到60的修改不重置其他分类', async () => {
+  vi.spyOn(api, 'readProductSettings').mockResolvedValue(document);
+  const save = vi.spyOn(api, 'saveProductSettings').mockImplementation(async ({ settings }) => ({
+    settings,
+    revision: 'c'.repeat(64),
+  }));
+  const view = render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
+  fireEvent.click(screen.getByRole('tab', { name: '文件同步' }));
+  expect((await screen.findByLabelText<HTMLInputElement>(/自动同步间隔/)).value).toBe('60');
+  view.unmount();
+  const custom: ProductSettingsDocument = {
+    settings: ProductSettingsSchema.parse({ syncIntervalSeconds: 15, defaultModels: { codex: 'custom-model' } }),
+    revision: 'b'.repeat(64),
+  };
+  vi.mocked(api.readProductSettings).mockResolvedValue(custom);
+  render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
+  fireEvent.click(screen.getByRole('tab', { name: '文件同步' }));
+  const input = await screen.findByLabelText<HTMLInputElement>(/自动同步间隔/);
+  await waitFor(() => expect(input.value).toBe('15'));
+  fireEvent.change(input, { target: { value: '60' } });
+  fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
+  await screen.findByText('产品设置已保存到本机。');
+  expect(save).toHaveBeenCalledExactlyOnceWith(
+    { settings: { ...custom.settings, syncIntervalSeconds: 60 }, revision: custom.revision },
+    expect.any(AbortSignal),
+  );
+});

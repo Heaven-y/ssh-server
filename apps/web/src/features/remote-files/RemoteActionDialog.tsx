@@ -176,6 +176,7 @@ function ActionPreview({
           {warning}
         </p>
       ))}
+      <p>任务提交后在后台运行，关闭面板不会取消。</p>
       <label className="flex items-start gap-2">
         <input
           type="checkbox"

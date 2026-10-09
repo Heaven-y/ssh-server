@@ -5,6 +5,7 @@ import { api, ApiError } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
 import { CodeEditor } from '../../ui/CodeEditor';
 import { buttonClass, inputClass } from '../../ui/styles';
+import { NativeConfigHelp } from './NativeConfigHelp';
 
 type Phase = 'loading' | 'ready' | 'saving' | 'error';
 function errorMessage(error: unknown) {
@@ -138,9 +139,7 @@ export default function NativeConfigDialog({ onClose, onBack }: { onClose(): voi
           </button>
         </header>
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto p-5">
-          <p className="text-sm leading-6 text-muted-foreground">
-            编辑本机的原生配置文件，保留原有字段与注释。保存前检查语法和外部修改，配置内容不会发送给 Agent 或服务器。
-          </p>
+          <p className="text-sm leading-6 text-muted-foreground">编辑本机原生配置文件，保存时校验语法。</p>
           <div className="flex flex-wrap items-center gap-3">
             <button type="button" className={buttonClass('outline')} disabled={saving} onClick={() => leave(onBack)}>
               返回产品设置
@@ -169,6 +168,14 @@ export default function NativeConfigDialog({ onClose, onBack }: { onClose(): voi
               重新读取
             </button>
           </div>
+          <NativeConfigHelp
+            key={agent}
+            agent={agent}
+            document={document}
+            content={content}
+            disabled={busy}
+            onInsert={edit}
+          />
           <div aria-busy={busy} className="min-w-0 overflow-hidden rounded-md border border-border-strong">
             {phase === 'loading' ? (
               <p
@@ -193,8 +200,7 @@ export default function NativeConfigDialog({ onClose, onBack }: { onClose(): voi
           </div>
           <ConfigFeedback document={document} dirty={dirty} phase={phase} message={message} />
           <p className="text-xs leading-5 text-muted-foreground">
-            后续调用读取新配置，正在运行的轮次保持原设置。Codex
-            新会话采用新默认模型，历史续接保留原模型；显式填写模型才覆盖。
+            新配置用于后续调用，当前轮次保持原设置。Codex 新会话使用默认模型，历史会话沿用原模型；手动指定可覆盖。
           </p>
         </div>
         <footer className="flex shrink-0 justify-end gap-2 border-t border-border px-5 py-4">
@@ -216,6 +222,13 @@ export default function NativeConfigDialog({ onClose, onBack }: { onClose(): voi
   );
 }
 
+function fileState(document: NativeConfigDocument | undefined, phase: Phase) {
+  if (!document) return phase === 'loading' ? '尚未读取配置内容' : '读取失败，无法判断文件是否存在。';
+  if (!document.exists) return '文件尚未创建，保存后在本机创建。';
+  if (!document.content.trim()) return '文件已存在，但内容为空。';
+  return '文件已读取。';
+}
+
 function ConfigFeedback({
   document,
   dirty,
@@ -231,11 +244,8 @@ function ConfigFeedback({
     <>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>
-          {document?.exists === false
-            ? '文件尚未创建，保存后在本机创建。'
-            : dirty
-              ? '有未保存修改'
-              : '当前内容与读取版本一致'}
+          {fileState(document, phase)}
+          {dirty ? ' 有未保存修改' : ''}
         </span>
         <span>支持搜索；Tab 移至下一个控件；最大 256 KiB</span>
       </div>

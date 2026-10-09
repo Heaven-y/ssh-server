@@ -56,7 +56,7 @@ export function RemoteFolderPicker({ workspaceId, initialPath, connect, choose, 
   return (
     <RemoteDialog title="选择服务器目标目录" close={close}>
       <div className="space-y-3 p-4">
-        <p className="text-xs text-muted-foreground">选择同一服务器上的目录，浏览位置不会改变工作区同步根。</p>
+        <p className="text-xs text-muted-foreground">选择此服务器上的目标目录。</p>
         <PickerNavigation path={query.data?.path ?? request.path} disabled={loading || !session} navigate={navigate} />
         <PickerEntries
           directory={query.data}

@@ -1,7 +1,7 @@
 import type { WorkspaceDirectory } from '@ssh-server/shared';
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { ArrowUp, FolderRoot, RefreshCw } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
 import { LocalDirectoryEntries } from './LocalDirectoryEntries';
@@ -10,18 +10,25 @@ export function FileDirectory({
   workspaceId,
   disabled,
   openFile,
+  active = true,
 }: {
   workspaceId: string;
   disabled: boolean;
   openFile(relative: string): void;
+  active?: boolean;
 }) {
   const [directory, setDirectory] = useState('');
+  const client = useQueryClient();
   const list = useQuery({
     queryKey: ['files', workspaceId, directory],
     queryFn: ({ signal }) => api.listFiles(workspaceId, directory, signal),
+    enabled: active,
     retry: false,
     staleTime: 0,
   });
+  useEffect(() => {
+    if (!active) void client.cancelQueries({ queryKey: ['files', workspaceId, directory], exact: true });
+  }, [active, client, workspaceId, directory]);
   return (
     <section aria-label="本地文件列表" className="flex min-h-0 flex-col border-b border-border">
       <div className="flex items-center gap-2 px-3 py-2">

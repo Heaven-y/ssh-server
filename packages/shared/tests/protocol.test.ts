@@ -14,6 +14,16 @@ describe('ClientMessageSchema', () => {
     expect(ClientMessageSchema.safeParse({ ...send, agent: 'unknown' }).success).toBe(false);
   });
 
+  it('Claude只接受SDK推理档位，Codex保留原生自定义值，省略不覆盖', () => {
+    for (const reasoningEffort of ['low', 'medium', 'high', 'xhigh', 'max'])
+      expect(ClientMessageSchema.safeParse({ ...send, reasoningEffort }).success).toBe(true);
+    expect(ClientMessageSchema.safeParse({ ...send, reasoningEffort: 'turbo' }).success).toBe(false);
+    expect(ClientMessageSchema.safeParse({ ...send, agent: 'codex', reasoningEffort: 'custom-native' }).success).toBe(
+      true,
+    );
+    expect(ClientMessageSchema.parse(send)).not.toHaveProperty('reasoningEffort');
+  });
+
   it('拒绝未明确指定Agent的chat.send', () => {
     const { agent: _agent, ...withoutAgent } = send;
     expect(ClientMessageSchema.safeParse(withoutAgent).success).toBe(false);

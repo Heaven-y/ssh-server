@@ -26,10 +26,12 @@ describe('可见页面同步调度', () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(sync).toHaveBeenCalledTimes(1);
     previous();
-    const stop = scheduleVisibleSync({ page, sync, shouldSync: () => true, intervalMs: 5000, immediate: false });
+    const stop = scheduleVisibleSync({ page, sync, shouldSync: () => true, intervalMs: 60000, immediate: false });
     await vi.advanceTimersByTimeAsync(0);
     expect(sync).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(5000);
+    await vi.advanceTimersByTimeAsync(59000);
+    expect(sync).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(sync).toHaveBeenCalledTimes(2);
     change('hidden');
     await vi.advanceTimersByTimeAsync(15000);
@@ -44,7 +46,9 @@ describe('可见页面同步调度', () => {
     const { page, change } = fixture();
     const sync = vi.fn(async () => undefined);
     const stop = scheduleVisibleSync({ page, sync, shouldSync: () => true });
-    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(sync).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(sync).toHaveBeenCalledTimes(2);
     change('hidden');
     await vi.advanceTimersByTimeAsync(60_000);
@@ -75,7 +79,7 @@ describe('可见页面同步调度', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(sync).toHaveBeenCalledTimes(1);
     ready = true;
-    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(60_000);
     expect(sync).toHaveBeenCalledTimes(2);
     stop();
   });

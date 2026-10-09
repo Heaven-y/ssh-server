@@ -246,9 +246,7 @@ export default function TerminalDock({
         {tabs.map((tab) => (
           <TerminalLayout key={tab.id} tab={tab} shown={visible && tab.id === selected} />
         ))}
-        {!tabs.length && (
-          <p className="m-auto text-sm text-muted-foreground">新建标签以连接当前工作区；切换聊天不会改变已有终端。</p>
-        )}
+        {!tabs.length && <p className="m-auto text-sm text-muted-foreground">新建标签以连接当前工作区。</p>}
       </div>
       {actions.closeRequest && <CloseDialog request={actions.closeRequest} cancel={actions.cancel} />}
     </TerminalFrame>

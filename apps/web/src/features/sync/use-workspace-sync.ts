@@ -31,7 +31,7 @@ function usePageVisible() {
 }
 export function useWorkspaceSync(id: string) {
   const settings = useProductSettings();
-  const intervalMs = (settings.data?.settings.syncIntervalSeconds ?? 15) * 1000;
+  const intervalMs = (settings.data?.settings.syncIntervalSeconds ?? 60) * 1000;
   const client = useQueryClient();
   const visible = usePageVisible();
   const query = useQuery({
