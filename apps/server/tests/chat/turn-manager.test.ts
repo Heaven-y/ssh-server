@@ -595,3 +595,17 @@ it('基线失败仍运行并尝试终态收尾，纯压缩跳过采集和同步'
   await f.turns.dispose();
   await pure.turns.dispose();
 });
+
+it('Claude轮次不丢弃推理强度，未指定时沿用原生设置', async () => {
+  const { turns, fake } = setup();
+  const socket = fakeSocket();
+  await turns.handle(socket.socket, send({ model: 'supported-model', reasoningEffort: 'high' }));
+  expect(fake.turns[0]!.input).toMatchObject({ model: 'supported-model', reasoningEffort: 'high' });
+  fake.turns[0]!.finish();
+  await flush();
+  await turns.handle(socket.socket, send({ clientTurnId: 'next' }));
+  expect(fake.turns[1]!.input.reasoningEffort).toBeUndefined();
+  fake.turns[1]!.finish();
+  await flush();
+  await turns.dispose();
+});

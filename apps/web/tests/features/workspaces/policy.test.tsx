@@ -44,12 +44,13 @@ it('默认恢复保留自定义，校验错误定位，连续保存单次并发�
   render(<WorkspacePolicyDialog workspaceId="w1" name="demo" onClose={close} />);
   const privilege = await screen.findByRole('checkbox', { name: /禁止提权/ });
   fireEvent.click(privilege);
+  fireEvent.click(screen.getByRole('button', { name: /高级：自定义拦截/ }));
   fireEvent.click(screen.getByRole('button', { name: '追加规则' }));
   fireEvent.change(screen.getByLabelText('程序名'), { target: { value: '/bin/python' } });
   fireEvent.change(screen.getByLabelText('拒绝原因'), { target: { value: '暂不运行' } });
   fireEvent.click(screen.getByRole('button', { name: '保存规则' }));
   expect(save).not.toHaveBeenCalled();
-  await waitFor(() => expect(screen.getByRole('alert')).toBe(document.activeElement));
+  await waitFor(() => expect(screen.getByLabelText('程序名')).toBe(document.activeElement));
   expect(screen.getByLabelText('程序名').getAttribute('aria-invalid')).toBe('true');
   fireEvent.change(screen.getByLabelText('程序名'), { target: { value: 'python' } });
   fireEvent.click(screen.getByRole('button', { name: '恢复默认规则' }));
@@ -76,7 +77,8 @@ it('409保留草稿，dirty重读须放弃，重读后可删除追加规则', as
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
   const close = vi.fn();
   render(<WorkspacePolicyDialog workspaceId="w1" name="demo" onClose={close} />);
-  const pattern = await screen.findByLabelText('命令包含的字符串');
+  fireEvent.click(await screen.findByRole('button', { name: /高级：自定义拦截/ }));
+  const pattern = screen.getByLabelText('命令包含的字符串');
   fireEvent.change(pattern, { target: { value: 'draft' } });
   fireEvent.click(screen.getByRole('button', { name: '保存规则' }));
   await screen.findByText('工作区配置已变化');
@@ -88,6 +90,7 @@ it('409保留草稿，dirty重读须放弃，重读后可删除追加规则', as
   confirm.mockReturnValue(true);
   fireEvent.click(screen.getByRole('button', { name: '重新读取' }));
   await waitFor(() => expect(screen.getByLabelText<HTMLInputElement>('命令包含的字符串').value).toBe('old'));
+  fireEvent.click(screen.getByRole('button', { name: /高级：自定义拦截/ }));
   fireEvent.click(screen.getByRole('button', { name: '移除规则1' }));
   expect(screen.queryByLabelText('命令包含的字符串')).toBeNull();
 });
@@ -114,4 +117,50 @@ it('读取失败可重试，卸载后迟到读写结果不能发布旧工作区'
   pending.unmount();
   await act(async () => stale.resolve(initial));
   expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('默认规则保持启用，自定义空列表默认折叠且可选，教程不自动追加规则', async () => {
+  vi.spyOn(api, 'readWorkspacePolicy').mockResolvedValue(initial);
+  const save = vi.spyOn(api, 'saveWorkspacePolicy');
+  render(<WorkspacePolicyDialog workspaceId="w1" name="demo" onClose={vi.fn()} />);
+  const advanced = await screen.findByRole('button', { name: /高级：自定义拦截/ });
+  expect(advanced.getAttribute('aria-expanded')).toBe('false');
+  expect(advanced.textContent).toContain('0 条');
+  expect(screen.getByText('需要额外限制时，可添加自定义规则。')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '追加规则' })).toBeNull();
+  expect(screen.getAllByRole<HTMLInputElement>('checkbox').every((item) => item.checked)).toBe(true);
+  fireEvent.click(advanced);
+  expect(screen.getByText('scancel')).toBeTruthy();
+  expect(screen.getByText('--purge-cache')).toBeTruthy();
+  expect(screen.getByText(/区分大小写.*字面匹配.*误拦/)).toBeTruthy();
+  expect(screen.queryByRole('textbox')).toBeNull();
+  expect(save).not.toHaveBeenCalled();
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: '保存规则' }).disabled).toBe(true);
+});
+
+it('已有规则给出数量且按需展开；隐藏的无效草稿保存时自动展开并聚焦字段', async () => {
+  const rule = { id: 'custom-demo', kind: 'program' as const, pattern: 'scancel', reason: '作业取消由我确认' };
+  vi.spyOn(api, 'readWorkspacePolicy').mockResolvedValue({ ...initial, policy: { customRules: [rule] } });
+  const save = vi.spyOn(api, 'saveWorkspacePolicy');
+  render(<WorkspacePolicyDialog workspaceId="w1" name="demo" onClose={vi.fn()} />);
+  const advanced = await screen.findByRole('button', { name: /高级：自定义拦截/ });
+  expect(advanced.textContent).toContain('1 条');
+  expect(advanced.getAttribute('aria-expanded')).toBe('false');
+  expect(screen.queryByRole('textbox', { name: '程序名' })).toBeNull();
+  fireEvent.click(advanced);
+  const pattern = screen.getByRole<HTMLInputElement>('textbox', { name: '程序名' });
+  expect(pattern.value).toBe('scancel');
+  fireEvent.change(pattern, { target: { value: '/bin/scancel' } });
+  fireEvent.click(advanced);
+  expect(screen.queryByRole('textbox', { name: '程序名' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '保存规则' }));
+  await waitFor(() => expect(document.activeElement).toBe(pattern));
+  expect(advanced.getAttribute('aria-expanded')).toBe('true');
+  expect(pattern.value).toBe('/bin/scancel');
+  expect(screen.getByRole<HTMLInputElement>('textbox', { name: '拒绝原因' }).value).toBe(rule.reason);
+  expect(save).not.toHaveBeenCalled();
+  fireEvent.change(pattern, { target: { value: 'squeue' } });
+  expect(advanced.getAttribute('aria-expanded')).toBe('true');
+  expect(screen.getByRole('textbox', { name: '程序名' })).toBe(pattern);
+  expect(document.activeElement).toBe(pattern);
 });

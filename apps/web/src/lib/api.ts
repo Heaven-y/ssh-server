@@ -43,6 +43,7 @@ import type {
   ManualServerInput,
   ManagedServer,
   ResourceSnapshot,
+  SlurmSnapshot,
   LocalDirectory,
   WorkspaceSetupCreate,
   WorkspaceSetupVerification,
@@ -127,6 +128,11 @@ export const api = {
   readResources: (target: TerminalTarget, signal?: AbortSignal) =>
     request<ResourceSnapshot>(
       `/api/workspaces/${encodeURIComponent(target.workspaceId)}/resources?target=${encodeURIComponent(JSON.stringify(target))}`,
+      { signal, cache: 'no-store' },
+    ),
+  readSlurm: (target: TerminalTarget, signal?: AbortSignal) =>
+    request<SlurmSnapshot>(
+      `/api/workspaces/${encodeURIComponent(target.workspaceId)}/slurm?target=${encodeURIComponent(JSON.stringify(target))}`,
       { signal, cache: 'no-store' },
     ),
   bindTerminalTarget: (target: TerminalTarget, options: { signal?: AbortSignal; previousBinding?: string } = {}) =>

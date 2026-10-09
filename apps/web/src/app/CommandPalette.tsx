@@ -139,7 +139,7 @@ export default function CommandPalette({
   const [error, setError] = useState<string>();
   const run = (action: Action) => {
     if (action.workspace && (!workspace || useChat.getState().workspaceId !== workspace.id)) {
-      setError('工作区已改变，请重新打开命令面板。');
+      setError('工作区已改变，请重新打开搜索与操作。');
       return;
     }
     if (!action.run()) {
@@ -159,7 +159,7 @@ export default function CommandPalette({
       },
     });
   return (
-    <DetailDialog title="网页命令面板" onClose={close}>
+    <DetailDialog title="搜索与操作" onClose={close}>
       <Command label="工作区、会话和常用操作" loop>
         <Command.Input
           autoFocus

@@ -92,3 +92,25 @@ it('生产HTTP严格校验、摘要冲突与no-store贯通真实存储', async (
     await app.close();
   }
 });
+
+it('缺省自动同步一分钟，显式间隔不被迁移，修改15秒只改变指定偏好', async () => {
+  const f = await fixture();
+  const defaults = await f.store.read();
+  expect(defaults.settings.syncIntervalSeconds).toBe(60);
+  expect(ProductSettingsSchema.parse({ syncIntervalSeconds: 30 }).syncIntervalSeconds).toBe(30);
+  const custom = {
+    ...defaults.settings,
+    defaultAgent: 'codex' as const,
+    defaultModels: { claude: 'custom-claude', codex: 'custom-codex' },
+    syncIntervalSeconds: 15,
+    resources: { intervalSeconds: 7, timeoutSeconds: 9 },
+  };
+  const previous = await f.store.save({ settings: custom, revision: defaults.revision });
+  expect((await createProductSettings({ configDir: f.configDir }).read()).settings.syncIntervalSeconds).toBe(15);
+  const updated = await f.store.save({
+    revision: previous.revision,
+    settings: { ...previous.settings, syncIntervalSeconds: 60 },
+  });
+  expect(updated.settings).toEqual({ ...custom, syncIntervalSeconds: 60 });
+  expect(updated.revision).not.toBe(previous.revision);
+});

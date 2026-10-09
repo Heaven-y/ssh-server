@@ -15,6 +15,9 @@ import { startTerminalFixture } from './terminal-fixture';
 import { createResourceFixture } from './resource-fixture';
 import { createResourcesService } from '../../apps/server/src/resources/service';
 import { registerResourcesRoutes } from '../../apps/server/src/http/resources.routes';
+import { createSlurmService } from '../../apps/server/src/slurm/service';
+import { SLURM_COMMAND } from '../../apps/server/src/slurm/commands';
+import { registerSlurmRoutes } from '../../apps/server/src/http/slurm.routes';
 import { createServerProfiles } from '../../apps/server/src/ssh/profiles';
 import { createWorkspaceActivity } from '../../apps/server/src/workspaces/activity';
 import { registerSshTargetRoutes } from '../../apps/server/src/http/ssh-targets.routes';
@@ -28,13 +31,14 @@ async function main() {
   const fixture = await startTerminalFixture({
     configDir: path.join(root, 'config'),
     workspaceDir: path.join(root, 'workspace'),
-    exec: metrics.exec,
+    exec: (command) => (command === SLURM_COMMAND ? { stdout: '', exitCode: 0 } : metrics.exec(command)),
   });
   const { id: _id, ...workspaceInput } = fixture.workspace;
   await fixture.store.create({ ...workspaceInput, name: '另一个工作区' });
   const bindings = createTerminalBindings(fixture);
   const terminals = createTerminalManager({ ...fixture, bindings });
   const resources = createResourcesService(fixture);
+  const slurm = createSlurmService(fixture);
   const activity = createWorkspaceActivity();
   const profiles = createServerProfiles({ ...fixture, activity, resources: { blockers: () => Promise.resolve([]) } });
   const syncStatus = () =>
@@ -62,6 +66,7 @@ async function main() {
       );
       registerTerminalRoutes(server, { terminals, bindings });
       registerResourcesRoutes(server, resources);
+      registerSlurmRoutes(server, slurm);
       server.get('/api/workspaces/:id/sessions', () => Promise.resolve([]));
       server.get('/api/workspaces/:id/sync', syncStatus);
       server.post('/api/workspaces/:id/sync', syncStatus);

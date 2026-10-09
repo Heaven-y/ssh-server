@@ -45,7 +45,6 @@ function sizeLabel(entry: RemoteFileEntry) {
 
 export function RemoteDirectoryList({
   directory,
-  showHidden,
   loading,
   navigate,
   selectedPath,
@@ -55,7 +54,6 @@ export function RemoteDirectoryList({
   sessionId,
 }: {
   directory: RemoteDirectory;
-  showHidden: boolean;
   loading: boolean;
   navigate(path: string): void;
   selectedPath?: string;
@@ -68,7 +66,7 @@ export function RemoteDirectoryList({
   const [menuEntry, setMenuEntry] = useState<RemoteFileEntry>();
   const [dropPath, setDropPath] = useState<string>();
   const [detailsPath, setDetailsPath] = useState<string>();
-  const entries = showHidden ? directory.entries : directory.entries.filter((entry) => !entry.name.startsWith('.'));
+  const entries = directory.entries;
   const selected = entries.find((entry) => entry.path === selectedPath);
   const request = (kind: RemoteFileActionKind, entry = selected) => {
     if (kind === 'mkdir') action({ kind, destination: `${directory.path.replace(/\/$/, '')}/` });
@@ -171,8 +169,7 @@ export function RemoteDirectoryList({
         </ul>
         {entries.length === 0 && (
           <p className="p-4 text-sm leading-6 text-muted-foreground">
-            {directory.entries.length ? '本页只有隐藏项，可开启“显示隐藏项”查看。' : '本页没有目录条目。'}
-            {directory.nextCursor ? '可继续读取下一页。' : ''}
+            {directory.nextCursor ? '本页为空，可继续下一页' : '目录为空'}
           </p>
         )}
       </div>

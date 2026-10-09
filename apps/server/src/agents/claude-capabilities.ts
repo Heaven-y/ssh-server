@@ -39,6 +39,19 @@ function commandEntry(command: SlashCommand, available: boolean, reason?: string
   };
 }
 
+function nativeCommandReason(name: string): string {
+  const alternatives: Record<string, string> = {
+    model: '已有等价网页操作：请使用输入框右下角的「模型选项」，不会改写已执行轮次的模型报告。',
+    config: '已有等价网页操作：请打开顶栏「设置」，产品偏好与原生配置分别编辑。',
+    settings: '已有等价网页操作：请打开顶栏「设置」。',
+    clear: '已有等价网页操作：请使用左侧「新会话」，不会删除原生历史。',
+    new: '已有等价网页操作：请使用左侧「新会话」。',
+    login: '原生交互式登录尚未接入网页，请在本机 Claude Code 完成登录；缺少配置文件不等于未登录。',
+    logout: '原生交互式退出登录尚未接入网页；本产品不会通过编辑配置替你注销登录。',
+  };
+  return alternatives[name] ?? '原生目录已识别此命令，但网页尚未接入；这不表示原生接口不支持。';
+}
+
 function entriesFrom(commands: SlashCommand[]): Entry[] {
   const entries: Entry[] = [];
   const names = [...new Set(commands.map((command) => command.name))];
@@ -62,7 +75,7 @@ function entriesFrom(commands: SlashCommand[]): Entry[] {
       });
     const builtin = matching.find((command) => command.builtin === true);
     if (builtin && name !== 'compact' && name !== 'context')
-      entries.push(commandEntry(builtin, false, '尚未接入网页，请使用 Claude Code CLI'));
+      entries.push(commandEntry(builtin, false, nativeCommandReason(name)));
   }
   const compact = commands.find((command) => command.name === 'compact' && command.builtin === true);
   const available = compactAvailable(commands);
@@ -87,7 +100,7 @@ function modelsFrom(models: ModelInfo[]): AgentModel[] {
     id: model.value,
     label: model.displayName,
     description: model.description,
-    reasoningEfforts: model.supportedEffortLevels,
+    reasoningEfforts: model.supportsEffort === false ? [] : model.supportedEffortLevels,
   }));
 }
 

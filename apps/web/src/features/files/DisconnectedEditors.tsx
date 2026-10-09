@@ -1,18 +1,23 @@
-import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
 import { RemoteDialog } from '../remote-files/RemoteDialog';
 
-export function DisconnectedEditors({ workspaceId }: { workspaceId: string }) {
+export function DisconnectedEditors({ workspaceId, active }: { workspaceId: string; active: boolean }) {
+  const client = useQueryClient();
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const query = useQuery({
     queryKey: ['disconnected-editors', workspaceId],
     queryFn: ({ signal }) => api.disconnectedEditors(workspaceId, signal),
-    refetchInterval: 5000,
+    enabled: active,
+    refetchInterval: active ? 5000 : false,
   });
+  useEffect(() => {
+    if (!active) void client.cancelQueries({ queryKey: ['disconnected-editors', workspaceId], exact: true });
+  }, [active, client, workspaceId]);
   const ids = query.data?.editors ?? [];
   async function forget() {
     setBusy(true);

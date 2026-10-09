@@ -1,5 +1,5 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
-import { LoaderCircle, MessageSquare, MoreHorizontal, Plus } from 'lucide-react';
+import { LoaderCircle, Plus } from 'lucide-react';
 import { useState } from 'react';
 import type { AgentKind, SessionSummary } from '@ssh-server/shared';
 import { api, queryKeys } from '../../lib/api';
@@ -7,7 +7,7 @@ import { buttonClass } from '../../ui/styles';
 import { sessionActionKey, useChat } from '../chat/chat-store';
 import { AGENT_LABELS } from '../chat/AgentControls';
 import { SessionActionsDialog } from './SessionActionsDialog';
-import { useSessionModel } from '../chat/use-session-model';
+import { SessionMenu, type SessionMenuAction } from './SessionMenu';
 
 const timeFormat = new Intl.DateTimeFormat('zh-CN', {
   month: 'numeric',
@@ -38,31 +38,6 @@ function SessionSourceNotice({ agent, query }: { agent: AgentKind; query: UseQue
     );
   return null;
 }
-function SessionMoreButton({
-  session,
-  pending,
-  active,
-  manage,
-}: {
-  session: SessionSummary;
-  pending: boolean;
-  active: boolean;
-  manage(session: SessionSummary): void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`${buttonClass('ghost')} shrink-0 px-1.5`}
-      aria-label={`${AGENT_LABELS[session.agent]} 会话“${session.summary || '无标题会话'}”的更多操作`}
-      aria-haspopup="dialog"
-      title={active ? '会话运行中，结束后可管理' : '更多会话操作'}
-      disabled={pending || active}
-      onClick={() => manage(session)}
-    >
-      <MoreHorizontal aria-hidden className="size-4" />
-    </button>
-  );
-}
 function SessionEntry({
   session,
   workspaceId,
@@ -72,7 +47,7 @@ function SessionEntry({
   session: SessionSummary;
   workspaceId: string;
   archived: boolean;
-  manage(session: SessionSummary): void;
+  manage(session: SessionSummary, action: SessionMenuAction): void;
 }) {
   const current = useChat(
     (state) =>
@@ -86,8 +61,7 @@ function SessionEntry({
   const pending = useChat((state) => state.sessionOperations[sessionActionKey(workspaceId, session)]?.pending === true);
   const active = current && running;
   const title = session.summary || '无标题会话';
-  const { model, description } = useSessionModel(workspaceId, session);
-  const details = `${title} · 运行来源：${AGENT_LABELS[session.agent]} · ${description} · ${timeFormat.format(session.lastModified)}`;
+  const details = `${title} · 运行来源：${AGENT_LABELS[session.agent]} · ${timeFormat.format(session.lastModified)}`;
   return (
     <li className="flex items-center gap-0.5">
       <button
@@ -95,27 +69,21 @@ function SessionEntry({
         aria-current={current ? 'true' : undefined}
         title={details}
         aria-label={`${details}${archived ? ' · 已归档，恢复后继续' : ''}${pending ? ' · 操作处理中' : ''}${active ? ' · 运行中' : ''}`}
-        disabled={pending}
+        disabled={pending || archived}
         onClick={() => {
-          if (archived) manage(session);
-          else void openSession(session);
+          if (!archived) void openSession(session);
         }}
         className="group flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border-l-2 border-transparent px-2 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:cursor-wait aria-[current]:border-accent aria-[current]:bg-muted aria-[current]:text-foreground"
       >
-        {active ? (
-          <LoaderCircle aria-hidden className="size-4 shrink-0 motion-safe:animate-spin text-accent" />
-        ) : (
-          <MessageSquare aria-hidden className="size-4 shrink-0 group-aria-[current]:text-accent" />
-        )}
+        {active && <LoaderCircle aria-hidden className="size-3.5 shrink-0 motion-safe:animate-spin text-accent" />}
         <span className="min-w-0 flex-1 truncate leading-5 group-aria-[current]:font-medium">{title}</span>
-        <span
-          className="max-w-[45%] shrink-0 truncate rounded bg-muted px-1.5 py-0.5 font-mono text-xs"
-          title={description}
-        >
-          {model || '模型未报告'}
-        </span>
       </button>
-      <SessionMoreButton session={session} pending={pending} active={active} manage={manage} />
+      <SessionMenu
+        session={session}
+        archived={archived}
+        disabled={pending || active}
+        choose={(action) => manage(session, action)}
+      />
     </li>
   );
 }
@@ -147,7 +115,7 @@ function useSessionSources(workspaceId: string, archived: boolean): SessionSourc
 
 function WorkspaceSessions({ workspaceId }: { workspaceId: string }) {
   const [archived, setArchived] = useState(false);
-  const [selected, setSelected] = useState<{ session: SessionSummary; archived: boolean }>();
+  const [selected, setSelected] = useState<{ session: SessionSummary; archived: boolean; action: SessionMenuAction }>();
   const sources = useSessionSources(workspaceId, archived);
   const newSession = useChat((state) => state.newSession);
   const list = sources.flatMap(({ query }) => query.data ?? []).toSorted((a, b) => b.lastModified - a.lastModified);
@@ -185,7 +153,7 @@ function WorkspaceSessions({ workspaceId }: { workspaceId: string }) {
       ))}
       {sources.every(({ query }) => query.isSuccess) && list.length === 0 && (
         <p className="px-5 py-3 text-sm leading-6 text-muted-foreground">
-          {archived ? '暂无归档的 Codex 会话。' : '从一条消息开始。这里会显示当前工作区的原生会话。'}
+          {archived ? '暂无归档会话' : '暂无会话，发送消息开始'}
         </p>
       )}
       <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pt-1 pb-4">
@@ -195,13 +163,19 @@ function WorkspaceSessions({ workspaceId }: { workspaceId: string }) {
             session={session}
             workspaceId={workspaceId}
             archived={archived}
-            manage={(target) => setSelected({ session: target, archived })}
+            manage={(target, action) => setSelected({ session: target, archived, action })}
           />
         ))}
       </ul>
       {selected && (
         <SessionActionsDialog
-          key={JSON.stringify([workspaceId, selected.session.agent, selected.session.sessionId, selected.archived])}
+          key={JSON.stringify([
+            workspaceId,
+            selected.session.agent,
+            selected.session.sessionId,
+            selected.archived,
+            selected.action,
+          ])}
           workspaceId={workspaceId}
           session={
             list.find(
@@ -209,6 +183,7 @@ function WorkspaceSessions({ workspaceId }: { workspaceId: string }) {
             ) ?? selected.session
           }
           archived={selected.archived}
+          action={selected.action}
           onClose={() => setSelected(undefined)}
           onCompleted={(action) => {
             setSelected(undefined);

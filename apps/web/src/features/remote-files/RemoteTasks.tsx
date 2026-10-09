@@ -99,9 +99,7 @@ export function RemoteTasks({
               }}
             />
           ))}
-          {!tasks.length && (
-            <p className="p-2 text-xs text-muted-foreground">暂无文件任务。提交后的操作独立运行，关闭面板不会取消。</p>
-          )}
+          {!tasks.length && <p className="p-2 text-xs text-muted-foreground">暂无文件任务</p>}
         </div>
       )}
     </section>

@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { ManagedServer } from '@ssh-server/shared';
-import { api } from '../../../src/lib/api';
+import type { HostTrustStatus, ManagedServer } from '@ssh-server/shared';
+import { api, ApiError } from '../../../src/lib/api';
 import { ServerManagerDialog } from '../../../src/features/ssh/ServerManagerDialog';
 import { ServerStep } from '../../../src/features/workspaces/setup/ServerStep';
 
@@ -18,13 +18,13 @@ const server: ManagedServer = {
 };
 const status = { connected: false, hasPassword: false, saved: false, paused: false, savingAvailable: true };
 const clients: QueryClient[] = [];
-function mount(onSelect = vi.fn()) {
+function mount(onSelect = vi.fn(), initialAlias = server.alias) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   clients.push(client);
   const close = vi.fn();
   const view = render(
     <QueryClientProvider client={client}>
-      <ServerManagerDialog initialAlias={server.alias} onClose={close} onSelect={onSelect} />
+      <ServerManagerDialog initialAlias={initialAlias} onClose={close} onSelect={onSelect} />
     </QueryClientProvider>,
   );
   return { ...view, close, onSelect, client };
@@ -113,7 +113,7 @@ it('切换档案中止在途认证，迟到响应不改新目标或清除新输�
   fireEvent.change(old, { target: { value: 'old-secret' } });
   fireEvent.click(screen.getByRole('button', { name: '连接服务器' }));
   const signal = vi.mocked(api.connectSsh).mock.calls[0]![1]!;
-  fireEvent.change(screen.getByLabelText('已保存服务器'), { target: { value: other.alias } });
+  fireEvent.click(screen.getByRole('button', { name: `选择服务器：${other.name}` }));
   expect(signal.aborted).toBe(true);
   expect(old.value).toBe('');
   const current = screen.getByLabelText<HTMLInputElement>('SSH 密码');
@@ -153,7 +153,7 @@ it('删除必须明确确认，携带档案快照，成功移除选项', async (
   vi.mocked(api.listSshHosts).mockResolvedValue([]);
   fireEvent.click(confirm);
   await waitFor(() => expect(api.deleteSshTarget).toHaveBeenCalledWith(server, expect.any(AbortSignal)));
-  await screen.findByText('尚未保存服务器，请新增或导入。');
+  await screen.findByText('暂无服务器，可新增或导入');
 });
 it('SSH配置仅填表，不支持的选项不可导入，明确保存才登记档案', async () => {
   vi.spyOn(api, 'sshImportOptions').mockResolvedValue([
@@ -275,7 +275,7 @@ it('新增密码档案后聚焦当前档案密码步骤，连接后留空复用�
   const password = await screen.findByLabelText<HTMLInputElement>('SSH 密码');
   await waitFor(() => expect(document.activeElement).toBe(password));
   expect(screen.getByText(/已保存.*新密码服务器/)).toBeTruthy();
-  expect(screen.getByLabelText<HTMLSelectElement>('已保存服务器').value).toBe('new-server');
+  expect(screen.getByRole('button', { name: '选择服务器：新密码服务器' }).getAttribute('aria-pressed')).toBe('true');
   expect(vi.mocked(api.saveSshTarget).mock.calls[0]?.[0]).not.toHaveProperty('password');
   await waitFor(() =>
     expect(screen.getByRole<HTMLInputElement>('checkbox', { name: '保存密码' }).disabled).toBe(false),
@@ -294,4 +294,119 @@ it('新增密码档案后聚焦当前档案密码步骤，连接后留空复用�
   fireEvent.click(screen.getByRole('button', { name: '关闭服务器' }));
   f.unmount();
   expect(api.disconnectSsh).not.toHaveBeenCalled();
+});
+
+it('紧凑列表同时显示名称、目标、认证状态和引用；选择只展示详情，不连接、断开或进入编辑', async () => {
+  const other: ManagedServer = {
+    ...server,
+    alias: 'other-server',
+    name: '另一服务器',
+    hostname: 'other-server',
+    authMode: 'key',
+  };
+  vi.mocked(api.listSshHosts).mockResolvedValue([server, other]);
+  vi.mocked(api.sshCredentials).mockImplementation(async (alias) => ({ ...status, connected: alias === other.alias }));
+  const connect = vi.spyOn(api, 'connectSsh');
+  const disconnect = vi.spyOn(api, 'disconnectSsh');
+  const f = mount(vi.fn(), '');
+  const list = await screen.findByRole('list', { name: '服务器列表' });
+  const first = within(list).getByRole('button', { name: '选择服务器：演示服务器' });
+  const second = within(list).getByRole('button', { name: '选择服务器：另一服务器' });
+  expect(within(first).getByText('user@my-server:22')).toBeTruthy();
+  expect(within(first).getByText('账号密码')).toBeTruthy();
+  expect(await within(first).findByText('需输入密码')).toBeTruthy();
+  expect(within(first).getByText('1 个工作区引用')).toBeTruthy();
+  expect(within(second).getByText('user@other-server:22')).toBeTruthy();
+  expect(within(second).getByText('已有私钥')).toBeTruthy();
+  expect(await within(second).findByText('已连接')).toBeTruthy();
+  expect(within(second).getByText('无工作区引用')).toBeTruthy();
+  expect(screen.queryByRole('combobox', { name: '已保存服务器' })).toBeNull();
+  expect(screen.queryByLabelText('SSH 密码')).toBeNull();
+  fireEvent.click(first);
+  expect(first.getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByRole('region', { name: '所选服务器详情' })).toBeTruthy();
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: '删除服务器' }).disabled).toBe(true);
+  expect(screen.queryByLabelText('连接名称')).toBeNull();
+  const password = await screen.findByLabelText<HTMLInputElement>('SSH 密码');
+  fireEvent.change(password, { target: { value: 'discard-on-selection' } });
+  fireEvent.click(second);
+  expect(second.getAttribute('aria-pressed')).toBe('true');
+  expect(first.getAttribute('aria-pressed')).toBe('false');
+  expect(password.value).toBe('');
+  expect(screen.queryByLabelText('连接名称')).toBeNull();
+  expect(connect).not.toHaveBeenCalled();
+  expect(disconnect).not.toHaveBeenCalled();
+  expect(f.onSelect).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '编辑服务器' }));
+  expect(screen.getByLabelText<HTMLInputElement>('连接名称').value).toBe(other.name);
+  expect(screen.getByLabelText<HTMLInputElement>('地址').disabled).toBe(false);
+});
+
+it('列表状态或引用读取失败不伪装未连接或无引用，保留目标并阻止危险编辑', async () => {
+  vi.mocked(api.sshCredentials).mockRejectedValue(new Error('状态不可用'));
+  vi.mocked(api.listWorkspaces).mockRejectedValue(new Error('引用不可用'));
+  mount();
+  const item = await screen.findByRole('button', { name: '选择服务器：演示服务器' });
+  expect(await within(item).findByText('状态读取失败')).toBeTruthy();
+  expect(within(item).getByText('引用读取失败')).toBeTruthy();
+  expect(within(item).queryByText('无工作区引用')).toBeNull();
+  expect(within(item).queryByText('未连接')).toBeNull();
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: '删除服务器' }).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: '编辑服务器' }));
+  expect(screen.getByLabelText<HTMLInputElement>('地址').disabled).toBe(true);
+});
+
+it('活动任务拒绝删除时保留服务器列表与原快照，不伪报删除成功', async () => {
+  vi.mocked(api.listWorkspaces).mockResolvedValue([]);
+  vi.spyOn(api, 'deleteSshTarget').mockRejectedValue(new ApiError(409, '服务器存在活动任务'));
+  const f = mount();
+  const remove = await screen.findByRole<HTMLButtonElement>('button', { name: '删除服务器' });
+  await waitFor(() => expect(remove.disabled).toBe(false));
+  fireEvent.click(remove);
+  fireEvent.click(screen.getByRole('checkbox', { name: '我确认删除此服务器档案' }));
+  fireEvent.click(screen.getByRole('button', { name: '确认删除服务器' }));
+  expect((await screen.findByRole('alert')).textContent).toContain('服务器存在活动任务');
+  expect(api.deleteSshTarget).toHaveBeenCalledWith(server, expect.any(AbortSignal));
+  expect(screen.getByRole('button', { name: '选择服务器：演示服务器' }).getAttribute('aria-pressed')).toBe('true');
+  expect(f.client.getQueryData(['ssh-targets'])).toEqual([server]);
+  expect(f.close).not.toHaveBeenCalled();
+});
+
+it('主机指纹必须显式检查和确认，切换列表清理旧挑战与密码，不触发认证', async () => {
+  const other = { ...server, alias: 'other-server', name: '另一服务器' };
+  vi.mocked(api.listSshHosts).mockResolvedValue([server, other]);
+  const probe: HostTrustStatus = {
+    status: 'unknown',
+    alias: server.alias,
+    target: { hostname: server.hostname, port: server.port, username: server.username },
+    algorithm: 'ssh-ed25519',
+    fingerprint: `SHA256:${'A'.repeat(43)}`,
+    challenge: '11111111-1111-4111-8111-111111111111',
+  };
+  vi.spyOn(api, 'probeHostKey').mockResolvedValue(probe);
+  vi.spyOn(api, 'confirmHostKey').mockResolvedValue({ ...probe, status: 'trusted' });
+  vi.spyOn(api, 'connectSsh');
+  mount();
+  const password = await screen.findByLabelText<HTMLInputElement>('SSH 密码');
+  expect(api.probeHostKey).not.toHaveBeenCalled();
+  fireEvent.change(password, { target: { value: 'discard-before-probe' } });
+  fireEvent.click(screen.getByRole('button', { name: '检查实际指纹' }));
+  await screen.findByText(probe.fingerprint);
+  expect(password.value).toBe('');
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: '信任此公钥' }).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('checkbox', { name: '我已核对本次实际指纹' }));
+  fireEvent.click(screen.getByRole('button', { name: '选择服务器：另一服务器' }));
+  expect(screen.queryByText(probe.fingerprint)).toBeNull();
+  expect(screen.queryByRole('button', { name: '信任此公钥' })).toBeNull();
+  expect(api.confirmHostKey).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '选择服务器：演示服务器' }));
+  fireEvent.click(screen.getByRole('button', { name: '检查实际指纹' }));
+  fireEvent.click(await screen.findByRole('checkbox', { name: '我已核对本次实际指纹' }));
+  fireEvent.click(screen.getByRole('button', { name: '信任此公钥' }));
+  await screen.findByText('实际公钥与本机信任记录一致，可以继续测试认证。');
+  expect(api.confirmHostKey).toHaveBeenCalledWith(
+    { challenge: probe.challenge, fingerprint: probe.fingerprint, confirmed: true },
+    expect.any(AbortSignal),
+  );
+  expect(api.connectSsh).not.toHaveBeenCalled();
 });

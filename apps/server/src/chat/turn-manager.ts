@@ -264,7 +264,7 @@ export class TurnManager {
       workspace: ws,
       sessionId: msg.sessionId,
       model: msg.model,
-      reasoningEffort: turn.agent === 'codex' ? msg.reasoningEffort : undefined,
+      reasoningEffort: msg.reasoningEffort,
       text: prepared.text,
       invocation: prepared.invocation,
       mcpEnv: { SSH_SERVER_INTERNAL_URL: this.deps.internalUrl(), SSH_SERVER_SESSION_TOKEN: turn.token },

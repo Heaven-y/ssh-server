@@ -42,9 +42,7 @@ export function SyncSettingsForm({
       <summary className="cursor-pointer rounded py-1 text-sm font-medium focus-visible:outline-2 focus-visible:outline-accent">
         {title}
       </summary>
-      <p className="mt-2 leading-5 text-muted-foreground">
-        仅影响当前工作区，不修改全局默认值；全局默认值也不会覆盖这里的规则。
-      </p>
+      <p className="mt-2 leading-5 text-muted-foreground">规则仅用于当前工作区；全局默认值仅复制到新工作区。</p>
       <form
         aria-label={title}
         onSubmit={submit}
@@ -85,9 +83,7 @@ export function SyncSettingsForm({
             }}
           />
         </div>
-        <p className="leading-5 text-muted-foreground sm:col-span-2">
-          .git 始终排除。修改规则后需要确认重建基线，大数据与权重留在服务器。
-        </p>
+        <p className="leading-5 text-muted-foreground sm:col-span-2">修改规则后需确认重建基线；.git 始终排除。</p>
         {error && (
           <p role="alert" className="text-destructive-foreground sm:col-span-2">
             {error}

@@ -1,4 +1,5 @@
 import {
+  Activity,
   FileCode2,
   Command as CommandIcon,
   FolderOpen,
@@ -18,7 +19,6 @@ import type { Workspace } from '@ssh-server/shared';
 import { reconnectChat, useChat } from '../features/chat/chat-store';
 import { buttonClass } from '../ui/styles';
 import { useUiPreferences } from '../ui/ui-preferences';
-import type { ReactNode } from 'react';
 
 const STATUS = {
   open: { label: '本机服务已连接', icon: Wifi, cls: 'text-muted-foreground' },
@@ -66,7 +66,8 @@ export function TopBar({
   filesOpen,
   onOpenTerminal,
   terminalOpen,
-  resources,
+  resourcesOpen,
+  onOpenResources,
   onOpenCommands,
 }: {
   workspace?: Workspace;
@@ -76,7 +77,8 @@ export function TopBar({
   filesOpen: boolean;
   onOpenTerminal(): void;
   terminalOpen: boolean;
-  resources?: ReactNode;
+  resourcesOpen: boolean;
+  onOpenResources(): void;
   onOpenCommands(): void;
 }) {
   const connection = useChat((s) => s.connection);
@@ -84,7 +86,7 @@ export function TopBar({
   const Icon = st.icon;
 
   return (
-    <header className="flex shrink-0 flex-wrap items-center border-b border-border/70 bg-card">
+    <header id="workspace-topbar" className="flex shrink-0 flex-wrap items-center border-b border-border/70 bg-card">
       <div className="flex h-14 shrink-0 items-center gap-2.5 px-4">
         <AppearanceActions />
         <TerminalSquare aria-hidden className="size-5 text-accent" />
@@ -99,21 +101,17 @@ export function TopBar({
           <span className="truncate text-foreground">{workspace.name}</span>
         </span>
       )}
-      {resources && (
-        <div className="order-last w-full border-t border-border/60 px-3 py-1 2xl:order-none 2xl:w-auto 2xl:flex-1 2xl:border-0">
-          {resources}
-        </div>
-      )}
       <div className="ml-auto flex h-14 shrink-0 items-center gap-1 pr-4">
         <button
           type="button"
           className={buttonClass('ghost')}
-          aria-label="打开网页命令面板"
-          title="网页命令面板 · Ctrl+K / Cmd+K"
+          aria-label="搜索与操作"
+          title="搜索与操作 · Ctrl+K / Cmd+K"
           aria-haspopup="dialog"
           onClick={onOpenCommands}
         >
           <CommandIcon aria-hidden className="size-4" />
+          搜索与操作
         </button>
         <button
           type="button"
@@ -129,7 +127,19 @@ export function TopBar({
           type="button"
           className={buttonClass('ghost')}
           disabled={!workspace}
+          aria-expanded={resourcesOpen}
+          aria-controls="workspace-resources-panel"
+          onClick={onOpenResources}
+        >
+          <Activity aria-hidden className="size-4" />
+          资源
+        </button>
+        <button
+          type="button"
+          className={buttonClass('ghost')}
+          disabled={!workspace}
           aria-expanded={filesOpen}
+          aria-controls="workspace-files-panel"
           onClick={onOpenFiles}
         >
           <FileCode2 aria-hidden className="size-4" />
@@ -149,7 +159,7 @@ export function TopBar({
           className={`ml-3 flex items-center gap-1.5 whitespace-nowrap text-xs ${st.cls}`}
         >
           <Icon aria-hidden className={`size-4 ${connection === 'connecting' ? 'motion-safe:animate-pulse' : ''}`} />
-          {st.label}
+          <span className="sr-only 2xl:not-sr-only">{st.label}</span>
         </span>
         {connection !== 'open' && (
           <button

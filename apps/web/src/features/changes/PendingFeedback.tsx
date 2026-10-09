@@ -30,7 +30,7 @@ export function PendingFeedback() {
           </li>
         ))}
       </ul>
-      <p className="text-xs text-muted-foreground">点击发送后与消息正文一起发送；不会自动发送。</p>
+      <p className="text-xs text-muted-foreground">随下一条消息发送。</p>
     </section>
   );
 }

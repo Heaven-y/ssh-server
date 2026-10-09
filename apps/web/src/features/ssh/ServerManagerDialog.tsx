@@ -1,13 +1,14 @@
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { ManagedServer, ManualServerInput, Workspace } from '@ssh-server/shared';
 import { api, queryKeys } from '../../lib/api';
 import { DetailDialog } from '../../ui/DetailDialog';
-import { buttonClass, inputClass } from '../../ui/styles';
+import { buttonClass } from '../../ui/styles';
 import { useCancelableRequest } from '../workspaces/setup/use-cancelable-request';
 import { EMPTY_SERVER, ManualServerForm } from './ManualServerForm';
 import { ServerConnectionForm } from './ServerConnectionForm';
 import { SshImportOptions } from './SshImportOptions';
+import { ServerList } from './ServerList';
 
 type Editor = { initial: ManualServerInput; expected?: ManagedServer };
 function DeleteServer({ server, done, cancel }: { server: ManagedServer; done(): void; cancel(): void }) {
@@ -37,6 +38,9 @@ function DeleteServer({ server, done, cancel }: { server: ManagedServer; done():
     <section aria-label="确认删除服务器" className="space-y-3 rounded border border-destructive p-4">
       <p className="text-sm">
         删除“{server.name}”会清理该服务器的连接和保存凭据，不删除远端文件。存在工作区引用或活动任务时服务端将拒绝。
+      </p>
+      <p className="break-all font-mono text-xs text-muted-foreground">
+        {server.username}@{server.hostname}:{server.port}
       </p>
       <label className="flex min-h-11 items-center gap-2 text-sm">
         <input
@@ -74,38 +78,6 @@ type Screen =
   | { kind: 'import' }
   | { kind: 'edit'; editor: Editor }
   | { kind: 'delete'; server: ManagedServer };
-function ServerList({
-  hosts,
-  alias,
-  select,
-}: {
-  hosts: UseQueryResult<ManagedServer[]>;
-  alias: string;
-  select(alias: string): void;
-}) {
-  const id = useId();
-  return (
-    <div className="space-y-2">
-      <label htmlFor={id} className="block text-sm">
-        已保存服务器
-      </label>
-      <select id={id} className={inputClass} value={alias} onChange={(event) => select(event.target.value)}>
-        <option value="">{hosts.isPending ? '正在读取…' : '请选择服务器'}</option>
-        {hosts.data?.map((server) => (
-          <option key={server.alias} value={server.alias}>
-            {server.name} · {server.username}@{server.hostname}:{server.port}
-          </option>
-        ))}
-      </select>
-      {hosts.error && (
-        <p role="alert" className="text-sm text-destructive-foreground">
-          服务器列表读取失败：{hosts.error.message}
-        </p>
-      )}
-      {hosts.data?.length === 0 && <p className="text-sm text-muted-foreground">尚未保存服务器，请新增或导入。</p>}
-    </div>
-  );
-}
 function ReferenceNotice({ workspaces, alias }: { workspaces: UseQueryResult<Workspace[]>; alias: string }) {
   if (workspaces.isError)
     return (
@@ -141,7 +113,13 @@ function ProfileDetails({
   connectAfterSave?: boolean;
 }) {
   return (
-    <>
+    <section aria-label="所选服务器详情" className="space-y-4 border-t border-border pt-4">
+      <div className="space-y-1">
+        <h3 className="break-words font-medium">{server.name}</h3>
+        <p className="break-all font-mono text-xs text-muted-foreground">
+          {server.username}@{server.hostname}:{server.port}
+        </p>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <p className="mr-auto text-sm">{server.authMode === 'key' ? '已有私钥' : '账号密码'}</p>
         <button
@@ -166,7 +144,7 @@ function ProfileDetails({
           使用此服务器
         </button>
       )}
-    </>
+    </section>
   );
 }
 function ServerContent({
@@ -208,7 +186,9 @@ function ServerContent({
       chooseServer={chooseServer}
       connectAfterSave={screen.connectAfterSave}
     />
-  ) : null;
+  ) : (
+    <p className="text-sm text-muted-foreground">选择一台服务器查看详情，或新增服务器。</p>
+  );
 }
 
 /** 顶栏、工作区详情和向导共用此入口；切换档案会卸载密码和在途请求。 */
@@ -273,7 +253,7 @@ export function ServerManagerDialog({
             重新读取
           </button>
         </div>
-        <ServerList hosts={hosts} alias={alias} select={select} />
+        <ServerList hosts={hosts} workspaces={workspaces} alias={alias} select={select} />
         <ReferenceNotice workspaces={workspaces} alias={alias} />
         <ServerContent
           screen={screen}

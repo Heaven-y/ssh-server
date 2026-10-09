@@ -13,6 +13,8 @@ export type {
   ResourceSnapshot,
 } from './resources';
 
+export type { SlurmSnapshot } from './slurm';
+
 export {
   TERMINAL_LIMITS,
   TerminalTargetSchema,

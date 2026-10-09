@@ -68,7 +68,7 @@ function useFileRevision(
   }, [id, file, enabled, changed]);
 }
 
-export function useFileEditor(workspaceId: string) {
+export function useFileEditor(workspaceId: string, active: boolean) {
   const client = useQueryClient();
   const [file, setFile] = useState<WorkspaceFile>();
   const [content, setContent] = useState('');
@@ -104,7 +104,7 @@ export function useFileEditor(workspaceId: string) {
     window.addEventListener('beforeunload', leaving);
     return () => window.removeEventListener('beforeunload', leaving);
   }, [dirty, busy]);
-  useFileRevision(workspaceId, file, !busy, setExternal);
+  useFileRevision(workspaceId, file, active && !busy, setExternal);
 
   const edit = useCallback(
     (value: string) => {
