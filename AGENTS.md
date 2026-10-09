@@ -22,8 +22,8 @@
 | 已确认的设计决策与取舍 | `docs/engineering/decisions.md` |
 | 开发环境、代码规范、项目 skill、已知问题 | `docs/guides/dev-environment.md` |
 | 里程碑与进度 | `docs/roadmap.md` |
-| superpowers 产出的设计与计划 | `docs/superpowers/specs/`、`docs/superpowers/plans/` |
+| 最新交付验收与精选截图 | `docs/guides/ui-usability-optimization-acceptance.md` |
 
 实现与文档不一致时，先更新文档或向用户确认。
 
-当前规范与历史记录的区别见 `docs/README.md`。以当前需求、架构、路线图及最新决策为准；历史验收、阶段路线图和旧设计保留供复盘，不由其中的旧兼容承诺或未观察项自动派生新任务。VS Code/CLI 外部界面是可选检查手段，不是本网页产品的交付依赖。
+文档入口见 `docs/README.md`，以当前需求、架构、路线图及最新决策为准。已获用户批准删除被现行规范覆盖的旧设计、计划、过程验收与旧图；必要取舍集中于设计决策，不由旧兼容承诺或未观察项自动派生新任务，也不把旧测试数字当作当前结果。VS Code/CLI 外部界面是可选检查手段，不是本网页产品的交付依赖。

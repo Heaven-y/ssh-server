@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>独立面板 · 精选截图</title>
+    <style>
+      body {
+        margin: 0;
+        background: #f5f6f8;
+        color: #1b2230;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 1120px;
+        margin: auto;
+        padding: 24px;
+      }
+      h1 {
+        font-size: 24px;
+      }
+      a {
+        color: #254dc6;
+      }
+      figure {
+        margin: 28px 0;
+      }
+      img {
+        display: block;
+        width: 100%;
+        height: auto;
+        border: 1px solid #d4d9e2;
+        box-sizing: border-box;
+        border-radius: 10px;
+      }
+      figcaption {
+        margin-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>独立面板 · 精选截图</h1>
+      <p>资源与文件可以分别打开、收起并同时存在；拖动标题移动，拖动右下角调整大小。</p>
+      <p>
+        以下为隔离 Edge 验收的合成数据画面，不代表真实集群或模型运行结果。<a
+          href="../../guides/ui-usability-optimization-acceptance.md"
+          >验收说明</a
+        >
+      </p>
+      <figure>
+        <a href="panels-independent.png"
+          ><img
+            src="panels-independent.png"
+            width="1440"
+            height="960"
+            alt="资源与文件独立共存，点文件默认显示，聊天强度可选择自动"
+        /></a>
+        <figcaption>1440px：双面板共存，聊天和原生强度选择仍可操作。</figcaption>
+      </figure>
+      <figure>
+        <a href="panels-fixed-target-dark.png"
+          ><img
+            src="panels-fixed-target-dark.png"
+            width="1920"
+            height="1080"
+            alt="深色界面中未保存文件固定原工作区，终端保持原PTY连接"
+        /></a>
+        <figcaption>1920px 深色：切换聊天工作区后，文件缓冲、编辑登记与终端目标保持不变。</figcaption>
+      </figure>
+      <figure>
+        <a href="panels-light-960.png"
+          ><img
+            src="panels-light-960.png"
+            width="960"
+            height="960"
+            alt="960px窗口中资源和文件非模态并存，没有强制四栏布局"
+        /></a>
+        <figcaption>960px：最小支持宽度下仍可独立操作；首屏不会强制打开面板。</figcaption>
+      </figure>
+      <figure>
+        <a href="panels-slurm-lines.png"
+          ><img
+            src="panels-slurm-lines.png"
+            width="1440"
+            height="960"
+            alt="Slurm文本结果在独立资源面板内部滚动，超过200行明确截断"
+        /></a>
+        <figcaption>Slurm：当前账号文本查询，长表内部滚动；警告、截断和超时保护保留。</figcaption>
+      </figure>
+    </main>
+  </body>
+</html>
