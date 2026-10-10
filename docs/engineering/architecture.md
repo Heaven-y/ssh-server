@@ -43,14 +43,14 @@
 | Python 分析 | 通过 SSH 调用服务器已有 Python / 项目环境 | 统计、绘图和结果处理留在数据所在服务器；本地后端收集输出和必要小文件 |
 | 版本记录 | 本机 git（外部命令） | |
 | 前端 | React 19 + Vite + Tailwind CSS 4 | |
-| 前端组件 | Base UI（无样式组件）、react-resizable-panels（分栏）、cmdk（命令面板）、lucide-react（图标）、sonner（提示） | 选型参考 t3code、vibe-kanban 等项目，见 ui-layout 第 0 节 |
+| 前端组件 | Ariakit（菜单、分类与浮层）、react-resizable-panels（停靠分栏）、cmdk（命令面板）、lucide-react（图标） | 沿用已有成熟组件，不增加自由浮窗框架；交互规范见ui-layout |
 | 消息渲染 | streamdown（流式 Markdown）+ shiki（代码高亮）、react-virtuoso4.18.16（动态长列表） | 时间线投影合并明确读取工具；展开状态留在列表父层，选择代次重置视图。diff使用按需加载的@pierre/diffs1.5.1及GitHub高对比双主题，解析和组件失败降级为有界原文本 |
 | 前端状态与接口数据 | zustand、`@tanstack/react-query`、partysocket | zustand 管流式状态，react-query 管接口加载与刷新，partysocket 管 WebSocket 重连 |
 | 终端 | @xterm/xterm + @xterm/addon-fit | |
 | 文件编辑 | `@uiw/react-codemirror` / CodeMirror 6 | 原生配置和轻量脚本编辑共用，按需加载，不引入完整 IDE |
 | 资源状态 | SSH只读采样、有界共享缓存、HTTP/React Query单controller | 仅资源面板自身可见、网页连接open且设置有效时刷新；资源隐藏/页面隐藏/断线取消HTTP并暂停，文件开关不干扰；宿主按认证身份共享，磁盘按目录隔离 |
 | 字体 | @fontsource/ibm-plex-sans、@fontsource/jetbrains-mono | 本地打包，不访问外部字体服务 |
-| 存储 | JSON 文件 | 只存工作区配置，不存对话 |
+| 存储 | 本机JSON与独立系统加密凭据 | 工作区、服务器档案及产品偏好；不另存原生对话正文 |
 
 依赖版本在开始实现时固定，并与本机 Codex CLI 版本对齐。已确认继续 Node.js + TypeScript + Fastify；与 Python + FastAPI、NestJS、Go 的比较及打包边界见 [设计决策第 8 节](decisions.md#8-后端选型分析位置与运行边界)。当前沿用 Node.js 本地启动方式，尚无独立 `.exe`、安装器或 Go 迁移要求。
 
@@ -130,7 +130,7 @@ ssh-server/
 
 - git 数据在工作区的本地文件夹内（`.git`），不放在这里。
 - 对话记录不在这里，由 Claude Code（`~/.claude`）和 Codex（`~/.codex`）自己保存。
-- 连接地址、端口、账号、认证方式和私钥路径可以保存到本地配置；明文密码仅在后端内存中使用。选择保存时由 Windows 当前用户加密后放入独立凭据目录，断开 / 退出清理内存但保留保存项，取消“保存密码”勾选时删除保存项并断开。
+- 连接地址、端口、账号、认证方式和私钥路径保存在本机档案；密码仅在连接或明确编辑流程按需进入内存。保存项经Windows当前用户加密后放入独立凭据目录，断开清理连接内存但保留密文，取消保存才删除并断开；编辑表单离开后清理自身状态。
 - 明文密码不进入工作区 JSON、临时磁盘配置、浏览器持久存储、日志、命令行参数或 Agent 上下文。保存项绑定地址、端口和账号，不能对修改后的目标复用。
 
 ## 5. 模块设计
@@ -176,7 +176,7 @@ Codex（app-server）：
 - Claude 手动压缩依据本轮状态和 manual `compact_boundary`，顶层 result success 不能证明成功；Codex RPC 接受不等于压缩完成，须由当前轮次的原生压缩/结束通知确认。失败、取消与未确认分别保留，历史只展示已有原生边界，不补造旧用量。
 - 切换工作区/Agent/会话清理能力选择与当前上下文，迟到结果隔离。新轮次清理旧 running 压缩摘要，历史仍保留未确认标记；普通运行态不能复活旧操作。
 - `ComposerInput` 使用 Ariakit combobox/textarea 自动补全首个 slash 命令名，复用能力缓存和 ID 选择，不改变后端协议。输入变化与光标移动更新补全范围，Enter 在候选代理处理前判断发送语义，避免确认候选后同一次按键误发；输入法、换行和原参数均保留。
-- `isInvocableCapability(entry)`由技能选择器与补全共用；不可执行项默认隐藏而保留按需限制说明，已有会话前提继续校验，读取失败不伪装空目录。`ModelOptionsMenu`表达下一轮选择，手填模型独立dialog；会话行只保留标题/运行态，`SessionMenu`先选动作再挂对应表单，模型证据和原生身份保持。
+- `isInvocableCapability(entry)`由技能选择器与补全共用，限制按需查看。`ModelOptionsMenu`只以真实目录模型作为主候选，次级提供清除覆盖、手填及刷新，明确区分当前选择和native/actual报告；`ContextStatus`与模型/强度同区，Popover说明用量来源、窗口和压缩，未知值不推算。会话按Agent分组，菜单只选动作再挂对应表单。
 
 ### 5.2 remote-tools：远程工具
 
@@ -200,13 +200,14 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 ### 5.4 ssh
 
 - 顶栏“服务器”统一管理本机档案，支持从 `~/.ssh/config` 显式导入HostName、Port、User、IdentityFile，也可手动填写。未登记Host不参与生产连接解析；不支持的选项（如ProxyJump）保留提示，不改写SSH config。
-- 认证支持账号密码和已有私钥；密码经受本机访问控制保护的接口进入后端内存，可选择使用 Windows 当前用户加密保存。主动断开只关闭连接并清理内存，取消保存密码时移除保存项并断开；认证失败时提示重新输入，不回显密码、不交给 Agent。
+- 认证支持账号密码和已有私钥；密码通过本机访问控制保护的接口进入内存，可使用Windows当前用户加密保存。普通连接留空仍可复用保存项；明确编辑时按需解密回填，默认掩码，可查看/修改并确认保存。主动断开保留密文，取消保存则移除并断开；密码不交给Agent，保存不触发SSH认证。
 - 保持 `known_hosts` 校验。未知主机通过网页指纹挑战明确确认，已有可信密钥变化或吊销时拒绝连接。
 - 内部连接入口统一 `SshTarget = { alias }`，认证方式仅从已登记服务器解析；工作区、终端和浏览目标不携带`authMode`旧字段。连接按实际地址、端口、账号、认证方式、可信记录与凭据代次复用；执行、同步、浏览、终端和资源共用resolver，参数变化不能复用旧连接。
 - 终端：`shell()` 打开 PTY，数据经 WebSocket 与 xterm.js 双向转发，支持窗口尺寸变化、多标签和可调整布局。视觉与分屏交互参考 Pebrel，仅参考设计。
 - `ssh/profiles`在工作区存储快照、活动排他和档案写队列内检查expected、引用与阻断。被引用目标不能删除或改变地址/端口/账号/私钥；重新认证及断开必须等待活动与未解决持久任务处理。复用移除资源的同步/编辑/任务检查；回调不得重入前置锁。管理界面显示受影响工作区。
 - 普通留空连接不发送未改变的savePassword，复用检查取消不关闭共享连接。删除档案在提交前通过`pool.forgetServerCredentials`使用已核对的hostname/port/username身份清理内存和磁盘凭据，不重新解析alias或重入档案队列；清理失败保留档案。
 - `ServerList`共用公开档案、工作区引用及凭据状态查询，选中只看详情，编辑/认证分开，不新增列表轮询。状态读取失败与未连接明确区分，密码正文不返回列表。
+- 密码编辑请求绑定完整档案expected和凭据revision，读取/保存响应no-store；前端只在编辑组件内保留明文，不进入列表、公开状态、URL、日志或长期query cache。目标变化、取消、关闭和迟到结果用身份/代次隔离，不暗中沿用旧密码；服务端在现有档案写队列、凭据身份和共享活动锁内提交。
 
 终端固定目标、签名票、独立WebSocket、背压、通道移交、EOF/退出、preClose、稳定窗格与粘贴模式的有效取舍见[设计决策第5节](decisions.md#5-终端参考的使用方式)。OS输入法未观察不等于已通过，也不因资料精简新增任务。
 
@@ -256,6 +257,10 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 - Codex归档记录只提供恢复/删除，恢复后从普通列表改名；不为旧版本能力另设分支。删除说明相关子会话影响，归档说明派生子会话影响，恢复不承诺恢复全部后代；外部客户端并发不由本后端统一加锁。
 - `SessionSummary.nativeModel`表示原生会话配置，不是执行遥测；Codex复用`thread/list`模型字段，不做逐条`thread/read`。Claude列表不启动额外CLI或读取每条正文；打开历史时复用SDK消息，倒序取主会话助手非空模型，排除子代理及`<synthetic>`。
 - `SessionHistory.actualModel`和运行时报告保留实际证据语义。网页按工作区/Agent/原生ID缓存已观察模型，仅内存且删除时清理。新列表的原生模型优先于旧历史缓存，缺失时才回退；实际报告和原生配置分别说明，用户覆盖与候选默认不能充当证据。底栏模型/推理控件拦截Enter隐式提交，正文发送/补全/审批不变。
+- 原生分叉接口为strict `POST /api/workspaces/:id/sessions/:sessionId/fork?agent=…`，body `{pointId?:string}`，响应`{session:SessionSummary}`且no-store。provider必需`fork`，与rename/delete同用`withIdleSession`，从源/点核验持有至新ID/cwd复核；请求派发后HTTP断开不提前解锁或当作撤销。
+- Codex完整读取源thread并拒绝未结束轮次，以`thread/fork {threadId,lastTurnId?}`inclusive分叉，不覆写cwd/config/path。Claude调用SDK `forkSession(id,{dir,upToMessageId?})`，核对transcript中主会话原生终止点和新metadata。源记录不手改，不调用文件历史回滚；外部客户端的活动不由本服务统一加锁。
+- `turn_end.forkPoint`仅为可信的已结束原生轮次/消息ID。Codex取终止turn.id，Claude取已核对的助手transcript UUID而非result.uuid；无可靠点不补造。前端reduceChat去重并投影分叉边界，分叉控制器复用全局sessionOperations，成功刷新来源且只在选择代次仍匹配、当前空闲时打开新会话。
+- `session-preferences`仅保存有界置顶三元身份（工作区/Agent/原生ID）；分组内置顶优先再按时间排序，不复制历史。`session-links`严格生成/解析当前站点hash；`useWorkspaceNavigation`统一首次恢复与hash变化，拒绝未知目标和忙碌导航，旧查询仍由选择代次取消/隔离。链接不是原生URI或自动上下文注入。
 
 ### 5.8 policy：命令黑名单
 
@@ -285,9 +290,9 @@ shared/policy提供严格规则目录/schema；policy支持工作区默认启停
 
 当前目录结果复用`files/directory-order`，先排序扫描到的全部合格条目，再截取500项；保留5000项扫描边界与`truncated`，不宣称超限目录完整。本地网页与远端共享键盘导航规则，但仅提供浏览和编辑入口，不新增本地文件CRUD。
 
-页面宿主分别管理资源和文件的可见性及几何状态，不再使用`resources | files | null`互斥槽位。两个浮动面板都是非模态，不因小窗调用showModal或设置整页遮罩/焦点陷阱；标题拖动、右下角缩放、方向键及Shift辅助操作，视口变化约束位置与大小，复位入口可达。文件宽度沿用`fileWidth`（360–960px），资源默认420px；其他位置和大小只在当前页面独立记忆。左栏默认240px、200–320px；960px最小支持，≥1280px有工作区时默认打开资源，较窄首屏不强开。
+页面使用`WorkspaceLayout → WorkspaceColumns → WorkspaceTools`固定嵌套Group，资源/文件各自可见，不使用互斥槽或自由浮窗。≥1600px右区横排，较窄纵排，<1280px自动收起左栏；自动状态不写持久偏好，用户仍可展开。通常对话最小480px，紧凑窗口主动展开导航时为320px。工具各模式宽度及横纵比例分别有界记忆，只用户调节时写入，复位不改主题/左栏尺寸；具体范围见界面规范。960px最小支持，≥1280px初始资源打开。
 
-文件打开时固定工作区；隐藏、移动/缩放、断点及聊天切换保留同一CodeMirror子树、dirty缓冲、文件目标和编辑登记。隐藏文件仅停目录/修订/断开登记与任务查询，取消对应GET；编辑WebSocket继续响应预留/解锁并报告最新状态，真正关闭文件才确认和释放。xterm/PTY保持独立底部宿主，不随浮动面板变化卸载。文件内部的本地代码、服务器文件、改动视图保持。
+文件打开时固定工作区；收起、尺寸/方向/断点变化及聊天切换保留同一CodeMirror子树、dirty缓冲、目标和编辑登记，不重新挂载功能内容。隐藏文件仅停目录/修订/断开登记与任务GET，编辑WebSocket继续响应预留/解锁；真正关闭才确认释放。PTY仍在对话主区的稳定底部宿主。停靠区无焦点陷阱，子dialog取消和编辑器消费的Escape不误收起外层；本地/服务器/改动子视图保持。
 
 ### 5.11 metrics：服务器资源采样
 
@@ -316,7 +321,7 @@ shared/policy提供严格规则目录/schema；policy支持工作区默认启停
 - Slurm非`error`结果缓存2秒、最多32项（包含`unavailable`），同身份pending共享；每个调用者独立取消，最后等待者取消才中止通道，不断开共享SSH。错误不缓存，认证变化清理并取消旧查询，返回前仍复验。
 - `GET /api/workspaces/:id/slurm?target=...`采用strict固定目标、no-store及现行本机认证/取消契约；无提交、取消、安装、全用户或节点遍历接口。
 - 网页`useSlurm(target, active)`只保留组件内快照；active只取资源自身可见性及页面/连接条件，文件打开不触发取消或重读。无定时/焦点刷新，首次激活或手动查询，资源隐藏取消；未完成首次可重开补读，成功后重开不自动查。公开身份变化立即丢弃旧快照并提示手动刷新，取消手动刷新复位loading并保留当前身份旧快照。
-- `SlurmJobs`展示独立作业时间和当前账号范围，`output`通过`pre`纯文本渲染，最大高480px、内部双向滚动，不撑出浮动面板。成功分支也显示`message`；无警告空输出为“暂无作业”，警告空输出为“本次查询没有返回内容”，不误称确定无作业。截断准确标200行，不将SSH节点指标配给计算节点。
+- `SlurmJobs`展示独立时间和当前账号范围，`output`以`pre`纯文本渲染，最大高480px并在停靠区内部滚动。成功分支保留`message`；无警告空输出为“暂无作业”，警告空输出为“本次查询没有返回内容”。截断准确标200行，不将SSH节点指标配给计算节点。
 
 ### 5.12 remote-files：远端文件管理（操作、下载与同步协调已接入）
 
@@ -358,13 +363,13 @@ verification生成五分钟/64项一次性快照票，绑定配置、认证代�
 
 ### 5.14 settings：产品偏好与环境检测
 
-`shared/product-settings`定义严格产品设置与衍生resourceTiming；`settings/product-settings`在既有配置目录独立保存JSON，复用safe-file目录/文件身份、内容摘要和原子替换，读写队列串行。GET/PUT返回document和revision，缺失默认只读，坏文件503、陈旧409，接口禁止缓存并沿用本机访问控制。
+`shared/product-settings`定义严格设置与衍生resourceTiming；`settings/product-settings`独立保存JSON，复用safe-file身份、摘要、队列和原子替换。`defaultModels`已从公开schema/draft/store退休，仅磁盘读取边界定点剔除；其他未知/非法字段仍拒绝。读取不改原文，revision继续取原文件摘要，明确保存才写当前格式；坏文件503、陈旧409、接口no-store及本机访问控制保持。
 
 网页共享query管理偏好，实际window focus监听按QueryClient去重；保存发布新document前取消旧GET。产品编辑器单独保留读取基线/草稿，不被后台刷新覆盖。产品/原生配置视图仅挂载一个dialog，原生编辑器按需加载，退出清理敏感内存。
 
-产品设置使用Ariakit四分类Tab，外层持有统一草稿/revision/phase，只挂当前内容并定位跨类错误。全局过滤/大小默认只用于新向导，工作区规则继续独立保存。原生配置维持约定文件范围；`nativeConfigTemplate`仅提供公开静态合法内容，`NativeConfigHelp`只改成功读到的空白草稿，不绕过revision/外部创建409，不把读取失败当作缺失。说明和可选规则教程按需展开，规则错误展开后保持输入焦点。
+产品设置使用Ariakit四分类Tab，外层持有统一草稿/revision/phase，只挂当前内容并定位跨类错误。全局过滤/大小仅用于新向导，工作区规则继续独立保存。原生配置入口只在分类之外保留一处，约定文件范围不变；模板仅修改成功读到的空白草稿，不绕过revision/外部创建409。说明和可选规则教程按需展开，错误定位后保持输入。
 
-chat-store区分default/explicit模型来源，新会话复制默认，历史清除默认覆盖，首次迟到仅应用未操作空白。新向导复制一次有效sync快照，没有快照时设置失败阻止继续。页面自动文件同步默认/回退60秒，显式保存的自定义间隔保留；偏好变化销毁旧timer，不额外立即同步，原3秒状态查询及手动/执行前后/保存后时机不变。资源使用独立间隔/超时/过期参数，成功有效期按当前间隔重算，失败保留退避。
+chat-store只保存默认Agent，初始与新会话模型覆盖为空；显式模型按Agent独立，native/actual报告只入证据缓存、不反写选择。high/auto语义不变，迟到偏好不覆盖已操作草稿。新向导复制一次有效sync快照；页面自动文件同步默认/回退60秒，显式间隔保留，偏好变化销毁旧timer。原3秒状态查询与手动/执行前后/保存后同步不变；资源沿用独立间隔、超时、过期与失败退避。
 
 启动创建唯一environment service并开始一次并行检测，每工具5秒/2KiB；GET复用报告，POST手动刷新并拒绝并行刷新。正常执行即为可用，版本仅提取展示，无法解析显示未知；非零、启动失败、超时和输出超限不能标可用，输出/私有路径不回传。Claude原生路径在claude-launch统一，Codex沿用实际启动resolver；Node.js取当前进程，Git/rclone业务要求不变。网页共享查询，`EnvironmentSummary`在全部可用时返回null，缺失/失败保留设置入口；设置内保留状态、版本、检测时间和官方指引。全部Agent不可用仍可管理服务器；不执行模型、SSH、安装或初始化，检测基础见D37，显示策略见D40。
 
@@ -396,14 +401,14 @@ chat-store区分default/explicit模型来源，新会话复制默认，历史清
 
 ## 7. 设计决策
 
-完整记录见[设计决策](decisions.md)，集中维护D01–D41。现行方案遵循D36单版本、D37直接入口/服务器档案、D38流程保护、D40强度/文本Slurm和D41独立非模态浮动面板；旧方案仅用于解释替代关系，不并行维护。
+完整记录见[设计决策](decisions.md)，长期维护D01–D42及后续背景与理由。现行方案遵循D36单版本、D37本机入口/档案、D38流程保护、D40强度/文本Slurm与D42停靠/原生分叉/密码编辑/模型收敛；D41自由浮窗保留为被替代的历史，不并行维护。
 
 - 会话固定 Agent，沿用原生上下文、skills 与可接入的 `/` 命令。
 - 账号密码与私钥均支持，可选择本机系统加密保存密码；断开保留保存项，取消保存时清除并断开。
 - 自动同步连接本地编辑与远程运行，执行前同步失败时阻断。
 - 轻量文件编辑与本地版本记录区分“保存文件”和“保存版本”。
 - 文件区区分本地代码与服务器文件；未同步文件直接在远端管理，移动/复制不经本机中转。
-- 终端使用稳定PTY宿主，资源与文件为可同时存在的独立浮动面板；Slurm只读当前账号、首次/手动，结果分析由用户发消息触发。
+- 终端使用稳定PTY宿主，资源与文件自适应停靠且可同时存在；Slurm仅当前账号首次/手动，结果分析由用户发消息触发。
 - 本地后端继续 Node.js + TypeScript + Fastify，Python 分析默认在远端现有环境执行；打包与语言迁移未加入交付范围。
 - 以异步 I/O 协调对话、终端、同步和资源刷新，同一会话单轮、同一工作区同步串行。
 
@@ -417,7 +422,7 @@ chat-store区分default/explicit模型来源，新会话复制默认，历史清
 
 实际结果统一见[最新验收](../guides/ui-usability-optimization-acceptance.md)。需求中的A编号是验收条件，不因架构已有实现就自动标为通过；旧V编号及分阶段过程记录不再在此重复。
 
-- D39共用右栏、D40拆分前优化和D41独立面板分别使用各自证据。历史完整门禁、截图或CI不代替新树验证。
+- D39共用右栏、D40优化、D41自由浮窗和D42停靠分别使用各自证据；历史完整门禁、截图或CI不代替新树验证。
 - 原生模型、真实SSH/集群、受控夹具、合成IME和OS输入法分别标范围；没有新的付费模型、真实集群文本Slurm成功、OS输入法或CI检查时不得扩写通过。
 - A8只要求网页删除及官方API/原生记录核对；VS Code/CLI和系统选择器是检查手段，不派生外部客户端功能。被策略拒绝的系统界面检查不绕过。
 - 独立SSH连接中断、受控取消和成功哈希不能推导共享池、全网络故障或原任务已收到verified。
