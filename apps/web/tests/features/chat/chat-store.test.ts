@@ -76,8 +76,7 @@ beforeEach(() => {
     reasoningEfforts: { claude: '', codex: '' },
     sessionOperations: {},
     sessionModels: {},
-    defaults: { defaultAgent: 'claude', defaultModels: { claude: '', codex: '' } },
-    modelSources: { claude: 'default', codex: 'default' },
+    defaults: { defaultAgent: 'claude' },
     initialDefaultsEligible: false,
   });
   useChat.getState().selectWorkspace('w1');
@@ -411,37 +410,71 @@ describe('原生能力状态', () => {
 });
 
 describe('chat-store', () => {
-  it('新会话应用产品默认，迟到偏好保护操作草稿，历史只保留显式模型', async () => {
-    const defaults = ProductSettingsSchema.parse({
-      defaultAgent: 'codex',
-      defaultModels: { claude: 'example-claude', codex: 'example-codex' },
-    });
+  it('产品偏好只选择初始Agent，新会话清空显式模型并沿用原生默认', () => {
     useChat.setState({ initialDefaultsEligible: true });
-    useChat.getState().setDefaults(defaults);
-    expect(useChat.getState()).toMatchObject({ agent: 'codex', modelOverrides: defaults.defaultModels });
+    useChat.getState().setDefaults(ProductSettingsSchema.parse({ defaultAgent: 'codex' }));
+    expect(useChat.getState()).toMatchObject({ agent: 'codex', modelOverrides: { claude: '', codex: '' } });
+    expect(useChat.getState().send('初始会话')).toBe(true);
+    expect(sent.at(-1)).toMatchObject({ agent: 'codex', reasoningEffort: 'high', model: undefined });
+    useChat.getState().setModel('explicit-model');
+    useChat.getState().setDefaults(ProductSettingsSchema.parse({ defaultAgent: 'claude' }));
+    expect(useChat.getState()).toMatchObject({ agent: 'codex', modelOverrides: { codex: 'explicit-model' } });
+    useChat.getState().newSession();
+    expect(useChat.getState()).toMatchObject({ agent: 'claude', modelOverrides: { claude: '', codex: '' } });
+    expect(useChat.getState().send('新会话')).toBe(true);
+    expect(sent.at(-1)).toMatchObject({ agent: 'claude', model: undefined, reasoningEffort: 'high' });
+  });
+
+  it('迟到产品偏好不覆盖已操作的Agent、模型和强度草稿', () => {
+    useChat.setState({ initialDefaultsEligible: true });
     useChat.getState().touchDraft();
-    useChat.getState().setDefaults({ ...defaults, defaultAgent: 'claude' });
-    expect(useChat.getState().agent).toBe('codex');
+    useChat.getState().setModel('explicit-model');
+    useChat.getState().setReasoningEffort('low');
+    useChat.getState().setDefaults(ProductSettingsSchema.parse({ defaultAgent: 'codex' }));
+    expect(useChat.getState().send('保留草稿选择')).toBe(true);
+    expect(sent.at(-1)).toMatchObject({ agent: 'claude', model: 'explicit-model', reasoningEffort: 'low' });
+  });
+
+  it('历史原生配置和实际报告只更新证据，明确重置后续接不带model', async () => {
+    const session = { agent: 'codex' as const, sessionId: 'history', summary: '历史', lastModified: 1 };
     vi.spyOn(api, 'sessionEvents').mockResolvedValue({
-      session: { agent: 'codex', sessionId: 'history', summary: '历史', lastModified: 1 },
+      session: { ...session, nativeModel: 'native-config-model' },
       events: [],
       actualModel: 'historical-model',
     });
-    await useChat.getState().openSession({ agent: 'codex', sessionId: 'history' });
-    expect(useChat.getState()).toMatchObject({
+    await useChat.getState().openSession(session);
+    expect(useChat.getState().modelOverrides.codex).toBe('');
+    expect(useChat.getState().sessionModels[sessionActionKey('w1', session)]).toEqual({
       actualModel: 'historical-model',
-      modelOverrides: { claude: '', codex: '' },
+      nativeModel: 'native-config-model',
     });
     useChat.getState().setModel('explicit-model');
-    await useChat.getState().openSession({ agent: 'codex', sessionId: 'history' });
+    await useChat.getState().openSession(session);
     expect(useChat.getState().modelOverrides.codex).toBe('explicit-model');
-    useChat.getState().newSession();
-    expect(useChat.getState()).toMatchObject({ agent: 'claude', modelOverrides: defaults.defaultModels });
-    useChat.getState().touchDraft();
-    useChat.setState({ initialDefaultsEligible: true, items: [], sessionId: undefined });
-    useChat.getState().touchDraft();
-    useChat.getState().setDefaults({ ...defaults, defaultModels: { claude: '', codex: '' } });
-    expect(useChat.getState().modelOverrides.claude).toBe('example-claude');
+    useChat.getState().setModel('');
+    expect(useChat.getState().send('重置后沿用原生')).toBe(true);
+    expect(sent.at(-1)).toMatchObject({ agent: 'codex', sessionId: 'history', model: undefined });
+    expect(JSON.parse(JSON.stringify(sent.at(-1)))).not.toHaveProperty('model');
+  });
+
+  it('运行报告保留历史原生配置证据，不回填用户覆盖', async () => {
+    const session = { agent: 'claude' as const, sessionId: 'same-id' };
+    vi.spyOn(api, 'sessionEvents').mockResolvedValue({
+      ...history('claude', '历史'),
+      session: { ...history('claude', '历史').session, nativeModel: 'native-config-model' },
+    });
+    await useChat.getState().openSession(session);
+    useChat.getState().setModel('explicit-model');
+    const turnId = startTurn('继续');
+    emit({ type: 'agent.event', turnId, event: { type: 'session', ...session, cwd: '.', model: 'reported-model' } });
+    expect(useChat.getState().sessionModels[sessionActionKey('w1', session)]).toEqual({
+      nativeModel: 'native-config-model',
+      actualModel: 'reported-model',
+    });
+    emit({ type: 'agent.event', turnId, event: { type: 'session', ...session, cwd: '.', model: ' ' } });
+    expect(useChat.getState().modelOverrides.claude).toBe('explicit-model');
+    expect(useChat.getState().actualModel).toBeUndefined();
+    expect(useChat.getState().sessionModels[sessionActionKey('w1', session)]?.nativeModel).toBe('native-config-model');
   });
   it('选择工作区时记住它，并清空当前会话', () => {
     expect(lastWorkspaceId()).toBe('w1');

@@ -1,4 +1,4 @@
-import type { AgentEvent } from '@ssh-server/shared';
+import { NativeSessionIdSchema, type AgentEvent } from '@ssh-server/shared';
 import { CodexCompaction } from './compaction';
 import { list, record, text, type RecordValue } from './types';
 
@@ -49,11 +49,20 @@ function failed(item: RecordValue): boolean {
     (typeof item.exitCode === 'number' && item.exitCode !== 0)
   );
 }
+/** 原生明确终止的轮次才可以作为 inclusive 分叉位置。 */
+export function codexForkPoint(turn: RecordValue): string | undefined {
+  if (!['completed', 'failed', 'interrupted'].includes(text(turn.status))) return;
+  const id = NativeSessionIdSchema.safeParse(turn.id);
+  return id.success ? id.data : undefined;
+}
+
 export function turnEnd(turn: RecordValue): AgentEvent {
+  const forkPoint = codexForkPoint(turn);
   return {
     type: 'turn_end',
     isError: turn.status === 'failed',
     ...(typeof turn.durationMs === 'number' ? { durationMs: turn.durationMs } : {}),
+    ...(forkPoint ? { forkPoint } : {}),
   };
 }
 

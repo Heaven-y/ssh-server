@@ -4,6 +4,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { AgentCapabilities, ClientMessage, ServerMessage, Workspace } from '@ssh-server/shared';
 import { ChatView } from '../../../src/features/chat/ChatView';
+import { Composer } from '../../../src/features/chat/Composer';
+import { ManualModelDialog } from '../../../src/features/chat/ManualModelDialog';
 import { startChatConnection, useChat } from '../../../src/features/chat/chat-store';
 import { api, queryKeys } from '../../../src/lib/api';
 
@@ -81,6 +83,18 @@ function showChat() {
     </QueryClientProvider>,
   );
 }
+function showComposer() {
+  render(
+    <QueryClientProvider client={client}>
+      <Composer />
+    </QueryClientProvider>,
+  );
+}
+async function modelAction(name: string) {
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: '更多模型操作' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name }));
+}
 async function menuChoose(menu: string, name: string | RegExp) {
   fireEvent.click(screen.getByRole('button', { name: menu }));
   fireEvent.click(await screen.findByRole('menuitemradio', { name }));
@@ -129,7 +143,7 @@ it.each(['claude', 'codex'] as const)('一体输入底栏用菜单设置%s模型
       event: { type: 'session', sessionId: 'native', agent, cwd: '.', model: 'reported-model' },
     });
   });
-  expect(screen.getByText('实际模型：reported-model')).toBeTruthy();
+  expect(within(controls).getByRole('button', { name: '模型选项' }).title).toContain('实际模型：reported-model');
   fireEvent.click(screen.getByRole('button', { name: '停止' }));
   expect(sent.at(-1)).toEqual({ type: 'chat.interrupt', turnId: 'turn' });
 });
@@ -146,7 +160,7 @@ it('历史固定Agent，载入期间禁用选项；ShiftEnter与IME不发送且�
   act(() => useChat.setState({ loadingHistory: false }));
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
   expect((await screen.findByRole('menuitemradio', { name: 'Codex' })).getAttribute('aria-disabled')).toBe('true');
-  fireEvent.click(screen.getByRole('menuitemradio', { name: '沿用会话模型' }));
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
   fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
   fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
   expect(sent).toHaveLength(0);
@@ -159,7 +173,7 @@ it('历史固定Agent，载入期间禁用选项；ShiftEnter与IME不发送且�
   });
 });
 
-it('默认模型也直接提供强度档位，切换Agent保留各自选择且不猜模型', async () => {
+it('沿用原生模型时也直接提供强度档位，切换Agent保留各自选择且不猜型号', async () => {
   showChat();
   expect(screen.getByRole('button', { name: '推理强度' }).textContent).toBe('high');
   fireEvent.click(screen.getByRole('button', { name: '推理强度' }));
@@ -212,8 +226,7 @@ it('手填模型只在次级对话框，Enter不隐式发送，确认后仍能�
   showChat();
   const input = screen.getByLabelText('输入消息');
   fireEvent.change(input, { target: { value: '非空消息正文' } });
-  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
-  fireEvent.click(await screen.findByRole('menuitem', { name: '手动填写模型' }));
+  await modelAction('手动填写模型');
   const option = screen.getByLabelText('模型名称');
   fireEvent.change(option, { target: { value: 'manual-model' } });
   expect(fireEvent.keyDown(option, { key: 'ArrowDown' })).toBe(true);
@@ -269,4 +282,167 @@ it('原生目录部分读取失败显示警告，不把失败呈现为无技能'
   const completion = await screen.findByRole('listbox', { name: '原生命令补全' });
   expect(within(completion).getByText('Claude 技能与命令读取失败，请刷新重试')).toBeTruthy();
   expect(within(completion).queryByText('没有匹配的技能或命令。')).toBeNull();
+});
+
+it('常规模型菜单只列真实候选，清除覆盖放次级操作且发送不带默认字样', async () => {
+  showComposer();
+  const trigger = screen.getByRole('button', { name: '模型选项' });
+  expect(trigger.textContent).toContain('型号未报告');
+  fireEvent.click(trigger);
+  const candidate = await screen.findByRole('menuitemradio', { name: /候选模型/ });
+  expect(screen.queryByRole('menuitemradio', { name: /默认模型|沿用会话模型/ })).toBeNull();
+  expect(screen.queryByRole('menuitem', { name: '手动填写模型' })).toBeNull();
+  expect(screen.queryByRole('menuitem', { name: '清除模型覆盖' })).toBeNull();
+  expect(within(screen.getByRole('group', { name: '可选模型' })).getAllByRole('menuitemradio')).toEqual([candidate]);
+  fireEvent.click(candidate);
+  expect(useChat.getState().modelOverrides.claude).toBe('native-model');
+  expect(trigger.textContent).toContain('已选 native-model');
+  await modelAction('清除模型覆盖');
+  expect(useChat.getState().modelOverrides.claude).toBe('');
+  expect(trigger.textContent).toContain('型号未报告');
+  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '沿用原生配置' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  expect(JSON.parse(JSON.stringify(sent[0]))).not.toHaveProperty('model');
+});
+
+it.each([
+  { actualModel: 'actual-history', nativeModel: 'configured-history', label: '最近 actual-history' },
+  { actualModel: undefined, nativeModel: 'configured-history', label: '会话 configured-history' },
+])('输入区区分历史证据与下一轮显式选择：$label', async ({ actualModel, nativeModel, label }) => {
+  vi.spyOn(api, 'sessionEvents').mockResolvedValue({
+    session: { agent: 'claude', sessionId: 'history', summary: '历史', lastModified: 1, nativeModel },
+    actualModel,
+    events: [],
+  });
+  await useChat.getState().openSession({ agent: 'claude', sessionId: 'history' });
+  showComposer();
+  const trigger = screen.getByRole('button', { name: '模型选项' });
+  expect(trigger.textContent).toContain(label);
+  expect(useChat.getState().modelOverrides.claude).toBe('');
+  await menuChoose('模型选项', /候选模型/);
+  expect(trigger.textContent).toContain('已选 native-model');
+  expect(trigger.title).toContain('原生会话配置：configured-history');
+  if (actualModel) expect(trigger.title).toContain('实际模型：actual-history');
+  await modelAction('清除模型覆盖');
+  expect(trigger.textContent).toContain(label);
+  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '继续历史' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  expect(sent.at(-1)).toMatchObject({ sessionId: 'history', model: undefined, reasoningEffort: 'high' });
+});
+
+it('读取历史时明确显示读取状态，不将候选模型当作已取得的型号', () => {
+  useChat.setState({ sessionId: 'history', loadingHistory: true });
+  showComposer();
+  const trigger = screen.getByRole<HTMLButtonElement>('button', { name: '模型选项' });
+  expect(trigger.textContent).toContain('正在读取型号');
+  expect(trigger.disabled).toBe(true);
+  expect(trigger.textContent).not.toContain('native-model');
+});
+
+it('原生目录读取和空结果均有状态，不伪造默认模型候选', async () => {
+  client.removeQueries({ queryKey: queryKeys.agentCapabilities(workspace.id, 'claude') });
+  let resolve!: (value: AgentCapabilities) => void;
+  vi.spyOn(api, 'agentCapabilities').mockImplementation(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  showComposer();
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
+  await screen.findByText('正在加载模型…');
+  await act(async () => resolve({ agent: 'claude', entries: [], models: [], warnings: [] }));
+  expect(await screen.findByText('原生目录未报告可选模型。')).toBeTruthy();
+  expect(screen.getByRole('button', { name: '模型选项' }).textContent).toContain('型号未报告');
+  expect(screen.queryByRole('menuitemradio', { name: /默认模型/ })).toBeNull();
+  expect(useChat.getState().modelOverrides.claude).toBe('');
+});
+
+it('手填模型不把空白或默认占位符发送为型号，恢复原生必须明确清除覆盖', () => {
+  render(<ManualModelDialog model="" disabled={false} apply={useChat.getState().setModel} onClose={vi.fn()} />);
+  const field = screen.getByLabelText('模型名称');
+  const apply = screen.getByRole<HTMLButtonElement>('button', { name: '应用模型' });
+  expect(apply.disabled).toBe(true);
+  fireEvent.change(field, { target: { value: '默认' } });
+  expect(apply.disabled).toBe(true);
+  expect(screen.getByRole('alert').textContent).toContain('模型 ID');
+  fireEvent.click(apply);
+  expect(useChat.getState().modelOverrides.claude).toBe('');
+  expect(sent).toHaveLength(0);
+});
+
+it.each(['claude', 'codex'] as const)('输入区%s自动强度省略字段，Claude不混入Codex扩展档位', async (agent) => {
+  useChat.getState().setAgent(agent);
+  useChat.getState().setModel('native-model');
+  client.setQueryData(queryKeys.agentCapabilities(workspace.id, agent), {
+    ...catalog,
+    agent,
+    models: [{ id: 'native-model', label: '候选模型', reasoningEfforts: ['custom-effort'] }],
+  });
+  showComposer();
+  fireEvent.click(screen.getByRole('button', { name: '推理强度' }));
+  await screen.findByRole('menuitemradio', { name: '自动' });
+  if (agent === 'claude') expect(screen.queryByRole('menuitemradio', { name: 'custom-effort' })).toBeNull();
+  else expect(screen.getByRole('menuitemradio', { name: 'custom-effort' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('menuitemradio', { name: '自动' }));
+  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '使用原生自动强度' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  expect(JSON.parse(JSON.stringify(sent[0]))).not.toHaveProperty('reasoningEffort');
+});
+
+it('上下文用量和窗口与模型强度同区，来源及原生比例通过详情说明', async () => {
+  useChat.setState({
+    contextUsage: {
+      source: 'claude_estimate',
+      usedTokens: 12800,
+      windowTokens: 200000,
+      percentage: 6.4,
+      model: 'reported-context-model',
+    },
+  });
+  showComposer();
+  const options = within(screen.getByRole('group', { name: '消息选项' }));
+  const context = options.getByRole('button', { name: '上下文用量' });
+  expect(options.getByRole('button', { name: '模型选项' })).toBeTruthy();
+  expect(options.getByRole('button', { name: '推理强度' })).toBeTruthy();
+  expect(screen.getAllByRole('button', { name: '上下文用量' })).toEqual([context]);
+  expect(context.textContent).toContain('12,800 / 200,000');
+  expect(context.title).toContain('Claude 原生估计');
+  fireEvent.click(context);
+  const details = within(await screen.findByRole('dialog', { name: '上下文用量详情' }));
+  expect(details.getByText('原生占用比例：6.4%')).toBeTruthy();
+  expect(details.getByText('模型：reported-context-model')).toBeTruthy();
+  expect(sent).toHaveLength(0);
+});
+
+it('上下文未报告不猜窗口，Codex不按用量除窗口推算比例', async () => {
+  showComposer();
+  const context = screen.getByRole('button', { name: '上下文用量' });
+  expect(context.textContent).toContain('用量未报告');
+  expect(context.textContent).toContain('窗口未报告');
+  act(() => useChat.setState({ contextUsage: { source: 'codex_native', usedTokens: 200, windowTokens: 1000 } }));
+  expect(context.textContent).toContain('200 / 1,000');
+  expect(context.title).toContain('Codex 原生统计/估算');
+  fireEvent.click(context);
+  const details = within(await screen.findByRole('dialog', { name: '上下文用量详情' }));
+  expect(details.getByText('原生占用比例：未报告')).toBeTruthy();
+  expect(details.queryByText(/20%/)).toBeNull();
+  act(() => useChat.setState({ contextUsage: { source: 'codex_native', usedTokens: 0 } }));
+  expect(context.textContent).toContain('0 / 窗口未报告');
+});
+
+it('输入控制行保留压缩进度与未确认状态，展开可看原生说明', async () => {
+  useChat.setState({
+    running: true,
+    compaction: { status: 'running', trigger: 'manual', beforeTokens: 500, message: '原生压缩说明' },
+  });
+  showComposer();
+  const context = within(screen.getByRole('group', { name: '消息选项' })).getByRole('button', { name: '上下文用量' });
+  expect(context.textContent).toContain('正在压缩');
+  act(() => useChat.setState({ running: false }));
+  expect(context.textContent).toContain('压缩结果未确认');
+  fireEvent.click(context);
+  const details = within(await screen.findByRole('dialog', { name: '上下文用量详情' }));
+  expect(details.getByText('原生压缩说明')).toBeTruthy();
+  expect(details.getByText(/压缩前 500 tokens/)).toBeTruthy();
 });

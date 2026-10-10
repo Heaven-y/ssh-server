@@ -46,6 +46,7 @@ function setup() {
     ]),
     rename: vi.fn(async () => undefined),
     delete: vi.fn(async () => undefined),
+    fork: vi.fn(async () => ({ sessionId: 'forked-session' })),
   };
   const app = Fastify();
   apps.push(app);
@@ -59,6 +60,10 @@ function setup() {
     })),
     assertBelongs: vi.fn(async () => undefined),
     mutate: vi.fn(async () => undefined),
+    fork: vi.fn(async () => ({
+      session: { sessionId: 'forked-session', summary: 'Codex 分叉', lastModified: 200 },
+      cwd: ws.localDir,
+    })),
   };
   const withIdleSession = vi.fn(async (_session: SessionRef) => undefined);
   const sessions = createSessionsService(

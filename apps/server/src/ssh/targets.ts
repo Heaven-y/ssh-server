@@ -57,6 +57,11 @@ function privateKeyPath(value: string | undefined, homeDir: string): string | un
   return path.resolve(expanded);
 }
 type BeforeCommit = (current: ManagedServer, next?: ManagedServer) => Promise<void>;
+type Commit = (commit: () => Promise<void>) => Promise<void>;
+type UpdateHooks = {
+  beforeCommit?: BeforeCommit;
+  commit(current: ManagedServer, next: ManagedServer, publish: () => Promise<void>): Promise<void>;
+};
 export function createServerTargets({ configDir, homeDir = os.homedir() }: { configDir: string; homeDir?: string }) {
   const file = path.join(configDir, 'servers.json');
   let queue: Promise<unknown> = Promise.resolve();
@@ -79,8 +84,13 @@ export function createServerTargets({ configDir, homeDir = os.homedir() }: { con
       throw new ServerTargetsError('target_storage_failed');
     }
   }
-  async function persist(servers: ManagedServer[], beforeCommit?: () => Promise<void>) {
+  async function persist(
+    servers: ManagedServer[],
+    beforeCommit?: () => Promise<void>,
+    transaction?: { previous: ManagedServer[]; perform: Commit },
+  ) {
     const temp = `${file}.tmp-${randomUUID()}`;
+    let committed = false;
     try {
       try {
         await mkdir(configDir, { recursive: true });
@@ -90,9 +100,18 @@ export function createServerTargets({ configDir, homeDir = os.homedir() }: { con
       }
       // 调用方在同一工作区快照和活动排他锁内再次核对；回调不得重入档案存储。
       await beforeCommit?.();
-      await rename(temp, file).catch(() => {
-        throw new ServerTargetsError('target_storage_failed');
-      });
+      const publish = async () => {
+        await rename(temp, file).catch(() => {
+          throw new ServerTargetsError('target_storage_failed');
+        });
+        committed = true;
+      };
+      if (transaction) await transaction.perform(publish);
+      else await publish();
+    } catch (error) {
+      // 密文提交包含此发布步骤；后续代次检查失败时在同一档案队列内恢复。
+      if (committed && transaction) await persist(transaction.previous);
+      throw error;
     } finally {
       await unlink(temp).catch(() => undefined);
     }
@@ -118,6 +137,8 @@ export function createServerTargets({ configDir, homeDir = os.homedir() }: { con
   return {
     list: () => serial(load),
     get: (alias: string) => serial(async () => (await load()).find((server) => server.alias === alias)),
+    withExpected: <T>(alias: string, expected: ManagedServer, operation: (current: ManagedServer) => Promise<T>) =>
+      serial(async () => operation(currentRecord(await load(), alias, expected))),
     async importOptions() {
       let text: string;
       try {
@@ -129,24 +150,32 @@ export function createServerTargets({ configDir, homeDir = os.homedir() }: { con
       const config = parseSshConfig(text, homeDir);
       return listHosts(config).map((host) => ({ ...host, keyFile: resolveHost(config, host.alias)?.identityFiles[0] }));
     },
-    save: (input: unknown) =>
+    save: (input: unknown, commit?: (next: ManagedServer, publish: () => Promise<void>) => Promise<void>) =>
       serial(async () => {
         const server = normalize(input, 'managed-ssh-' + randomUUID());
         const servers = await load();
         assertUnique(servers, server);
         if (servers.length >= 128) throw new ServerTargetsError('too_many_targets');
-        await persist([...servers, server]);
+        await persist(
+          [...servers, server],
+          undefined,
+          commit ? { previous: servers, perform: (publish) => commit(server, publish) } : undefined,
+        );
         return server;
       }),
-    update: (alias: string, input: unknown, expected: ManagedServer, beforeCommit?: BeforeCommit) =>
+    update: (alias: string, input: unknown, expected: ManagedServer, hooks?: BeforeCommit | UpdateHooks) =>
       serial(async () => {
         const servers = await load();
         const current = currentRecord(servers, alias, expected);
         const next = normalize(input, alias);
         assertUnique(servers, next);
+        const beforeCommit = typeof hooks === 'function' ? hooks : hooks?.beforeCommit;
         await persist(
           servers.map((server) => (server.alias === alias ? next : server)),
           () => beforeCommit?.(current, next) ?? Promise.resolve(),
+          typeof hooks === 'object'
+            ? { previous: servers, perform: (publish) => hooks.commit(current, next, publish) }
+            : undefined,
         );
         return next;
       }),

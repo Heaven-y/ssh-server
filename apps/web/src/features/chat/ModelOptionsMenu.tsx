@@ -1,10 +1,10 @@
-import { Menu, MenuButton, MenuItem, MenuSeparator, useMenuStore } from '@ariakit/react';
-import { Check, ChevronDown, RefreshCw } from 'lucide-react';
+import { Menu, MenuButton, MenuGroup, MenuItem, MenuProvider, MenuSeparator, useMenuStore } from '@ariakit/react';
+import { Check, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import type { AgentKind, AgentModel } from '@ssh-server/shared';
 import { buttonClass } from '../../ui/styles';
 import { agentUnavailable, useEnvironment } from '../settings/use-environment';
-import { useChat } from './chat-store';
+import { sessionActionKey, useChat } from './chat-store';
 import { useAgentCapabilities } from './use-agent-capabilities';
 import { ManualModelDialog } from './ManualModelDialog';
 
@@ -47,6 +47,11 @@ function CatalogStatus({ catalog }: { catalog: ReturnType<typeof useAgentCapabil
           模型列表加载失败，请刷新重试。
         </p>
       )}
+      {!catalog.isFetching && !catalog.isError && catalog.data?.models.length === 0 && (
+        <p role="status" className="px-3 py-2 text-xs text-muted-foreground">
+          原生目录未报告可选模型。
+        </p>
+      )}
       {catalog.data?.warnings.map((warning, index) => (
         <p key={index} className="px-3 py-1 text-xs leading-5 text-warning">
           {warning}
@@ -70,8 +75,28 @@ function RefreshModels({ catalog }: { catalog: ReturnType<typeof useAgentCapabil
 }
 
 type CatalogProps = { disabled: boolean; catalog: ReturnType<typeof useAgentCapabilities> };
-function modelLabel(agent: AgentKind, model: string, historical: boolean) {
-  return `${AGENT_LABELS[agent]} · ${model || (historical ? '会话模型' : '默认模型')}`;
+function useModelPresentation(model: string) {
+  const actual = useChat((state) => state.actualModel);
+  const native = useChat((state) => {
+    if (!state.workspaceId || !state.sessionId) return undefined;
+    return state.sessionModels[sessionActionKey(state.workspaceId, { agent: state.agent, sessionId: state.sessionId })]
+      ?.nativeModel;
+  });
+  const reading = useChat((state) => state.loadingHistory);
+  const label = model
+    ? `已选 ${model}`
+    : actual
+      ? `最近 ${actual}`
+      : native
+        ? `会话 ${native}`
+        : reading
+          ? '正在读取型号…'
+          : '型号未报告';
+  const request = model ? `当前显式覆盖：${model}（下轮请求，非执行报告）` : '未设置模型覆盖；下轮沿用原生配置。';
+  return {
+    label,
+    description: `${request}\n实际模型：${actual || '未报告'}（最近报告，非下轮保证）\n原生会话配置：${native || '未报告'}（非逐轮执行报告）`,
+  };
 }
 function AgentChoices({ disabled }: { disabled: boolean }) {
   const agent = useChat((state) => state.agent);
@@ -100,39 +125,51 @@ function AgentChoices({ disabled }: { disabled: boolean }) {
     </>
   );
 }
-function ModelChoices({
-  disabled,
-  catalog,
-  model,
-  historical,
-  onManual,
-}: CatalogProps & { model: string; historical: boolean; onManual(): void }) {
+function ModelActions({ disabled, catalog, model, onManual }: CatalogProps & { model: string; onManual(): void }) {
+  const setModel = useChat((state) => state.setModel);
+  return (
+    <MenuProvider placement="right-start">
+      <MenuButton className={itemClass}>
+        <span className="flex-1">更多模型操作</span>
+        <ChevronRight aria-hidden className="size-3.5" />
+      </MenuButton>
+      <Menu portal unmountOnHide gutter={8} aria-label="更多模型操作" className={menuClass}>
+        <MenuItem className={itemClass} disabled={disabled || !model} onClick={() => setModel('')}>
+          清除模型覆盖
+        </MenuItem>
+        <p className="px-3 py-2 text-xs leading-5 text-muted-foreground">清除后下轮沿用原生配置，不修改配置文件。</p>
+        <MenuSeparator className="my-1 border-t border-border" />
+        <MenuItem className={itemClass} disabled={disabled} onClick={onManual}>
+          手动填写模型
+        </MenuItem>
+        <RefreshModels catalog={catalog} />
+      </Menu>
+    </MenuProvider>
+  );
+}
+function ModelChoices({ disabled, catalog, model, onManual }: CatalogProps & { model: string; onManual(): void }) {
   const setModel = useChat((state) => state.setModel);
   return (
     <>
-      <p className="px-3 py-2 text-xs text-muted-foreground">模型</p>
-      <Choice checked={!model} disabled={disabled} choose={() => setModel('')}>
-        {historical ? '沿用会话模型' : '默认模型'}
-      </Choice>
-      {catalog.data?.models.map((candidate) => (
-        <Choice
-          key={candidate.id}
-          checked={model === candidate.id}
-          disabled={disabled}
-          choose={() => setModel(candidate.id)}
-        >
-          <span className="block truncate">{candidate.label}</span>
-          <span className="block truncate font-mono text-xs text-muted-foreground" title={candidate.description}>
-            {candidate.id}
-          </span>
-        </Choice>
-      ))}
+      <MenuGroup aria-label="可选模型">
+        <p className="px-3 py-2 text-xs text-muted-foreground">原生目录候选 · 选择后用于下一轮</p>
+        {catalog.data?.models.map((candidate) => (
+          <Choice
+            key={candidate.id}
+            checked={model === candidate.id}
+            disabled={disabled}
+            choose={() => setModel(candidate.id)}
+          >
+            <span className="block truncate">{candidate.label}</span>
+            <span className="block truncate font-mono text-xs text-muted-foreground" title={candidate.description}>
+              {candidate.id}
+            </span>
+          </Choice>
+        ))}
+      </MenuGroup>
       <CatalogStatus catalog={catalog} />
       <MenuSeparator className="my-1 border-t border-border" />
-      <MenuItem className={itemClass} disabled={disabled} onClick={onManual}>
-        手动填写模型
-      </MenuItem>
-      <RefreshModels catalog={catalog} />
+      <ModelActions disabled={disabled} catalog={catalog} model={model} onManual={onManual} />
     </>
   );
 }
@@ -174,9 +211,9 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
   const modelMenu = useMenuStore({ open: modelOpen, setOpen: setModelOpen, placement: 'top-end' });
   const effortMenu = useMenuStore({ open: effortOpen, setOpen: setEffortOpen, placement: 'top-end' });
   const agent = useChat((state) => state.agent);
-  const historical = useChat((state) => !!state.sessionId);
   const model = useChat((state) => state.modelOverrides[state.agent]);
   const effort = useChat((state) => state.reasoningEfforts[state.agent]);
+  const presentation = useModelPresentation(model);
   const setModel = useChat((state) => state.setModel);
   const catalog = useAgentCapabilities(modelOpen || effortOpen);
   const models = catalog.data?.models ?? [];
@@ -189,9 +226,11 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
         aria-label="模型选项"
         disabled={disabled}
         className={`${triggerClass} max-w-56`}
-        title="选择模型"
+        title={presentation.description}
       >
-        <span className="truncate">{modelLabel(agent, model, historical)}</span>
+        <span className="truncate">
+          {AGENT_LABELS[agent]} · {presentation.label}
+        </span>
         <ChevronDown aria-hidden className="size-3.5 shrink-0" />
       </MenuButton>
       <MenuButton
@@ -207,13 +246,10 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
       </MenuButton>
       <Menu store={modelMenu} portal unmountOnHide gutter={8} aria-label="模型选项菜单" className={menuClass}>
         <AgentChoices disabled={disabled} />
-        <ModelChoices
-          disabled={disabled}
-          catalog={catalog}
-          model={model}
-          historical={historical}
-          onManual={() => setManual(true)}
-        />
+        <p className="whitespace-pre-line px-3 py-2 text-xs leading-5 text-muted-foreground">
+          {presentation.description}
+        </p>
+        <ModelChoices disabled={disabled} catalog={catalog} model={model} onManual={() => setManual(true)} />
       </Menu>
       <Menu store={effortMenu} portal unmountOnHide gutter={8} aria-label="推理强度菜单" className={menuClass}>
         <EffortChoices disabled={disabled} agent={agent} selected={selected} effort={effort} />

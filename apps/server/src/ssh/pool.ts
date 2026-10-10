@@ -1,6 +1,7 @@
 // SSH 连接、保存凭据与同步共用认证代次；主动断开后只能显式连接恢复。
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Client, ClientChannel, SFTPWrapper } from 'ssh2';
-import type { SshAuthMode, TerminalSize } from '@ssh-server/shared';
+import type { ManagedServer, SshAuthMode, TerminalSize } from '@ssh-server/shared';
 import { openGuardedSshChannel } from './channel-open';
 import { connectSshClient } from './client';
 import {
@@ -13,7 +14,7 @@ import {
   type ResolvedConnection,
   type SshTarget,
 } from './connection';
-import { CredentialStorageError } from './credential-storage-error';
+import { CredentialStorageError, storageCancelled } from './credential-storage-error';
 import { runExec, type ChannelLike, type ExecOptions, type ExecResult } from './exec';
 import type { PasswordStore } from './password-store';
 import { buildRemoteCommand } from './remote-command';
@@ -31,6 +32,14 @@ export type ConnectInput = {
   password?: string;
   savePassword?: boolean;
 };
+export type ServerPasswordRead = { password: string | null; revision: string; savingAvailable: boolean };
+export type ServerCredentialEdit = {
+  next: ManagedServer;
+  expected?: { server: ManagedServer; revision: string };
+  password?: string | null;
+  stillCurrent?: () => boolean | Promise<boolean>;
+  commit(): Promise<void>;
+};
 export type SshPool = {
   fingerprint(alias: string): Promise<string>;
   identity(alias: string): Promise<string>;
@@ -42,6 +51,8 @@ export type SshPool = {
   connect(input: ConnectInput): Promise<CredentialStatus & { connected: true; authMode: SshAuthMode }>;
   credentialStatus(alias: string): Promise<CredentialStatus>;
   clearSavedPassword(alias: string): Promise<CredentialStatus>;
+  readServerPassword(server: ManagedServer, stillCurrent?: () => boolean): Promise<ServerPasswordRead>;
+  commitServerEdit(edit: ServerCredentialEdit): Promise<void>;
   forgetServerCredentials(server: Pick<ResolvedConnection, 'alias' | 'hostname' | 'port' | 'username'>): Promise<void>;
   invalidateCredentials(alias: string, expectedGeneration?: number): Promise<void>;
   setPassword(alias: string, password: string): Promise<void>;
@@ -62,6 +73,7 @@ const endClient = (pending: Promise<Client>) => {
 
 export function createSshPool(deps: SshPoolDeps = {}): SshPool {
   const resolver = deps.resolver ?? createConnectionResolver(deps);
+  const editorKey = randomBytes(32);
   const store = deps.passwordStore;
   const clients = new Map<string, Cached>();
   const epochs = new Map<string, number>();
@@ -317,6 +329,93 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
       finishCredentialChange(identity, alias, generation);
     }
   }
+  function serverPasswordRevision(server: ManagedServer): string {
+    return createHmac('sha256', editorKey)
+      .update(
+        JSON.stringify([
+          server.alias,
+          server.name,
+          server.hostname,
+          server.port,
+          server.username,
+          server.authMode,
+          server.keyFile,
+          epoch(server.alias),
+          credentialChanges.get(connectionIdentity(server))?.order ?? 0,
+          store?.generation(connectionIdentity(server)) ?? 0,
+        ]),
+      )
+      .digest('hex');
+  }
+  function assertEditorRevision(server: ManagedServer, revision: string): void {
+    const expected = Buffer.from(serverPasswordRevision(server));
+    const actual = Buffer.from(revision);
+    if (disposed || expected.length !== actual.length || !timingSafeEqual(expected, actual)) throw storageCancelled();
+    // 编辑不能观察或盖过尚未完成的认证/凭据替换。
+    if (credentialChanges.get(connectionIdentity(server))?.owner !== undefined) throw storageCancelled();
+  }
+  async function readServerPassword(
+    server: ManagedServer,
+    stillCurrent: () => boolean = () => true,
+  ): Promise<ServerPasswordRead> {
+    const revision = serverPasswordRevision(server);
+    assertEditorRevision(server, revision);
+    if (!stillCurrent()) throw storageCancelled();
+    const password = server.authMode === 'password' ? await store?.load(connectionIdentity(server)) : undefined;
+    assertEditorRevision(server, revision);
+    if (!stillCurrent()) throw storageCancelled();
+    return { password: password ?? null, revision, savingAvailable: store?.available === true };
+  }
+  async function assertEditable(edit: ServerCredentialEdit): Promise<number> {
+    const { next, expected, password } = edit;
+    const alias = next.alias;
+    const initialGeneration = epoch(alias);
+    if (password !== undefined && next.authMode !== 'password')
+      throw new SshConnectionError('credentials_required', '私钥档案不能保存密码');
+    if (typeof password === 'string' && !store?.available)
+      throw new CredentialStorageError('password_storage_unavailable', '当前系统不支持加密保存密码');
+    if (expected) assertEditorRevision(expected.server, expected.revision);
+    if ((await edit.stillCurrent?.()) === false) throw storageCancelled();
+    assertCurrent(alias, initialGeneration);
+    if (expected) assertEditorRevision(expected.server, expected.revision);
+    return initialGeneration;
+  }
+  async function commitServerEdit(edit: ServerCredentialEdit): Promise<void> {
+    const initialGeneration = await assertEditable(edit);
+    const { next, password } = edit;
+    const alias = next.alias;
+    assertCurrent(alias, initialGeneration);
+    if (edit.expected) assertEditorRevision(edit.expected.server, edit.expected.revision);
+    // 不解析连接、不读取私钥、不测试SSH；只是让所有旧认证和工作区绑定同步失效。
+    disconnect(alias);
+    const generation = epoch(alias);
+    const identity = connectionIdentity(next);
+    identities.set(alias, identity);
+    const attempt = { generation, order: ++credentialOrder };
+    beginCredentialChange(identity, alias, attempt);
+    const stillCurrent = async () => {
+      const allowed = (await edit.stillCurrent?.()) ?? true;
+      return (
+        allowed && !disposed && epoch(alias) === generation && credentialChanges.get(identity)?.order === attempt.order
+      );
+    };
+    const publish = async () => {
+      if (!(await stillCurrent())) throw storageCancelled();
+      await edit.commit();
+      if (!(await stillCurrent())) throw storageCancelled();
+    };
+    try {
+      if (typeof password === 'string') {
+        await store!.save(identity, password, stillCurrent, publish);
+        invalidated.delete(identity);
+      } else if (password === null && store) {
+        await store.forget(identity, { stillCurrent, commit: publish });
+        invalidated.add(identity);
+      } else await publish();
+    } finally {
+      finishCredentialChange(identity, alias, generation);
+    }
+  }
   return {
     fingerprint: (alias) => resolver.fingerprint(alias),
     identity: (alias) => resolver.identity(alias),
@@ -407,6 +506,8 @@ export function createSshPool(deps: SshPoolDeps = {}): SshPool {
     exec,
     credentialStatus,
     invalidateCredentials,
+    readServerPassword,
+    commitServerEdit,
     disconnect,
     async forgetServerCredentials(server) {
       // 使用档案事务已核对的身份，不重入档案队列或重新解析已删除的别名。

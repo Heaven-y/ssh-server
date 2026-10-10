@@ -40,16 +40,14 @@ async function openDetails(agent: string, title: string) {
   fireEvent.click(screen.getByRole('button', { name: `${agent} 会话“${title}”的更多操作` }));
   fireEvent.click(await screen.findByRole('menuitem', { name: '重命名' }));
 }
-it('会话标题单行截断，列表不把来源、默认或显式模型当作实际模型，不逐条读取历史', () => {
+it('会话标题单行截断，列表不把来源或显式模型当作实际模型，不逐条读取历史', () => {
   const read = vi.spyOn(api, 'sessionEvents');
-  useChat.getState().setDefaults(ProductSettingsSchema.parse({ defaultModels: { claude: 'default-model' } }));
   useChat.getState().setModel('requested-model');
   showList();
   expect(screen.queryByText('模型未报告')).toBeNull();
   expect(screen.getByText(claude.summary).classList.contains('truncate')).toBe(true);
   expect(screen.getByText(claude.summary).classList.contains('line-clamp-2')).toBe(false);
   expect(screen.queryByText('requested-model')).toBeNull();
-  expect(screen.queryByText('default-model')).toBeNull();
   expect(read).not.toHaveBeenCalled();
 });
 it('已加载历史模型保留于所属来源缓存，切换及刷新后仅在管理详情显示', async () => {
@@ -84,11 +82,7 @@ it('迟到默认不覆盖历史模型，空模型和迟到旧历史不污染另�
     old = useChat.getState().openSession(claude);
   });
   await act(() => useChat.getState().openSession(codex));
-  act(() =>
-    useChat
-      .getState()
-      .setDefaults(ProductSettingsSchema.parse({ defaultAgent: 'claude', defaultModels: { codex: 'late-default' } })),
-  );
+  act(() => useChat.getState().setDefaults(ProductSettingsSchema.parse({ defaultAgent: 'claude' })));
   await act(async () => {
     resolve({ session: claude, events: [], actualModel: 'stale-model' });
     await old;

@@ -9,7 +9,13 @@ import { sessionActionKey, useChat } from '../chat/chat-store';
 import { useSessionModel } from '../chat/use-session-model';
 
 type Action = SessionActionInput['action'];
-const ACTION_LABELS: Record<Action, string> = { rename: '重命名', delete: '删除', archive: '归档', unarchive: '恢复' };
+const ACTION_LABELS: Record<Action | 'fork', string> = {
+  rename: '重命名',
+  delete: '删除',
+  archive: '归档',
+  unarchive: '恢复',
+  fork: '分叉',
+};
 type Props = {
   workspaceId: string;
   session: SessionSummary;

@@ -75,6 +75,7 @@ export function createPasswordStore(deps: Deps) {
   }
   return {
     available: protector.available,
+    generation: (identity: string) => revision(target(identity).key),
     has(identity: string) {
       const { key, file } = target(identity);
       return transaction(key, async () => (await record(file)) !== undefined);
@@ -96,7 +97,12 @@ export function createPasswordStore(deps: Deps) {
         }
       });
     },
-    save(identity: string, password: string, stillCurrent: () => boolean | Promise<boolean> = () => true) {
+    save(
+      identity: string,
+      password: string,
+      stillCurrent: () => boolean | Promise<boolean> = () => true,
+      commit?: () => Promise<void>,
+    ) {
       const { key, file, entropy } = target(identity);
       const expected = revision(key) + 1;
       revisions.set(key, expected);
@@ -122,6 +128,8 @@ export function createPasswordStore(deps: Deps) {
         try {
           // rename 也是异步操作；提交过程中失效时，在同一队列内恢复原密文。
           await assertCurrent();
+          await commit?.();
+          await assertCurrent();
         } catch (error) {
           if (previous) await writeRecord(file, previous);
           else await rm(file, { force: true });
@@ -129,11 +137,31 @@ export function createPasswordStore(deps: Deps) {
         }
       });
     },
-    forget(identity: string) {
+    forget(
+      identity: string,
+      options: { stillCurrent?: () => boolean | Promise<boolean>; commit?: () => Promise<void> } = {},
+    ) {
       const { key, file } = target(identity);
-      revisions.set(key, revision(key) + 1);
+      const expected = revision(key) + 1;
+      revisions.set(key, expected);
+      // 普通取消保存不依赖旧记录可解析；编辑事务才需要密文回滚。
+      if (!options.commit && !options.stillCurrent) return transaction(key, () => rm(file, { force: true }));
+      const assertCurrent = async () => {
+        const current = (await options.stillCurrent?.()) ?? true;
+        if (revision(key) !== expected || !current) throw storageCancelled();
+      };
       return transaction(key, async () => {
+        await assertCurrent();
+        const previous = await record(file);
         await rm(file, { force: true });
+        try {
+          await assertCurrent();
+          await options.commit?.();
+          await assertCurrent();
+        } catch (error) {
+          if (previous) await writeRecord(file, previous);
+          throw error;
+        }
       });
     },
   };

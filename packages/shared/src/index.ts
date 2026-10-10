@@ -99,7 +99,7 @@ export type {
   VersionDiscardInput,
 } from './versions';
 export { VERSION_MESSAGE_MAX_LENGTH } from './versions';
-export { AgentKindSchema, NativeSessionIdSchema, SessionActionSchema } from './agents';
+export { AgentKindSchema, NativeSessionIdSchema, SessionActionSchema, SessionForkSchema } from './agents';
 export {
   ManualServerInputSchema,
   ManagedServerSchema,
@@ -121,7 +121,14 @@ export type {
   WorkspaceSetupPreview,
   WorkspaceSetupResult,
 } from './setup';
-export type { AgentKind, SessionRef, SessionSummary, SessionHistory, SessionActionInput } from './agents';
+export type {
+  AgentKind,
+  SessionRef,
+  SessionSummary,
+  SessionHistory,
+  SessionActionInput,
+  SessionForkInput,
+} from './agents';
 export type { TurnSnapshot, TurnFileChange, TurnDiff, TurnChangesRecord } from './turn-changes';
 export { WorkspaceRemovalInputSchema } from './workspace-removal';
 export type {

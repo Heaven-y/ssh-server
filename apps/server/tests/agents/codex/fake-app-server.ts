@@ -21,6 +21,7 @@ const turnId = 'native-turn';
 const thread = (id = threadId, cwd = process.cwd()) => ({
   id,
   sessionId: 'fork-tree-root',
+  forkedFromId: null,
   cwd,
   model: 'native-model',
   name: null,
@@ -52,7 +53,7 @@ const readThread = (message: Message) => {
   const turns = [
     {
       id: 'old-turn',
-      status: 'completed',
+      status: mode === 'fork-in-progress' ? 'inProgress' : mode === 'fork-unknown-status' ? 'unknown' : 'completed',
       itemsView: mode === 'partial-history' ? 'summary' : 'full',
       items: [
         { id: 'user', type: 'userMessage', content: [{ type: 'text', text: '历史问题' }] },
@@ -60,6 +61,16 @@ const readThread = (message: Message) => {
       ],
     },
   ];
+  if (mode.startsWith('fork-'))
+    turns.push({
+      id: 'later-turn',
+      status: 'completed',
+      itemsView: 'full',
+      items: [
+        { id: 'later-user', type: 'userMessage', content: [{ type: 'text', text: '后续问题' }] },
+        { id: 'later-assistant', type: 'agentMessage', text: '后续回复' },
+      ],
+    });
   reply(message, { thread: { ...result, turns: message.params?.includeTurns ? turns : [] } });
 };
 function listThreads(message: Message): void {
@@ -101,6 +112,16 @@ function afterStart(): void {
     return;
   }
   if (mode === 'delayed-start' || mode === 'ignore-interrupt') return;
+  if (mode === 'foreign-turn-completion')
+    notify('turn/completed', {
+      threadId,
+      turnId,
+      turn: {
+        id: 'foreign-turn',
+        status: 'completed',
+        items: [{ id: 'foreign-answer', type: 'agentMessage', text: '不属于本轮' }],
+      },
+    });
   notify('item/agentMessage/delta', { threadId, turnId, itemId: 'answer', delta: '流式回复' });
   notify('item/completed', { threadId, turnId, item: { id: 'answer', type: 'agentMessage', text: '流式回复' } });
   end(mode === 'turn-failed' ? 'failed' : 'completed');
@@ -137,6 +158,26 @@ function mutation(message: Message): void {
   if (mode === 'delayed-mutation') setTimeout(complete, 150);
   else complete();
 }
+function forkThread(message: Message): void {
+  if (mode === 'fork-rpc-error') {
+    write({ id: message.id, error: { code: -32000, message: 'fixture-sensitive-fork-diagnostic' } });
+    return;
+  }
+  const overrides: Record<string, Record<string, unknown>> = {
+    'fork-same-id': { id: threadId },
+    'fork-empty-id': { id: '' },
+    'fork-invalid-id': { id: '../session-file' },
+    'fork-wrong-cwd': { cwd: path.dirname(process.cwd()) },
+    'fork-child-agent': { parentThreadId: 'parent', source: { subAgent: 'review' } },
+    'fork-wrong-source': { forkedFromId: 'another-thread' },
+  };
+  const complete = () => {
+    if (logFile) appendFileSync(logFile, `${JSON.stringify({ fixtureCompleted: 'thread/fork' })}\n`);
+    reply(message, { thread: { ...thread('forked-thread'), forkedFromId: threadId, ...overrides[mode] } });
+  };
+  if (mode === 'fork-delayed') setTimeout(complete, 150);
+  else complete();
+}
 const handlers: Record<string, (message: Message) => void> = {
   ...capabilityHandlers(mode, {
     reply,
@@ -154,6 +195,7 @@ const handlers: Record<string, (message: Message) => void> = {
     reply(message, { thread: thread(String(message.params?.threadId)), model: 'native-model' }),
   'thread/read': readThread,
   'thread/list': listThreads,
+  'thread/fork': forkThread,
   'thread/name/set': mutation,
   'thread/delete': mutation,
   'thread/archive': mutation,

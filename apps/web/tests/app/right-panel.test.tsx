@@ -161,7 +161,7 @@ it('窄窗初始收起，两个非模态面板可共存，Escape只收起焦点�
   await screen.findByRole('textbox', { name: '相对路径' });
   expect(screen.queryByRole('dialog')).toBeNull();
   const resources = screen.getByRole('complementary', { name: '资源面板' });
-  const handle = within(resources).getByRole('button', { name: '移动资源面板' });
+  const handle = within(resources).getByRole('button', { name: '收起资源面板' });
   handle.focus();
   fireEvent.keyDown(handle, { key: 'Escape' });
   expect(screen.queryByRole('complementary', { name: '资源面板' })).toBeNull();
@@ -228,20 +228,36 @@ it.each([true, false])('嵌套编辑登记弹窗忙碌时Escape不隐藏文件�
   );
   mount();
   await screen.findByText('从一条消息开始');
-  fireEvent.click(top().getByRole('button', { name: '文件' }));
-  fireEvent.click(await screen.findByRole('button', { name: '处理断开的编辑登记' }));
-  const child = screen.getByRole<HTMLDialogElement>('dialog', { name: '放弃断开的编辑登记' });
+  const toolbar = within(document.getElementById('workspace-topbar')!);
+  fireEvent.click(toolbar.getByRole('button', { name: '文件' }));
+  const parent = document.getElementById('workspace-files-panel')!;
+  const files = within(parent);
+  // 先等真实查询收尾，避免覆盖率冷启动时全页角色扫描阻塞异步内容加载。
+  await waitFor(() =>
+    expect(client.getQueryData(['disconnected-editors', workspace.id])).toEqual({ editors: ['disconnected-editor'] }),
+  );
+  fireEvent.click(await files.findByRole('button', { name: '处理断开的编辑登记' }));
+  const child = files.getByRole<HTMLDialogElement>('dialog', { name: '放弃断开的编辑登记' });
   fireEvent.click(within(child).getByRole('button', { name: '确认放弃这些编辑登记' }));
   await waitFor(() => expect(api.forgetFileEditor).toHaveBeenCalledTimes(1));
   fireEvent.keyDown(child, { key: 'Escape' });
   fireEvent(child, new Event('cancel', { cancelable: true }));
-  const parent = screen.getByRole('complementary', { name: '文件面板' });
   expect(parent.hidden).toBe(false);
   expect(child.open).toBe(true);
   expect(within(child).getByRole<HTMLButtonElement>('button', { name: '正在处理…' }).disabled).toBe(true);
   vi.mocked(api.disconnectedEditors).mockResolvedValue({ editors: [] });
   await act(async () => finish());
-  await waitFor(() => expect(screen.queryByRole('dialog', { name: '放弃断开的编辑登记' })).toBeNull());
-  fireEvent.keyDown(within(parent).getByRole('button', { name: '移动文件面板' }), { key: 'Escape' });
+  await waitFor(() => expect(files.queryByRole('dialog', { name: '放弃断开的编辑登记' })).toBeNull());
+  fireEvent.keyDown(within(parent).getByRole('button', { name: '收起文件面板' }), { key: 'Escape' });
   expect(parent.hidden).toBe(true);
+});
+
+it('顶栏显示当前工作区SSH，正常本机连接不常驻，断线仍可见并可重连', async () => {
+  mount();
+  await screen.findByText('从一条消息开始');
+  expect(top().getByRole('button', { name: 'SSH 连接详情' })).toBeTruthy();
+  expect(screen.queryByText('本机服务已连接')).toBeNull();
+  act(() => useChat.setState({ connection: 'closed' }));
+  expect(top().getByText('本机服务已断开')).toBeTruthy();
+  expect(top().getByRole('button', { name: '重新连接网页 WebSocket' })).toBeTruthy();
 });
