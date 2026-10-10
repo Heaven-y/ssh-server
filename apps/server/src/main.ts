@@ -16,6 +16,7 @@ import {
   readCodexSession,
   assertCodexSession,
   mutateCodexSession,
+  forkCodexSession,
   discoverCodexCapabilities,
 } from './agents/codex';
 import { loadConfig } from './config';
@@ -162,6 +163,7 @@ async function main(): Promise<void> {
         read: (id, dir, signal) => readCodexSession(id, dir, { signal }),
         assertBelongs: (id, dir, signal) => assertCodexSession(id, dir, { signal }),
         mutate: (id, dir, input) => mutateCodexSession(id, dir, input),
+        fork: (id, dir, input) => forkCodexSession(id, dir, input),
       },
     },
     { withIdleSession: (session, operation) => turns.withIdleSession(session, operation) },

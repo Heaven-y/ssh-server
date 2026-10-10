@@ -5,11 +5,13 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api, queryKeys } from '../../../src/lib/api';
 import { SessionList } from '../../../src/features/workspaces/SessionList';
 import { useChat } from '../../../src/features/chat/chat-store';
+import { useSessionPins } from '../../../src/features/workspaces/session-preferences';
 
 const session = { agent: 'claude' as const, sessionId: 'native-id', summary: '原生历史仍可打开', lastModified: 1 };
 const archived = { agent: 'codex' as const, sessionId: 'archived-id', summary: '归档记录', lastModified: 2 };
 let client: QueryClient;
 beforeEach(() => {
+  useSessionPins.setState({ pins: [] });
   client = new QueryClient({ defaultOptions: { queries: { retry: false, retryOnMount: false, staleTime: Infinity } } });
   client.setQueryData(queryKeys.sessions('workspace', 'claude'), [session]);
   client.setQueryData(queryKeys.sessions('workspace', 'codex'), []);
@@ -27,6 +29,7 @@ afterEach(() => {
   cleanup();
   client.clear();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 function mount() {
   render(
@@ -126,4 +129,44 @@ it('归档列表成功为空时显示中性空状态，仍只读取Codex原生�
   expect(await screen.findByText('暂无归档会话')).toBeTruthy();
   expect(list).toHaveBeenCalledExactlyOnceWith('workspace', 'codex', true);
   expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('普通会话按Codex与Claude分别成组，不混排来源', () => {
+  client.setQueryData(queryKeys.sessions('workspace', 'codex'), [{ ...archived, summary: 'Codex 活跃会话' }]);
+  mount();
+  const codex = screen.getByRole('region', { name: 'Codex 会话' });
+  const claude = screen.getByRole('region', { name: 'Claude 会话' });
+  expect(within(codex).getByText('Codex 活跃会话')).toBeTruthy();
+  expect(within(claude).getByText(session.summary)).toBeTruthy();
+  expect(within(codex).queryByText(session.summary)).toBeNull();
+});
+
+it('置顶只改变当前来源的排序，取消置顶恢复按更新时间排序', async () => {
+  client.setQueryData(queryKeys.sessions('workspace', 'claude'), [
+    session,
+    { ...session, sessionId: 'newer', summary: '较新会话', lastModified: 20 },
+  ]);
+  mount();
+  await openAction('置顶');
+  const group = screen.getByRole('region', { name: 'Claude 会话' });
+  expect(within(group).getAllByRole('listitem')[0]?.textContent).toContain(session.summary);
+  await openAction('取消置顶');
+  expect(within(group).getAllByRole('listitem')[0]?.textContent).toContain('较新会话');
+});
+
+it('复制可打开的网页深度链接，末尾分叉先呈现原生操作说明', async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+  mount();
+  await openAction('复制会话链接');
+  await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+  const copied = new URL(writeText.mock.calls[0]![0] as string);
+  expect(copied.origin).toBe(window.location.origin);
+  expect(copied.hash).toBe('#session?workspace=workspace&agent=claude&id=native-id');
+  expect(await screen.findByText('会话链接已复制')).toBeTruthy();
+  await openAction('分叉会话');
+  const dialog = screen.getByRole('dialog', { name: '分叉会话' });
+  expect(dialog.textContent).toContain('不会回滚项目文件');
+  expect(within(dialog).getByRole('button', { name: '确认分叉' })).toBeTruthy();
+  vi.unstubAllGlobals();
 });

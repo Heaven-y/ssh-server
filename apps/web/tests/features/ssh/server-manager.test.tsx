@@ -41,6 +41,11 @@ beforeEach(() => {
     { id: 'w', name: '项目一', localDir: 'demo', sshHost: server.alias, remoteDir: '~/demo' },
   ]);
   vi.spyOn(api, 'sshCredentials').mockResolvedValue(status);
+  vi.spyOn(api, 'readSshPassword').mockResolvedValue({
+    password: null,
+    revision: 'a'.repeat(64),
+    savingAvailable: true,
+  });
 });
 afterEach(() => {
   cleanup();
@@ -124,19 +129,24 @@ it('切换档案中止在途认证，迟到响应不改新目标或清除新输�
   expect(f.client.getQueryData(['ssh-credentials', other.alias])).not.toMatchObject({ connected: true });
 });
 it('引用中的身份字段不可修改，编辑携带旧快照，409保留草稿', async () => {
-  vi.spyOn(api, 'updateSshTarget').mockRejectedValue(new Error('档案已变化'));
+  vi.spyOn(api, 'saveSshTargetEdit').mockRejectedValue(new Error('档案已变化'));
   mount();
   fireEvent.click(await screen.findByRole('button', { name: '编辑服务器' }));
   expect(screen.getByLabelText<HTMLInputElement>('地址').disabled).toBe(true);
   expect(screen.getByLabelText<HTMLInputElement>('账号').disabled).toBe(true);
   fireEvent.change(screen.getByLabelText('连接名称'), { target: { value: '重命名' } });
+  await waitFor(() =>
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '保存服务器' }).disabled).toBe(false),
+  );
   fireEvent.click(screen.getByRole('button', { name: '保存服务器' }));
   await screen.findByRole('alert');
   expect(screen.getByLabelText<HTMLInputElement>('连接名称').value).toBe('重命名');
-  expect(api.updateSshTarget).toHaveBeenCalledWith(
-    server.alias,
-    expect.objectContaining({ name: '重命名', authMode: 'password' }),
-    server,
+  expect(api.saveSshTargetEdit).toHaveBeenCalledWith(
+    expect.objectContaining({
+      input: expect.objectContaining({ name: '重命名', authMode: 'password' }),
+      expected: server,
+      revision: 'a'.repeat(64),
+    }),
     expect.any(AbortSignal),
   );
 });
@@ -200,7 +210,7 @@ it('向导只选择档案，不出现认证表单；打开同一管理入口后�
 });
 it('保存成功取消旧列表GET，迟到快照不能回退服务器档案', async () => {
   const updated = { ...server, name: '已更新服务器' };
-  vi.spyOn(api, 'updateSshTarget').mockResolvedValue(updated);
+  vi.spyOn(api, 'saveSshTargetEdit').mockResolvedValue(updated);
   const f = mount();
   fireEvent.click(await screen.findByRole('button', { name: '编辑服务器' }));
   let resolve!: (value: ManagedServer[]) => void;
@@ -213,6 +223,9 @@ it('保存成功取消旧列表GET，迟到快照不能回退服务器档案', a
     pending = f.client.invalidateQueries({ queryKey: ['ssh-targets'] });
   });
   fireEvent.change(screen.getByLabelText('连接名称'), { target: { value: updated.name } });
+  await waitFor(() =>
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '保存服务器' }).disabled).toBe(false),
+  );
   fireEvent.click(screen.getByRole('button', { name: '保存服务器' }));
   await waitFor(() => expect(f.client.getQueryData<ManagedServer[]>(['ssh-targets'])?.[0]?.name).toBe(updated.name));
   await act(async () => {
@@ -254,7 +267,7 @@ it.each([true, false])('复用服务器密码并按服务器断开，保存状�
   await screen.findByText('SSH 已断开，自动连接已暂停');
   expect(f.client.getQueryData(['ssh-credentials', server.alias])).toMatchObject({ connected: false, saved: false });
 });
-it('新增密码档案后聚焦当前档案密码步骤，连接后留空复用不再发送保存偏好', async () => {
+it('新增密码档案可不保存密码，再从独立连接入口输入；连接后留空复用不再发送保存偏好', async () => {
   const added = { ...server, alias: 'new-server', name: '新密码服务器' };
   vi.spyOn(api, 'saveSshTarget').mockResolvedValue(added);
   vi.spyOn(api, 'connectSsh').mockResolvedValue({
@@ -270,9 +283,10 @@ it('新增密码档案后聚焦当前档案密码步骤，连接后留空复用�
   fireEvent.change(screen.getByLabelText('地址'), { target: { value: added.hostname } });
   fireEvent.change(screen.getByLabelText('账号'), { target: { value: added.username } });
   fireEvent.change(screen.getByLabelText('认证方式'), { target: { value: 'password' } });
-  expect(screen.queryByLabelText('SSH 密码')).toBeNull();
+  expect(screen.getByLabelText<HTMLInputElement>('SSH 密码').value).toBe('');
   fireEvent.click(screen.getByRole('button', { name: '保存服务器' }));
-  const password = await screen.findByLabelText<HTMLInputElement>('SSH 密码');
+  const connectionForm = await screen.findByRole('form', { name: '连接服务器' });
+  const password = within(connectionForm).getByLabelText<HTMLInputElement>('SSH 密码');
   await waitFor(() => expect(document.activeElement).toBe(password));
   expect(screen.getByText(/已保存.*新密码服务器/)).toBeTruthy();
   expect(screen.getByRole('button', { name: '选择服务器：新密码服务器' }).getAttribute('aria-pressed')).toBe('true');

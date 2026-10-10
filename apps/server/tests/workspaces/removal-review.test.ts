@@ -70,6 +70,9 @@ it('普通HTTP伪造Upgrade头仍保护实际原生会话写入，收尾后才�
       throw new Error('本用例不读取原生记录');
     },
     assertBelongs: async () => undefined,
+    fork: async () => {
+      throw new Error('本用例不分叉原生记录');
+    },
     mutate: async () => {
       entered.resolve();
       await finish.promise;

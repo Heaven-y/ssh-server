@@ -1,13 +1,17 @@
 import { Menu, MenuButton, MenuItem, useMenuStore } from '@ariakit/react';
-import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, GitFork, Link, MoreHorizontal, Pencil, Pin, Trash2 } from 'lucide-react';
 import { useRef } from 'react';
 import type { SessionActionInput, SessionSummary } from '@ssh-server/shared';
 import { buttonClass } from '../../ui/styles';
 import { AGENT_LABELS } from '../chat/AgentControls';
 
-export type SessionMenuAction = SessionActionInput['action'];
+export type SessionDialogAction = SessionActionInput['action'] | 'fork';
+export type SessionMenuAction = SessionDialogAction | 'pin' | 'copy';
 const actions = {
   rename: { label: '重命名', icon: Pencil },
+  pin: { label: '置顶', icon: Pin },
+  copy: { label: '复制会话链接', icon: Link },
+  fork: { label: '分叉会话', icon: GitFork },
   delete: { label: '删除', icon: Trash2 },
   archive: { label: '归档', icon: Archive },
   unarchive: { label: '恢复', icon: ArchiveRestore },
@@ -17,18 +21,20 @@ const actions = {
 export function SessionMenu({
   session,
   archived,
+  pinned,
   disabled,
   choose,
 }: {
   session: SessionSummary;
   archived: boolean;
+  pinned: boolean;
   disabled: boolean;
   choose(action: SessionMenuAction): void;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useMenuStore({ placement: 'bottom-start' });
   const visible: SessionMenuAction[] = [];
-  if (!archived) visible.push('rename');
+  if (!archived) visible.push('rename', 'pin', 'copy', 'fork');
   if (session.agent === 'codex') visible.push(archived ? 'unarchive' : 'archive');
   visible.push('delete');
   return (
@@ -67,7 +73,7 @@ export function SessionMenu({
               }}
             >
               <Icon aria-hidden className="size-4" />
-              {actions[action].label}
+              {action === 'pin' && pinned ? '取消置顶' : actions[action].label}
             </MenuItem>
           );
         })}

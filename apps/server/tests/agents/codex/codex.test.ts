@@ -117,7 +117,9 @@ describe('Codex app-server 核心边界', () => {
       { type: 'session', sessionId: 'native-thread', cwd: workspace.localDir, model: 'native-model', agent: 'codex' },
     ]);
     expect(events.filter((event) => event.type === 'text')).toEqual([{ type: 'text', delta: '流式回复' }]);
-    expect(events.filter((event) => event.type === 'turn_end')).toHaveLength(1);
+    expect(events.filter((event) => event.type === 'turn_end')).toEqual([
+      { type: 'turn_end', isError: false, durationMs: 30, forkPoint: 'native-turn' },
+    ]);
   });
 
   it('准备阶段取消后不创建线程也不启动模型', async () => {
@@ -170,7 +172,7 @@ describe('Codex app-server 核心边界', () => {
       turnId: 'native-turn',
     });
     expect(events.filter((event) => event.type === 'turn_end')).toEqual([
-      { type: 'turn_end', isError: false, durationMs: 30 },
+      { type: 'turn_end', isError: false, durationMs: 30, forkPoint: 'native-turn' },
     ]);
   });
 
@@ -347,7 +349,7 @@ describe('原生会话读取', () => {
     expect(history.events).toEqual([
       { type: 'user_message', text: '历史问题' },
       { type: 'text', delta: '历史回复' },
-      { type: 'turn_end', isError: false },
+      { type: 'turn_end', isError: false, forkPoint: 'old-turn' },
     ]);
   });
   it('重复 cursor 明确失败，避免把截断列表当作完整列表', async () => {
@@ -381,4 +383,23 @@ it('映射工具调用与结果只输出一次，并限制工具输出长度', (
   expect(completed).toMatchObject([{ type: 'tool_result', id: 'command', isError: true }]);
   expect(JSON.stringify(completed).length).toBeLessThan(21_000);
   expect(mapper.finishItems({ items: [item] })).toEqual([]);
+});
+
+it('实时分叉点核验完成快照自身的轮次身份，不采纳外来 turn.id', async () => {
+  const { workspace, options } = await setup('foreign-turn-completion');
+  const events: AgentEvent[] = [];
+  await runCodexTurn(
+    {
+      workspace,
+      text: '核验分叉点',
+      mcpEnv: {},
+      emit: (event) => events.push(event),
+      requestPermission: async () => ({ allow: false }),
+    },
+    options,
+  ).done;
+  expect(events.filter((event) => event.type === 'turn_end')).toEqual([
+    { type: 'turn_end', isError: false, durationMs: 30, forkPoint: 'native-turn' },
+  ]);
+  expect(events).not.toContainEqual({ type: 'text', delta: '不属于本轮' });
 });

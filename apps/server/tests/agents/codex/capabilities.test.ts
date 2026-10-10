@@ -199,7 +199,7 @@ describe('Codex 手动压缩', () => {
         'running',
         'completed',
       ]);
-      expect(events.at(-1)).toEqual({ type: 'turn_end', isError: false });
+      expect(events.at(-1)).toEqual({ type: 'turn_end', isError: false, forkPoint: 'native-turn' });
     } finally {
       await handle.interrupt();
       await handle.done;

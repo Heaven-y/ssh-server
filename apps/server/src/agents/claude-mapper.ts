@@ -1,10 +1,28 @@
 // 把 Claude Agent SDK 的消息转换成统一的 AgentEvent
-import type { AgentEvent } from '@ssh-server/shared';
+import { NativeSessionIdSchema, type AgentEvent } from '@ssh-server/shared';
 import { claudeCompactionBoundary, claudeCompactionStatus, ClaudeReplayFilter } from './claude-compaction';
 
 type Rec = Record<string, unknown>;
 const isRec = (v: unknown): v is Rec => typeof v === 'object' && v !== null;
 const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+const TERMINAL_STOPS = new Set(['end_turn', 'stop_sequence', 'max_tokens', 'refusal', 'model_context_window_exceeded']);
+type MessageIdentity = { sessionId: string; pointId: string };
+
+function assistantIdentity(msg: Rec): MessageIdentity | undefined {
+  if (msg.type !== 'assistant' || msg.parent_tool_use_id || msg.parent_agent_id || msg.aborted) return;
+  if (blocksOf(msg).some((block) => isRec(block) && block.type === 'tool_use')) return;
+  const session = NativeSessionIdSchema.safeParse(msg.session_id);
+  const point = NativeSessionIdSchema.safeParse(msg.uuid);
+  return session.success && point.success ? { sessionId: session.data, pointId: point.data } : undefined;
+}
+
+/** 历史只采用原生终止标记；工具调用与未完成流不能充当已结束位置。 */
+export function claudeHistoryForkPoint(message: unknown, sessionId?: string): string | undefined {
+  if (!isRec(message) || !isRec(message.message)) return;
+  const identity = assistantIdentity(message);
+  if (!identity || (sessionId !== undefined && identity.sessionId !== sessionId)) return;
+  return TERMINAL_STOPS.has(str(message.message.stop_reason) ?? '') ? identity.pointId : undefined;
+}
 
 /** tool_result 内容的最大长度（字符），超出部分截掉 */
 export const TOOL_OUTPUT_MAX_CHARS = 20_000;
@@ -42,7 +60,7 @@ function sessionEvent(msg: Rec): AgentEvent[] {
 
 const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
 
-function turnEndEvent(msg: Rec): AgentEvent[] {
+function turnEndEvent(msg: Rec, forkPoint?: string): AgentEvent[] {
   const failedSubtype = typeof msg.subtype === 'string' && msg.subtype !== 'success';
   return [
     {
@@ -50,6 +68,7 @@ function turnEndEvent(msg: Rec): AgentEvent[] {
       isError: msg.is_error === true || failedSubtype,
       durationMs: num(msg.duration_ms),
       costUsd: num(msg.total_cost_usd),
+      ...(forkPoint ? { forkPoint } : {}),
     },
   ];
 }
@@ -88,10 +107,13 @@ export class ClaudeEventMapper {
   private currentMessageId: string | undefined;
   /** 没有消息 id 时的退路：本轮是否收到过 text_delta */
   private anyDelta = false;
+  private lastAssistant?: MessageIdentity;
+
+  constructor(private readonly historySessionId?: string) {}
 
   map(msg: unknown): AgentEvent[] {
     // 子代理的消息不在 M1 中展示
-    if (!isRec(msg) || msg.parent_tool_use_id) return [];
+    if (!isRec(msg) || msg.parent_tool_use_id || msg.parent_agent_id) return [];
     if (this.replay.skip(msg)) return [];
     switch (msg.type) {
       case 'system':
@@ -99,11 +121,13 @@ export class ClaudeEventMapper {
       case 'stream_event':
         return this.streamEvent(msg.event);
       case 'assistant':
+        this.lastAssistant = assistantIdentity(msg);
         return this.assistant(msg, false);
       case 'user':
+        this.lastAssistant = undefined;
         return this.toolResults(msg);
       case 'result':
-        return turnEndEvent(msg);
+        return this.end(msg);
       default:
         return [];
     }
@@ -111,17 +135,30 @@ export class ClaudeEventMapper {
 
   /** 历史记录：用户文本输出为 user_message，助手文本总是输出 */
   mapHistory(msg: unknown): AgentEvent[] {
-    if (!isRec(msg) || msg.parent_tool_use_id) return [];
+    if (!isRec(msg) || msg.parent_tool_use_id || msg.parent_agent_id) return [];
     if (msg.type === 'system') return claudeCompactionBoundary(msg);
-    if (msg.type === 'assistant') return this.assistant(msg, true);
+    if (msg.type === 'assistant') {
+      const forkPoint = claudeHistoryForkPoint(msg, this.historySessionId);
+      const events = this.assistant(msg, true);
+      if (forkPoint) events.push({ type: 'turn_end', isError: !!msg.error, forkPoint });
+      return events;
+    }
     if (msg.type !== 'user') return [];
     return [...userTexts(msg), ...this.toolResults(msg)];
+  }
+
+  private end(msg: Rec): AgentEvent[] {
+    // result.uuid 不在 transcript 链中；只取同一会话最后一条助手原生消息的 UUID。
+    const forkPoint = this.lastAssistant?.sessionId === msg.session_id ? this.lastAssistant?.pointId : undefined;
+    this.lastAssistant = undefined;
+    return turnEndEvent(msg, forkPoint);
   }
 
   private streamEvent(event: unknown): AgentEvent[] {
     if (!isRec(event)) return [];
     if (event.type === 'message_start' && isRec(event.message)) {
       this.currentMessageId = str(event.message.id);
+      this.lastAssistant = undefined;
       return [];
     }
     if (event.type !== 'content_block_delta' || !isRec(event.delta)) return [];

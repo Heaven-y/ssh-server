@@ -3,7 +3,6 @@ import { useId, useState, type FormEvent } from 'react';
 import { managementPending, useChat } from './chat-store';
 import { CapabilityPicker } from './CapabilityPicker';
 import { selectionRestriction } from './capability-selection';
-import { ContextStatus } from './ContextStatus';
 import { ComposerInput } from './ComposerInput';
 import { PendingFeedback } from '../changes/PendingFeedback';
 import type { AgentCapability } from '@ssh-server/shared';
@@ -91,7 +90,6 @@ export function Composer() {
 
   return (
     <form onSubmit={submit} className="shrink-0 space-y-2 px-4 pt-2 pb-4 sm:px-6">
-      <ContextStatus />
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 rounded-[28px] border border-border-strong bg-card p-3 shadow-sm transition-colors focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/15 sm:p-4">
         <PendingFeedback />
         <label htmlFor={id} className="sr-only">
@@ -111,7 +109,7 @@ export function Composer() {
         {restriction && <p className="text-xs leading-5 text-warning">{restriction}</p>}
         <div role="group" aria-label="消息选项" className="flex flex-wrap items-center gap-2">
           <CapabilityPicker disabled={busy} />
-          <div className="ml-auto flex min-w-0 items-center justify-end gap-1">
+          <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">
             <AgentControls disabled={busy} />
             <ComposerActions disabled={blocked} />
           </div>

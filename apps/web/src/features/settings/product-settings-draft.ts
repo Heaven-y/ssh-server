@@ -2,8 +2,6 @@ import { ProductSettingsSchema, type ProductSettings } from '@ssh-server/shared'
 
 export type ProductSettingsDraft = {
   defaultAgent: ProductSettings['defaultAgent'];
-  claudeModel: string;
-  codexModel: string;
   maxFileMiB: string;
   extensions: string;
   syncInterval: string;
@@ -12,8 +10,6 @@ export type ProductSettingsDraft = {
 };
 export const settingsDraft = (settings: ProductSettings): ProductSettingsDraft => ({
   defaultAgent: settings.defaultAgent,
-  claudeModel: settings.defaultModels.claude,
-  codexModel: settings.defaultModels.codex,
   maxFileMiB: String(settings.syncDefaults.maxFileBytes / 1024 / 1024),
   extensions: settings.syncDefaults.excludedExtensions.join(', '),
   syncInterval: String(settings.syncIntervalSeconds),
@@ -23,7 +19,6 @@ export const settingsDraft = (settings: ProductSettings): ProductSettingsDraft =
 export function parseSettingsDraft(draft: ProductSettingsDraft) {
   return ProductSettingsSchema.safeParse({
     defaultAgent: draft.defaultAgent,
-    defaultModels: { claude: draft.claudeModel, codex: draft.codexModel },
     syncDefaults: {
       maxFileBytes: Math.round(Number(draft.maxFileMiB) * 1024 * 1024),
       excludedExtensions: draft.extensions.split(/[,\s]+/).filter(Boolean),
@@ -34,8 +29,6 @@ export function parseSettingsDraft(draft: ProductSettingsDraft) {
 }
 const fieldPaths: Record<string, keyof ProductSettingsDraft> = {
   defaultAgent: 'defaultAgent',
-  'defaultModels.claude': 'claudeModel',
-  'defaultModels.codex': 'codexModel',
   'syncDefaults.maxFileBytes': 'maxFileMiB',
   'syncDefaults.excludedExtensions': 'extensions',
   syncIntervalSeconds: 'syncInterval',

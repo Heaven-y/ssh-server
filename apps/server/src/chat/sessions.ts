@@ -1,12 +1,14 @@
-import type {
-  AgentKind,
-  SessionActionInput,
-  SessionHistory,
-  SessionRef,
-  SessionSummary,
-  Workspace,
+import {
+  NativeSessionIdSchema,
+  type SessionForkInput,
+  type AgentKind,
+  type SessionActionInput,
+  type SessionHistory,
+  type SessionRef,
+  type SessionSummary,
+  type Workspace,
 } from '@ssh-server/shared';
-import type { NativeSessionRead, NativeSessionSummary } from '../agents/types';
+import type { NativeSessionFork, NativeSessionRead, NativeSessionSummary } from '../agents/types';
 import { sameSessionDirectory } from '../agents/session-scope';
 
 export type SessionProvider = {
@@ -14,6 +16,7 @@ export type SessionProvider = {
   read(id: string, dir: string, signal?: AbortSignal): Promise<NativeSessionRead>;
   assertBelongs(id: string, dir: string, signal?: AbortSignal): Promise<void>;
   mutate(id: string, dir: string, input: SessionActionInput): Promise<void>;
+  fork(id: string, dir: string, input: SessionForkInput): Promise<NativeSessionFork>;
 };
 type SessionOperations = {
   withIdleSession<T>(session: SessionRef, operation: () => Promise<T>): Promise<T>;
@@ -61,6 +64,21 @@ export function createSessionsService(providers: Record<AgentKind, SessionProvid
     },
     assertBelongs(ws: Workspace, agent: AgentKind, id: string, signal?: AbortSignal): Promise<void> {
       return safeOperation(agent, () => providers[agent].assertBelongs(id, ws.localDir, signal));
+    },
+    fork(ws: Workspace, agent: AgentKind, id: string, input: SessionForkInput): Promise<SessionSummary> {
+      return safeOperation(
+        agent,
+        () =>
+          operations.withIdleSession({ agent, sessionId: id }, async () => {
+            // 提供方在锁内核验源与分叉点；原生返回后仍在锁内复核新身份。
+            const result = await providers[agent].fork(id, ws.localDir, input);
+            const newId = NativeSessionIdSchema.safeParse(result.session.sessionId);
+            if (!newId.success || newId.data === id || !(await sameSessionDirectory(result.cwd, ws.localDir)))
+              throw new SessionError(503, 'session_runtime_failed', '原生分叉返回了无效的新会话');
+            return { ...result.session, agent };
+          }),
+        '分叉',
+      );
     },
     mutate(ws: Workspace, agent: AgentKind, id: string, input: SessionActionInput): Promise<void> {
       return safeOperation(

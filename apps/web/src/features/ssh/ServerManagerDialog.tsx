@@ -113,7 +113,7 @@ function ProfileDetails({
   connectAfterSave?: boolean;
 }) {
   return (
-    <section aria-label="所选服务器详情" className="space-y-4 border-t border-border pt-4">
+    <section aria-label="所选服务器详情" className="min-w-0 space-y-4">
       <div className="space-y-1">
         <h3 className="break-words font-medium">{server.name}</h3>
         <p className="break-all font-mono text-xs text-muted-foreground">
@@ -220,57 +220,70 @@ export function ServerManagerDialog({
     reset();
     setAlias(value);
   };
+  const close = () => {
+    reset();
+    setAlias('');
+    onClose();
+  };
+  const startNew = (next: Screen) => {
+    setAlias('');
+    setScreen(next);
+  };
   const chooseServer = onSelect
     ? (value: string) => {
         onSelect(value);
-        onClose();
+        close();
       }
     : undefined;
   return (
-    <DetailDialog title="服务器" onClose={onClose}>
-      <div className="space-y-5">
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className={buttonClass('primary')}
-            onClick={() => setScreen({ kind: 'edit', editor: { initial: EMPTY_SERVER } })}
-          >
-            新增服务器
-          </button>
-          <button type="button" className={buttonClass('outline')} onClick={() => setScreen({ kind: 'import' })}>
-            从 SSH 配置导入
-          </button>
-          <button
-            type="button"
-            className={buttonClass('ghost')}
-            disabled={hosts.isFetching}
-            onClick={() => {
-              reset();
-              void hosts.refetch();
-              void workspaces.refetch();
-            }}
-          >
-            重新读取
-          </button>
+    <div className="contents [&>dialog]:w-[min(1000px,calc(100vw-48px))]">
+      <DetailDialog title="服务器" onClose={close}>
+        <div className="grid min-w-0 gap-5 md:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
+          <div className="flex flex-wrap gap-2 md:col-span-2">
+            <button
+              type="button"
+              className={buttonClass('primary')}
+              onClick={() => startNew({ kind: 'edit', editor: { initial: EMPTY_SERVER } })}
+            >
+              新增服务器
+            </button>
+            <button type="button" className={buttonClass('outline')} onClick={() => startNew({ kind: 'import' })}>
+              从 SSH 配置导入
+            </button>
+            <button
+              type="button"
+              className={buttonClass('ghost')}
+              disabled={hosts.isFetching}
+              onClick={() => {
+                reset();
+                void hosts.refetch();
+                void workspaces.refetch();
+              }}
+            >
+              重新读取
+            </button>
+          </div>
+          <ServerList hosts={hosts} workspaces={workspaces} alias={alias} select={select} />
+          <section aria-label="服务器详情与编辑" className="min-w-0 space-y-4 rounded-lg border border-border p-4">
+            <ReferenceNotice workspaces={workspaces} alias={alias} />
+            <ServerContent
+              screen={screen}
+              selected={selected}
+              locked={locked}
+              changeScreen={setScreen}
+              saved={(server) => {
+                setAlias(server.alias);
+                setScreen({
+                  kind: 'view',
+                  connectAfterSave: server.authMode === 'password' && screen.kind === 'edit' && !screen.editor.expected,
+                });
+              }}
+              reset={reset}
+              chooseServer={chooseServer}
+            />
+          </section>
         </div>
-        <ServerList hosts={hosts} workspaces={workspaces} alias={alias} select={select} />
-        <ReferenceNotice workspaces={workspaces} alias={alias} />
-        <ServerContent
-          screen={screen}
-          selected={selected}
-          locked={locked}
-          changeScreen={setScreen}
-          saved={(server) => {
-            setAlias(server.alias);
-            setScreen({
-              kind: 'view',
-              connectAfterSave: server.authMode === 'password' && screen.kind === 'edit' && !screen.editor.expected,
-            });
-          }}
-          reset={reset}
-          chooseServer={chooseServer}
-        />
-      </div>
-    </DetailDialog>
+      </DetailDialog>
+    </div>
   );
 }
