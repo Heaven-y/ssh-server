@@ -11,10 +11,6 @@ type Field = {
   max?: number;
   step?: string;
 };
-const models: Field[] = [
-  { key: 'claudeModel', label: 'Claude 默认模型', hint: '留空使用本机原生配置，最多 200 字符。' },
-  { key: 'codexModel', label: 'Codex 默认模型', hint: '用于新会话；留空使用本机原生配置。' },
-];
 const sync: Field[] = [
   {
     key: 'maxFileMiB',
@@ -88,7 +84,7 @@ function Fields({ fields, ...props }: Props & { fields: Field[] }) {
 }
 export function invalidSettingsCategory(draft: ProductSettingsDraft): SettingsCategory {
   const errors = draftErrors(draft);
-  if (errors.defaultAgent || models.some(({ key }) => errors[key])) return 'conversation';
+  if (errors.defaultAgent) return 'conversation';
   if (sync.some(({ key }) => errors[key])) return 'sync';
   return 'resources';
 }
@@ -144,9 +140,8 @@ export function ProductSettingsForm({
           <option value="codex">Codex</option>
         </select>
       </label>
-      <Fields fields={models} {...props} />
       <p className="rounded-md bg-muted p-3 text-xs leading-5 text-muted-foreground">
-        续接历史会话沿用原模型；手动指定可覆盖。
+        默认模型由原生 Agent 配置管理；当前会话需要更换模型时，在消息输入区显式选择。
       </p>
     </section>
   );

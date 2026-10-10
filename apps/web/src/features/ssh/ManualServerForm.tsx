@@ -4,6 +4,8 @@ import { ManualServerInputSchema, type ManualServerInput, type ManagedServer } f
 import { api, queryKeys } from '../../lib/api';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { useCancelableRequest } from '../workspaces/setup/use-cancelable-request';
+import { ServerPasswordEditor } from './ServerPasswordEditor';
+import { useServerPasswordEditor } from './use-server-password-editor';
 
 const FIELDS = [
   { key: 'name', label: '连接名称', placeholder: '我的服务器' },
@@ -13,7 +15,25 @@ const FIELDS = [
 ] as const;
 export const EMPTY_SERVER: ManualServerInput = { name: '', hostname: '', username: '', port: 22, authMode: 'key' };
 
-/** 从向导提取的唯一档案表单；密码不属于服务器配置字段。 */
+function saveProfile(
+  input: ManualServerInput,
+  expected: ManagedServer | undefined,
+  credential: { revision?: string; password?: string | null },
+  signal: AbortSignal,
+) {
+  if (expected) {
+    if (!credential.revision) throw new Error('请先重新读取服务器编辑信息');
+    return api.saveSshTargetEdit(
+      { input, expected, revision: credential.revision, password: credential.password },
+      signal,
+    );
+  }
+  return typeof credential.password === 'string'
+    ? api.createSshTargetWithPassword(input, credential.password, signal)
+    : api.saveSshTarget(input, signal);
+}
+
+/** 唯一档案编辑表单；密码单独按需读取、确认保存，不混入服务器快照。 */
 export function ManualServerForm({
   initial = EMPTY_SERVER,
   expected,
@@ -38,24 +58,36 @@ export function ManualServerForm({
     keyFile: initial.keyFile,
   }));
   const request = useCancelableRequest();
+  const credential = useServerPasswordEditor(expected);
+  const change = (patch: Partial<ManualServerInput>) => {
+    if (Object.keys(patch).some((key) => key !== 'name')) credential.changeTarget();
+    setInput((value) => ({ ...value, ...patch }));
+  };
   const save = async (event: FormEvent) => {
     event.preventDefault();
-    if (request.busy) return;
+    if (request.busy || !credential.ready) return;
     const server = await request.run(async (signal) => {
       const parsed = ManualServerInputSchema.safeParse({
         ...input,
         keyFile: input.authMode === 'key' ? input.keyFile || undefined : undefined,
       });
       if (!parsed.success) throw new Error('请检查连接名称、地址、账号、端口和私钥路径');
+      const secret = credential.take(parsed.data.authMode);
+      if (expected) {
+        void qc.invalidateQueries({ queryKey: queryKeys.sshCredentials(expected.alias), refetchType: 'none' });
+        void qc.cancelQueries({ queryKey: queryKeys.sshCredentials(expected.alias) });
+      }
       try {
-        const updated = expected
-          ? await api.updateSshTarget(expected.alias, parsed.data, expected, signal)
-          : await api.saveSshTarget(parsed.data, signal);
+        const updated = await saveProfile(parsed.data, expected, secret, signal);
+        // 保存已使服务端断开旧身份；重读期间不能继续展示旧的已连接缓存。
+        void qc.resetQueries({ queryKey: queryKeys.sshCredentials(updated.alias) });
         await qc.cancelQueries({ queryKey: queryKeys.sshHosts });
         return updated;
+      } catch (error) {
+        if (expected) void qc.invalidateQueries({ queryKey: queryKeys.sshCredentials(expected.alias) });
+        throw error;
       } finally {
         void qc.invalidateQueries({ queryKey: queryKeys.sshHosts, refetchType: 'none' });
-        if (expected) void qc.invalidateQueries({ queryKey: queryKeys.sshCredentials(expected.alias) });
       }
     });
     if (server) {
@@ -80,7 +112,7 @@ export function ManualServerForm({
             placeholder={field.placeholder}
             disabled={request.busy || (identityLocked && field.key !== 'name')}
             autoComplete="off"
-            onChange={(event) => setInput((value) => ({ ...value, [field.key]: event.target.value }))}
+            onChange={(event) => change({ [field.key]: event.target.value })}
           />
         </div>
       ))}
@@ -96,7 +128,7 @@ export function ManualServerForm({
           className={inputClass}
           value={input.port}
           disabled={request.busy || identityLocked}
-          onChange={(event) => setInput((value) => ({ ...value, port: Number(event.target.value) }))}
+          onChange={(event) => change({ port: Number(event.target.value) })}
         />
       </div>
       <div>
@@ -108,18 +140,20 @@ export function ManualServerForm({
           className={inputClass}
           value={input.authMode}
           disabled={request.busy || (identityLocked && !!initial.keyFile)}
-          onChange={(event) =>
-            setInput((value) => ({ ...value, authMode: event.target.value as ManualServerInput['authMode'] }))
-          }
+          onChange={(event) => change({ authMode: event.target.value as ManualServerInput['authMode'] })}
         >
           <option value="key">已有私钥</option>
           <option value="password">账号密码</option>
         </select>
       </div>
+      <ServerPasswordEditor editor={credential} passwordMode={input.authMode === 'password'} busy={request.busy} />
       <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
         {identityLocked
           ? '已有工作区引用，不能改变地址、端口、账号与私钥目标。认证方式仅在空闲时可变更；已绑定专用私钥路径时不能切换为密码。变更后需要重新验证。'
-          : '保存后可被多个工作区共用。密码在档案保存后的连接区域单独输入，不写入档案。'}
+          : '保存后可被多个工作区共用。密码独立由 Windows 当前用户加密保存，不写入服务器档案。'}
+      </p>
+      <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
+        确认保存不代表认证成功，不会发起 SSH。修改后需通过独立连接入口验证；已有连接及旧工作区验证会失效。
       </p>
       {request.error && (
         <p role="alert" className="text-sm text-destructive-foreground sm:col-span-2">
@@ -127,7 +161,7 @@ export function ManualServerForm({
         </p>
       )}
       <div className="flex gap-2 sm:col-span-2">
-        <button type="submit" className={buttonClass('primary')} disabled={request.busy}>
+        <button type="submit" className={buttonClass('primary')} disabled={request.busy || !credential.ready}>
           {request.busy ? '正在保存…' : '保存服务器'}
         </button>
         <button type="button" className={buttonClass('outline')} onClick={cancel}>

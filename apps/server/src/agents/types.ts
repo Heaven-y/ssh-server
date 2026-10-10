@@ -23,3 +23,5 @@ export type NativeSessionRead = {
   events: AgentEvent[];
   actualModel?: string;
 };
+/** 分叉只返回新会话的原生身份与目录，不复制历史为新的输入。 */
+export type NativeSessionFork = Pick<NativeSessionRead, 'session' | 'cwd'>;

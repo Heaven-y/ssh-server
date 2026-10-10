@@ -241,7 +241,8 @@ class CodexTurn {
     const eventTurnId = text(params.turnId) || text(record(params.turn).id);
     if (eventTurnId !== this.turnId) return;
     if (method === 'turn/completed') {
-      this.complete(record(params.turn));
+      const turn = record(params.turn);
+      if (turn.id === this.turnId) this.complete(turn);
       return;
     }
     for (const event of this.mapper.map(method, params)) this.input.emit(event);

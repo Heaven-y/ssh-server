@@ -110,3 +110,25 @@ describe('独立的加密 SSH 密码存储', () => {
     expect(await readdir(directory)).toEqual([filename(identity)]);
   });
 });
+
+it.each(['save', 'forget'] as const)('档案提交失败时%s恢复原密文，不能留下半次密码编辑', async (operation) => {
+  const { store } = await fixture();
+  await store.save(identity, 'fixture-original-secret');
+  const commit = async () => {
+    throw new Error('合成档案写盘失败');
+  };
+  const updating =
+    operation === 'save'
+      ? store.save(identity, 'fixture-new-secret', () => true, commit)
+      : store.forget(identity, { stillCurrent: () => true, commit });
+  await expect(updating).rejects.toMatchObject({ code: 'credential_storage_failed' });
+  expect(await store.load(identity)).toBe('fixture-original-secret');
+});
+
+it('普通取消保存仍可删除损坏记录，不因编辑事务的回滚读取而锁死', async () => {
+  const { store, directory } = await fixture();
+  await store.save(identity, 'fixture-secret');
+  await writeFile(path.join(directory, filename(identity)), 'not-json', 'utf8');
+  await expect(store.forget(identity)).resolves.toBeUndefined();
+  expect(await store.has(identity)).toBe(false);
+});

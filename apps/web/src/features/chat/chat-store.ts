@@ -27,7 +27,7 @@ import {
 
 const LAST_WORKSPACE_KEY = 'ssh-server.lastWorkspace';
 const DEFAULT_REASONING_EFFORTS: Record<AgentKind, string> = { claude: 'high', codex: 'high' };
-export type SessionOperation = { action: SessionActionInput['action']; pending: boolean; error?: string };
+export type SessionOperation = { action: SessionActionInput['action'] | 'fork'; pending: boolean; error?: string };
 export const sessionActionKey = (workspaceId: string, session: SessionRef): string =>
   JSON.stringify([workspaceId, session.agent, session.sessionId]);
 type ChatState = {
@@ -36,8 +36,7 @@ type ChatState = {
   agent: AgentKind;
   sessionId?: string;
   modelOverrides: Record<AgentKind, string>;
-  modelSources: Record<AgentKind, 'default' | 'explicit'>;
-  defaults: Pick<ProductSettings, 'defaultAgent' | 'defaultModels'>;
+  defaults: Pick<ProductSettings, 'defaultAgent'>;
   initialDefaultsEligible: boolean;
   reasoningEfforts: Record<AgentKind, string>;
   actualModel?: string;
@@ -145,18 +144,9 @@ function nativeStatus(event: AgentEvent): { contextUsage?: ContextUsage | null; 
 function newDefaults(current: ChatState) {
   return {
     agent: current.defaults.defaultAgent,
-    modelOverrides: { ...current.defaults.defaultModels },
-    modelSources: { claude: 'default', codex: 'default' } as const,
+    modelOverrides: { claude: '', codex: '' },
     reasoningEfforts: { ...DEFAULT_REASONING_EFFORTS },
   };
-}
-function historicalModels(current: ChatState) {
-  return Object.fromEntries(
-    (['claude', 'codex'] as const).map((agent) => [
-      agent,
-      current.modelSources[agent] === 'explicit' ? current.modelOverrides[agent] : '',
-    ]),
-  ) as Record<AgentKind, string>;
 }
 export function lastWorkspaceId(): string | undefined {
   try {
@@ -179,8 +169,7 @@ export const useChat = create<ChatState>()((set, get) => ({
   conversationVersion: 0,
   agent: 'claude',
   modelOverrides: { claude: '', codex: '' },
-  modelSources: { claude: 'default', codex: 'default' },
-  defaults: { defaultAgent: 'claude', defaultModels: { claude: '', codex: '' } },
+  defaults: { defaultAgent: 'claude' },
   initialDefaultsEligible: true,
   reasoningEfforts: { ...DEFAULT_REASONING_EFFORTS },
   sessionOperations: {},
@@ -231,7 +220,6 @@ export const useChat = create<ChatState>()((set, get) => ({
       actualModel: get().sessionModels[sessionActionKey(workspaceId, session)]?.actualModel,
       loadingHistory: true,
       conversationVersion: generation,
-      modelOverrides: historicalModels(get()),
       initialDefaultsEligible: false,
     });
     try {
@@ -264,7 +252,7 @@ export const useChat = create<ChatState>()((set, get) => ({
   },
   setDefaults(settings) {
     const current = get();
-    const defaults = { defaultAgent: settings.defaultAgent, defaultModels: { ...settings.defaultModels } };
+    const defaults = { defaultAgent: settings.defaultAgent };
     set({ defaults });
     if (
       current.initialDefaultsEligible &&
@@ -274,14 +262,13 @@ export const useChat = create<ChatState>()((set, get) => ({
       !current.pendingClientTurnId &&
       !current.items.length
     ) {
-      set({ ...newDefaults(get()), initialDefaultsEligible: false });
+      set({ agent: defaults.defaultAgent, initialDefaultsEligible: false });
     }
   },
   touchDraft: () => set({ initialDefaultsEligible: false }),
   setModel: (model) =>
     set((current) => ({
       modelOverrides: { ...current.modelOverrides, [current.agent]: model },
-      modelSources: { ...current.modelSources, [current.agent]: 'explicit' },
       initialDefaultsEligible: false,
     })),
   setReasoningEffort: (reasoningEffort) =>
@@ -445,7 +432,7 @@ function reportedSession(current: ChatState, event: AgentEvent): Partial<ChatSta
   return {
     sessionId: event.sessionId,
     actualModel,
-    sessionModels: { ...current.sessionModels, [key]: { actualModel } },
+    sessionModels: { ...current.sessionModels, [key]: { ...current.sessionModels[key], actualModel } },
   };
 }
 function onAgentEvent(msg: Msg<'agent.event'>): void {

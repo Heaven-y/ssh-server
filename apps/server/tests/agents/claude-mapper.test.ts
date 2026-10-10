@@ -182,3 +182,83 @@ describe('ClaudeEventMapper.mapHistory', () => {
     ).toEqual([{ type: 'text', delta: '答' }]);
   });
 });
+
+describe('Claude 原生分叉点', () => {
+  const nativeMessage = (uuid: string, stopReason: string | null = 'end_turn') => ({
+    ...assistant('api-message-id', [{ type: 'text', text: '完整回复' }]),
+    uuid,
+    message: {
+      id: 'api-message-id',
+      role: 'assistant',
+      content: [{ type: 'text', text: '完整回复' }],
+      stop_reason: stopReason,
+    },
+  });
+
+  it('历史已结束回复使用 transcript UUID，不使用模型 API message.id', () => {
+    expect(new ClaudeEventMapper().mapHistory(nativeMessage('transcript-message-id'))).toEqual([
+      { type: 'text', delta: '完整回复' },
+      { type: 'turn_end', isError: false, forkPoint: 'transcript-message-id' },
+    ]);
+  });
+
+  it.each([null, 'tool_use', 'pause_turn'])('历史未结束的 %s 消息不能作为分叉点', (stopReason) => {
+    expect(new ClaudeEventMapper().mapHistory(nativeMessage('not-finished', stopReason))).toEqual([
+      { type: 'text', delta: '完整回复' },
+    ]);
+  });
+
+  it('实时 result 只携带同一原生会话最后助手的 transcript UUID', () => {
+    const mapper = new ClaudeEventMapper();
+    mapper.map(nativeMessage('transcript-message-id', null));
+    expect(
+      mapper.map({ type: 'result', subtype: 'success', session_id: 's1', uuid: 'result-not-in-transcript' }),
+    ).toEqual([{ type: 'turn_end', isError: false, forkPoint: 'transcript-message-id' }]);
+    expect(
+      mapper.map({ type: 'result', subtype: 'success', session_id: 's1', uuid: 'another-result' })[0],
+    ).not.toHaveProperty('forkPoint');
+  });
+
+  it.each([
+    { label: '不同会话', message: nativeMessage('transcript-message-id'), session: 'foreign' },
+    { label: '非法 UUID', message: nativeMessage('../path'), session: 's1' },
+    { label: '内部子代理', message: { ...nativeMessage('child'), parent_tool_use_id: 'tool' }, session: 's1' },
+    { label: '嵌套子代理', message: { ...nativeMessage('child'), parent_agent_id: 'parent' }, session: 's1' },
+  ])('$label 不能把 result 或伪造 ID 作为实时分叉点', ({ message, session }) => {
+    const mapper = new ClaudeEventMapper();
+    mapper.map(message);
+    expect(
+      mapper.map({ type: 'result', subtype: 'success', session_id: session, uuid: 'result-not-in-transcript' })[0],
+    ).not.toHaveProperty('forkPoint');
+  });
+
+  it('后续助手缺原生 UUID 时不沿用前一条，也不从 result UUID 补造', () => {
+    const mapper = new ClaudeEventMapper();
+    mapper.map(nativeMessage('earlier-message'));
+    mapper.map(assistant('later-api-message', [{ type: 'text', text: '后续回复' }]));
+    expect(
+      mapper.map({ type: 'result', subtype: 'success', session_id: 's1', uuid: 'result-only' })[0],
+    ).not.toHaveProperty('forkPoint');
+  });
+});
+
+it('Claude 新消息已开始但未形成 transcript 消息时不沿用上一条分叉点', () => {
+  const mapper = new ClaudeEventMapper();
+  mapper.map({ ...assistant('old-message', [{ type: 'text', text: '旧回复' }]), uuid: 'old-transcript' });
+  mapper.map(stream({ type: 'message_start', message: { id: 'next-message' } }));
+  mapper.map(delta({ type: 'text_delta', text: '未完成的新回复' }));
+  expect(mapper.map({ type: 'result', subtype: 'error_during_execution', session_id: 's1' })[0]).not.toHaveProperty(
+    'forkPoint',
+  );
+});
+
+it('Claude 仅收到未闭合工具调用后结束时不输出可分叉位置', () => {
+  const mapper = new ClaudeEventMapper();
+  mapper.map({
+    ...assistant('tool-message', [{ type: 'tool_use', id: 'tool', name: 'Read', input: {} }]),
+    uuid: 'tool-transcript',
+  });
+  expect(mapper.map({ type: 'result', subtype: 'error_during_execution', session_id: 's1' })[0]).not.toHaveProperty(
+    'forkPoint',
+  );
+});

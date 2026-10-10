@@ -2,15 +2,8 @@ import { z } from 'zod';
 import { AgentKindSchema } from './agents';
 import { SyncSettingsSchema } from './sync';
 
-const model = z
-  .string()
-  .trim()
-  .max(200)
-  .regex(/^[^\r\n\0]*$/)
-  .default('');
 export const ProductSettingsSchema = z.strictObject({
   defaultAgent: AgentKindSchema.default('claude'),
-  defaultModels: z.strictObject({ claude: model, codex: model }).default({ claude: '', codex: '' }),
   syncDefaults: SyncSettingsSchema.strict().default(() => SyncSettingsSchema.parse({})),
   syncIntervalSeconds: z.number().int().min(5).max(300).default(60),
   resources: z

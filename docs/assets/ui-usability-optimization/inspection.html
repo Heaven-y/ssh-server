@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>独立面板 · 精选截图</title>
+    <title>D42 停靠工作台 · 验收截图</title>
     <style>
       body {
         margin: 0;
@@ -38,57 +38,67 @@
       figcaption {
         margin-top: 8px;
       }
+      .notice {
+        padding: 12px 16px;
+        border-left: 3px solid #9a6700;
+        background: #fff8df;
+      }
     </style>
   </head>
   <body>
     <main>
-      <h1>独立面板 · 精选截图</h1>
-      <p>资源与文件可以分别打开、收起并同时存在；拖动标题移动，拖动右下角调整大小。</p>
+      <h1>D42 停靠工作台 · 验收截图</h1>
+      <p>工作区与会话、对话、资源、文件自适应停靠；资源与文件独立开关，分隔线可调。</p>
       <p>
-        以下为隔离 Edge 验收的合成数据画面，不代表真实集群或模型运行结果。<a
-          href="../../guides/ui-usability-optimization-acceptance.md"
-          >验收说明</a
-        >
+        以下为本轮隔离 Edge 验收的合成数据画面，不代表真实模型、用户凭据或集群运行结果。
+        <a href="../../guides/ui-usability-optimization-acceptance.md">查看验收范围与证据边界</a>
+      </p>
+      <p class="notice">
+        41项浏览器交互、4组顶栏专项回归及人工视觉检查已通过。以下4张代表图来自修复后的最终构建，可点击查看原尺寸。
       </p>
       <figure>
-        <a href="panels-independent.png"
-          ><img
-            src="panels-independent.png"
-            width="1440"
-            height="960"
-            alt="资源与文件独立共存，点文件默认显示，聊天强度可选择自动"
-        /></a>
-        <figcaption>1440px：双面板共存，聊天和原生强度选择仍可操作。</figcaption>
-      </figure>
-      <figure>
-        <a href="panels-fixed-target-dark.png"
-          ><img
-            src="panels-fixed-target-dark.png"
+        <a href="docked-light-1920.png">
+          <img
+            src="docked-light-1920.png"
             width="1920"
-            height="1080"
-            alt="深色界面中未保存文件固定原工作区，终端保持原PTY连接"
-        /></a>
-        <figcaption>1920px 深色：切换聊天工作区后，文件缓冲、编辑登记与终端目标保持不变。</figcaption>
+            height="960"
+            alt="浅色1920px停靠工作台：会话、对话、资源和文件横向排列，已加载原生历史与代码"
+          />
+        </a>
+        <figcaption>1920px 浅色：四列停靠，已加载的对话、资源和代码同时可见。</figcaption>
       </figure>
       <figure>
-        <a href="panels-light-960.png"
-          ><img
-            src="panels-light-960.png"
+        <a href="docked-dark-960.png">
+          <img
+            src="docked-dark-960.png"
             width="960"
             height="960"
-            alt="960px窗口中资源和文件非模态并存，没有强制四栏布局"
-        /></a>
-        <figcaption>960px：最小支持宽度下仍可独立操作；首屏不会强制打开面板。</figcaption>
+            alt="深色960px紧凑工作台：左栏默认收起，资源与文件在右侧上下排列"
+          />
+        </a>
+        <figcaption>960px 深色：默认收起左栏，资源和文件上下停靠，不强塞四列。</figcaption>
       </figure>
       <figure>
-        <a href="panels-slurm-lines.png"
-          ><img
-            src="panels-slurm-lines.png"
-            width="1440"
+        <a href="docked-session-point.png">
+          <img
+            src="docked-session-point.png"
+            width="1920"
+            height="1080"
+            alt="从可信已结束原生位置分叉的确认弹窗，说明包含所选位置、源会话不变且不回滚文件"
+          />
+        </a>
+        <figcaption>原生分叉：包含可信的所选结束位置；源会话和项目文件保持不变。</figcaption>
+      </figure>
+      <figure>
+        <a href="docked-password-editor-960.png">
+          <img
+            src="docked-password-editor-960.png"
+            width="960"
             height="960"
-            alt="Slurm文本结果在独立资源面板内部滚动，超过200行明确截断"
-        /></a>
-        <figcaption>Slurm：当前账号文本查询，长表内部滚动；警告、截断和超时保护保留。</figcaption>
+            alt="960px合成服务器编辑表单，密码实际回显但默认掩码，保存与SSH连接分离"
+          />
+        </a>
+        <figcaption>密码编辑：仅明确编辑才回显，默认掩码；确认保存不发起SSH认证或连接。</figcaption>
       </figure>
     </main>
   </body>

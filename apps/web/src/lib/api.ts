@@ -6,6 +6,7 @@ import type {
   SessionSummary,
   SessionHistory,
   SessionActionInput,
+  SessionForkInput,
   NativeConfigAgent,
   NativeConfigDocument,
   NativeConfigInput,
@@ -71,6 +72,13 @@ export type SshCredentialStatus = {
   hasPassword: boolean;
 };
 export type SshConnectResult = { connected: true; authMode: SshAuthMode } & SshCredentialStatus;
+export type SshPasswordRead = { password: string | null; revision: string; savingAvailable: boolean };
+export type SshServerEditInput = {
+  input: ManualServerInput;
+  expected: ManagedServer;
+  revision: string;
+  password?: string | null;
+};
 
 /** 接口错误；field 用于工作区字段校验，code 用于 SSH 错误分类 */
 export class ApiError extends Error {
@@ -401,6 +409,34 @@ export const api = {
       signal,
       body: JSON.stringify({ expected, confirmed: true }),
     }),
+  /** 仅编辑器按需使用；响应正文不能交给查询缓存或浏览器持久存储。 */
+  readSshPassword: (expected: ManagedServer, signal?: AbortSignal) =>
+    request<SshPasswordRead>(`/api/ssh-targets/${encodeURIComponent(expected.alias)}/password/read`, {
+      method: 'POST',
+      signal,
+      cache: 'no-store',
+      body: JSON.stringify({ expected }),
+    }),
+  saveSshTargetEdit: (edit: SshServerEditInput, signal?: AbortSignal) =>
+    request<ManagedServer>(`/api/ssh-targets/${encodeURIComponent(edit.expected.alias)}/password`, {
+      method: 'PUT',
+      signal,
+      cache: 'no-store',
+      body: JSON.stringify({
+        input: edit.input,
+        expected: edit.expected,
+        revision: edit.revision,
+        password: edit.password,
+        confirmed: true,
+      }),
+    }),
+  createSshTargetWithPassword: (input: ManualServerInput, password: string, signal?: AbortSignal) =>
+    request<ManagedServer>('/api/ssh-targets/with-password', {
+      method: 'POST',
+      signal,
+      cache: 'no-store',
+      body: JSON.stringify({ input, password, confirmed: true }),
+    }),
   probeHostKey: (sshHost: string, signal?: AbortSignal) =>
     request<HostTrustStatus>('/api/ssh/host-key', {
       method: 'POST',
@@ -461,6 +497,12 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(input),
       },
+    ),
+  /** 分叉可能已写入原生历史，不随弹窗卸载取消或自动重试。 */
+  sessionFork: (workspaceId: string, sessionId: string, agent: AgentKind, input: SessionForkInput) =>
+    request<{ session: SessionSummary }>(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/fork?agent=${agent}`,
+      { method: 'POST', body: JSON.stringify(input), cache: 'no-store' },
     ),
   sessionEvents: (workspaceId: string, sessionId: string, agent: AgentKind, signal?: AbortSignal) =>
     request<SessionHistory>(

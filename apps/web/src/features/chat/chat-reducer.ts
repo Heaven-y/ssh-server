@@ -1,7 +1,8 @@
 // 把 Agent 事件转成界面条目：实时对话和历史记录共用，纯函数，不修改入参
-import type { AgentEvent, CompactionState } from '@ssh-server/shared';
+import { NativeSessionIdSchema, type AgentEvent, type CompactionState } from '@ssh-server/shared';
 
 export type ChatItem =
+  | { kind: 'fork-point'; id: string; pointId: string }
   | { kind: 'compaction'; id: string; state: CompactionState; incomplete?: boolean }
   | { kind: 'user'; id: string; text: string }
   | { kind: 'assistant'; id: string; text: string; streaming: boolean }
@@ -73,6 +74,13 @@ function finishItems(items: ChatItem[]): ChatItem[] {
   });
 }
 
+function finishTurn(items: ChatItem[], pointId?: string): ChatItem[] {
+  const finished = finishItems(items);
+  if (!pointId || !NativeSessionIdSchema.safeParse(pointId).success) return finished;
+  if (items.some((item) => item.kind === 'fork-point' && item.pointId === pointId)) return finished;
+  return [...finished, { kind: 'fork-point', id: nextId(items, 'fork-point'), pointId }];
+}
+
 /** 只由原生压缩事件确认结果；轮次结束不能把未确认的压缩标成成功。 */
 function updateCompaction(items: ChatItem[], state: CompactionState): ChatItem[] {
   const index = items.findLastIndex(
@@ -90,7 +98,7 @@ function reduceLifecycle(items: ChatItem[], e: AgentEvent): ChatItem[] {
         { kind: 'permission', id: e.requestId, toolName: e.toolName, input: e.input, description: e.description },
       ];
     case 'turn_end':
-      return finishItems(items);
+      return finishTurn(items, e.forkPoint);
     case 'permission_resolved':
       return resolvePermission(items, e.requestId, e.decision);
     case 'error':

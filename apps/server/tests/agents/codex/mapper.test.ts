@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CodexEventMapper } from '../../../src/agents/codex/mapper';
+import { CodexEventMapper, turnEnd } from '../../../src/agents/codex/mapper';
 
 describe('Codex 工具与思考事件', () => {
   it('MCP 与文件变更保留工具身份、参数和结果，并去重最终快照', () => {
@@ -153,5 +153,25 @@ describe('Codex 上下文与压缩事件', () => {
       { type: 'compaction', state: { status: 'completed' } },
       { type: 'turn_end', isError: false },
     ]);
+  });
+});
+
+describe('Codex 原生分叉点', () => {
+  it.each(['completed', 'failed', 'interrupted'])('历史和实时结束保留 %s 轮次的原生 ID', (status) => {
+    const turn = { id: 'native-turn-id', status, items: [] };
+    expect(turnEnd(turn)).toMatchObject({ type: 'turn_end', forkPoint: 'native-turn-id' });
+    expect(new CodexEventMapper().history(turn)).toEqual([
+      { type: 'turn_end', isError: status === 'failed', forkPoint: 'native-turn-id' },
+    ]);
+  });
+
+  it.each([
+    { id: 'running-turn', status: 'inProgress' },
+    { id: 'unknown-state', status: 'unknown' },
+    { id: '../not-an-id', status: 'completed' },
+    { status: 'completed' },
+  ])('未确认结束或没有有效原生身份时不生成分叉点：%j', (turn) => {
+    expect(turnEnd(turn)).not.toHaveProperty('forkPoint');
+    expect(new CodexEventMapper().history({ ...turn, items: [] }).at(-1)).not.toHaveProperty('forkPoint');
   });
 });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { type ReactNode } from 'react';
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ProductSettingsSchema, type ProductSettingsDocument } from '@ssh-server/shared';
@@ -8,6 +8,8 @@ import { api, ApiError, queryKeys } from '../../../src/lib/api';
 import { queryClient } from '../../../src/lib/query-client';
 import { useProductSettings } from '../../../src/features/settings/use-product-settings';
 import ProductSettingsDialog from '../../../src/features/settings/ProductSettingsDialog';
+import { parseSettingsDraft } from '../../../src/features/settings/product-settings-draft';
+import { ProductSettingsForm } from '../../../src/features/settings/ProductSettingsForm';
 
 const document: ProductSettingsDocument = { settings: ProductSettingsSchema.parse({}), revision: 'missing' };
 const saved: ProductSettingsDocument = {
@@ -100,15 +102,21 @@ it('四类设置只显示当前内容，跨类草稿统一保存且默认作用�
   const readEnvironment = vi.spyOn(api, 'readEnvironment').mockResolvedValue({ checkedAt: 1, tools: [] });
   const detect = vi.spyOn(api, 'detectEnvironment').mockResolvedValue({ checkedAt: 2, tools: [] });
   render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
-  const model = await screen.findByLabelText(/Claude 默认模型/);
+  const agent = await screen.findByLabelText('默认 Agent');
   expect(screen.getAllByRole('tab')).toHaveLength(4);
   expect(screen.getByRole('tabpanel', { name: '对话与模型' })).toBeTruthy();
   expect(screen.queryByLabelText(/自动同步间隔/)).toBeNull();
   expect(screen.queryByRole('button', { name: '重新检测' })).toBeNull();
   expect(readEnvironment).not.toHaveBeenCalled();
-  fireEvent.change(model, { target: { value: 'demo-model' } });
+  fireEvent.change(agent, { target: { value: 'codex' } });
+  const native = screen.getByRole('button', { name: '编辑原生 Agent 配置' });
+  for (const tab of screen.getAllByRole('tab')) {
+    fireEvent.click(tab);
+    expect(screen.getAllByRole('button', { name: '编辑原生 Agent 配置' })).toEqual([native]);
+    expect(within(screen.getByRole('tabpanel')).queryByRole('button', { name: '编辑原生 Agent 配置' })).toBeNull();
+  }
   fireEvent.click(screen.getByRole('tab', { name: '文件同步' }));
-  expect(screen.queryByLabelText(/Claude 默认模型/)).toBeNull();
+  expect(screen.queryByLabelText('默认 Agent')).toBeNull();
   expect(screen.getByText(/已有工作区.*同步面板/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText(/默认单文件上限/), { target: { value: '8' } });
   fireEvent.click(screen.getByRole('tab', { name: '服务器资源' }));
@@ -118,7 +126,7 @@ it('四类设置只显示当前内容，跨类草稿统一保存且默认作用�
   fireEvent.click(screen.getByRole('button', { name: '重新检测' }));
   await waitFor(() => expect(detect).toHaveBeenCalledTimes(1));
   fireEvent.click(screen.getByRole('tab', { name: '对话与模型' }));
-  expect(screen.getByLabelText<HTMLInputElement>(/Claude 默认模型/).value).toBe('demo-model');
+  expect(screen.getByLabelText<HTMLSelectElement>('默认 Agent').value).toBe('codex');
   expect(save).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
   await screen.findByText('产品设置已保存到本机。');
@@ -126,18 +134,19 @@ it('四类设置只显示当前内容，跨类草稿统一保存且默认作用�
   expect(save.mock.calls[0]![0]).toMatchObject({
     revision: 'missing',
     settings: {
-      defaultModels: { claude: 'demo-model' },
+      defaultAgent: 'codex',
       syncDefaults: { maxFileBytes: 8388608 },
       resources: { intervalSeconds: 4 },
     },
   });
+  expect(save.mock.calls[0]![0].settings).not.toHaveProperty('defaultModels');
 });
 
 it('其他分类存在无效草稿时保存定位回错误字段，不丢弃跨类修改', async () => {
   vi.spyOn(api, 'readProductSettings').mockResolvedValue(document);
   const save = vi.spyOn(api, 'saveProductSettings');
   render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
-  await screen.findByLabelText(/Claude 默认模型/);
+  await screen.findByLabelText('默认 Agent');
   fireEvent.click(screen.getByRole('tab', { name: '文件同步' }));
   fireEvent.change(screen.getByLabelText(/自动同步间隔/), { target: { value: '1' } });
   fireEvent.click(screen.getByRole('tab', { name: '服务器资源' }));
@@ -159,7 +168,7 @@ it('跨分类保存冲突保留草稿，关闭、原生视图、重读与Esc均�
   const close = vi.fn();
   const native = vi.fn();
   render(<ProductSettingsDialog onClose={close} onNative={native} />, { wrapper });
-  fireEvent.change(await screen.findByLabelText(/Claude 默认模型/), { target: { value: 'local-draft' } });
+  fireEvent.change(await screen.findByLabelText('默认 Agent'), { target: { value: 'codex' } });
   fireEvent.click(screen.getByRole('tab', { name: '服务器资源' }));
   expect(confirm).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
@@ -173,10 +182,10 @@ it('跨分类保存冲突保留草稿，关闭、原生视图、重读与Esc均�
   expect(native).not.toHaveBeenCalled();
   expect(read).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('tab', { name: '对话与模型' }));
-  expect(screen.getByLabelText<HTMLInputElement>(/Claude 默认模型/).value).toBe('local-draft');
+  expect(screen.getByLabelText<HTMLSelectElement>('默认 Agent').value).toBe('codex');
   confirm.mockReturnValue(true);
   fireEvent.click(screen.getByRole('button', { name: '重新读取' }));
-  await waitFor(() => expect(screen.getByLabelText<HTMLInputElement>(/Claude 默认模型/).value).toBe(''));
+  await waitFor(() => expect(screen.getByLabelText<HTMLSelectElement>('默认 Agent').value).toBe('claude'));
 });
 
 it('同步缺省显示60秒，保存明确15到60的修改不重置其他分类', async () => {
@@ -190,7 +199,7 @@ it('同步缺省显示60秒，保存明确15到60的修改不重置其他分类'
   expect((await screen.findByLabelText<HTMLInputElement>(/自动同步间隔/)).value).toBe('60');
   view.unmount();
   const custom: ProductSettingsDocument = {
-    settings: ProductSettingsSchema.parse({ syncIntervalSeconds: 15, defaultModels: { codex: 'custom-model' } }),
+    settings: ProductSettingsSchema.parse({ syncIntervalSeconds: 15, defaultAgent: 'codex' }),
     revision: 'b'.repeat(64),
   };
   vi.mocked(api.readProductSettings).mockResolvedValue(custom);
@@ -205,4 +214,42 @@ it('同步缺省显示60秒，保存明确15到60的修改不重置其他分类'
     { settings: { ...custom.settings, syncIntervalSeconds: 60 }, revision: custom.revision },
     expect.any(AbortSignal),
   );
+});
+
+const productDraft = {
+  defaultAgent: 'codex' as const,
+  maxFileMiB: '8',
+  extensions: 'pt, h5',
+  syncInterval: '15',
+  resourceInterval: '7',
+  resourceTimeout: '9',
+};
+
+it('产品草稿保存只输出现行偏好，不重新注入已退休模型字段', () => {
+  const result = parseSettingsDraft(productDraft);
+  expect(result.success).toBe(true);
+  if (!result.success) return;
+  expect(result.data).toEqual({
+    defaultAgent: 'codex',
+    syncDefaults: { maxFileBytes: 8388608, excludedExtensions: ['h5', 'pt'] },
+    syncIntervalSeconds: 15,
+    resources: { intervalSeconds: 7, timeoutSeconds: 9 },
+  });
+});
+
+it('对话分类保留默认Agent，不再提供网页默认模型输入', () => {
+  render(
+    <ProductSettingsForm
+      category="conversation"
+      draft={productDraft}
+      disabled={false}
+      showErrors={false}
+      change={vi.fn()}
+      validate={vi.fn()}
+    />,
+  );
+  expect(screen.getByLabelText<HTMLSelectElement>('默认 Agent').value).toBe('codex');
+  expect(screen.queryByLabelText(/Claude 默认模型/)).toBeNull();
+  expect(screen.queryByLabelText(/Codex 默认模型/)).toBeNull();
+  expect(screen.getByText(/默认模型由原生 Agent 配置管理/)).toBeTruthy();
 });

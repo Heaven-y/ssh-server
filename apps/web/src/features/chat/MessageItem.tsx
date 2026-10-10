@@ -6,6 +6,7 @@ import { PermissionCard } from './PermissionCard';
 import { ToolCard } from './ToolCard';
 import { CompactionStatus } from './ContextStatus';
 import type { ExpandedProps } from './timeline-model';
+import { SessionForkPoint } from './SessionForkPoint';
 
 /** 单个对话条目；memo 避免流式更新时整列表重渲染（条目内容不变时引用不变） */
 export const MessageItem = memo(function MessageItem({
@@ -14,6 +15,8 @@ export const MessageItem = memo(function MessageItem({
   onExpandedChange,
 }: { item: ChatItem } & ExpandedProps) {
   switch (item.kind) {
+    case 'fork-point':
+      return <SessionForkPoint pointId={item.pointId} />;
     case 'compaction':
       return <CompactionStatus state={item.state} incomplete={item.incomplete} />;
     case 'user':

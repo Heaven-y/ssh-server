@@ -113,3 +113,19 @@ describe('reduceChat', () => {
     expect(JSON.stringify(start)).toBe(snapshot);
   });
 });
+
+it('只保留服务端给出的原生分叉点，重复结束不复制，普通结束不虚构标识', () => {
+  const source = run([
+    { type: 'text', delta: '第一轮' },
+    { type: 'turn_end', isError: false, forkPoint: 'native-turn-1' },
+    { type: 'turn_end', isError: false, forkPoint: 'native-turn-1' },
+    { type: 'text', delta: '第二轮' },
+    { type: 'turn_end', isError: false },
+  ]);
+  expect(source.filter((item) => item.kind === 'fork-point')).toEqual([
+    { kind: 'fork-point', id: expect.any(String), pointId: 'native-turn-1' },
+  ]);
+  expect(source.map((item) => item.kind)).toEqual(['assistant', 'fork-point', 'assistant']);
+  expect(source.at(-1)).toMatchObject({ streaming: false });
+  expect(run([{ type: 'turn_end', isError: true }])).toEqual([]);
+});

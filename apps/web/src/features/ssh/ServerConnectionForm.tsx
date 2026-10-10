@@ -28,7 +28,7 @@ function SavedConnectionHint({
   if (!requested || connected) return null;
   return (
     <p role="status" className="rounded border border-accent/40 bg-accent/5 p-3 text-sm leading-6">
-      已保存“{name}”。下一步：核对主机指纹后，在下方输入 SSH 密码并连接；密码不写入服务器档案。
+      已保存“{name}”。保存不代表认证成功；请独立核对主机指纹，再使用已保存密码或临时密码连接。
     </p>
   );
 }
@@ -67,7 +67,9 @@ export function ServerConnectionForm({
           <p className="text-sm text-muted-foreground">使用服务器档案指定的私钥或本机默认私钥。</p>
         )}
         {connection.reusablePassword && (
-          <p className="text-xs text-muted-foreground">本机后端已有临时密码，可留空复用；网页不读取密码正文。</p>
+          <p className="text-xs text-muted-foreground">
+            本机后端已有临时密码，本连接表单可留空复用；管理已保存密码请进入服务器编辑。
+          </p>
         )}
         <div className="flex flex-wrap gap-2">
           <button
@@ -88,7 +90,7 @@ export function ServerConnectionForm({
         </div>
       </form>
       <p className="text-xs leading-5 text-muted-foreground">
-        连接、重认证、断开或取消密码保存会作用于该服务器的全部工作区。关闭窗口清空当前密码输入，不主动断开已建立的服务器连接。
+        保存不代表认证成功。连接、重认证、断开或取消密码保存会作用于该服务器的全部工作区。关闭窗口清空当前密码输入，不主动断开已建立的服务器连接。
       </p>
     </section>
   );

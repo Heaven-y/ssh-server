@@ -18,5 +18,6 @@ export type AgentEvent =
   /** Agent 请求执行需要确认的操作，等待网页答复 */
   | { type: 'permission_request'; requestId: string; toolName: string; input: unknown; description?: string }
   | { type: 'permission_resolved'; requestId: string; decision: 'allowed' | 'denied' | 'cancelled' }
-  | { type: 'turn_end'; isError: boolean; durationMs?: number; costUsd?: number }
+  /** forkPoint 仅为已结束位置的原生轮次/消息 ID；缺失时只能分叉完整会话。 */
+  | { type: 'turn_end'; isError: boolean; durationMs?: number; costUsd?: number; forkPoint?: string }
   | { type: 'error'; message: string };

@@ -34,6 +34,8 @@ async function fixture() {
     credentialStatus: vi.fn(async () => state),
     connect: vi.fn(async () => ({ ...state, connected: true as const, authMode: 'password' as const })),
     clearSavedPassword: vi.fn(async () => ({ ...state, connected: false, hasPassword: false, paused: true })),
+    readServerPassword: vi.fn(async () => ({ password: null, revision: 'a'.repeat(64), savingAvailable: false })),
+    commitServerEdit: vi.fn(async () => undefined),
   };
   const profiles = createServerProfiles({ targets, store, activity, resources, pool });
   const app = Fastify();

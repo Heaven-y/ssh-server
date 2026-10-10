@@ -30,7 +30,6 @@ it('缺失只读默认，保存后重启读取；同摘要并发保存仅一个�
   const first = {
     ...defaults.settings,
     defaultAgent: 'codex' as const,
-    defaultModels: { claude: '', codex: 'example' },
   };
   const saved = await f.store.save({ settings: first, revision: defaults.revision });
   expect(saved.revision).toMatch(/^[a-f0-9]{64}$/);
@@ -101,7 +100,6 @@ it('缺省自动同步一分钟，显式间隔不被迁移，修改15秒只改�
   const custom = {
     ...defaults.settings,
     defaultAgent: 'codex' as const,
-    defaultModels: { claude: 'custom-claude', codex: 'custom-codex' },
     syncIntervalSeconds: 15,
     resources: { intervalSeconds: 7, timeoutSeconds: 9 },
   };
@@ -113,4 +111,68 @@ it('缺省自动同步一分钟，显式间隔不被迁移，修改15秒只改�
   });
   expect(updated.settings).toEqual({ ...custom, syncIntervalSeconds: 60 });
   expect(updated.revision).not.toBe(previous.revision);
+});
+
+it('磁盘只退休defaultModels，保留有效偏好和原文摘要，显式保存才更新文件', async () => {
+  const f = await fixture();
+  const preferences = {
+    defaultAgent: 'codex' as const,
+    syncDefaults: { maxFileBytes: 8388608, excludedExtensions: ['pt'] },
+    syncIntervalSeconds: 15,
+    resources: { intervalSeconds: 7, timeoutSeconds: 9 },
+  };
+  const original = JSON.stringify({
+    ...preferences,
+    defaultModels: { claude: 'retired-claude', codex: 'retired-codex' },
+  });
+  await writeFile(f.file, original, 'utf8');
+  const loaded = await f.store.read();
+  expect(loaded.settings).toEqual(preferences);
+  expect(loaded.revision).toMatch(/^[a-f0-9]{64}$/);
+  expect(await readFile(f.file, 'utf8')).toBe(original);
+  const saved = await f.store.save({
+    revision: loaded.revision,
+    settings: { ...loaded.settings, syncIntervalSeconds: 20 },
+  });
+  expect(saved.settings).toEqual({ ...preferences, syncIntervalSeconds: 20 });
+  expect(JSON.parse(await readFile(f.file, 'utf8'))).toEqual({ ...preferences, syncIntervalSeconds: 20 });
+  await expect(f.store.save(loaded)).rejects.toMatchObject({ status: 409, code: 'revision_conflict' });
+});
+
+it.each([
+  { unknown: true },
+  { resources: { intervalSeconds: 1, timeoutSeconds: 8 } },
+  { syncDefaults: { maxFileBytes: 8388608, excludedExtensions: ['pt'], unknown: true } },
+])('退休磁盘字段不放宽其余校验或回退默认：%j', async (invalid) => {
+  const f = await fixture();
+  const original = JSON.stringify({
+    defaultAgent: 'codex',
+    defaultModels: { claude: 'retired', codex: '' },
+    ...invalid,
+  });
+  await writeFile(f.file, original, 'utf8');
+  await expect(f.store.read()).rejects.toMatchObject({ status: 503, code: 'settings_invalid' });
+  expect(await readFile(f.file, 'utf8')).toBe(original);
+});
+
+it('公开HTTP拒绝退休字段，不把磁盘读取边界当作API兼容层', async () => {
+  const f = await fixture();
+  const app = Fastify();
+  registerProductSettingsRoutes(app, f.store, createEnvironmentService());
+  try {
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/settings/product',
+      payload: {
+        revision: 'missing',
+        settings: { defaultAgent: 'codex', defaultModels: { claude: '', codex: 'retired-model' } },
+      },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: 'invalid_request' });
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(await readdir(f.configDir)).toEqual([]);
+  } finally {
+    await app.close();
+  }
 });
