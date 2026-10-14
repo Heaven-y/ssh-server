@@ -6,6 +6,7 @@ import { buttonClass } from '../../ui/styles';
 import { agentUnavailable, useEnvironment } from '../settings/use-environment';
 import { sessionActionKey, useChat } from './chat-store';
 import { useAgentCapabilities } from './use-agent-capabilities';
+import { AgentIcon } from '../../ui/BrandIcons';
 import { ManualModelDialog } from './ManualModelDialog';
 
 export const AGENT_LABELS: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex' };
@@ -83,20 +84,16 @@ function useModelPresentation(model: string) {
       ?.nativeModel;
   });
   const reading = useChat((state) => state.loadingHistory);
-  const label = model
-    ? `已选 ${model}`
+  // 有数据才显示：覆盖 → 最近报告 → 会话配置 → 默认；不再以“未报告”占位。
+  const label = model || actual || native || (reading ? '正在读取型号…' : '默认模型');
+  const title = model
+    ? `当前覆盖：${model}，用于下一轮请求`
     : actual
-      ? `最近 ${actual}`
+      ? `最近实际运行：${actual}`
       : native
-        ? `会话 ${native}`
-        : reading
-          ? '正在读取型号…'
-          : '型号未报告';
-  const request = model ? `当前显式覆盖：${model}（下轮请求，非执行报告）` : '未设置模型覆盖；下轮沿用原生配置。';
-  return {
-    label,
-    description: `${request}\n实际模型：${actual || '未报告'}（最近报告，非下轮保证）\n原生会话配置：${native || '未报告'}（非逐轮执行报告）`,
-  };
+        ? `原生会话配置：${native}`
+        : '未设置覆盖，沿用原生默认模型';
+  return { label, title, actual };
 }
 function AgentChoices({ disabled }: { disabled: boolean }) {
   const agent = useChat((state) => state.agent);
@@ -113,7 +110,7 @@ function AgentChoices({ disabled }: { disabled: boolean }) {
           disabled={disabled || historical || agentUnavailable(environment.data, kind)}
           choose={() => setAgent(kind)}
         >
-          {AGENT_LABELS[kind]}
+          <AgentIcon agent={kind} className="size-3.5" /> {AGENT_LABELS[kind]}
         </Choice>
       ))}
       {agentUnavailable(environment.data, agent) && (
@@ -226,11 +223,10 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
         aria-label="模型选项"
         disabled={disabled}
         className={`${triggerClass} max-w-56`}
-        title={presentation.description}
+        title={presentation.title}
       >
-        <span className="truncate">
-          {AGENT_LABELS[agent]} · {presentation.label}
-        </span>
+        <AgentIcon agent={agent} className="size-3.5" />
+        <span className="truncate">{presentation.label}</span>
         <ChevronDown aria-hidden className="size-3.5 shrink-0" />
       </MenuButton>
       <MenuButton
@@ -246,10 +242,10 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
       </MenuButton>
       <Menu store={modelMenu} portal unmountOnHide gutter={8} aria-label="模型选项菜单" className={menuClass}>
         <AgentChoices disabled={disabled} />
-        <p className="whitespace-pre-line px-3 py-2 text-xs leading-5 text-muted-foreground">
-          {presentation.description}
-        </p>
         <ModelChoices disabled={disabled} catalog={catalog} model={model} onManual={() => setManual(true)} />
+        {presentation.actual && (
+          <p className="px-3 pt-2 pb-1 text-xs leading-5 text-muted-foreground">最近实际运行：{presentation.actual}</p>
+        )}
       </Menu>
       <Menu store={effortMenu} portal unmountOnHide gutter={8} aria-label="推理强度菜单" className={menuClass}>
         <EffortChoices disabled={disabled} agent={agent} selected={selected} effort={effort} />
