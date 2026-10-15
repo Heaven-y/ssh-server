@@ -82,7 +82,11 @@ beforeEach(() => {
   vi.spyOn(api, 'agentCapabilities').mockResolvedValue({ agent: 'claude', entries: [], models: [], warnings: [] });
   vi.spyOn(api, 'readResources').mockImplementation(async () => snapshot());
   vi.spyOn(api, 'readSlurm').mockResolvedValue({ sampledAt: 1, status: 'available', output: '', truncated: false });
-  vi.spyOn(api, 'listFiles').mockResolvedValue({ path: '', entries: [], truncated: false });
+  vi.spyOn(api, 'listFiles').mockImplementation(async (_id, directory) => ({
+    path: directory ?? '',
+    entries: directory ? [] : [{ path: 'main.py', name: 'main.py', kind: 'file', size: 8 }],
+    truncated: false,
+  }));
   vi.spyOn(api, 'readFile').mockResolvedValue({ path: 'main.py', content: 'print(1)', size: 8 });
   vi.stubGlobal(
     'fetch',
@@ -130,7 +134,7 @@ it('资源与文件独立打开、同时可见，任一收起不影响另一面�
   const sampling = vi.mocked(api.readResources).mock.calls[0]![1]!;
   fireEvent.click(fileTrigger);
   const files = await screen.findByRole('complementary', { name: '文件面板' });
-  await within(files).findByRole('textbox', { name: '相对路径' });
+  await within(files).findByRole('button', { name: 'main.py' });
   expect(resources.hidden).toBe(false);
   expect(sampling.aborted).toBe(false);
   expect(toolbar.queryByRole('region', { name: '服务器资源' })).toBeNull();
@@ -155,7 +159,7 @@ it('窄窗初始收起，两个非模态面板可共存，Escape只收起焦点�
   trigger.focus();
   fireEvent.click(trigger);
   fireEvent.click(top().getByRole('button', { name: '文件' }));
-  await screen.findByRole('textbox', { name: '相对路径' });
+  await screen.findByRole('button', { name: 'main.py' });
   expect(screen.queryByRole('dialog')).toBeNull();
   const resources = screen.getByRole('complementary', { name: '资源面板' });
   const handle = within(resources).getByRole('button', { name: '收起资源面板' });
@@ -184,9 +188,7 @@ it('只读预览随收起、缩放与换工作区保留内容，关闭不需确�
   mount();
   await screen.findByText('从一条消息开始');
   fireEvent.click(top().getByRole('button', { name: '文件' }));
-  const path = await screen.findByRole<HTMLInputElement>('textbox', { name: '相对路径' });
-  fireEvent.change(path, { target: { value: 'main.py' } });
-  fireEvent.click(screen.getByRole('button', { name: '查看' }));
+  fireEvent.doubleClick(await screen.findByRole('button', { name: 'main.py' }));
   const textbox = await screen.findByRole('textbox', { name: '项目文件内容' });
   expect(screen.getByText(/只读 · python/)).toBeTruthy();
   expect(screen.queryByRole('button', { name: '保存文件' })).toBeNull();

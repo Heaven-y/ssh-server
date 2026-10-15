@@ -95,7 +95,7 @@ function DirectoryFeedback({ list }: { list: UseQueryResult<WorkspaceDirectory> 
       )}
       {list.data?.truncated && (
         <p className="px-3 pb-3 text-xs text-muted-foreground">
-          目录条目较多，仅显示部分内容；可在下方输入相对路径打开文件。
+          目录条目较多，仅显示部分内容；可进入子目录查看，或在服务器文件视图中核对远端实际情况。
         </p>
       )}
     </>

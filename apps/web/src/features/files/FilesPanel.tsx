@@ -2,7 +2,7 @@ import { lazy, Suspense, useId, useState } from 'react';
 import { FileCode2, FileDiff, Server, X } from 'lucide-react';
 import type { Workspace } from '@ssh-server/shared';
 import { FilePreview } from './FilePreview';
-import { buttonClass, inputClass } from '../../ui/styles';
+import { buttonClass } from '../../ui/styles';
 import { FileDirectory } from './FileDirectory';
 import { useFilePreview } from './use-file-preview';
 import { RemoteFilesPanel } from '../remote-files/RemoteFilesPanel';
@@ -87,7 +87,6 @@ export default function FilesPanel({
   const fileView = useFileView(workspace, changesRequest);
   const { view, setView } = fileView;
   const preview = useFilePreview(workspace.id);
-  const [pathInput, setPathInput] = useState('');
   return (
     <section
       aria-label="工作区文件"
@@ -122,27 +121,6 @@ export default function FilesPanel({
             void preview.open(relative);
           }}
         />
-        <form
-          className="flex shrink-0 items-end gap-2 border-b border-border p-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (pathInput.trim()) void preview.open(pathInput.trim());
-          }}
-        >
-          <label htmlFor={`${id}-path`} className="min-w-0 flex-1 text-xs text-muted-foreground">
-            相对路径
-            <input
-              id={`${id}-path`}
-              className={`${inputClass} mt-1 font-mono`}
-              value={pathInput}
-              onChange={(event) => setPathInput(event.target.value)}
-              placeholder="src/train.py"
-            />
-          </label>
-          <button type="submit" className={buttonClass('outline')} disabled={!pathInput.trim()}>
-            查看
-          </button>
-        </form>
         <FilePreview preview={preview} disabled={preview.busy} />
       </section>
       <div

@@ -18,7 +18,11 @@ beforeEach(() => {
     this.open = false;
   };
   vi.spyOn(window, 'confirm').mockReturnValue(false);
-  vi.spyOn(api, 'listFiles').mockResolvedValue({ path: '', entries: [], truncated: false });
+  vi.spyOn(api, 'listFiles').mockResolvedValue({
+    path: '',
+    entries: [{ path: 'main.py', name: 'main.py', kind: 'file', size: 9 }],
+    truncated: false,
+  });
   vi.spyOn(api, 'readFile').mockResolvedValue({ path: 'main.py', content: 'print(1)\n', size: 9 });
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
@@ -44,8 +48,7 @@ function panel(active: boolean, close: () => void, current = workspace) {
 }
 async function openFile() {
   await tick();
-  fireEvent.change(screen.getByRole('textbox', { name: '相对路径' }), { target: { value: 'main.py' } });
-  fireEvent.click(screen.getByRole('button', { name: '查看' }));
+  fireEvent.doubleClick(screen.getByRole('button', { name: 'main.py' }));
   await tick();
 }
 
@@ -68,25 +71,26 @@ it('隐藏不卸载预览也不迁移固定工作区，关闭无需确认', asyn
   expect(window.confirm).not.toHaveBeenCalled();
 });
 
-it('只读预览不发起修订轮询与编辑器登记查询，隐藏后仍可重新读取', async () => {
+it('只读预览不发起修订轮询与编辑器登记查询，隐藏后不重复读取', async () => {
   const view = render(panel(true, vi.fn()));
   await openFile();
   await tick(16_000);
-  expect(api.listFiles).toHaveBeenCalledTimes(1);
   const reads = vi.mocked(api.readFile).mock.calls.length;
+  expect(reads).toBe(1);
   fireEvent.click(screen.getByRole('button', { name: '重新读取文件' }));
   await tick();
   expect(api.readFile).toHaveBeenCalledTimes(reads + 1);
   view.rerender(panel(false, vi.fn()));
   await tick(16_000);
-  expect(api.listFiles).toHaveBeenCalledTimes(1);
+  expect(api.readFile).toHaveBeenCalledTimes(reads + 1);
 });
 
-it('隐藏的文件区不提前读取本地目录', async () => {
+it('隐藏的文件区不提前读取本地目录，面板内不再有按路径打开表单', async () => {
   const view = render(panel(false, vi.fn()));
   await tick();
   expect(api.listFiles).not.toHaveBeenCalled();
   view.rerender(panel(true, vi.fn()));
   await tick();
   expect(api.listFiles).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('textbox', { name: '相对路径' })).toBeNull();
 });
