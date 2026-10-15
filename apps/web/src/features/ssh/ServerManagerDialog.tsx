@@ -187,7 +187,9 @@ function ServerContent({
       connectAfterSave={screen.connectAfterSave}
     />
   ) : (
-    <p className="text-sm text-muted-foreground">选择一台服务器查看详情，或新增服务器。</p>
+    <p className="text-sm text-muted-foreground">
+      {chooseServer ? '选择一台服务器查看详情，或新增服务器。' : '选择一台服务器直接编辑，或新增服务器。'}
+    </p>
   );
 }
 
@@ -217,8 +219,11 @@ export function ServerManagerDialog({
   const locked = !workspaces.isSuccess || workspaces.data.some((workspace) => workspace.sshHost === alias);
   const reset = () => setScreen({ kind: 'view' });
   const select = (value: string) => {
-    reset();
+    const server = hosts.data?.find((item) => item.alias === value);
     setAlias(value);
+    // 管理入口点击即进入编辑；向导选择服务器保留“选中 → 使用此服务器”。
+    if (!onSelect && server) setScreen({ kind: 'edit', editor: { initial: server, expected: server } });
+    else reset();
   };
   const close = () => {
     reset();
@@ -263,7 +268,13 @@ export function ServerManagerDialog({
               重新读取
             </button>
           </div>
-          <ServerList hosts={hosts} workspaces={workspaces} alias={alias} select={select} />
+          <ServerList
+            hosts={hosts}
+            workspaces={workspaces}
+            alias={alias}
+            mode={onSelect ? 'select' : 'edit'}
+            select={select}
+          />
           <section aria-label="服务器详情与编辑" className="min-w-0 space-y-4 rounded-lg border border-border p-4">
             <ReferenceNotice workspaces={workspaces} alias={alias} />
             <ServerContent
