@@ -1,11 +1,12 @@
 import { lazy, Suspense, useState } from 'react';
 import ProductSettingsDialog from './ProductSettingsDialog';
+import type { NativeConfigAgent } from '@ssh-server/shared';
 
 const NativeConfigDialog = lazy(() => import('./NativeConfigDialog'));
 /** 同时只挂载一个对话框；离开原生视图立即清理其敏感内容。 */
 export default function SettingsDialog({ onClose }: { onClose(): void }) {
-  const [native, setNative] = useState(false);
-  if (!native) return <ProductSettingsDialog onClose={onClose} onNative={() => setNative(true)} />;
+  const [native, setNative] = useState<NativeConfigAgent | null>(null);
+  if (!native) return <ProductSettingsDialog onClose={onClose} onNative={setNative} />;
   return (
     <Suspense
       fallback={
@@ -14,7 +15,7 @@ export default function SettingsDialog({ onClose }: { onClose(): void }) {
         </p>
       }
     >
-      <NativeConfigDialog onClose={onClose} onBack={() => setNative(false)} />
+      <NativeConfigDialog agent={native} onClose={onClose} onBack={() => setNative(null)} />
     </Suspense>
   );
 }

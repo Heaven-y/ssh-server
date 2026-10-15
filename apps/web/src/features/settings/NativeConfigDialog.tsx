@@ -4,10 +4,11 @@ import type { NativeConfigAgent, NativeConfigDocument } from '@ssh-server/shared
 import { api, ApiError } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
 import { CodeEditor } from '../../ui/CodeEditor';
-import { buttonClass, inputClass } from '../../ui/styles';
+import { buttonClass } from '../../ui/styles';
 import { NativeConfigHelp } from './NativeConfigHelp';
 
 type Phase = 'loading' | 'ready' | 'saving' | 'error';
+const AGENT_NAMES: Record<NativeConfigAgent, string> = { claude: 'Claude Code', codex: 'Codex' };
 function errorMessage(error: unknown) {
   return error instanceof ApiError ? error.message : '无法访问本机配置，请检查后端后重试。';
 }
@@ -16,11 +17,18 @@ function confirmDiscard(dirty: boolean) {
 }
 
 /** 配置含敏感字段，仅在显式打开期间读取，关闭和切换时清理组件内容。 */
-export default function NativeConfigDialog({ onClose, onBack }: { onClose(): void; onBack(): void }) {
+export default function NativeConfigDialog({
+  agent,
+  onClose,
+  onBack,
+}: {
+  agent: NativeConfigAgent;
+  onClose(): void;
+  onBack(): void;
+}) {
   const id = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const pending = useRef<AbortController | null>(null);
-  const [agent, setAgent] = useState<NativeConfigAgent>('claude');
   const [document, setDocument] = useState<NativeConfigDocument>();
   const [content, setContent] = useState('');
   const [phase, setPhase] = useState<Phase>('loading');
@@ -77,11 +85,6 @@ export default function NativeConfigDialog({ onClose, onBack }: { onClose(): voi
     action();
   };
   const close = () => leave(onClose);
-  const changeAgent = (next: NativeConfigAgent) => {
-    if (!confirmDiscard(dirty)) return;
-    clear();
-    setAgent(next);
-  };
   const reread = () => {
     if (!confirmDiscard(dirty)) return;
     clear();
@@ -126,7 +129,7 @@ export default function NativeConfigDialog({ onClose, onBack }: { onClose(): voi
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-4">
           <h2 id={`${id}-title`} className="flex items-center gap-2 font-semibold">
             <Settings2 aria-hidden className="size-5" />
-            原生 Agent 配置
+            原生 Agent 配置 · {AGENT_NAMES[agent]}
           </h2>
           <button
             type="button"
@@ -139,24 +142,14 @@ export default function NativeConfigDialog({ onClose, onBack }: { onClose(): voi
           </button>
         </header>
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto p-5">
-          <p className="text-sm leading-6 text-muted-foreground">编辑本机原生配置文件，保存时校验语法。</p>
+          <p className="text-sm leading-6 text-muted-foreground">
+            编辑 {AGENT_NAMES[agent]} 的本机原生配置文件，保存时校验语法。
+          </p>
           <div className="flex flex-wrap items-center gap-3">
             <button type="button" className={buttonClass('outline')} disabled={saving} onClick={() => leave(onBack)}>
               返回产品设置
             </button>
-            <label htmlFor={`${id}-agent`} className="text-sm">
-              Agent
-            </label>
-            <select
-              id={`${id}-agent`}
-              value={agent}
-              disabled={saving}
-              onChange={(event) => changeAgent(event.target.value as NativeConfigAgent)}
-              className={`${inputClass} w-40!`}
-            >
-              <option value="claude">Claude Code</option>
-              <option value="codex">Codex</option>
-            </select>
+            <span className="text-sm font-medium">{AGENT_NAMES[agent]}</span>
             <span
               className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
               title={document?.displayPath}
