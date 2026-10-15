@@ -8,7 +8,7 @@ import { useDiscard } from './use-discard';
 import type { ChangesRequest, FeedbackSource, LineFeedbackInput } from './types';
 
 type Selection = { nonce?: string; turnId?: string; path?: string };
-export type ChangesPanelInput = { workspace: Workspace; active: boolean; request?: ChangesRequest; dirty: boolean };
+export type ChangesPanelInput = { workspace: Workspace; active: boolean; request?: ChangesRequest };
 function requestedSelection(selection: Selection, request?: ChangesRequest): Selection {
   return request?.nonce && request.nonce !== selection.nonce ? { turnId: request.turnId } : selection;
 }

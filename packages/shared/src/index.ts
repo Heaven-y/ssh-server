@@ -67,10 +67,8 @@ export type {
   EnvironmentReport,
   ResourceTiming,
 } from './product-settings';
-export { MAX_EDITABLE_FILE_BYTES } from './files';
-export type { WorkspaceDirectory, WorkspaceFileEntry, WorkspaceFile, WorkspaceFileInput } from './files';
-export { FileEditorMessageSchema } from './file-editors';
-export type { FileEditorState, FileEditorMessage, FileEditorServerMessage } from './file-editors';
+export { MAX_FILE_BYTES } from './files';
+export type { WorkspaceDirectory, WorkspaceFileEntry, WorkspaceFile } from './files';
 export type {
   RemoteBrowseTarget,
   RemoteBrowseSession,

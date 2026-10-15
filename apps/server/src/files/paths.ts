@@ -1,7 +1,7 @@
 import type { Stats } from 'node:fs';
 import { lstat } from 'node:fs/promises';
 import path from 'node:path';
-import { MAX_EDITABLE_FILE_BYTES, SyncSettingsSchema, type SyncSettings, type Workspace } from '@ssh-server/shared';
+import { MAX_FILE_BYTES, SyncSettingsSchema, type SyncSettings, type Workspace } from '@ssh-server/shared';
 import { excludedPath, safeRelativePath } from '../sync/filters';
 import { WorkspaceFileError } from './errors';
 
@@ -75,7 +75,7 @@ export async function resolveWorkspacePath(
     absolute,
     relative,
     settings,
-    maxBytes: Math.min(MAX_EDITABLE_FILE_BYTES, settings.maxFileBytes),
+    maxBytes: Math.min(MAX_FILE_BYTES, settings.maxFileBytes),
     directories,
   };
 }

@@ -90,7 +90,7 @@ it('确认默认关闭，阻断及失败保留目标，重新核对后一次提�
   preview.mockResolvedValueOnce({
     workspace,
     configuration: 'a'.repeat(64),
-    blockers: [{ code: 'editors_registered', message: '请关闭编辑器' }],
+    blockers: [{ code: 'file_tasks_pending', message: '仍有未完成的文件任务' }],
   });
   const remove = vi.spyOn(api, 'removeWorkspace').mockRejectedValueOnce(new Error('配置已经变化'));
   const client = createClient();
@@ -101,7 +101,7 @@ it('确认默认关闭，阻断及失败保留目标，重新核对后一次提�
       <WorkspaceRemoveDialog workspaceId={workspace.id} onClose={() => undefined} onRemoved={removed} />
     </QueryClientProvider>,
   );
-  await view.findByText('请关闭编辑器');
+  await view.findByText('仍有未完成的文件任务');
   expect((view.getByRole('checkbox') as HTMLInputElement).checked).toBe(false);
   expect((view.getByRole('checkbox') as HTMLInputElement).disabled).toBe(true);
   fireEvent.click(view.getByRole('button', { name: '重新核对' }));
