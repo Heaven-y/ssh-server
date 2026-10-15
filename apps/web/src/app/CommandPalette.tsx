@@ -3,6 +3,7 @@ import { useQueries } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { AgentKind, SessionSummary, Workspace } from '@ssh-server/shared';
 import { DetailDialog } from '../ui/DetailDialog';
+import { AgentIcon } from '../ui/BrandIcons';
 import { api, queryKeys } from '../lib/api';
 import { sessionActionKey, useChat } from '../features/chat/chat-store';
 import { useUiPreferences } from '../ui/ui-preferences';
@@ -67,7 +68,14 @@ function SessionSource({
 }) {
   const operations = useChat((state) => state.sessionOperations);
   return (
-    <Command.Group heading={`${agent === 'claude' ? 'Claude' : 'Codex'} 会话`}>
+    <Command.Group
+      heading={
+        <span className="flex items-center gap-1.5">
+          <AgentIcon agent={agent} className="size-3.5" />
+          {agent === 'claude' ? 'Claude' : 'Codex'} 会话
+        </span>
+      }
+    >
       {sessions.map((session) => (
         <Command.Item
           key={session.sessionId}
