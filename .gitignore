@@ -29,3 +29,6 @@ data/
 .idea/
 .DS_Store
 Thumbs.db
+
+# 本地 Agent 工作目录（提案草稿等过程材料）
+.pi/
