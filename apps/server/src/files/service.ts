@@ -1,14 +1,8 @@
 import { lstat, opendir } from 'node:fs/promises';
 import path from 'node:path';
-import type {
-  Workspace,
-  WorkspaceDirectory,
-  WorkspaceFile,
-  WorkspaceFileEntry,
-  WorkspaceFileInput,
-} from '@ssh-server/shared';
-import { fileOperation, WorkspaceFileError } from './errors';
-import { decodeText, digest, encodeText, readSnapshot, replaceFile } from './io';
+import type { Workspace, WorkspaceDirectory, WorkspaceFile, WorkspaceFileEntry } from '@ssh-server/shared';
+import { readFileSafely, WorkspaceFileError } from './errors';
+import { decodeText, readSnapshot } from './io';
 import { assertAllowedPath, assertDirectoriesUnchanged, resolveWorkspacePath, type FileLocation } from './paths';
 import { compareDirectoryEntries } from './directory-order';
 
@@ -57,54 +51,18 @@ async function listDirectory(location: FileLocation): Promise<WorkspaceDirectory
   };
 }
 
+/** 本地工作区文件只读：网页只查看列表与正文，改动交给 Agent、同步流程或外部编辑器。 */
 export function createWorkspaceFilesService() {
-  const queues = new Map<string, Promise<unknown>>();
-  function serialize<T>(ws: Workspace, operation: () => Promise<T>): Promise<T> {
-    const directory = path.resolve(ws.localDir);
-    const key = process.platform === 'win32' ? directory.toLowerCase() : directory;
-    const run = (queues.get(key) ?? Promise.resolve()).then(operation, operation);
-    queues.set(key, run);
-    void run
-      .finally(() => {
-        if (queues.get(key) === run) queues.delete(key);
-      })
-      .catch(() => undefined);
-    return run;
-  }
   return {
     list(ws: Workspace, relativeDirectory = ''): Promise<WorkspaceDirectory> {
-      return fileOperation(async () => listDirectory(await resolveWorkspacePath(ws, relativeDirectory, 'directory')));
+      return readFileSafely(async () => listDirectory(await resolveWorkspacePath(ws, relativeDirectory, 'directory')));
     },
     read(ws: Workspace, relativeFile: string): Promise<WorkspaceFile> {
-      return fileOperation(async () => {
+      return readFileSafely(async () => {
         const location = await resolveWorkspacePath(ws, relativeFile, 'file');
         const snapshot = await readSnapshot(location);
-        return {
-          path: relativeFile,
-          content: decodeText(snapshot.data),
-          revision: snapshot.revision,
-          size: snapshot.data.length,
-        };
+        return { path: relativeFile, content: decodeText(snapshot.data), size: snapshot.data.length };
       });
-    },
-    revision(ws: Workspace, relativeFile: string): Promise<{ revision: string }> {
-      return fileOperation(async () => {
-        const location = await resolveWorkspacePath(ws, relativeFile, 'file');
-        return { revision: (await readSnapshot(location)).revision };
-      });
-    },
-    save(ws: Workspace, input: WorkspaceFileInput): Promise<WorkspaceFile> {
-      return fileOperation(() =>
-        serialize(ws, async () => {
-          const location = await resolveWorkspacePath(ws, input.path, 'file');
-          const data = encodeText(input.content, location.maxBytes);
-          const before = await readSnapshot(location);
-          if (before.revision !== input.revision) throw new WorkspaceFileError('revision_conflict');
-          decodeText(before.data);
-          await replaceFile(location, data, before);
-          return { path: input.path, content: input.content, revision: digest(data), size: data.length };
-        }),
-      );
     },
   };
 }

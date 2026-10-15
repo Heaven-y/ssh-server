@@ -139,7 +139,7 @@ it('密码可编辑但仅确认保存才替换，发送清理，不把保存当�
   expect(api.probeHostKey).not.toHaveBeenCalled();
 });
 
-it.each(['取消编辑', '关闭服务器', '选择服务器：另一合成服务器'])(
+it.each(['取消编辑', '关闭服务器', '编辑服务器：另一合成服务器'])(
   '%s立即清空已回显字段，退出不保存',
   async (action) => {
     mount();
@@ -152,7 +152,7 @@ it.each(['取消编辑', '关闭服务器', '选择服务器：另一合成服�
   },
 );
 
-it.each(['关闭服务器', '选择服务器：另一合成服务器'])(
+it.each(['关闭服务器', '编辑服务器：另一合成服务器'])(
   '%s中止读取，迟到密码不会覆盖重新打开的编辑器',
   async (action) => {
     let finish!: (response: Response) => void;
@@ -169,7 +169,9 @@ it.each(['关闭服务器', '选择服务器：另一合成服务器'])(
     fireEvent.click(screen.getByRole('button', { name: action }));
     expect(signal.aborted).toBe(true);
     if (action === '关闭服务器') fireEvent.click(screen.getByRole('button', { name: '打开服务器管理' }));
-    const current = await openEditor();
+    // 管理入口点击服务器行直接进入编辑表单；关闭后重开先落在详情，需再显式进入编辑。
+    const current =
+      action === '关闭服务器' ? await openEditor() : await screen.findByLabelText<HTMLInputElement>('SSH 密码');
     await waitFor(() =>
       expect(current.value).toBe(action === '关闭服务器' ? 'fixture-existing-secret' : 'fixture-other-secret'),
     );
@@ -235,7 +237,7 @@ it('新服务器在编辑表单设置密码，确认保存不经过普通档案�
   fireEvent.change(field, { target: { value: 'fixture-new-secret' } });
   fireEvent.click(screen.getByRole('button', { name: '保存服务器' }));
   expect(field.value).toBe('');
-  await screen.findByRole('button', { name: '选择服务器：新增合成服务器' });
+  await screen.findByRole('button', { name: '编辑服务器：新增合成服务器' });
   expect(requests('POST')).toHaveLength(1);
   expect(requests('POST')[0]![0]).toBe('/api/ssh-targets/with-password');
   expect(JSON.parse(requests('POST')[0]![1]!.body as string)).toMatchObject({
@@ -263,7 +265,7 @@ it('密码加载失败不能以空白覆盖保存项，错误可见且保留档�
 it.each(['新增服务器', '从 SSH 配置导入'])('%s清除旧列表选择，不把新档案编辑误标为原服务器', async (action) => {
   vi.spyOn(api, 'sshImportOptions').mockResolvedValue([]);
   mount();
-  const selected = await screen.findByRole('button', { name: '选择服务器：合成服务器' });
+  const selected = await screen.findByRole('button', { name: '编辑服务器：合成服务器' });
   expect(selected.getAttribute('aria-pressed')).toBe('true');
   fireEvent.click(screen.getByRole('button', { name: action }));
   expect(selected.getAttribute('aria-pressed')).toBe('false');

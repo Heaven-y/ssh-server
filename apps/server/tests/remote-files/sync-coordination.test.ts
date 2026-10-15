@@ -95,7 +95,6 @@ async function setup() {
           return sync.transaction(workspace, operation);
         },
       },
-      editors: { reserve: async () => () => undefined },
     });
   let tasks = createFileTasks({ configDir, preflights, executor, coordinator: coordinator() });
   cleanups.push(async () => {

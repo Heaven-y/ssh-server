@@ -13,8 +13,7 @@ export type WorkspaceDirectory = {
 export type WorkspaceFile = {
   path: string;
   content: string;
-  revision: string;
   size: number;
 };
-export type WorkspaceFileInput = Pick<WorkspaceFile, 'path' | 'content' | 'revision'>;
-export const MAX_EDITABLE_FILE_BYTES = 2 * 1024 * 1024;
+/** 网页只读查看本地副本的正文上限；目录列表共用该阈值。 */
+export const MAX_FILE_BYTES = 2 * 1024 * 1024;

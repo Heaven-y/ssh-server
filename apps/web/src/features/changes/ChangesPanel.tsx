@@ -59,7 +59,7 @@ function ChangeControls({ model }: { model: ChangesPanelModel }) {
     </>
   );
 }
-function ChangeNotices({ model, dirty }: { model: ChangesPanelModel; dirty: boolean }) {
+function ChangeNotices({ model }: { model: ChangesPanelModel }) {
   return (
     <>
       {!model.turns.current && (
@@ -80,7 +80,6 @@ function ChangeNotices({ model, dirty }: { model: ChangesPanelModel; dirty: bool
           {model.error instanceof Error ? model.error.message : '读取失败，请重试'}
         </p>
       )}
-      {dirty && <p className="text-xs text-warning">本地编辑器有未保存内容；差异与放弃仅作用于磁盘，编辑缓冲保留。</p>}
     </>
   );
 }
@@ -157,7 +156,7 @@ export default function ChangesPanel(input: ChangesPanelInput) {
     <div className="min-h-0 min-w-0 flex-1 space-y-3 overflow-auto p-3" aria-label="工作区改动">
       <p className="text-xs leading-5 text-muted-foreground">本轮改动对比执行前后的本地快照，含期间的外部编辑。</p>
       <ChangeControls model={model} />
-      <ChangeNotices model={model} dirty={input.dirty} />
+      <ChangeNotices model={model} />
       <ChangeFiles model={model} />
       <ChangeResult model={model} />
     </div>

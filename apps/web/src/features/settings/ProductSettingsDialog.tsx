@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { RefreshCw, Save, Settings2, X } from 'lucide-react';
-import type { ProductSettingsDocument } from '@ssh-server/shared';
+import type { NativeConfigAgent, ProductSettingsDocument } from '@ssh-server/shared';
 import { api, queryKeys } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
 import { buttonClass } from '../../ui/styles';
@@ -27,7 +27,32 @@ function focusInvalidField(dialog: HTMLDialogElement | null) {
   field?.focus();
   return !!field;
 }
-export default function ProductSettingsDialog({ onClose, onNative }: { onClose(): void; onNative(): void }) {
+function NativeConfigEntries({ disabled, open }: { disabled: boolean; open(agent: NativeConfigAgent): void }) {
+  return (
+    <section aria-label="原生 Agent 配置" className="space-y-2 rounded-lg border border-border p-3">
+      <p className="text-sm font-medium">原生 Agent 配置</p>
+      <p className="text-xs leading-5 text-muted-foreground">
+        只编辑所选 Agent 的本机配置文件，保存时校验语法；模型默认值仍由原生配置管理。
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className={buttonClass('outline')} disabled={disabled} onClick={() => open('claude')}>
+          修改 Claude 配置
+        </button>
+        <button type="button" className={buttonClass('outline')} disabled={disabled} onClick={() => open('codex')}>
+          修改 Codex 配置
+        </button>
+      </div>
+    </section>
+  );
+}
+
+export default function ProductSettingsDialog({
+  onClose,
+  onNative,
+}: {
+  onClose(): void;
+  onNative(agent: NativeConfigAgent): void;
+}) {
   const id = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const pending = useRef<AbortController | undefined>(undefined);
@@ -155,29 +180,26 @@ export default function ProductSettingsDialog({ onClose, onNative }: { onClose()
                 正在读取产品设置…
               </p>
             ) : draft ? (
-              <ProductSettingsForm
-                category={category}
-                draft={draft}
-                disabled={phase === 'saving'}
-                showErrors={showErrors}
-                validate={() => setShowErrors(true)}
-                change={(patch) => {
-                  setDraft((current) => current && { ...current, ...patch });
-                  setMessage('');
-                }}
-              />
+              <>
+                <ProductSettingsForm
+                  category={category}
+                  draft={draft}
+                  disabled={phase === 'saving'}
+                  showErrors={showErrors}
+                  validate={() => setShowErrors(true)}
+                  change={(patch) => {
+                    setDraft((current) => current && { ...current, ...patch });
+                    setMessage('');
+                  }}
+                />
+                {category === 'conversation' && (
+                  <NativeConfigEntries disabled={phase === 'saving'} open={(agent) => leave(() => onNative(agent))} />
+                )}
+              </>
             ) : null}
           </SettingsCategories>
           <SettingsFeedback phase={phase} message={message} />
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-            <button
-              type="button"
-              className={buttonClass('ghost')}
-              disabled={phase === 'saving'}
-              onClick={() => leave(onNative)}
-            >
-              编辑原生 Agent 配置
-            </button>
+          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-3">
             <button type="button" className={buttonClass('ghost')} disabled={busy} onClick={reread}>
               <RefreshCw aria-hidden className="size-4" />
               重新读取

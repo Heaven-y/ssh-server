@@ -58,7 +58,6 @@ function setup() {
       useChangesPanel({
         workspace,
         active: true,
-        dirty: false,
         request: {
           workspaceId: workspace.id,
           agent: 'claude',

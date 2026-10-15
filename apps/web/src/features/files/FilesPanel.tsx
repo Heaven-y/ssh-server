@@ -1,12 +1,11 @@
 import { lazy, Suspense, useId, useState } from 'react';
-import { FileCode2, FileDiff, Save, Server, X } from 'lucide-react';
+import { FileCode2, FileDiff, Server, X } from 'lucide-react';
 import type { Workspace } from '@ssh-server/shared';
-import { FileEditorContent } from './FileEditorContent';
-import { buttonClass, inputClass } from '../../ui/styles';
+import { FilePreview } from './FilePreview';
+import { buttonClass } from '../../ui/styles';
 import { FileDirectory } from './FileDirectory';
-import { useFileEditor } from './use-file-editor';
+import { useFilePreview } from './use-file-preview';
 import { RemoteFilesPanel } from '../remote-files/RemoteFilesPanel';
-import { DisconnectedEditors } from './DisconnectedEditors';
 import { useChat } from '../chat/chat-store';
 import type { ChangesRequest } from '../changes/types';
 
@@ -38,13 +37,11 @@ function ChangesArea({
   id,
   workspace,
   fileView,
-  dirty,
   active,
 }: {
   id: string;
   workspace: Workspace;
   fileView: ReturnType<typeof useFileView>;
-  dirty: boolean;
   active: boolean;
 }) {
   return (
@@ -66,7 +63,6 @@ function ChangesArea({
             workspace={workspace}
             active={active && fileView.view === 'changes'}
             request={fileView.request}
-            dirty={dirty}
           />
         </Suspense>
       )}
@@ -74,7 +70,7 @@ function ChangesArea({
   );
 }
 
-/** 面板绑定打开时的工作区；切换对话工作区不会迁移或丢弃编辑缓冲。 */
+/** 面板绑定打开时的工作区；切换对话工作区不会迁移已打开的文件。 */
 export default function FilesPanel({
   workspace: initialWorkspace,
   onClose,
@@ -90,12 +86,7 @@ export default function FilesPanel({
   const [workspace] = useState(initialWorkspace);
   const fileView = useFileView(workspace, changesRequest);
   const { view, setView } = fileView;
-  const editor = useFileEditor(workspace.id, active && view === 'local');
-  const editingDisabled = !!editor.busy || !!editor.protection;
-  const [pathInput, setPathInput] = useState('');
-  const close = () => {
-    if (editor.canClose()) onClose();
-  };
+  const preview = useFilePreview(workspace.id);
   return (
     <section
       aria-label="工作区文件"
@@ -109,14 +100,13 @@ export default function FilesPanel({
           type="button"
           className={buttonClass('ghost')}
           aria-label="关闭文件面板"
-          title="关闭文件并释放编辑登记"
-          disabled={!!editor.busy}
-          onClick={close}
+          title="关闭文件面板"
+          onClick={onClose}
         >
           <X aria-hidden className="size-4" />
         </button>
       </header>
-      <FileViewSelector id={id} view={view} dirty={editor.dirty} setView={setView} />
+      <FileViewSelector id={id} view={view} setView={setView} />
       <section
         id={`${id}-local`}
         aria-label="本地代码"
@@ -125,36 +115,13 @@ export default function FilesPanel({
       >
         <FileDirectory
           workspaceId={workspace.id}
-          disabled={editingDisabled}
+          disabled={preview.busy}
           active={active && view === 'local'}
           openFile={(relative) => {
-            void editor.open(relative);
+            void preview.open(relative);
           }}
         />
-        <form
-          className="flex shrink-0 items-end gap-2 border-b border-border p-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (pathInput.trim()) void editor.open(pathInput.trim());
-          }}
-        >
-          <label htmlFor={`${id}-path`} className="min-w-0 flex-1 text-xs text-muted-foreground">
-            相对路径
-            <input
-              id={`${id}-path`}
-              className={`${inputClass} mt-1 font-mono`}
-              value={pathInput}
-              onChange={(event) => setPathInput(event.target.value)}
-              placeholder="src/train.py"
-              disabled={editingDisabled}
-            />
-          </label>
-          <button type="submit" className={buttonClass('outline')} disabled={editingDisabled || !pathInput.trim()}>
-            打开
-          </button>
-        </form>
-        <FileEditorContent editor={editor} disabled={editingDisabled} />
-        <EditorFooter editor={editor} />
+        <FilePreview preview={preview} disabled={preview.busy} />
       </section>
       <div
         id={`${id}-remote`}
@@ -163,23 +130,12 @@ export default function FilesPanel({
       >
         <RemoteFilesPanel workspace={workspace} active={active && view === 'remote'} />
       </div>
-      <ChangesArea id={id} workspace={workspace} fileView={fileView} dirty={editor.dirty} active={active} />
-      <DisconnectedEditors workspaceId={workspace.id} active={active} />
+      <ChangesArea id={id} workspace={workspace} fileView={fileView} active={active} />
     </section>
   );
 }
 
-function FileViewSelector({
-  id,
-  view,
-  dirty,
-  setView,
-}: {
-  id: string;
-  view: FileView;
-  dirty: boolean;
-  setView(view: FileView): void;
-}) {
+function FileViewSelector({ id, view, setView }: { id: string; view: FileView; setView(view: FileView): void }) {
   return (
     <div role="group" aria-label="文件视图" className="flex shrink-0 flex-wrap gap-1 border-b border-border px-3 py-2">
       <button
@@ -191,7 +147,6 @@ function FileViewSelector({
       >
         <FileCode2 aria-hidden className="size-4" />
         本地代码
-        {dirty && <span className="text-xs">· 未保存</span>}
       </button>
       <button
         type="button"
@@ -214,46 +169,5 @@ function FileViewSelector({
         服务器文件
       </button>
     </div>
-  );
-}
-
-function EditorFooter({ editor }: { editor: ReturnType<typeof useFileEditor> }) {
-  return (
-    <footer className="shrink-0 border-t border-border p-3">
-      {editor.protection && (
-        <p role="status" className="mb-2 text-xs">
-          {editor.protection}
-        </p>
-      )}
-      {editor.busy === 'loading' && (
-        <p role="status" className="mb-2 text-xs">
-          正在读取文件…
-        </p>
-      )}
-      {editor.message && (
-        <p role="status" className="mb-2 text-xs">
-          {editor.message}
-        </p>
-      )}
-      {editor.error && (
-        <p role="alert" className="mb-2 text-xs text-destructive-foreground">
-          {editor.error}
-        </p>
-      )}
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground">保存后同步，不创建版本提交。</p>
-        <button
-          type="button"
-          className={buttonClass('primary')}
-          disabled={!editor.dirty || !!editor.busy || !!editor.protection}
-          onClick={() => {
-            void editor.save();
-          }}
-        >
-          <Save aria-hidden className="size-4" />
-          {editor.busy === 'saving' ? '正在保存…' : '保存文件'}
-        </button>
-      </div>
-    </footer>
   );
 }

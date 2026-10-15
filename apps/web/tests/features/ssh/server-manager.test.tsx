@@ -424,3 +424,32 @@ it('主机指纹必须显式检查和确认，切换列表清理旧挑战与密�
   );
   expect(api.connectSsh).not.toHaveBeenCalled();
 });
+function mountManager() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  clients.push(client);
+  const close = vi.fn();
+  const view = render(
+    <QueryClientProvider client={client}>
+      <ServerManagerDialog onClose={close} />
+    </QueryClientProvider>,
+  );
+  return { ...view, close, client };
+}
+
+it('管理入口点击服务器行直接编辑；向导选择服务器仍先看详情再用', async () => {
+  const manager = mountManager();
+  expect(await screen.findByText('选择一台服务器直接编辑，或新增服务器。')).toBeTruthy();
+  expect(screen.queryByLabelText('连接名称')).toBeNull();
+  fireEvent.click(await screen.findByRole('button', { name: '编辑服务器：演示服务器' }));
+  expect(screen.getByLabelText<HTMLInputElement>('连接名称').value).toBe(server.name);
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: '保存服务器' })).toBeTruthy();
+  expect(screen.queryByRole('region', { name: '所选服务器详情' })).toBeNull();
+  manager.unmount();
+
+  mount(vi.fn(), '');
+  const picker = await screen.findByRole('button', { name: '选择服务器：演示服务器' });
+  fireEvent.click(picker);
+  expect(screen.getByRole('region', { name: '所选服务器详情' })).toBeTruthy();
+  expect(screen.queryByLabelText('连接名称')).toBeNull();
+  expect(screen.getByRole('button', { name: '使用此服务器' })).toBeTruthy();
+});

@@ -24,10 +24,10 @@ function edit(content: string) {
   const view = editor();
   act(() => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } }));
 }
-function mount() {
+function mount(agent: NativeConfigAgent = 'claude') {
   const close = vi.fn();
   const back = vi.fn();
-  return { ...render(<NativeConfigDialog onClose={close} onBack={back} />), close, back };
+  return { ...render(<NativeConfigDialog agent={agent} onClose={close} onBack={back} />), close, back };
 }
 beforeEach(() => {
   // jsdom 不提供布局测量；保留真实 CodeMirror 的编辑与卸载行为。
@@ -82,13 +82,20 @@ it('缺失配置插入合法JSON只改草稿，关闭需确认，明确保存才
   expect(screen.queryByRole('button', { name: '插入最小模板' })).toBeNull();
 });
 
-it('放弃模板不保存，切换Agent清空草稿并使用对应格式与说明', async () => {
+it('放弃模板不保存，返回设置后按所选 Agent 使用对应格式与说明', async () => {
   const f = mount();
+  expect(screen.getByRole('heading', { name: '原生 Agent 配置 · Claude Code' })).toBeTruthy();
   fireEvent.click(await screen.findByRole('button', { name: '插入最小模板' }));
-  fireEvent.change(screen.getByLabelText('Agent'), { target: { value: 'codex' } });
-  expect(screen.getByLabelText<HTMLSelectElement>('Agent').value).toBe('claude');
+  expect(JSON.parse(editor().state.doc.toString())).toEqual({});
   vi.mocked(window.confirm).mockReturnValue(true);
-  fireEvent.change(screen.getByLabelText('Agent'), { target: { value: 'codex' } });
+  fireEvent.click(screen.getByRole('button', { name: '返回产品设置' }));
+  expect(f.back).toHaveBeenCalledTimes(1);
+  expect(api.saveAgentConfig).not.toHaveBeenCalled();
+  expect(screen.queryByRole('textbox', { name: '配置文件内容' })).toBeNull();
+  f.unmount();
+
+  mount('codex');
+  expect(screen.getByRole('heading', { name: '原生 Agent 配置 · Codex' })).toBeTruthy();
   fireEvent.click(await screen.findByRole('button', { name: '插入最小模板' }));
   const content = editor().state.doc.toString();
   expect(content).toContain('# model =');
@@ -98,10 +105,7 @@ it('放弃模板不保存，切换Agent清空草稿并使用对应格式与说�
   const help = within(screen.getByRole('region', { name: '填写说明' }));
   expect(help.getByText(/原生登录/)).toBeTruthy();
   expect(help.getByText(/第三方/)).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: '返回产品设置' }));
-  expect(f.back).toHaveBeenCalledTimes(1);
   expect(api.saveAgentConfig).not.toHaveBeenCalled();
-  expect(screen.queryByRole('textbox', { name: '配置文件内容' })).toBeNull();
 });
 
 it('已有非空配置不提供覆盖模板；空文件与缺失分别说明，填写后的草稿不可被模板替换', async () => {

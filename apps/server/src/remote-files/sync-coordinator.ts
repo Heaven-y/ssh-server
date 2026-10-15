@@ -6,11 +6,9 @@ import { RemoteFilesError } from './errors';
 import type { PreparedAction } from './preflight';
 import { destinationPaths } from './sync-impact';
 
-export type FileEditingGuard = { reserve(action: PreparedAction, signal: AbortSignal): Promise<() => void> };
 type Deps = {
   store: Pick<WorkspaceStore, 'get'>;
   sync: Pick<SyncManager, 'transaction' | 'remoteFiles' | 'status'>;
-  editors: FileEditingGuard;
 };
 type Execution = { execute(): Promise<void>; remoteCompleted(): Promise<void> };
 
@@ -47,9 +45,8 @@ export function createFileSyncCoordinator(deps: Deps) {
       return true;
     }
     return transactions(items, signal, async () => {
-      // 排队结束后再次读取配置；预留握手确认各编辑器的最新缓冲，之后才建立基线。
+      // 排队结束后再次读取配置，之后才建立基线与提交远端操作。
       await workspaces(action);
-      const release = await deps.editors.reserve(action, signal);
       let dispatched = false;
       try {
         for (const workspace of items) {
@@ -75,7 +72,6 @@ export function createFileSyncCoordinator(deps: Deps) {
         }
         return completed;
       } finally {
-        release();
         if (!dispatched) {
           await rollback(items, id);
         }
@@ -86,18 +82,13 @@ export function createFileSyncCoordinator(deps: Deps) {
     const items = await workspaces(action);
     return transactions(items, signal, async () => {
       await workspaces(action);
-      const release = await deps.editors.reserve(action, signal);
-      try {
-        let completed = true;
-        for (const workspace of items) {
-          signal.throwIfAborted();
-          const status = await deps.sync.remoteFiles.finish(workspace, id, signal);
-          completed = completed && status.phase === 'ready' && !status.reason && !status.conflicts.length;
-        }
-        return completed;
-      } finally {
-        release();
+      let completed = true;
+      for (const workspace of items) {
+        signal.throwIfAborted();
+        const status = await deps.sync.remoteFiles.finish(workspace, id, signal);
+        completed = completed && status.phase === 'ready' && !status.reason && !status.conflicts.length;
       }
+      return completed;
     });
   }
   async function abandon(id: string, action: PreparedAction, signal: AbortSignal) {
