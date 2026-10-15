@@ -60,7 +60,7 @@ function UsageDetails({ usage }: { usage: ContextUsage }) {
   );
 }
 
-function usageTitle(usage: ContextUsage | null | undefined, summary: string): string | undefined {
+function usageTitle(usage: ContextUsage | null | undefined, summary: string | undefined): string | undefined {
   if (!usage) return undefined;
   return summary ? `${usageSource(usage)} · ${summary} tokens` : usageSource(usage);
 }
