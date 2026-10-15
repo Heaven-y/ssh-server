@@ -61,7 +61,10 @@ it('标题仅选择会话，更多先展示菜单，不直接打开综合管理�
   const read = vi.spyOn(api, 'sessionEvents').mockResolvedValue({ session, events: [] });
   mount();
   const title = screen.getByText(session.summary);
-  expect(title.closest('button')?.textContent).toBe(session.summary);
+  // 行尾新增相对更新时间（lastModified=1 → “1/1”），标题文本本身保持单行省略。
+  expect(title.textContent).toBe(session.summary);
+  expect(title.closest('button')?.textContent).toContain(session.summary);
+  expect(title.closest('button')?.textContent).toContain('1/1');
   fireEvent.click(title);
   await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
   expect(screen.queryByRole('dialog')).toBeNull();

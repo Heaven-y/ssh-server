@@ -3,6 +3,8 @@ import { LoaderCircle, Pin } from 'lucide-react';
 import type { AgentKind, SessionSummary } from '@ssh-server/shared';
 import { sessionActionKey, useChat } from '../chat/chat-store';
 import { AGENT_LABELS } from '../chat/AgentControls';
+import { AgentIcon } from '../../ui/BrandIcons';
+import { relativeTime } from '../../ui/relative-time';
 import { SessionMenu, type SessionMenuAction } from './SessionMenu';
 import { useSessionPins } from './session-preferences';
 
@@ -83,6 +85,12 @@ function SessionEntry({ session, workspaceId, archived, pinned, manage }: EntryP
         {active && <LoaderCircle aria-hidden className="size-3.5 shrink-0 motion-safe:animate-spin text-accent" />}
         {pinned && <Pin aria-hidden className="size-3 shrink-0 text-accent" />}
         <span className="min-w-0 flex-1 truncate leading-5 group-aria-[current]:font-medium">{title}</span>
+        <span
+          className="shrink-0 text-xs tabular-nums text-muted-foreground"
+          title={`更新于 ${timeFormat.format(session.lastModified)}`}
+        >
+          {relativeTime(session.lastModified)}
+        </span>
       </button>
       <SessionMenu
         session={session}
@@ -111,7 +119,8 @@ export function SessionGroup({
   return (
     <section aria-label={`${AGENT_LABELS[agent]} 会话`} className="space-y-1">
       <h3 className="flex items-center gap-2 px-2 pt-3 pb-1 text-xs font-semibold text-muted-foreground">
-        {AGENT_LABELS[agent]} <span className="font-normal tabular-nums">{list.length}</span>
+        <AgentIcon agent={agent} className="size-3.5" /> {AGENT_LABELS[agent]}{' '}
+        <span className="font-normal tabular-nums">{list.length}</span>
       </h3>
       <SourceNotice agent={agent} query={query} />
       <ul className="flex flex-col gap-1">
