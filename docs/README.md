@@ -10,8 +10,8 @@
 | [架构](engineering/architecture.md) | 技术栈、接口、数据流和生命周期 |
 | [设计决策](engineering/decisions.md) | 长期保留的取舍、原因、替代关系及[Git追溯入口](engineering/decisions.md#决策追溯与保留规则) |
 | [开发环境](guides/dev-environment.md) | 运行、操作注意事项、代码规范和质量门禁 |
-| [路线图](roadmap.md) | 当前交付状态，不重复历史任务流水 |
-| [最新验收](guides/ui-usability-optimization-acceptance.md) | D42质量门禁、浏览器交互、人工视觉检查状态与4张代表图；历史阶段单独标注 |
+| [路线图](roadmap.md) | 当前交付状态与运行边界 |
+| [最新验收](guides/ui-usability-optimization-acceptance.md) | D42质量门禁、浏览器交互与人工视觉检查结果，含4张代表图 |
 
 ## 适用规则
 
