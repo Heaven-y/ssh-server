@@ -169,7 +169,7 @@ it('复制可打开的网页深度链接，末尾分叉先呈现原生操作说�
   expect(await screen.findByText('会话链接已复制')).toBeTruthy();
   await openAction('分叉会话');
   const dialog = screen.getByRole('dialog', { name: '分叉会话' });
-  expect(dialog.textContent).toContain('不会回滚项目文件');
+  expect(dialog.textContent).toContain('源会话保持不变');
   expect(within(dialog).getByRole('button', { name: '确认分叉' })).toBeTruthy();
   vi.unstubAllGlobals();
 });

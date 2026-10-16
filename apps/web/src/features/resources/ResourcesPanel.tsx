@@ -117,7 +117,7 @@ export function ResourcesPanel({ workspace, active }: { workspace: Workspace; ac
         <ResourceMetadata workspace={workspace} server={server} snapshot={controller.query.data} />
       </header>
       <ResourceReading controller={controller} />
-      <p className="text-xs leading-5 text-muted-foreground">当前 SSH 节点；CPU 利用率需连续两次采样。</p>
+      <p className="text-xs leading-5 text-muted-foreground">当前 SSH 节点。</p>
       <SlurmJobs target={controller.target} active={controller.canRead} />
     </section>
   );

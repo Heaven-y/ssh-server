@@ -162,7 +162,7 @@ function RemoteFeedback({ browser }: { browser: Browser }) {
 
 function RecoveryButton({ browser }: { browser: Browser }) {
   if (browser.error?.code === 'binding_failed')
-    return <p className="text-xs text-muted-foreground">请关闭并重新打开文件面板，以重新登记目标。</p>;
+    return <p className="text-xs text-muted-foreground">请关闭并重新打开文件面板。</p>;
   if (browser.error?.code === 'session_expired' || browser.error?.code === 'timeout')
     return (
       <button type="button" className={buttonClass('outline')} onClick={browser.reconnect}>

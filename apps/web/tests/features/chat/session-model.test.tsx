@@ -98,9 +98,7 @@ it('Codex原生模型不占列表标题行，详情仍区分原生会话模型�
   showList();
   expect(screen.queryByText('gpt-native-session')).toBeNull();
   await openDetails('Codex', codex.summary);
-  expect(
-    within(screen.getByRole('dialog')).getByText('原生会话模型：gpt-native-session（非逐轮执行报告）'),
-  ).toBeTruthy();
+  expect(within(screen.getByRole('dialog')).getByText('会话模型：gpt-native-session')).toBeTruthy();
   expect(read).not.toHaveBeenCalled();
 });
 it('历史缓存A后列表刷新B，已打开详情采用B；列表缺失时回退历史而标题行始终无模型标签', async () => {
@@ -109,20 +107,16 @@ it('历史缓存A后列表刷新B，已打开详情采用B；列表缺失时回�
   await act(() => useChat.getState().openSession(codex));
   expect(screen.queryByText('model-A')).toBeNull();
   await openDetails('Codex', codex.summary);
-  expect(within(screen.getByRole('dialog')).getByText('原生会话模型：model-A（非逐轮执行报告）')).toBeTruthy();
+  expect(within(screen.getByRole('dialog')).getByText('会话模型：model-A')).toBeTruthy();
   act(() => {
     client.setQueryData(queryKeys.sessions('workspace', 'codex'), [{ ...codex, nativeModel: 'model-B' }]);
   });
-  await waitFor(() =>
-    expect(within(screen.getByRole('dialog')).getByText('原生会话模型：model-B（非逐轮执行报告）')).toBeTruthy(),
-  );
+  await waitFor(() => expect(within(screen.getByRole('dialog')).getByText('会话模型：model-B')).toBeTruthy());
   expect(screen.queryByText('model-B')).toBeNull();
   expect(useChat.getState().actualModel).toBeUndefined();
   act(() => {
     client.setQueryData(queryKeys.sessions('workspace', 'codex'), [codex]);
   });
-  await waitFor(() =>
-    expect(within(screen.getByRole('dialog')).getByText('原生会话模型：model-A（非逐轮执行报告）')).toBeTruthy(),
-  );
+  await waitFor(() => expect(within(screen.getByRole('dialog')).getByText('会话模型：model-A')).toBeTruthy());
   expect(screen.queryByText('model-A')).toBeNull();
 });

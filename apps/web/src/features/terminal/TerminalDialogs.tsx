@@ -16,7 +16,7 @@ export function TerminalPasteDialog({
       <pre className="my-3 max-h-72 overflow-auto whitespace-pre-wrap rounded border border-border bg-background p-3 font-mono text-xs">
         {text}
       </pre>
-      <p className="text-xs text-muted-foreground">原样发送，不额外追加 Enter。发送后无法撤回。</p>
+      <p className="text-xs text-muted-foreground">发送后无法撤回。</p>
       <div className="mt-4 flex justify-end gap-2">
         <button type="button" className={buttonClass('outline')} onClick={cancel}>
           取消

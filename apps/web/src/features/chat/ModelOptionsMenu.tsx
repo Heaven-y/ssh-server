@@ -84,15 +84,15 @@ function useModelPresentation(model: string) {
       ?.nativeModel;
   });
   const reading = useChat((state) => state.loadingHistory);
-  // 有数据才显示：覆盖 → 最近报告 → 会话配置 → 默认；不再以“未报告”占位。
+  // 有数据才显示：覆盖 → 最近报告 → 会话配置 → 默认。
   const label = model || actual || native || (reading ? '正在读取型号…' : '默认模型');
   const title = model
-    ? `当前覆盖：${model}，用于下一轮请求`
+    ? `当前覆盖：${model}`
     : actual
       ? `最近实际运行：${actual}`
       : native
         ? `原生会话配置：${native}`
-        : '未设置覆盖，沿用原生默认模型';
+        : '沿用原生默认模型';
   return { label, title, actual };
 }
 function AgentChoices({ disabled }: { disabled: boolean }) {
@@ -134,7 +134,6 @@ function ModelActions({ disabled, catalog, model, onManual }: CatalogProps & { m
         <MenuItem className={itemClass} disabled={disabled || !model} onClick={() => setModel('')}>
           清除模型覆盖
         </MenuItem>
-        <p className="px-3 py-2 text-xs leading-5 text-muted-foreground">清除后下轮沿用原生配置，不修改配置文件。</p>
         <MenuSeparator className="my-1 border-t border-border" />
         <MenuItem className={itemClass} disabled={disabled} onClick={onManual}>
           手动填写模型
@@ -149,7 +148,7 @@ function ModelChoices({ disabled, catalog, model, onManual }: CatalogProps & { m
   return (
     <>
       <MenuGroup aria-label="可选模型">
-        <p className="px-3 py-2 text-xs text-muted-foreground">原生目录候选 · 选择后用于下一轮</p>
+        <p className="px-3 py-2 text-xs text-muted-foreground">目录候选</p>
         {catalog.data?.models.map((candidate) => (
           <Choice
             key={candidate.id}

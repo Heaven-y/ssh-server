@@ -38,9 +38,7 @@ export function SshPasswordField({
         placeholder={saved ? '留空使用已保存密码' : undefined}
       />
       <p id={`${id}-hint`} className="text-xs leading-5 text-muted-foreground">
-        {saved
-          ? '已在本机加密保存，连接时可留空；输入新密码可替换。'
-          : '发送后立即清空。未保存时，断开或重启后需重新输入。'}
+        {saved ? '已在本机加密保存，连接时可留空。' : '发送后立即清空。未保存时，断开或重启后需重新输入。'}
       </p>
       <label className="flex min-h-9 items-center gap-2 text-xs">
         <input
@@ -64,7 +62,7 @@ function savingHint(
   connection: Pick<ReturnType<typeof useSshConnection>, 'saved' | 'loadingCredentials' | 'savingAvailable'>,
 ) {
   if (connection.loadingCredentials) return '正在读取本机保存状态…';
-  if (connection.saved) return '取消勾选会清除本机保存的密码并断开该服务器连接。';
-  if (!connection.savingAvailable) return '当前系统无法加密保存，仍可使用临时密码连接。';
-  return '连接验证成功后由 Windows 当前用户加密保存，断开或重启后可复用。';
+  if (connection.saved) return '取消勾选将清除本机保存的密码并断开连接。';
+  if (!connection.savingAvailable) return '当前系统无法加密保存，可使用临时密码连接。';
+  return '验证成功后加密保存，断开或重启后可复用。';
 }

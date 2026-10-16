@@ -140,9 +140,6 @@ export function ProductSettingsForm({
           <option value="codex">Codex</option>
         </select>
       </label>
-      <p className="rounded-md bg-muted p-3 text-xs leading-5 text-muted-foreground">
-        默认模型由原生 Agent 配置管理；当前会话需要更换模型时，在消息输入区显式选择。
-      </p>
     </section>
   );
 }

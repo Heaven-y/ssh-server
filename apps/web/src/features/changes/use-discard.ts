@@ -4,11 +4,10 @@ import { api, ApiError, queryKeys } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
 
 function syncMessage(status: SyncStatus): string {
-  if (status.phase === 'ready' && !status.reason) return '本地放弃完成，服务器同步完成。';
-  if (status.deletions.length || status.reason === 'deletions')
-    return '本地放弃完成；服务器删除尚待在同步详情中确认或拒绝。';
-  if (status.conflicts.length) return '本地放弃完成；同步存在冲突，请查看同步详情。';
-  return '本地放弃完成；服务器同步尚未就绪，请查看同步详情。';
+  if (status.phase === 'ready' && !status.reason) return '本地改动已放弃，服务器同步完成。';
+  if (status.deletions.length || status.reason === 'deletions') return '本地改动已放弃；服务器删除待确认。';
+  if (status.conflicts.length) return '本地改动已放弃；同步存在冲突，请在同步详情处理。';
+  return '本地改动已放弃；同步尚未就绪。';
 }
 
 export function useDiscard(workspaceId: string) {

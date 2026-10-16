@@ -61,9 +61,7 @@ function ArchiveSession({ archived, submit }: { archived: boolean; submit: Submi
     <section className="space-y-3 border-t border-border pt-4" aria-label={archived ? '恢复会话' : '归档会话'}>
       <h3 className="text-sm font-medium">{archived ? '恢复会话' : '归档会话'}</h3>
       <p className="text-xs leading-6 text-muted-foreground">
-        {archived
-          ? '恢复后可从普通会话列表继续对话或重命名。恢复范围以原生运行时结果为准。'
-          : '归档会影响这条 Codex 原生记录及其派生子会话。归档后可从“已归档”列表恢复。'}
+        {archived ? '恢复后可从会话列表继续对话或重命名。' : '归档同时作用于派生子会话，可在“已归档”列表恢复。'}
       </p>
       <button
         type="button"

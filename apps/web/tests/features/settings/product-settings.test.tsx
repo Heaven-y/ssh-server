@@ -255,5 +255,4 @@ it('对话分类保留默认Agent，不再提供网页默认模型输入', () =>
   expect(screen.getByLabelText<HTMLSelectElement>('默认 Agent').value).toBe('codex');
   expect(screen.queryByLabelText(/Claude 默认模型/)).toBeNull();
   expect(screen.queryByLabelText(/Codex 默认模型/)).toBeNull();
-  expect(screen.getByText(/默认模型由原生 Agent 配置管理/)).toBeTruthy();
 });

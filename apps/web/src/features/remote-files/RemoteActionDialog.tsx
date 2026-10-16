@@ -56,7 +56,7 @@ export function RemoteActionDialog({ workspaceId, session, input, currentPath, c
       submitted();
       close();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '提交结果未确认；可再次提交同一预检，不会重复执行。');
+      setError(reason instanceof Error ? reason.message : '提交结果未确认，可重新提交。');
       setBusy(false);
     }
   }
@@ -103,7 +103,7 @@ export function RemoteActionDialog({ workspaceId, session, input, currentPath, c
                 选择目标目录
               </button>
             )}
-            <p className="text-xs text-muted-foreground">同名目标不会覆盖，目录不会合并。相对路径从固定同步根解析。</p>
+            <p className="text-xs text-muted-foreground">同名目标不会覆盖，目录不会合并。</p>
           </div>
         )}
         {input.kind === 'delete' && (
@@ -163,7 +163,6 @@ function ActionPreview({
       <p>
         已核对 {preview.entries} 项，{preview.files} 个文件，{preview.bytes.toLocaleString()} 字节。
       </p>
-      {preview.crossFilesystem && <p>跨文件系统移动会先复制并核对，成功后才移除源。</p>}
       {preview.affectedWorkspaces.map((workspace) => (
         <p key={workspace.id}>
           涉及工作区：{workspace.name}（{workspace.remoteRoot}）
@@ -176,7 +175,7 @@ function ActionPreview({
           {warning}
         </p>
       ))}
-      <p>任务提交后在后台运行，关闭面板不会取消。</p>
+      <p>任务提交后在后台运行。</p>
       <label className="flex items-start gap-2">
         <input
           type="checkbox"
@@ -185,7 +184,7 @@ function ActionPreview({
           onChange={(event) => confirm(event.target.checked)}
           disabled={!preview.canSubmit || busy}
         />
-        <span>已核对服务器、源与目标以及以上影响，确认执行。</span>
+        <span>已核对以上影响，确认执行。</span>
       </label>
       <button
         type="button"

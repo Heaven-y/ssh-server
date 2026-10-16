@@ -64,13 +64,11 @@ export function RemoteDownloadDialog({
       await writable.close();
       writable = undefined;
       active.signal.throwIfAborted();
-      setMessage('下载完成，已保存到所选位置。');
+      setMessage('下载完成。');
     } catch (reason) {
       active.abort();
       await writable?.abort().catch(() => undefined);
-      setError(
-        reason instanceof Error && reason.name !== 'AbortError' ? reason.message : '下载已取消，未确认完整保存。',
-      );
+      setError(reason instanceof Error && reason.name !== 'AbortError' ? reason.message : '下载已取消。');
     } finally {
       setBusy(false);
     }

@@ -68,7 +68,7 @@ export function useWorkspacePolicy(workspaceId: string, onClose: () => void) {
     setDraft(draftOf(result.policy));
     setShowErrors(false);
     setPhase('ready');
-    setMessage('命令规则已保存，后续Agent远程执行将使用新规则。');
+    setMessage('命令规则已保存。');
     void queryClient.invalidateQueries({ queryKey: queryKeys.workspaces });
   };
   const busy = phase === 'saving' || phase === 'loading';

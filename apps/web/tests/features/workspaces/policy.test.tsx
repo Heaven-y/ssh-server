@@ -126,7 +126,6 @@ it('默认规则保持启用，自定义空列表默认折叠且可选，教程�
   const advanced = await screen.findByRole('button', { name: /高级：自定义拦截/ });
   expect(advanced.getAttribute('aria-expanded')).toBe('false');
   expect(advanced.textContent).toContain('0 条');
-  expect(screen.getByText('需要额外限制时，可添加自定义规则。')).toBeTruthy();
   expect(screen.queryByRole('button', { name: '追加规则' })).toBeNull();
   expect(screen.getAllByRole<HTMLInputElement>('checkbox').every((item) => item.checked)).toBe(true);
   fireEvent.click(advanced);
