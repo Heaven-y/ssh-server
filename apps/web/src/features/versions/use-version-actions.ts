@@ -7,13 +7,13 @@ export type VersionNotice = { tone: 'success' | 'warning' | 'error'; text: strin
 const errorText = (error: unknown) => (error instanceof Error ? error.message : '版本操作失败，请重新尝试');
 function syncNotice(status: SyncStatus): VersionNotice {
   if (status.phase === 'ready' && !status.reason && !status.conflicts.length && !status.deletions.length)
-    return { tone: 'success', text: '本地恢复已完成，后续同步也已完成。' };
-  if (status.phase === 'error') return { tone: 'error', text: '本地恢复已完成，但同步失败。请打开文件同步详情处理。' };
+    return { tone: 'success', text: '本地恢复完成，同步完成。' };
+  if (status.phase === 'error') return { tone: 'error', text: '本地恢复完成，同步失败。请打开文件同步详情处理。' };
   if (status.reason === 'deletions' || status.deletions.length > 0)
-    return { tone: 'warning', text: '本地恢复已完成，删除尚未传播到服务器。请在文件同步详情中确认或拒绝删除。' };
+    return { tone: 'warning', text: '本地恢复完成；删除待确认。请在文件同步详情中处理。' };
   if (status.phase === 'conflicts' || status.conflicts.length > 0)
-    return { tone: 'warning', text: '本地恢复已完成，同步发现文件冲突。请在文件同步详情中处理。' };
-  return { tone: 'warning', text: '本地恢复已完成，同步尚未就绪。请查看文件同步详情中的状态或确认项。' };
+    return { tone: 'warning', text: '本地恢复完成，同步发现冲突。请在文件同步详情中处理。' };
+  return { tone: 'warning', text: '本地恢复完成，同步尚未就绪。' };
 }
 
 export function useVersionActions(id: string, setBusy: (busy: boolean) => void) {

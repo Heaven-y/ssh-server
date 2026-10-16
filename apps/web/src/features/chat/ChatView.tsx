@@ -6,6 +6,7 @@ import { useChat } from './chat-store';
 import { Composer } from './Composer';
 import { ChatTimeline } from './ChatTimeline';
 import { AGENT_LABELS } from './AgentControls';
+import { AgentIcon } from '../../ui/BrandIcons';
 import { TurnChangesCard } from '../changes/TurnChangesCard';
 
 function Banner() {
@@ -65,8 +66,11 @@ export function ChatView({ workspace, onOpenChanges }: { workspace: Workspace; o
           <h1 className="truncate text-sm font-medium" title={sessionId}>
             {sessionId ? title || '历史会话' : '新会话'}
           </h1>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {AGENT_LABELS[agent]} · {workspace.name}
+          <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <AgentIcon agent={agent} className="size-3.5" />
+            <span className="truncate">
+              {AGENT_LABELS[agent]} · {workspace.name}
+            </span>
           </p>
         </div>
       </div>

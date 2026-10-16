@@ -75,10 +75,7 @@ function PolicyRuleHelp() {
           </dd>
         </div>
       </dl>
-      <p>
-        区分大小写，不支持正则或通配符。程序名按基本名比较，并处理已识别的包装命令；包含字符串是字面匹配，引号内的说明文字也可能命中并误拦。
-      </p>
-      <p>保存后用于后续检查，已通过检查的命令继续执行。</p>
+      <p>区分大小写，不支持正则或通配符。程序名按基本名比较；包含字符串为字面匹配，引号内文字也可能命中并误拦。</p>
     </div>
   );
 }
@@ -127,9 +124,7 @@ export function WorkspacePolicyForm({ draft, setDraft, errors, prefix }: Props) 
         </div>
         <p className="text-xs leading-5 text-muted-foreground">恢复默认规则会启用全部默认项，保留自定义规则。</p>
         {(draft.disabledRules?.length ?? 0) > 0 && (
-          <p className="text-sm text-warning">
-            部分默认保护已关闭，相关误操作将不再由这些规则拦截；可随时恢复默认规则。
-          </p>
+          <p className="text-sm text-warning">部分默认保护已关闭，相应命令不再拦截。</p>
         )}
         {DEFAULT_POLICY_RULE_IDS.map((ruleId) => (
           <label
@@ -173,7 +168,6 @@ export function WorkspacePolicyForm({ draft, setDraft, errors, prefix }: Props) 
             <ChevronDown aria-hidden className={`size-4 shrink-0 ${expanded ? 'rotate-180' : ''}`} />
           </button>
         </h3>
-        <p className="text-xs leading-5 text-muted-foreground">需要额外限制时，可添加自定义规则。</p>
         <div id={`${prefix}-custom-fields`} hidden={!expanded} tabIndex={-1}>
           <div className="flex flex-col gap-3">
             <PolicyRuleHelp />

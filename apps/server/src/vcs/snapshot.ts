@@ -2,7 +2,7 @@ import type { Stats } from 'node:fs';
 import path from 'node:path';
 import type { VersionChange, VersionExcluded, VersionStatus } from '@ssh-server/shared';
 import { WorkspaceFileError } from '../files/errors';
-import { readSnapshot } from '../files/io';
+import { digest, readSnapshot } from '../files/io';
 import { assertAllowedPath, assertDirectoriesUnchanged, resolveWorkspacePath } from '../files/paths';
 import { VersionError } from './errors';
 import { git, gitText, nulStrings } from './git';
@@ -30,7 +30,7 @@ export async function readIndex(repo: Repository): Promise<{ data?: Buffer; revi
   if (!(await present(repo.indexPath))) return { revision: 'missing' };
   const directory = await resolveWorkspacePath({ ...repo.ws, localDir: path.dirname(repo.indexPath) }, '', 'directory');
   const current = await readSnapshot({ ...directory, absolute: repo.indexPath, maxBytes: MAX_INDEX_BYTES });
-  return { data: current.data, revision: current.revision };
+  return { data: current.data, revision: digest(current.data) };
 }
 
 export async function treeEntries(repo: Repository, commit?: string, all = false): Promise<Map<string, TreeEntry>> {

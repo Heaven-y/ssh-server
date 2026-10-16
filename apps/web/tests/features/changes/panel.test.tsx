@@ -58,7 +58,6 @@ function setup() {
       useChangesPanel({
         workspace,
         active: true,
-        dirty: false,
         request: {
           workspaceId: workspace.id,
           agent: 'claude',
@@ -167,7 +166,7 @@ it('放弃陈旧预览清理确认，成功保留编辑缓冲并分别报告删�
   expect(api.syncWorkspace).not.toHaveBeenCalled();
   await act(() => f.result.current.prepare('new.txt'));
   await act(() => f.result.current.discard());
-  expect(f.result.current.notice).toContain('服务器删除尚待');
+  expect(f.result.current.notice).toContain('服务器删除待确认');
   await act(() => f.result.current.prepare('new.txt'));
   await act(() => f.result.current.discard());
   expect(f.result.current.notice).toContain('服务器同步失败');

@@ -44,13 +44,11 @@ function PasswordInput({
         </button>
       </div>
       <p id={`${id}-hint`} className="text-xs leading-5 text-muted-foreground">
-        已保存密码会实际填入此字段；查看或修改不会立即保存。清空字段后确认保存会清除该目标的保存密码。
+        已保存密码会填入此字段；清空后确认保存将清除保存的密码。
       </p>
-      {identityChanged && (
-        <p className="text-sm text-warning">连接目标已改变，旧密码已清空；如需密码，请明确重新输入。</p>
-      )}
+      {identityChanged && <p className="text-sm text-warning">连接目标已改变，旧密码已清空；如需密码请重新输入。</p>}
       {!savingAvailable && ready && (
-        <p className="text-sm text-warning">本机系统加密不可用；可仅保存档案，在连接入口使用临时密码。</p>
+        <p className="text-sm text-warning">本机系统加密不可用；可仅保存档案，连接时使用临时密码。</p>
       )}
     </>
   );

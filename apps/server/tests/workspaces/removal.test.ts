@@ -7,7 +7,6 @@ import { createWorkspaceStore } from '../../src/workspaces/store';
 import { createWorkspaceActivity } from '../../src/workspaces/activity';
 import { createWorkspaceRemoval } from '../../src/workspaces/removal';
 import { createWorkspaceRemovalResources } from '../../src/workspaces/removal-resources';
-import { createFileEditors } from '../../src/files/editors';
 import { createSyncManager } from '../../src/sync/manager';
 import { emptyState, saveSyncState } from '../../src/sync/state';
 import { createSetupVerification } from '../../src/workspaces/setup/verification';
@@ -139,29 +138,6 @@ describe('工作区配置移除的核心边界', () => {
     expect((await f.removal.preview(f.workspace.id)).blockers).toEqual([]);
   });
 
-  it('干净和离线编辑器均保持持久登记，显式处理后才能移除', async () => {
-    const f = await fixture();
-    const editors = createFileEditors(f.configDir, f.activity.acquire);
-    const peer = { send: vi.fn() };
-    const id = '00000000-0000-4000-8000-000000000001';
-    await editors.attach(id, f.workspace.id, peer);
-    await editors.receive(id, peer, { type: 'state', state: { path: null, dirty: false, busy: false } });
-    expect(await editors.hasWorkspace(f.workspace.id)).toBe(true);
-    editors.detach(id, peer);
-    const restarted = createFileEditors(f.configDir, f.activity.acquire);
-    expect(await restarted.hasWorkspace(f.workspace.id)).toBe(true);
-    f.blockers.mockImplementation(async () =>
-      (await restarted.hasWorkspace(f.workspace.id)) ? [{ code: 'editors_registered', message: '编辑器仍登记' }] : [],
-    );
-    await expect(f.removal.remove(f.workspace.id, f.input)).rejects.toMatchObject({ code: 'workspace_busy' });
-    await restarted.forget(f.workspace.id, id);
-    expect(await f.removal.remove(f.workspace.id, f.input)).toEqual({ removed: true });
-    await f.activity.exclusive('other', async () => {
-      await expect(editors.attach('another', 'other', peer)).rejects.toMatchObject({ code: 'workspace_deleting' });
-    });
-    expect(f.activity.active('other')).toBe(0);
-  });
-
   it('同步队列与磁盘中的文件任务阻断可读取，forget仅清内存', async () => {
     const f = await fixture();
     const state = { ...emptyState(), remoteTask: '00000000-0000-4000-8000-000000000002' };
@@ -179,7 +155,7 @@ describe('工作区配置移除的核心边界', () => {
     sync.dispose();
   });
 
-  it('聚合阻断不重入store，收尾某项失败仍尝试全部所属模块', async () => {
+  it('阻断聚合不重入store，收尾某项失败仍尝试全部所属模块', async () => {
     const close = vi.fn(() => {
       throw new Error('终端收尾失败');
     });
@@ -187,7 +163,6 @@ describe('工作区配置移除的核心边界', () => {
     const preflight = vi.fn();
     const forget = vi.fn();
     const resources = createWorkspaceRemovalResources({
-      editors: { hasWorkspace: async () => true },
       sync: { busy: () => true, hasRemoteTask: async () => true, forget },
       tasks: { blockers: async () => [{ code: 'file_tasks_pending', message: '待恢复' }] },
       terminals: { closeWorkspace: close },
@@ -198,7 +173,6 @@ describe('工作区配置移除的核心边界', () => {
       'file_tasks_pending',
       'sync_busy',
       'sync_task_pending',
-      'editors_registered',
     ]);
     await expect(resources.close('demo')).rejects.toThrow('未全部完成');
     for (const method of [close, browse, preflight, forget]) expect(method).toHaveBeenCalledExactlyOnceWith('demo');

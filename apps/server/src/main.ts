@@ -27,8 +27,6 @@ import { registerCapabilityRoutes } from './http/capabilities.routes';
 import { registerSshRoutes } from './http/ssh.routes';
 import { registerAgentConfigRoutes } from './http/agent-config.routes';
 import { registerFileRoutes } from './http/files.routes';
-import { registerFileEditorRoutes } from './http/file-editors.routes';
-import { createFileEditors } from './files/editors';
 import { createFileSyncCoordinator } from './remote-files/sync-coordinator';
 import { registerRemoteFileRoutes } from './http/remote-files.routes';
 import { registerRemoteFileActionRoutes } from './http/remote-file-actions.routes';
@@ -131,7 +129,6 @@ async function main(): Promise<void> {
   const setup = createWorkspaceSetup({ store, pool, sync, configDir: config.configDir, acquireWorkspace });
   const browse = createRemoteFilesService({ store, pool });
   const executor = createRemoteExecutor(pool);
-  const editors = createFileEditors(config.configDir, acquireWorkspace);
   const preflights = createFilePreflights({
     store,
     pool,
@@ -144,11 +141,11 @@ async function main(): Promise<void> {
     configDir: config.configDir,
     preflights,
     executor,
-    coordinator: createFileSyncCoordinator({ store, sync, editors }),
+    coordinator: createFileSyncCoordinator({ store, sync }),
     acquireWorkspace,
     onCorrupt: (name) => console.warn('文件任务记录损坏，已保留原文件，未重放操作：', name),
   });
-  const removalResources = createWorkspaceRemovalResources({ editors, browse, preflights, tasks, sync, terminals });
+  const removalResources = createWorkspaceRemovalResources({ browse, preflights, tasks, sync, terminals });
   const profiles = createServerProfiles({ targets, store, activity, resources: removalResources, pool });
   const removal = createWorkspaceRemoval({ store, activity, ...removalResources });
   const capabilities = createCapabilitiesService({
@@ -201,8 +198,7 @@ async function main(): Promise<void> {
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
       registerProductSettingsRoutes(a, productSettings, environment);
       registerWorkspacePolicyRoutes(a, createWorkspacePolicy(store));
-      registerFileRoutes(a, { store, files: createWorkspaceFilesService(), sync });
-      registerFileEditorRoutes(a, { store, editors, acquireWorkspace });
+      registerFileRoutes(a, { store, files: createWorkspaceFilesService() });
       registerRemoteFileRoutes(a, browse);
       registerRemoteFileActionRoutes(a, { preflights, tasks, downloads: createFileDownloads({ pool, browse }) });
       registerVersionRoutes(a, { store, versions, sync });

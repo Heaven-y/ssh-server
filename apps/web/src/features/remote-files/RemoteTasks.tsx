@@ -199,10 +199,8 @@ function SyncRecovery({ task, close, refresh }: { task: RemoteFileTask; close():
             ? '远端操作已完成，相关同步尚未完成。'
             : '远端操作可能只完成了部分文件，请先核对源与目标。'}
         </p>
-        <p>
-          恢复按实际远端的小文件重建同步基线；可能保留源、目标的部分结果，不会重新执行移动、复制或删除。外部本地修改会保留为冲突。
-        </p>
-        <p>开始后可在文件任务中取消恢复；关闭面板不会取消。</p>
+        <p>恢复会按远端实际结果重建同步基线；外部本地修改将保留为冲突。</p>
+        <p>开始后可在文件任务中取消。</p>
         <label className="flex items-start gap-2">
           <input
             type="checkbox"
@@ -211,7 +209,7 @@ function SyncRecovery({ task, close, refresh }: { task: RemoteFileTask; close():
             disabled={busy}
             onChange={(event) => setConfirmed(event.target.checked)}
           />
-          已核对实际结果，确认恢复相关工作区同步。
+          已核对实际结果，确认恢复同步。
         </label>
         {error && (
           <p role="alert" className="text-destructive">

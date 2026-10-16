@@ -21,7 +21,7 @@ export function RawDiff({ text, message }: { text: string; message: string }) {
         aria-label="文件差异原文本"
         className="max-h-96 overflow-auto rounded-lg border border-border bg-background p-3 font-mono text-xs leading-6 whitespace-pre"
       >
-        {text || '没有文本差异。二进制或文件模式变化请核对文件列表。'}
+        {text || '没有文本差异。'}
       </pre>
     </div>
   );
@@ -34,7 +34,7 @@ class DiffBoundary extends Component<{ children: ReactNode; text: string }, { fa
   }
   render() {
     return this.state.failed ? (
-      <RawDiff text={this.props.text} message="差异组件暂不可用，保留原文本；此视图不提供行反馈。" />
+      <RawDiff text={this.props.text} message="差异渲染失败，已保留原文本。" />
     ) : (
       this.props.children
     );

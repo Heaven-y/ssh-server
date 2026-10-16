@@ -36,7 +36,7 @@ it('已结束位置打开分叉确认，确认只传原生pointId及当前源身
   mount();
   fireEvent.click(screen.getByRole('button', { name: '从此处分叉' }));
   expect(fork).not.toHaveBeenCalled();
-  expect(screen.getByRole('dialog').textContent).toContain('包含该位置');
+  expect(screen.getByRole('dialog').textContent).toContain('保留截至所选位置的对话历史');
   fireEvent.click(screen.getByRole('button', { name: '确认分叉' }));
   await waitFor(() =>
     expect(fork).toHaveBeenCalledWith('workspace', expect.objectContaining({ agent: 'codex', sessionId: 'source' }), {

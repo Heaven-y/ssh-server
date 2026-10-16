@@ -12,7 +12,6 @@ import type {
   NativeConfigInput,
   WorkspaceDirectory,
   WorkspaceFile,
-  WorkspaceFileInput,
   RemoteBrowseTarget,
   RemoteBrowseSession,
   RemoteDirectory,
@@ -180,19 +179,6 @@ export const api = {
         body: JSON.stringify({ confirmed: true }),
       },
     ),
-  disconnectedEditors: (id: string, signal?: AbortSignal) =>
-    request<{ editors: string[] }>(`/api/workspaces/${encodeURIComponent(id)}/file-editors`, {
-      signal,
-      cache: 'no-store',
-    }),
-  forgetFileEditor: (id: string, editorId: string) =>
-    request<{ forgotten: true }>(
-      `/api/workspaces/${encodeURIComponent(id)}/file-editors/${encodeURIComponent(editorId)}`,
-      {
-        method: 'DELETE',
-        body: JSON.stringify({ confirmed: true }),
-      },
-    ),
   remoteFileDownloadUrl: (id: string, sessionId: string, path: string) =>
     `${remoteSessionsUrl(id)}/${encodeURIComponent(sessionId)}/download?${new URLSearchParams({ path })}`,
   bindRemoteBrowseTarget: (id: string, target: RemoteBrowseTarget) =>
@@ -283,16 +269,9 @@ export const api = {
   },
   listFiles: (id: string, relative = '', signal?: AbortSignal) =>
     request<WorkspaceDirectory>(fileUrl(id, 'files', relative), { signal, cache: 'no-store' }),
+  /** 只读读取本地副本；网页不提供写入，改动交给 Agent、同步或外部编辑器。 */
   readFile: (id: string, relative: string, signal?: AbortSignal) =>
     request<WorkspaceFile>(fileUrl(id, 'file', relative), { signal, cache: 'no-store' }),
-  fileRevision: (id: string, relative: string, signal?: AbortSignal) =>
-    request<{ revision: string }>(fileUrl(id, 'file/revision', relative), { signal, cache: 'no-store' }),
-  saveFile: (id: string, input: WorkspaceFileInput) =>
-    request<WorkspaceFile>(`/api/workspaces/${encodeURIComponent(id)}/file`, {
-      method: 'PUT',
-      cache: 'no-store',
-      body: JSON.stringify(input),
-    }),
   /** 原生配置内容只能由显式打开的编辑区持有，不接入查询缓存或持久存储。 */
   readAgentConfig: (agent: NativeConfigAgent, signal?: AbortSignal) =>
     request<NativeConfigDocument>(`/api/agent-config/${agent}`, { signal, cache: 'no-store' }),

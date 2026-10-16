@@ -109,12 +109,15 @@ it('四类设置只显示当前内容，跨类草稿统一保存且默认作用�
   expect(screen.queryByRole('button', { name: '重新检测' })).toBeNull();
   expect(readEnvironment).not.toHaveBeenCalled();
   fireEvent.change(agent, { target: { value: 'codex' } });
-  const native = screen.getByRole('button', { name: '编辑原生 Agent 配置' });
+  const conversation = screen.getByRole('tabpanel', { name: '对话与模型' });
+  expect(within(conversation).getByRole('button', { name: '修改 Claude 配置' })).toBeTruthy();
+  expect(within(conversation).getByRole('button', { name: '修改 Codex 配置' })).toBeTruthy();
   for (const tab of screen.getAllByRole('tab')) {
+    if (tab.textContent?.includes('对话与模型')) continue;
     fireEvent.click(tab);
-    expect(screen.getAllByRole('button', { name: '编辑原生 Agent 配置' })).toEqual([native]);
-    expect(within(screen.getByRole('tabpanel')).queryByRole('button', { name: '编辑原生 Agent 配置' })).toBeNull();
+    expect(within(screen.getByRole('tabpanel')).queryByRole('button', { name: '修改 Claude 配置' })).toBeNull();
   }
+  fireEvent.click(screen.getByRole('tab', { name: '对话与模型' }));
   fireEvent.click(screen.getByRole('tab', { name: '文件同步' }));
   expect(screen.queryByLabelText('默认 Agent')).toBeNull();
   expect(screen.getByText(/已有工作区.*同步面板/)).toBeTruthy();
@@ -174,7 +177,8 @@ it('跨分类保存冲突保留草稿，关闭、原生视图、重读与Esc均�
   fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
   await screen.findByRole('alert');
   fireEvent.click(screen.getByRole('button', { name: '关闭设置' }));
-  fireEvent.click(screen.getByRole('button', { name: '编辑原生 Agent 配置' }));
+  fireEvent.click(screen.getByRole('tab', { name: '对话与模型' }));
+  fireEvent.click(screen.getByRole('button', { name: '修改 Claude 配置' }));
   fireEvent.click(screen.getByRole('button', { name: '重新读取' }));
   fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }));
   expect(confirm).toHaveBeenCalledTimes(4);
@@ -251,5 +255,4 @@ it('对话分类保留默认Agent，不再提供网页默认模型输入', () =>
   expect(screen.getByLabelText<HTMLSelectElement>('默认 Agent').value).toBe('codex');
   expect(screen.queryByLabelText(/Claude 默认模型/)).toBeNull();
   expect(screen.queryByLabelText(/Codex 默认模型/)).toBeNull();
-  expect(screen.getByText(/默认模型由原生 Agent 配置管理/)).toBeTruthy();
 });

@@ -26,7 +26,7 @@ export function SessionForkPoint({ pointId }: { pointId: string }) {
         className={`${buttonClass('ghost')} text-xs`}
         disabled={!available}
         onClick={open}
-        title="保留截至此位置的原生历史，不回滚文件"
+        title="从此位置创建独立会话"
       >
         <GitFork aria-hidden className="size-3.5" />
         从此处分叉

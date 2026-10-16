@@ -10,11 +10,11 @@ const GUIDES: Record<EnvironmentTool['name'], { url: string; hint: string }> = {
   'Node.js': { url: 'https://nodejs.org/en/download', hint: '安装 Node.js，并从可执行 node 的终端重新启动本机服务。' },
   'Claude Code': {
     url: 'https://code.claude.com/docs/en/setup',
-    hint: '按官方说明安装并配置 Claude Code；原生配置位于 ~/.claude/。只需安装你使用的 Agent。',
+    hint: '按官方说明安装并配置 Claude Code；原生配置位于 ~/.claude/。',
   },
   Codex: {
     url: 'https://developers.openai.com/codex/cli/',
-    hint: '按官方说明安装 Codex CLI；原生配置位于 ~/.codex/config.toml。只需安装你使用的 Agent。',
+    hint: '按官方说明安装 Codex CLI；原生配置位于 ~/.codex/config.toml。',
   },
   git: { url: 'https://git-scm.com/downloads', hint: '安装 Git，并确保本机服务进程的 PATH 可以找到 git。' },
   rclone: {

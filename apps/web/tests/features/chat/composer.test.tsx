@@ -143,16 +143,19 @@ it.each(['claude', 'codex'] as const)('一体输入底栏用菜单设置%s模型
       event: { type: 'session', sessionId: 'native', agent, cwd: '.', model: 'reported-model' },
     });
   });
-  expect(within(controls).getByRole('button', { name: '模型选项' }).title).toContain('实际模型：reported-model');
+  expect(within(controls).getByRole('button', { name: '模型选项' }).title).toContain('当前覆盖：native-model');
   fireEvent.click(screen.getByRole('button', { name: '停止' }));
   expect(sent.at(-1)).toEqual({ type: 'chat.interrupt', turnId: 'turn' });
+  act(() => emit({ type: 'turn.finished', turnId: 'turn', workspaceId: workspace.id, agent }));
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
+  expect(await screen.findByText('最近实际运行：reported-model')).toBeTruthy();
 });
 
 it('历史固定Agent，载入期间禁用选项；ShiftEnter与IME不发送且正文草稿保留', async () => {
   useChat.setState({ sessionId: 'history', loadingHistory: true });
   showChat();
   expect(screen.getByRole('button', { name: '模型选项' }).getAttribute('disabled')).not.toBeNull();
-  expect(screen.queryByText('实际模型：未报告')).toBeNull();
+  expect(screen.getByRole('button', { name: '模型选项' }).textContent).toContain('正在读取型号');
   const input = screen.getByLabelText('输入消息');
   fireEvent.change(input, { target: { value: '保留草稿' } });
   fireEvent.keyDown(input, { key: 'Enter' });
@@ -287,7 +290,7 @@ it('原生目录部分读取失败显示警告，不把失败呈现为无技能'
 it('常规模型菜单只列真实候选，清除覆盖放次级操作且发送不带默认字样', async () => {
   showComposer();
   const trigger = screen.getByRole('button', { name: '模型选项' });
-  expect(trigger.textContent).toContain('型号未报告');
+  expect(trigger.textContent).toContain('默认模型');
   fireEvent.click(trigger);
   const candidate = await screen.findByRole('menuitemradio', { name: /候选模型/ });
   expect(screen.queryByRole('menuitemradio', { name: /默认模型|沿用会话模型/ })).toBeNull();
@@ -296,18 +299,18 @@ it('常规模型菜单只列真实候选，清除覆盖放次级操作且发送�
   expect(within(screen.getByRole('group', { name: '可选模型' })).getAllByRole('menuitemradio')).toEqual([candidate]);
   fireEvent.click(candidate);
   expect(useChat.getState().modelOverrides.claude).toBe('native-model');
-  expect(trigger.textContent).toContain('已选 native-model');
+  expect(trigger.textContent).toContain('native-model');
   await modelAction('清除模型覆盖');
   expect(useChat.getState().modelOverrides.claude).toBe('');
-  expect(trigger.textContent).toContain('型号未报告');
+  expect(trigger.textContent).toContain('默认模型');
   fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '沿用原生配置' } });
   fireEvent.click(screen.getByRole('button', { name: '发送' }));
   expect(JSON.parse(JSON.stringify(sent[0]))).not.toHaveProperty('model');
 });
 
 it.each([
-  { actualModel: 'actual-history', nativeModel: 'configured-history', label: '最近 actual-history' },
-  { actualModel: undefined, nativeModel: 'configured-history', label: '会话 configured-history' },
+  { actualModel: 'actual-history', nativeModel: 'configured-history', label: 'actual-history' },
+  { actualModel: undefined, nativeModel: 'configured-history', label: 'configured-history' },
 ])('输入区区分历史证据与下一轮显式选择：$label', async ({ actualModel, nativeModel, label }) => {
   vi.spyOn(api, 'sessionEvents').mockResolvedValue({
     session: { agent: 'claude', sessionId: 'history', summary: '历史', lastModified: 1, nativeModel },
@@ -320,11 +323,11 @@ it.each([
   expect(trigger.textContent).toContain(label);
   expect(useChat.getState().modelOverrides.claude).toBe('');
   await menuChoose('模型选项', /候选模型/);
-  expect(trigger.textContent).toContain('已选 native-model');
-  expect(trigger.title).toContain('原生会话配置：configured-history');
-  if (actualModel) expect(trigger.title).toContain('实际模型：actual-history');
+  expect(trigger.textContent).toContain('native-model');
+  expect(trigger.title).toContain('当前覆盖：native-model');
   await modelAction('清除模型覆盖');
   expect(trigger.textContent).toContain(label);
+  if (actualModel) expect(trigger.title).toContain('最近实际运行：actual-history');
   fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '继续历史' } });
   fireEvent.click(screen.getByRole('button', { name: '发送' }));
   expect(sent.at(-1)).toMatchObject({ sessionId: 'history', model: undefined, reasoningEffort: 'high' });
@@ -353,7 +356,7 @@ it('原生目录读取和空结果均有状态，不伪造默认模型候选', a
   await screen.findByText('正在加载模型…');
   await act(async () => resolve({ agent: 'claude', entries: [], models: [], warnings: [] }));
   expect(await screen.findByText('原生目录未报告可选模型。')).toBeTruthy();
-  expect(screen.getByRole('button', { name: '模型选项' }).textContent).toContain('型号未报告');
+  expect(screen.getByRole('button', { name: '模型选项' }).textContent).toContain('默认模型');
   expect(screen.queryByRole('menuitemradio', { name: /默认模型/ })).toBeNull();
   expect(useChat.getState().modelOverrides.claude).toBe('');
 });
@@ -410,25 +413,25 @@ it('上下文用量和窗口与模型强度同区，来源及原生比例通过�
   expect(context.title).toContain('Claude 原生估计');
   fireEvent.click(context);
   const details = within(await screen.findByRole('dialog', { name: '上下文用量详情' }));
-  expect(details.getByText('原生占用比例：6.4%')).toBeTruthy();
+  expect(details.getByText(/用量 12,800 tokens \/ 窗口 200,000 tokens · 6\.4%/)).toBeTruthy();
   expect(details.getByText('模型：reported-context-model')).toBeTruthy();
   expect(sent).toHaveLength(0);
 });
 
-it('上下文未报告不猜窗口，Codex不按用量除窗口推算比例', async () => {
+it('无数据不渲染上下文按钮，Codex不按用量除窗口推算比例', async () => {
   showComposer();
-  const context = screen.getByRole('button', { name: '上下文用量' });
-  expect(context.textContent).toContain('用量未报告');
-  expect(context.textContent).toContain('窗口未报告');
+  // 无原生报告且无压缩事件时，上下文按钮整体隐藏，不再猜测窗口或比例
+  expect(screen.queryByRole('button', { name: '上下文用量' })).toBeNull();
   act(() => useChat.setState({ contextUsage: { source: 'codex_native', usedTokens: 200, windowTokens: 1000 } }));
+  const context = screen.getByRole('button', { name: '上下文用量' });
   expect(context.textContent).toContain('200 / 1,000');
   expect(context.title).toContain('Codex 原生统计/估算');
   fireEvent.click(context);
   const details = within(await screen.findByRole('dialog', { name: '上下文用量详情' }));
-  expect(details.getByText('原生占用比例：未报告')).toBeTruthy();
-  expect(details.queryByText(/20%/)).toBeNull();
+  expect(details.getByText(/用量 200 tokens \/ 窗口 1,000 tokens/)).toBeTruthy();
+  expect(details.queryByText(/%/)).toBeNull();
   act(() => useChat.setState({ contextUsage: { source: 'codex_native', usedTokens: 0 } }));
-  expect(context.textContent).toContain('0 / 窗口未报告');
+  expect(context.textContent).toContain('上下文 0');
 });
 
 it('输入控制行保留压缩进度与未确认状态，展开可看原生说明', async () => {

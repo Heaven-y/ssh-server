@@ -381,9 +381,6 @@ function EntryDetails({ entry, close }: { entry: RemoteFileEntry; close(): void 
         <dt className="text-muted-foreground">同步范围</dt>
         <dd>{SCOPE_LABELS[entry.scope]}</dd>
       </dl>
-      {entry.type === 'link' && (
-        <p className="mt-2 text-xs text-muted-foreground">仅显示链接自身信息，未读取或进入链接目标。</p>
-      )}
     </section>
   );
 }

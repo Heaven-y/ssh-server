@@ -39,11 +39,13 @@ function ServerRow({
   server,
   selected,
   references,
+  mode,
   select,
 }: {
   server: ManagedServer;
   selected: boolean;
   references: string;
+  mode: 'edit' | 'select';
   select(alias: string): void;
 }) {
   const id = useId();
@@ -52,7 +54,7 @@ function ServerRow({
     <li className="min-w-0">
       <button
         type="button"
-        aria-label={`选择服务器：${server.name}`}
+        aria-label={`${mode === 'edit' ? '编辑服务器' : '选择服务器'}：${server.name}`}
         aria-pressed={selected}
         aria-describedby={`${id}-target ${id}-status ${id}-references`}
         onClick={() => select(server.alias)}
@@ -83,11 +85,13 @@ export function ServerList({
   hosts,
   workspaces,
   alias,
+  mode,
   select,
 }: {
   hosts: UseQueryResult<ManagedServer[]>;
   workspaces: UseQueryResult<Workspace[]>;
   alias: string;
+  mode: 'edit' | 'select';
   select(alias: string): void;
 }) {
   return (
@@ -114,6 +118,7 @@ export function ServerList({
               server={server}
               selected={server.alias === alias}
               references={referenceLabel(workspaces, server.alias)}
+              mode={mode}
               select={select}
             />
           ))}

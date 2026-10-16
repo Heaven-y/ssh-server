@@ -61,7 +61,10 @@ it('标题仅选择会话，更多先展示菜单，不直接打开综合管理�
   const read = vi.spyOn(api, 'sessionEvents').mockResolvedValue({ session, events: [] });
   mount();
   const title = screen.getByText(session.summary);
-  expect(title.closest('button')?.textContent).toBe(session.summary);
+  // 行尾新增相对更新时间（lastModified=1 → “1/1”），标题文本本身保持单行省略。
+  expect(title.textContent).toBe(session.summary);
+  expect(title.closest('button')?.textContent).toContain(session.summary);
+  expect(title.closest('button')?.textContent).toContain('1/1');
   fireEvent.click(title);
   await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
   expect(screen.queryByRole('dialog')).toBeNull();
@@ -166,7 +169,7 @@ it('复制可打开的网页深度链接，末尾分叉先呈现原生操作说�
   expect(await screen.findByText('会话链接已复制')).toBeTruthy();
   await openAction('分叉会话');
   const dialog = screen.getByRole('dialog', { name: '分叉会话' });
-  expect(dialog.textContent).toContain('不会回滚项目文件');
+  expect(dialog.textContent).toContain('源会话保持不变');
   expect(within(dialog).getByRole('button', { name: '确认分叉' })).toBeTruthy();
   vi.unstubAllGlobals();
 });
