@@ -40,9 +40,9 @@ export function SshConnectionPanel({ workspace }: { workspace: Workspace }) {
       {opened === 'details' && (
         <DetailDialog title="SSH 连接" onClose={() => setOpened(undefined)}>
           <div className="space-y-4 text-sm">
-            <p role="status">{label}（服务器共享状态）</p>
+            <p role="status">{label}</p>
             <p className="wrap-anywhere">远端目录：{workspace.remoteDir}</p>
-            <p>认证方式、密码保存与断开操作在服务器中统一管理，会影响引用该服务器的所有工作区。</p>
+            <p>认证与断开由服务器档案统一管理。</p>
             <button type="button" className={buttonClass('primary')} onClick={() => setOpened('manager')}>
               管理服务器
             </button>

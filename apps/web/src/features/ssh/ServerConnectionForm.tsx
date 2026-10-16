@@ -5,7 +5,7 @@ import { SshPasswordField } from './SshPasswordField';
 import { useSshConnection } from './use-ssh-connection';
 
 const PHASES = {
-  idle: '尚未连接；私钥或已保存密码可在工作区操作时自动连接',
+  idle: '尚未连接',
   connecting: '正在验证服务器认证…',
   verified: '服务器已连接',
   error: 'SSH 操作失败',

@@ -101,7 +101,7 @@ export function WorkspaceForm(props: {
         ))}
       </ol>
       <div role="status" className="text-xs text-muted-foreground">
-        {setup.defaultsReady ? '已读取产品同步默认值；本次草稿独立保存。' : '正在读取产品同步默认值…'}
+        {!setup.defaultsReady && '正在读取产品同步默认值…'}
         <SettingsLoadError error={setup.defaultsError} retry={setup.retryDefaults} message="同步默认值读取失败" />
       </div>
       <h3

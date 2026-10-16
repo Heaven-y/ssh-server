@@ -193,7 +193,7 @@ export default function NativeConfigDialog({
           </div>
           <ConfigFeedback document={document} dirty={dirty} phase={phase} message={message} />
           <p className="text-xs leading-5 text-muted-foreground">
-            新配置用于后续调用，当前轮次保持原设置。Codex 新会话使用默认模型，历史会话沿用原模型；手动指定可覆盖。
+            保存后用于后续调用，当前轮次保持原设置；历史会话沿用原模型。
           </p>
         </div>
         <footer className="flex shrink-0 justify-end gap-2 border-t border-border px-5 py-4">

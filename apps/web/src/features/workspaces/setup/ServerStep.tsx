@@ -13,7 +13,6 @@ export function ServerStep({ input, change }: { input: WorkspaceInput; change(pa
     queryFn: ({ signal }) => api.listSshHosts(signal),
     retry: false,
   });
-  const selected = hosts.data?.find((host) => host.alias === input.sshHost);
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -35,9 +34,6 @@ export function ServerStep({ input, change }: { input: WorkspaceInput; change(pa
           ))}
         </select>
       </div>
-      {selected && (
-        <p className="text-sm text-muted-foreground">认证由服务器档案统一管理；工作区浏览与验证会复用该服务器连接。</p>
-      )}
       {hosts.isError && (
         <p role="alert" className="text-sm text-destructive-foreground">
           服务器列表读取失败：{hosts.error.message}

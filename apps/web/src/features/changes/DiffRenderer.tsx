@@ -42,7 +42,6 @@ function FeedbackForm({
         } else setNotice('未加入反馈，请核对行号、评论和待发送数量。');
       }}
     >
-      <p className="text-xs leading-5 text-muted-foreground">点击差异行，或通过侧别与行号选择真实显示的行。</p>
       <div className="grid grid-cols-2 gap-2">
         <label htmlFor={`${id}-side`} className="text-xs">
           侧别
@@ -138,18 +137,14 @@ export default function DiffRenderer(props: DiffViewProps) {
     return (
       <RawDiff
         text={props.diff.text}
-        message={
-          parsed.error
-            ? '差异解析失败，保留原文本；不提供行反馈。'
-            : '没有可评论的文本差异；二进制或模式变化以文件列表为准。'
-        }
+        message={parsed.error ? '差异解析失败，已保留原文本。' : '没有可评论的文本差异。'}
       />
     );
   return (
     <div className="space-y-3">
       {props.diff.truncated && (
         <p role="status" className="text-xs text-warning">
-          差异已截断，请按单文件缩小范围；当前不提供行反馈。
+          差异已截断，请按单文件缩小范围。
         </p>
       )}
       {parsed.files.map((file, index) => (

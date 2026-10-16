@@ -5,7 +5,7 @@ import { buttonClass } from '../../../ui/styles';
 function VerifiedDirectories({ ticket }: { ticket: WorkspaceSetupVerification }) {
   return (
     <div role="status" className="rounded border border-border p-3 text-xs leading-5">
-      <p>验证通过：目录与连接可用；修改配置后需重新验证。</p>
+      <p>验证通过：目录与连接可用。</p>
       <p>
         本地：{ticket.local.empty ? '空目录' : '非空目录'}
         {ticket.local.git ? '，已有 .git' : ''}

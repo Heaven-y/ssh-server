@@ -154,7 +154,6 @@ export default function ChangesPanel(input: ChangesPanelInput) {
   const model = useChangesPanel(input);
   return (
     <div className="min-h-0 min-w-0 flex-1 space-y-3 overflow-auto p-3" aria-label="工作区改动">
-      <p className="text-xs leading-5 text-muted-foreground">本轮改动对比执行前后的本地快照，含期间的外部编辑。</p>
       <ChangeControls model={model} />
       <ChangeNotices model={model} />
       <ChangeFiles model={model} />

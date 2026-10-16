@@ -93,7 +93,7 @@ describe('服务器文件下载的唯一保存路径', () => {
     expect(screen.getByRole('status').textContent).toContain('3 字节');
     expect(screen.queryByText(/下载完成/)).toBeNull();
     await act(async () => finish());
-    expect((await screen.findByRole('status')).textContent).toContain('下载完成，已保存到所选位置。');
+    expect((await screen.findByRole('status')).textContent).toContain('下载完成。');
     expect(writable.abort).not.toHaveBeenCalled();
   });
 

@@ -61,7 +61,7 @@ it('资源在右栏只保留一个控制器，目标详情可核对且不再显�
   expect(read).toHaveBeenCalledTimes(1);
   const region = within(screen.getByRole('region', { name: '服务器资源' }));
   expect(region.getByText('实验服务器')).toBeTruthy();
-  expect(region.getByText('当前 SSH 节点；CPU 利用率需连续两次采样。')).toBeTruthy();
+  expect(region.getByText('当前 SSH 节点。')).toBeTruthy();
   expect(region.queryByText(/采样不运行模型/)).toBeNull();
   fireEvent.click(region.getByText('目标与采样详情'));
   expect(region.getByText(/researcher@example.invalid:22/)).toBeTruthy();

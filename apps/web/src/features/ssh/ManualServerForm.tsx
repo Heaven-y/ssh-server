@@ -149,11 +149,8 @@ export function ManualServerForm({
       <ServerPasswordEditor editor={credential} passwordMode={input.authMode === 'password'} busy={request.busy} />
       <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
         {identityLocked
-          ? '已有工作区引用，不能改变地址、端口、账号与私钥目标。认证方式仅在空闲时可变更；已绑定专用私钥路径时不能切换为密码。变更后需要重新验证。'
-          : '保存后可被多个工作区共用。密码独立由 Windows 当前用户加密保存，不写入服务器档案。'}
-      </p>
-      <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
-        确认保存不代表认证成功，不会发起 SSH。修改后需通过独立连接入口验证；已有连接及旧工作区验证会失效。
+          ? '已有工作区引用，地址、端口、账号与私钥不可更改；认证方式只能在空闲时变更，变更后需重新验证。'
+          : '保存后可被多个工作区共用；密码由本机加密保存。'}
       </p>
       {request.error && (
         <p role="alert" className="text-sm text-destructive-foreground sm:col-span-2">

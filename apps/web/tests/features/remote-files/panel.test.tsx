@@ -136,11 +136,11 @@ it('点目录的删除仍先预检并显式确认，保留不可逆风险和后�
     { kind: 'delete', source: '/project/.git', destination: undefined },
     expect.any(AbortSignal),
   );
-  expect(screen.getByText(/任务提交后在后台运行，关闭面板不会取消/)).toBeTruthy();
+  expect(screen.getByText(/任务提交后在后台运行/)).toBeTruthy();
   expect(confirm.disabled).toBe(true);
   fireEvent.click(confirm);
   expect(api.submitRemoteFileTask).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('checkbox', { name: /已核对服务器、源与目标/ }));
+  fireEvent.click(screen.getByRole('checkbox', { name: /已核对以上影响/ }));
   fireEvent.click(confirm);
   await waitFor(() => expect(api.submitRemoteFileTask).toHaveBeenCalledExactlyOnceWith(workspace.id, preview.id));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

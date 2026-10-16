@@ -143,9 +143,7 @@ it.each(['claude', 'codex'] as const)('一体输入底栏用菜单设置%s模型
       event: { type: 'session', sessionId: 'native', agent, cwd: '.', model: 'reported-model' },
     });
   });
-  expect(within(controls).getByRole('button', { name: '模型选项' }).title).toContain(
-    '当前覆盖：native-model，用于下一轮请求',
-  );
+  expect(within(controls).getByRole('button', { name: '模型选项' }).title).toContain('当前覆盖：native-model');
   fireEvent.click(screen.getByRole('button', { name: '停止' }));
   expect(sent.at(-1)).toEqual({ type: 'chat.interrupt', turnId: 'turn' });
   act(() => emit({ type: 'turn.finished', turnId: 'turn', workspaceId: workspace.id, agent }));
