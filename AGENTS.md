@@ -5,12 +5,11 @@
 - 回复、文档、注释、提交信息使用中文。
 - 开始任何任务前，先阅读并遵循 `.agents/skills/using-superpowers/SKILL.md`（项目未安装 superpowers 的启动钩子，靠这一步代替）。
 - skill 内出现的 `${CLAUDE_PLUGIN_ROOT}/.claude/skills/<名称>/...` 一律改用 `.agents/skills/<名称>/...`（仓库根目录相对路径），不要依赖该变量。
-- 文件使用 UTF-8、LF 换行；`.ps1` 例外，使用带 BOM 的 UTF-8。
 - 仓库公开：不写入真实服务器地址、端口、用户名、密钥，示例用 `my-server`、`~/projects/demo`。
 - 有成熟的库或组件就直接使用，不全部手写；选用标准与记录见 `docs/guides/dev-environment.md` 1.1、1.2。
-- 后端沿用 Node.js + TypeScript + Fastify；Python 分析默认通过 SSH 在服务器已有环境执行。技术栈、并发与打包范围遵循 `docs/engineering/decisions.md` D19、D20 和 `docs/engineering/architecture.md`，不因讨论备选语言而自动迁移或增加打包任务。
+- 后端沿用 Node.js + TypeScript + Fastify；Python 分析默认通过 SSH 在服务器已有环境执行。技术栈与打包范围以 `docs/engineering/decisions.md` D19、D20 和 `docs/engineering/architecture.md` 为准。
 - 未经用户明确要求不提交、不推送。
-- 分支采用 `main` → 保留的大功能分支 → 短期小功能分支；保留现有 `feat/ssh-workflow`，Codex 新建分支使用 `codex/` 前缀。小分支合入所属大分支、大分支阶段合入 `main` 均使用 `git merge --no-ff`，保留原始提交和合并节点；仅在确认已合并且无工作树占用后删除小分支，大分支不自动删除。不使用 squash 或 rebase 代替合并，不强制删除未合并分支或改写历史，细则见 `docs/guides/dev-environment.md` 1.6。
+- Git 分支与提交遵循 `docs/guides/dev-environment.md` 1.6：大功能分支负责一个完整功能域、合入 `main` 后保留，小分支负责一项子功能、合入后删除，合并统一使用 `git merge --no-ff`，本地与远端保持同步。
 
 ## 文档
 
@@ -26,6 +25,4 @@
 
 实现与文档不一致时，先更新文档或向用户确认。
 
-文档入口见 `docs/README.md`，以当前需求、架构、路线图及最新决策为准。已获用户批准删除被现行规范覆盖的旧设计、计划、过程验收与旧图；必要取舍集中于设计决策，不由旧兼容承诺或未观察项自动派生新任务，也不把旧测试数字当作当前结果。VS Code/CLI 外部界面是可选检查手段，不是本网页产品的交付依赖。
-
-决策记录属于长期追溯资料：保留 `docs/engineering/decisions.md` 中的背景、理由、约束和替代关系，后续方案变化追加记录，不因资料精简删除决策或覆盖历史事实。删除重复过程稿前，将独有的有效取舍迁入现行说明，并保留可查的提交锚点；临时日志不作为唯一长期记录。
+文档入口与适用规则见 `docs/README.md`。决策记录属于长期追溯资料：保留 `docs/engineering/decisions.md` 中的背景、理由、约束和替代关系，不因资料精简删除决策或覆盖历史事实；删除重复过程稿前，把独有的有效取舍迁入现行说明并保留提交锚点。
