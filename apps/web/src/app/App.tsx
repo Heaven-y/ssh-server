@@ -55,7 +55,7 @@ function OpenPalette({
   );
 }
 
-/** 对话与工具停靠分屏；收起及方向变化不关闭编辑器或终端。 */
+/** 对话与工具停靠分屏；收起及方向变化不关闭已打开文件或终端。 */
 export function App() {
   const sync = useRef<SyncActions>(null);
   const versions = useRef<VersionsActions>(null);

@@ -4,7 +4,7 @@ import { buttonClass } from '../ui/styles';
 import { useUiPreferences } from '../ui/ui-preferences';
 
 export type WorkspacePanelKind = 'resources' | 'files';
-/** 停靠工具面板：收起仅隐藏子树，不释放文件编辑器和编辑登记。 */
+/** 停靠工具面板：收起仅隐藏子树，不释放已打开文件或资源查询。 */
 export function WorkspacePanelFrame({
   kind,
   children,
@@ -71,7 +71,7 @@ export function WorkspacePanelFrame({
         <button
           type="button"
           aria-label={`收起${label}面板`}
-          title={kind === 'files' ? '收起，保留未保存内容' : '收起资源面板'}
+          title={kind === 'files' ? '收起文件面板' : '收起资源面板'}
           className={buttonClass('ghost')}
           onClick={hide}
         >

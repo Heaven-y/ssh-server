@@ -39,7 +39,7 @@ function limits(opened: boolean, minimum: number, constrainHidden = true) {
     collapsedSize: 0,
   };
 }
-/** 方向变化只更新同一个Group，编辑器和资源控制器始终保留父子关系。 */
+/** 方向变化只更新同一个Group，已打开文件子树和资源控制器始终保留父子关系。 */
 export function WorkspaceTools({ resources, files, resourcesOpen, filesOpen, horizontal }: WorkspaceToolsProps) {
   const group = useGroupRef();
   const element = useRef<HTMLDivElement>(null);

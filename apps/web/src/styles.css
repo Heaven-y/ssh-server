@@ -63,7 +63,7 @@
   background: var(--color-accent);
 }
 
-/* 终端仅使用自己的宿主与分隔线样式，不影响聊天/文件编辑器。 */
+/* 终端仅使用自己的宿主与分隔线样式，不影响聊天与文件面板。 */
 .terminal-separator {
   flex-shrink: 0;
   background: var(--color-border);

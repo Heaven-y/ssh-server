@@ -40,7 +40,7 @@ function VersionOverview({ workspace, status, statusError, refreshing, refresh, 
             {status?.branch ? ` · ${status.branch}` : ''}
           </p>
           <p className="mt-1 text-xs leading-6 text-muted-foreground">
-            仅记录已保存到本地磁盘的小文件，不包含编辑器中尚未保存的内容。
+            仅记录已保存到本地磁盘的小文件，不包含外部编辑器中尚未保存的内容。
           </p>
         </div>
         <button

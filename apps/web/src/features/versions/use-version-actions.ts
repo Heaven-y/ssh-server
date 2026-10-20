@@ -123,7 +123,7 @@ export function useVersionActions(id: string, setBusy: (busy: boolean) => void) 
           setPreview(undefined);
           setNotice({
             tone: 'success',
-            text: `已恢复 ${result.restored.length} 个本地文件。历史记录与未保存的编辑器内容保持原样。`,
+            text: `已恢复 ${result.restored.length} 个本地文件。历史记录与外部编辑器中未保存的内容保持原样。`,
           });
         }
         await synchronize();
