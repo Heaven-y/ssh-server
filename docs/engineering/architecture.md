@@ -16,7 +16,7 @@
 │   ├─ ssh        ──► ssh2（认证、执行、目录浏览、终端）         │
 │   ├─ sync       ──► rclone bisync（SFTP）                    │
 │   ├─ metrics    ──► SSH 只读采样 ──► 网页资源状态            │
-│   ├─ files      ──► 本地小文件浏览与编辑                     │
+│   ├─ files      ──► 本地小文件只读浏览                       │
 │   ├─ remote-files ► SSH/SFTP 浏览、操作任务与显式下载     │
 │   ├─ vcs        ──► 本机 git（工作区本地文件夹）              │
 │   ├─ sessions   ──► SDK 会话接口 / Codex thread 接口          │
@@ -47,7 +47,7 @@
 | 消息渲染 | streamdown（流式 Markdown）+ shiki（代码高亮）、react-virtuoso4.18.16（动态长列表） | 时间线投影合并明确读取工具；展开状态留在列表父层，选择代次重置视图。diff使用按需加载的@pierre/diffs1.5.1及GitHub高对比双主题，解析和组件失败降级为有界原文本 |
 | 前端状态与接口数据 | zustand、`@tanstack/react-query`、partysocket | zustand 管流式状态，react-query 管接口加载与刷新，partysocket 管 WebSocket 重连 |
 | 终端 | @xterm/xterm + @xterm/addon-fit | |
-| 文件编辑 | `@uiw/react-codemirror` / CodeMirror 6 | 原生配置和轻量脚本编辑共用，按需加载，不引入完整 IDE |
+| 文件与配置查看 | `@uiw/react-codemirror` / CodeMirror 6 | 原生配置编辑与本地文件只读查看共用，按需加载，不引入完整 IDE |
 | 资源状态 | SSH只读采样、有界共享缓存、HTTP/React Query单controller | 仅资源面板自身可见、网页连接open且设置有效时刷新；资源隐藏/页面隐藏/断线取消HTTP并暂停，文件开关不干扰；宿主按认证身份共享，磁盘按目录隔离 |
 | 字体 | @fontsource/ibm-plex-sans、@fontsource/jetbrains-mono | 本地打包，不访问外部字体服务 |
 | 存储 | 本机JSON与独立系统加密凭据 | 工作区、服务器档案及产品偏好；不另存原生对话正文 |
@@ -87,7 +87,7 @@ ssh-server/
 │     ├─ src/
 │     │  ├─ app/              # 页面外壳与顶栏
 │     │  ├─ features/         # chat、changes、workspaces、ssh、sync、files、versions、settings
-│     │  ├─ ui/               # 通用控件样式、CodeMirror 编辑组件
+│     │  ├─ ui/               # 通用控件样式、CodeMirror 代码组件
 │     │  └─ lib/              # 接口客户端、查询与 WebSocket
 │     └─ tests/               # lib 与 features 下对应测试
 ├─ packages/shared/
@@ -109,7 +109,7 @@ ssh-server/
 - Vitest 只发现各包 `tests/` 下的用例；TypeScript 同时检查 `src/` 与 `tests/`，覆盖率仅统计生产源码，重复率排除测试目录。
 - 真实 Agent / SSH 验收继续使用 `scripts/dev/e2e-*.ts`。以后引入 Playwright 端到端测试时再建立 `tests/e2e/`，当前不建空目录。
 - `remote-tools` 是后端内部的独立进程入口，不单独拆包。SSH 认证交互集中在前端 `features/ssh/`，工作区表单复用它。
-- 根目录只放仓库入口文档和工具需要的根配置；资源模块仅在实施时创建。远端浏览位于 `remote-files/`，本地编辑继续放 `files/`，测试仍按模块位于所属包的 `tests/`。
+- 根目录只放仓库入口文档和工具需要的根配置；资源模块仅在实施时创建。远端浏览位于 `remote-files/`，本地只读浏览继续放 `files/`，测试仍按模块位于所属包的 `tests/`。
 
 ## 4. 本地数据存放
 
@@ -310,7 +310,8 @@ shared/policy提供严格规则目录/schema；policy支持工作区默认启停
 - 采样失败保留最近值并标为过期，缺少指标显示不可用，不能显示为零。服务器不安装采集器、不运行常驻监控服务，不要求 `nvitop`。
 - 采样函数统一 `{ signal, timeoutMs }` 选项对象，不保留直接AbortSignal重载。
 - `useServerObservationVersion`订阅公开档案/凭据缓存与显式重认证失效，不新增查询轮询；相同状态刷新不增加版本。内部连接key、凭据代次和认证摘要只在后端，不能返回网页。
-- `ResourceMeter`提供具名仪表，`resources.css`在`.resource-scope`内定义明暗蓝/青/紫变量；缺值不渲染假零，过期/不可用继续显示文字，不以利用率高自动告警。共享缓存容量、退避与资源输出预算见[设计决策第6节](decisions.md#6-手动结果分析与实时资源显示)。
+- 缓存与预算：按实际地址、端口、账号、认证方式、凭据及信任摘要共享宿主缓存，磁盘再按远端目录隔离；成功缓存5秒并随有效间隔重算，失败退避5/10/20/30秒、60秒空闲淘汰，最多64宿主/128目录。每组采样默认总时限8秒、每流128 KiB，GPU每项3秒、进程50条/GPU记录100条；singleflight与手动刷新同样有界，单HTTP取消不影响其他共享读取者。CPU连续差分且首帧为null、guest不重复计入，非法或N/A保留null；CSV解析保留物理GPU index/UUID，进程只采comm。
+- `ResourceMeter`提供具名仪表，`resources.css`在`.resource-scope`内定义明暗蓝/青/紫变量；缺值不渲染假零，过期/不可用继续显示文字，不以利用率高自动告警。
 
 #### 5.11.1 slurm：当前账号只读作业
 
@@ -371,6 +372,17 @@ chat-store只保存默认Agent，初始与新会话模型覆盖为空；显式�
 
 启动创建唯一environment service并开始一次并行检测，每工具5秒/2KiB；GET复用报告，POST手动刷新并拒绝并行刷新。正常执行即为可用，版本仅提取展示，无法解析显示未知；可用状态的条件限于退出码0、未超时且输出在限额内，输出与私有路径保留在后端。Claude原生路径在claude-launch统一，Codex沿用实际启动resolver；Node.js取当前进程，Git/rclone业务要求保持一致。网页共享查询，`EnvironmentSummary`在全部可用时返回null，缺失/失败保留设置入口；设置内保留状态、版本、检测时间和官方指引。全部Agent不可用仍可管理服务器；检测范围限于版本与环境探测，模型调用、SSH登录、安装与初始化均不在其中，检测基础见D37，显示策略见D40。
 
+### 5.15 terminal：网页终端通道
+
+对应需求 F4、决策 D15。`terminal/binding` 签发五分钟签名票，绑定固定工作区、配置指纹、认证代次与随机值，不使用无界登记Map；过期原签名只允许刷新同一身份，不能开启PTY。固定绑定覆盖 IdentityFile 列表、所选私钥路径与内容摘要，私密摘要不进入令牌或日志。
+
+- 通道与协议：输入使用严格 base64 控制帧、输出为二进制，控制帧上限 64 KiB；独立终端 WebSocketServer 经 Fastify 公开升级入口与安全钩子选择，不改 ws 私有解析器、不降低聊天上限，`preClose` 回收活跃终端。
+- 移交与结束：SSH 通道 helper 统一取消与迟到回调；初始化用实际控制字节确认，避免回显误判，成功后暂停流再移交，SFTP 回调内即监听错误。PTY 开启后立即监听 EOF/退出，EOF 只是半关闭，未知退出码保持 `null`。
+- 背压：待发送与未确认输出分别计数，同时限制 stdout/stderr，输出排空后再发送退出；输入与输出队列独立。单窗格失败只释放所属通道与名额，不断开共享 SSH。
+- 稳定宿主：xterm 与原生 WS 放独立 runtime，分栏树只放槽位，所有窗格在稳定宿主下同级挂载。每标签最多4窗格、叶子最低 260×140px，不足时只显示活动窗格；收起、最大化、分屏和聊天切换不换实例，隐藏只停止 fit 并在 ready 后补发一次尺寸。
+- 输入保护：保留 Ctrl+C、原始粘贴与输入法事件，消费 OSC52、不加载自动链接插件；多行粘贴先确认，按 xterm 当前 bracketed-paste 模式封装，保留换行、不附 Enter，取消已开始粘贴仍闭合边界，断线或销毁则丢弃待发内容。
+- 终端不经过 Agent 黑名单与执行前同步，也不调用模型；目标、目录确认与独立 PTY 的生命周期见需求 F4 与界面规范 5.3。
+
 ## 6. 关键流程
 
 ### 6.1 一轮对话
@@ -399,7 +411,7 @@ chat-store只保存默认Agent，初始与新会话模型覆盖为空；显式�
 
 ## 7. 设计决策
 
-完整记录见[设计决策](decisions.md)，长期维护D01–D42及后续背景与理由。现行方案遵循D36单版本、D37本机入口/档案、D38流程保护、D40强度/文本Slurm与D42停靠/原生分叉/密码编辑/模型收敛；D41自由浮窗保留为被替代的历史，不并行维护。
+完整记录见[设计决策](decisions.md)，长期维护D01–D44及后续背景与理由。现行方案遵循D36单版本、D37本机入口/档案、D38流程保护、D40强度/文本Slurm、D42停靠/原生分叉/密码编辑/模型收敛与D44本地文件只读/设置入口收敛；D41自由浮窗保留为被替代的历史，不并行维护。
 
 - 会话固定 Agent，沿用原生上下文、skills 与可接入的 `/` 命令。
 - 账号密码与私钥均支持，可选择本机系统加密保存密码；断开保留保存项，取消保存时清除并断开。
@@ -420,7 +432,7 @@ chat-store只保存默认Agent，初始与新会话模型覆盖为空；显式�
 
 实际结果统一见[最新验收](../guides/ui-usability-optimization-acceptance.md)。需求中的A编号是验收条件，不因架构已有实现就自动标为通过；旧V编号及分阶段过程记录不再在此重复。
 
-- D39共用右栏、D40优化、D41自由浮窗和D42停靠分别使用各自证据；历史完整门禁、截图或CI不代替新树验证。
+- D39共用右栏、D40优化、D41自由浮窗、D42停靠、D43界面简化与D44本地文件只读分别使用各自证据，其中D43/D44只在[决策](decisions.md)记录范围内成立；历史完整门禁、截图或CI不代替新树验证。
 - 原生模型、真实SSH/集群、受控夹具、合成IME和OS输入法分别标范围；没有新的付费模型、真实集群文本Slurm成功、OS输入法或CI检查时不得扩写通过。
 - A8只要求网页删除及官方API/原生记录核对；VS Code/CLI和系统选择器是检查手段，不派生外部客户端功能。被策略拒绝的系统界面检查不绕过。
 - 独立SSH连接中断、受控取消和成功哈希不能推导共享池、全网络故障或原任务已收到verified。

@@ -10,10 +10,10 @@
 | 对话 | Codex/Claude分组与固定Agent会话；重命名、网页隔离置顶、同站会话链接、原生末尾或可信已结束位置分叉；一体输入、流式回复、审批/中断 |
 | 原生能力 | 默认模型仅沿用原生配置，输入区可显式覆盖；强度默认high，五档直接可选、自动不覆盖；模型报告与选择分离，可执行skills/命令和原生上下文 |
 | 同步与执行 | rclone双向代码/小文件同步，页面自动同步默认60秒；手动及执行前后不延迟，删除确认与冲突保留 |
-| 编辑与版本 | CodeMirror轻量编辑；本地Git保存版本、历史、差异、恢复、本轮净变化与行反馈 |
+| 文件与版本 | 本地文件只读查看，复用 CodeMirror 语法高亮与搜索；本地Git保存版本、历史、差异、恢复、本轮净变化与行反馈 |
 | 服务器文件 | 点文件默认可见；同服务器浏览、新建、重命名、移动、复制、删除、结果核对；涉及同步范围时协调两端 |
 | 下载 | 明确选择位置后流式保存，仅使用File System Access API；不自动进入同步或Git |
-| 终端与资源 | 多标签/分屏SSH终端；工作区/会话、对话、资源、文件自适应停靠，资源和文件独立开关，分隔线可调；收起保留编辑/PTY，Slurm只读文本查询 |
+| 终端与资源 | 多标签/分屏SSH终端；工作区/会话、对话、资源、文件自适应停靠，资源和文件独立开关，分隔线可调；收起保留已打开文件与PTY，Slurm只读文本查询 |
 | 设置与布局 | 默认浅色、主题与有界尺寸记忆、分类设置和单一原生配置入口；顶栏突出SSH，正常网页连接静默，必要确认与错误保留 |
 
 项目运行、训练、统计和绘图默认使用服务器已有环境。用户发消息后才检查训练结果，不自动检测完成或唤起Agent。保存文件不创建Git提交，只有“保存版本”才提交用户项目。
@@ -37,9 +37,9 @@ npm.cmd start
 
 ## 当前状态与边界
 
-第一版核心功能已有实现，当前交付状态见[路线图](docs/roadmap.md)。停靠工作台、原生会话操作和设置收敛见[D42](docs/engineering/decisions.md#d42-停靠工作台会话操作与设置收敛2026-10-09)，本轮验证范围、人工视觉检查状态与代表图统一见[最新验收](docs/guides/ui-usability-optimization-acceptance.md)。D42替代D41自由浮窗，旧结果不作为新布局通过证明。仅维护当前接口与数据格式；旧或损坏配置/任务不会自动清空、迁移或重放，恢复使用前须先核对原始数据，见[开发指南](docs/guides/dev-environment.md#413-windows-bisync-状态文件名过长)。
+第一版核心功能已有实现，当前交付状态见[路线图](docs/roadmap.md)。停靠工作台、原生会话操作和设置收敛见[D42](docs/engineering/decisions.md#d42-停靠工作台会话操作与设置收敛2026-10-09)，验证范围与代表图见[最新验收](docs/guides/ui-usability-optimization-acceptance.md)。仅维护当前接口与数据格式；旧或损坏配置/任务不会自动清空、迁移或重放，恢复使用前须先核对原始数据，见[开发指南](docs/guides/dev-environment.md#39-windows-bisync-状态文件名过长)。
 
-Windows rclone无法保留含反斜杠的远端根，产品会在传输前拒绝，不能直接替换路径字符重试。外部客户端界面和OS控件是检查手段，历史未观察事实不虚构通过，也不扩成额外产品功能。
+Windows rclone无法保留含反斜杠的远端根，产品会在传输前拒绝，不能直接替换路径字符重试。
 
 Slurm使用固定格式的`squeue`文本，只查询当前SSH账号，不依赖特定JSON结构；共享账号不等于“我的任务”，当前SSH节点资源不代表作业计算节点。无Slurm明确显示不可用，不自动安装、轮询全部作业、提交或取消任务。
 
@@ -53,7 +53,7 @@ Slurm使用固定格式的`squeue`文本，只查询当前SSH账号，不依赖�
 - [需求](docs/product/requirements.md)、[界面](docs/product/ui-layout.md)、[架构](docs/engineering/architecture.md)。
 - [设计决策](docs/engineering/decisions.md)：保留取舍、被放弃方案及后续替代关系，供复盘。
 - `npm run check`：类型、ESLint、格式、重复率与覆盖率完整门禁；CI在Windows/Linux执行。
-- 开发分支使用 `main → feat/ssh-workflow → codex/短期分支`，两级 `git merge --no-ff` 保留历史；提交与推送须获授权，见[分支规范](docs/guides/dev-environment.md#16-本仓库的-git-分支与提交)。
+- 分支使用 `main`、`feat/<功能域>` 大功能分支与 `<类型>/<主题>` 小分支，合并统一 `git merge --no-ff` 并保持本地与远端同步；提交与推送须获授权，见[分支规范](docs/guides/dev-environment.md#16-本仓库的-git-分支与提交)。
 
 ## 安全
 
