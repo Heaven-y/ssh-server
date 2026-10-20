@@ -122,7 +122,7 @@ export function RestoreConfirmation({
       <h3 className="text-sm font-medium">恢复预览 · {preview.commit.slice(0, 8)}</h3>
       <p className="text-xs leading-6 wrap-anywhere">
         范围：{preview.path ?? '整个工作区的历史跟踪文件'}
-        。确认后将按预览覆盖或删除本地磁盘文件，再尝试同步。未保存的编辑器内容不会写入本次恢复。
+        。确认后将按预览覆盖或删除本地磁盘文件，再尝试同步。外部编辑器中未保存的内容不会写入本次恢复。
       </p>
       <ChangeList changes={preview.changes} emptyLabel="没有需要恢复的文件改动。" />
       <ExcludedList excluded={preview.excluded} />

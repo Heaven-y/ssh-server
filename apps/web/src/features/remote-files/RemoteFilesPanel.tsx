@@ -151,7 +151,7 @@ function RemoteFeedback({ browser }: { browser: Browser }) {
       </p>
       {code === 'target_changed' ? (
         <p className="text-xs text-muted-foreground">
-          目标已变化，请关闭并重新打开文件面板。未保存的本地编辑内容仍保留。
+          目标已变化，请关闭并重新打开文件面板。已打开的本地只读文件仍保留。
         </p>
       ) : (
         <RecoveryButton browser={browser} />

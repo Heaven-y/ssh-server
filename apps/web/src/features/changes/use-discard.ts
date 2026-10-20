@@ -76,7 +76,7 @@ export function useDiscard(workspaceId: string) {
         queryClient.setQueriesData({ queryKey: queryKeys.versions(workspaceId) }, result.status);
         if (mounted.current) {
           setPreview(undefined);
-          setNotice(`已放弃${result.restored.length}个本地文件；编辑器未保存内容保留。`);
+          setNotice(`已放弃${result.restored.length}个本地文件；外部编辑器中未保存的内容不受影响。`);
         }
         await synchronize();
         void queryClient.invalidateQueries({ queryKey: ['working-diff', workspaceId] });

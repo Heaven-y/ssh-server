@@ -21,7 +21,7 @@ export function DiscardConfirmation({
       <h3 className="text-sm font-medium">放弃本地文件改动</h3>
       <p className="text-xs leading-6 wrap-anywhere">
         {preview.path} · {preview.head ? `恢复到${preview.head.slice(0, 8)}` : '尚无保存版本，将删除新增文件'}
-        。只操作磁盘，未保存编辑缓冲保持；后续服务器删除需在同步详情中确认。
+        。只操作磁盘；后续服务器删除需在同步详情中确认。
       </p>
       <ChangeList changes={preview.changes} emptyLabel="没有需要放弃的磁盘差异。" />
       <ExcludedList excluded={preview.excluded} />
