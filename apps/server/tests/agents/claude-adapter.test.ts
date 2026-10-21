@@ -20,8 +20,18 @@ type CanUseTool = (
   o: { signal: AbortSignal },
 ) => Promise<{ behavior: string; message?: string }>;
 
-function fakeQuery(messages: unknown[] = [], fail?: Error, models: ModelInfo[] | Error = []) {
-  const state: { options?: Record<string, unknown>; prompt?: unknown; interrupted: boolean } = { interrupted: false };
+function fakeQuery(messages: unknown[] = [], fail?: Error, models: ModelInfo[] | Error = [], hold = false) {
+  const state: {
+    options?: Record<string, unknown>;
+    prompt?: unknown;
+    interrupted: boolean;
+    release?: () => void;
+  } = { interrupted: false };
+  const gate = hold
+    ? new Promise<void>((resolve) => {
+        state.release = resolve;
+      })
+    : undefined;
   const queryFn: QueryFn = ({ prompt, options }) => {
     state.options = options;
     async function* gen() {
@@ -30,9 +40,10 @@ function fakeQuery(messages: unknown[] = [], fail?: Error, models: ModelInfo[] |
       state.prompt = first.value.message.content;
       for (const m of messages) yield m;
       if (fail) throw fail;
+      if (gate) await gate;
     }
     return Object.assign(gen(), {
-      close: vi.fn(),
+      close: vi.fn(() => state.release?.()),
       supportedCommands: async () => [],
       supportedModels: async () => {
         if (models instanceof Error) throw models;
@@ -56,7 +67,7 @@ function run(fake: ReturnType<typeof fakeQuery>, extra: Partial<Parameters<typeo
   const handle = runClaudeTurn({
     workspace: ws,
     text: '你好',
-    mcpEnv,
+    acquireEnv: () => ({ env: mcpEnv, release: () => {} }),
     emit: (e) => events.push(e),
     requestPermission,
     queryFn: fake.queryFn,
@@ -65,8 +76,12 @@ function run(fake: ReturnType<typeof fakeQuery>, extra: Partial<Parameters<typeo
   return { handle, events, requestPermission };
 }
 
-afterEach(() => {
+// 权限用例的轮次必须保持活动，收尾时统一放开。
+const suspended: Array<() => Promise<void>> = [];
+
+afterEach(async () => {
   vi.useRealTimers();
+  for (const settle of suspended.splice(0)) await settle();
 });
 
 describe('runClaudeTurn：调用参数', () => {
@@ -137,21 +152,25 @@ describe('runClaudeTurn：事件', () => {
     ]);
   });
 
-  it('发送前中断会取消初始化，不投递用户消息', async () => {
-    const fake = fakeQuery();
+  it('发送前中断不投递用户消息，本轮以错误收尾', async () => {
+    const fake = fakeQuery([], undefined, [], true);
     const { handle } = run(fake);
     await handle.interrupt();
     await handle.done;
     expect(fake.state.prompt).toBeUndefined();
-    expect((fake.state.options!.abortController as AbortController).signal.aborted).toBe(true);
   });
 });
 
 describe('runClaudeTurn：权限', () => {
+  // 长驻运行时里权限判定发生在轮次进行时，所以这里保持轮次活动再取 canUseTool。
   async function canUseTool(extra: Partial<Parameters<typeof runClaudeTurn>[0]> = {}) {
-    const fake = fakeQuery();
+    const fake = fakeQuery([], undefined, [], true);
     const r = run(fake, extra);
-    await r.handle.done;
+    await vi.waitFor(() => expect(fake.state.options).toBeDefined());
+    suspended.push(() => {
+      fake.state.release?.();
+      return r.handle.done;
+    });
     return { fn: fake.state.options!.canUseTool as CanUseTool, ...r };
   }
   const signal = new AbortController().signal;

@@ -55,7 +55,7 @@ function setup(
   syncOperation?: (workspace: Workspace) => Promise<SyncStatus>,
   capabilities?: TurnManagerDeps['capabilities'],
   activity?: ReturnType<typeof createWorkspaceActivity>,
-  changes?: TurnManagerDeps['changes'],
+  changedPaths?: TurnManagerDeps['changedPaths'],
 ) {
   const registry = createSessionRegistry();
   const fake = fakeRunTurn();
@@ -81,7 +81,7 @@ function setup(
     capabilities,
     sync,
     acquireWorkspace: activity?.acquire,
-    changes,
+    changedPaths,
   });
   return { registry, fake, codex, sessions, turns, sync };
 }
@@ -241,15 +241,18 @@ describe('TurnManager', () => {
     ]);
   });
 
-  it('把内部地址与会话令牌传给适配器，结束后注销令牌', async () => {
+  it('把内部地址与会话令牌传给适配器，长驻运行时关闭后注销令牌', async () => {
     const { fake, turns, registry } = setup();
     await turns.handle(fakeSocket().socket, send());
-    const env = fake.turns[0]!.input.mcpEnv;
-    expect(env.SSH_SERVER_INTERNAL_URL).toBe('http://127.0.0.1:1');
-    expect(registry.resolve(env.SSH_SERVER_SESSION_TOKEN!)).toBe('w1');
+    const lease = fake.turns[0]!.input.acquireEnv();
+    expect(lease.env.SSH_SERVER_INTERNAL_URL).toBe('http://127.0.0.1:1');
+    expect(registry.resolve(lease.env.SSH_SERVER_SESSION_TOKEN!)).toBe('w1');
     fake.turns[0]!.finish();
     await flush();
-    expect(registry.resolve(env.SSH_SERVER_SESSION_TOKEN!)).toBeUndefined();
+    // 长驻运行时在轮次结束后继续持有令牌，只有关闭时才释放。
+    expect(registry.resolve(lease.env.SSH_SERVER_SESSION_TOKEN!)).toBe('w1');
+    lease.release();
+    expect(registry.resolve(lease.env.SSH_SERVER_SESSION_TOKEN!)).toBeUndefined();
   });
 
   it('同一会话正在运行时拒绝再次发送', async () => {
@@ -423,8 +426,8 @@ describe('TurnManager', () => {
     await turns.handle(second.socket, send({ sessionId: 'codex-session', agent: 'codex' }));
     const claude = fake.turns[0]!;
     const native = codex.turns[0]!;
-    const token = claude.input.mcpEnv.SSH_SERVER_SESSION_TOKEN!;
-    const codexToken = native.input.mcpEnv.SSH_SERVER_SESSION_TOKEN!;
+    const token = claude.input.acquireEnv().env.SSH_SERVER_SESSION_TOKEN!;
+    const codexToken = native.input.acquireEnv().env.SSH_SERVER_SESSION_TOKEN!;
     let verified!: () => void;
     sessions.assertBelongs.mockImplementationOnce(
       () =>
@@ -500,7 +503,9 @@ describe('TurnManager', () => {
     const { socket, sent } = fakeSocket();
     await turns.handle(socket, send({ sessionId: 'retry-session' }));
     const first = fake.turns[0]!;
-    const token = first.input.mcpEnv.SSH_SERVER_SESSION_TOKEN!;
+    // 长驻运行时在构造时取得令牌，轮次结束不撤销，只有运行时关闭才释放。
+    const lease = first.input.acquireEnv();
+    const token = lease.env.SSH_SERVER_SESSION_TOKEN!;
     const pending = first.input.requestPermission({
       requestId: 'failed-turn-approval',
       toolName: 'command',
@@ -508,7 +513,7 @@ describe('TurnManager', () => {
     });
     first.fail(new Error('内部运行时诊断'));
     await flush();
-    expect(registry.resolve(token)).toBeUndefined();
+    expect(registry.resolve(token)).toBe('w1');
     expect(await pending).toMatchObject({ allow: false, message: '本轮已结束' });
     expect(sent.map((message) => message.type)).toEqual(['turn.started', 'error', 'error', 'turn.finished']);
     expect(JSON.stringify(sent)).not.toContain('内部');
@@ -518,28 +523,29 @@ describe('TurnManager', () => {
     await flush();
     expect(sent.at(-2)).toMatchObject({ type: 'error', message: '同步尚未就绪，请在同步面板处理后继续' });
     expect(sent.at(-1)).toMatchObject({ type: 'turn.finished' });
-    const secondToken = fake.turns[1]!.input.mcpEnv.SSH_SERVER_SESSION_TOKEN!;
-    expect(registry.resolve(secondToken)).toBeUndefined();
+    // 两轮共用同一个长驻运行时，令牌要到运行时关闭时才被撤销。
+    const secondLease = fake.turns[1]!.input.acquireEnv();
+    expect(registry.resolve(secondLease.env.SSH_SERVER_SESSION_TOKEN!)).toBe('w1');
+    lease.release();
+    secondLease.release();
+    expect(registry.resolve(token)).toBeUndefined();
+    expect(registry.resolve(secondLease.env.SSH_SERVER_SESSION_TOKEN!)).toBeUndefined();
   });
 });
 
-it('快照采集中取消等待收尾再释放租约，不启动runner或同步', async () => {
+it('准备阶段取消等待收尾再释放租约，不启动runner或同步', async () => {
   const activity = createWorkspaceActivity();
   let release!: () => void;
-  const begin = vi.fn(
+  const changedPaths = vi.fn(
     () =>
-      new Promise<void>((resolve) => {
-        release = resolve;
+      new Promise<string[]>((resolve) => {
+        release = () => resolve([]);
       }),
   );
-  const finish = vi.fn(async () => {
-    expect(activity.active(ws.id)).toBe(1);
-    return undefined;
-  });
-  const f = setup(undefined, undefined, activity, { begin, finish });
+  const f = setup(undefined, undefined, activity, changedPaths);
   const socket = fakeSocket();
   const starting = f.turns.handle(socket.socket, send());
-  await vi.waitFor(() => expect(begin).toHaveBeenCalledOnce());
+  await vi.waitFor(() => expect(changedPaths).toHaveBeenCalledOnce());
   const first = socket.sent.find((message) => message.type === 'turn.started')!;
   if (first.type !== 'turn.started') throw new Error('未开始轮次');
   await f.turns.handle(socket.socket, { type: 'chat.interrupt', turnId: first.turnId });
@@ -548,49 +554,46 @@ it('快照采集中取消等待收尾再释放租约，不启动runner或同步'
   await starting;
   expect(f.fake.turns).toHaveLength(0);
   expect(f.sync.sync).not.toHaveBeenCalled();
-  expect(finish).toHaveBeenCalledWith(ws, first.turnId, expect.objectContaining({ interrupted: true }));
   expect(activity.active(ws.id)).toBe(0);
   await f.turns.dispose();
 });
-it('基线失败仍运行并尝试终态收尾，纯压缩跳过采集和同步', async () => {
+
+it('变更基线不可读时仍运行，纯压缩跳过采集和同步', async () => {
   const activity = createWorkspaceActivity();
-  const changes = {
-    begin: vi.fn(async () => {
-      throw new Error('落盘失败');
-    }),
-    finish: vi.fn(async () => undefined),
-  };
+  const changedPaths = vi.fn(async (): Promise<string[]> => {
+    throw new Error('状态不可读');
+  });
   const f = setup(
     async () => {
       throw new Error('同步失败');
     },
     undefined,
     activity,
-    changes,
+    changedPaths,
   );
   const socket = fakeSocket();
   await f.turns.handle(socket.socket, send());
   expect(f.fake.turns).toHaveLength(1);
   f.fake.turns[0]!.finish();
   await vi.waitFor(() => expect(activity.active(ws.id)).toBe(0));
-  expect(changes.finish).toHaveBeenCalledOnce();
-  expect(socket.sent.find((message) => message.type === 'turn.finished')).toMatchObject({
-    changes: { phase: 'unavailable' },
-  });
+  expect(changedPaths).toHaveBeenCalled();
+  const finished = socket.sent.find((message) => message.type === 'turn.finished');
+  expect(finished).toMatchObject({ type: 'turn.finished' });
+  expect(finished && 'changes' in finished ? finished.changes : undefined).toBeUndefined();
   const pure = setup(
     undefined,
     { prepare: async () => ({ text: '', invocation: { kind: 'command', name: 'compact' } }) },
     activity,
-    changes,
+    changedPaths,
   );
+  const calls = changedPaths.mock.calls.length;
   await pure.turns.handle(
     fakeSocket().socket,
     send({ agent: 'codex', sessionId: 'native', selection: { id: 'compact' }, text: '' }),
   );
   pure.codex.turns[0]!.finish();
   await vi.waitFor(() => expect(activity.active(ws.id)).toBe(0));
-  expect(changes.begin).toHaveBeenCalledOnce();
-  expect(changes.finish).toHaveBeenCalledOnce();
+  expect(changedPaths.mock.calls.length).toBe(calls);
   expect(pure.sync.sync).not.toHaveBeenCalled();
   await f.turns.dispose();
   await pure.turns.dispose();

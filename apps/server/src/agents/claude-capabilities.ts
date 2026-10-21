@@ -1,7 +1,7 @@
 import type { AgentModel } from '@ssh-server/shared';
 import type { ModelInfo, SlashCommand } from '@anthropic-ai/claude-agent-sdk';
 import { capabilityId, type NativeCapabilityCatalog, type NativeInvocation } from './capability-types';
-import { claudeControl, createClaudeInput, nativeClaudeQuery, type ClaudeQuery, type QueryFn } from './claude-query';
+import { claudeControl, createClaudeStream, nativeClaudeQuery, type ClaudeQuery, type QueryFn } from './claude-query';
 
 type Entry = NativeCapabilityCatalog['entries'][number];
 const safeName = (name: string) =>
@@ -126,7 +126,7 @@ export function createClaudeCapabilityDiscovery(queryFn: QueryFn = nativeClaudeQ
     const controller = new AbortController();
     const abort = () => controller.abort();
     options.signal?.addEventListener('abort', abort, { once: true });
-    const input = createClaudeInput();
+    const input = createClaudeStream();
     let q: ClaudeQuery | undefined;
     try {
       q = queryFn({

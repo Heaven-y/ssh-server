@@ -53,7 +53,7 @@ async function setup(mode = 'normal') {
   const input: AgentTurnInput = {
     workspace,
     text: '',
-    mcpEnv: {},
+    acquireEnv: () => ({ env: {}, release: () => {} }),
     emit: (event) => events.push(event),
     requestPermission: async () => ({ allow: false }),
   };

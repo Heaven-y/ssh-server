@@ -38,7 +38,7 @@
 | known_hosts 校验（`ssh/known-hosts.ts`） | 手写 | ssh2 不提供 known_hosts 解析；逻辑约 100 行，含哈希条目与 `@revoked`，已有测试覆盖 |
 | 远程命令拼装、工作区存储、访问控制 | 手写 | 项目特有逻辑，代码量小 |
 | SSH 连接、HTTP、WebSocket、MCP、Agent | ssh2、Fastify、@fastify/websocket、@modelcontextprotocol/sdk、Claude Agent SDK | — |
-| Codex 对话与历史 | 已验官方 app-server 0.160.0，stdio JSON-RPC | 复用原生配置、会话、审批与上下文；每轮及历史读取独立启动，不增加模型协议转换层 |
+| Codex 对话与历史 | 已验官方 app-server 0.160.0，stdio JSON-RPC | 复用原生配置、会话、审批与上下文；对话按会话复用同一进程并空闲回收，历史读取仍独立启动，不增加模型协议转换层 |
 | 前端接口数据（加载、错误、刷新） | `@tanstack/react-query` | 替代手写的 loading / error 状态与刷新逻辑 |
 | 前端 WebSocket 断线重连 | `partysocket` | 自带退避重连与发送缓冲 |
 | 对话长列表与贴底 | `react-virtuoso` 4.18.16（MIT） | 动态高度虚拟列表、流式贴底与用户上翻停止，取代早期use-stick-to-bottom；采用官方跟随/定位API，展开状态保存在列表外 |

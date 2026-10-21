@@ -17,13 +17,16 @@ const workspace: Workspace = {
   sshHost: 'my-server',
   remoteDir: '~/projects/demo',
 };
+const patch = '--- a/main.py\n+++ b/main.py\n-old\n+new';
 const record: TurnChangesRecord = {
   turnId: crypto.randomUUID(),
   agent: 'claude',
   sessionId: crypto.randomUUID(),
   startedAt: 1,
   phase: 'complete',
-  changes: [{ path: 'main.py', kind: 'modified', additions: 1, deletions: 1, binary: false }],
+  changes: [
+    { path: 'main.py', kind: 'modified', additions: 1, deletions: 1, binary: false, diff: patch, viaTool: true },
+  ],
 };
 const clients: QueryClient[] = [];
 afterEach(() => {
@@ -34,18 +37,10 @@ afterEach(() => {
 function setup() {
   useChat.getState().newSession('claude');
   useChat.setState({ workspaceId: workspace.id, sessionId: record.sessionId, latestChanges: record });
-  vi.spyOn(api, 'turnChanges').mockResolvedValue({ records: [record] });
   vi.spyOn(api, 'versionStatus').mockResolvedValue({
     initialized: true,
     revision: 'a'.repeat(64),
-    changes: [],
-    excluded: [],
-  });
-  vi.spyOn(api, 'turnDiff').mockResolvedValue({
-    text: 'cached diff',
-    files: ['main.py'],
-    truncated: false,
-    changes: record.changes,
+    changes: [{ path: 'main.py', kind: 'modified' }],
     excluded: [],
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -70,43 +65,17 @@ function setup() {
   );
   return { ...hook, client };
 }
-it('失效刷新撤下缓存diff并停止行反馈，服务端空记录不被完成事件重新合回', async () => {
+
+it('本轮差异直接取原生patch，不请求服务端', async () => {
   const f = setup();
-  await waitFor(() => expect(f.result.current.diff.data?.text).toBe('cached diff'));
-  vi.mocked(api.turnDiff).mockRejectedValue(new ApiError(409, '目标已变化', { code: 'stale_revision' }));
-  await act(async () => {
-    await f.result.current.diff.refetch();
-  });
-  await waitFor(() => expect(f.result.current.diff.isError).toBe(true));
-  expect(f.result.current.feedback).toBeUndefined();
-  expect(f.result.current.displayDiff).toBeUndefined();
-  vi.mocked(api.turnChanges).mockResolvedValue({ records: [] });
-  await act(async () => {
-    await f.result.current.turns.query.refetch();
-  });
-  await waitFor(() => expect(f.result.current.turns.records).toEqual([]));
-  expect(f.result.current.record).toBeUndefined();
+  await waitFor(() => expect(f.result.current.displayDiff?.text).toBe(patch));
+  expect(f.result.current.record?.changes[0]?.viaTool).toBe(true);
+  expect(f.result.current.feedback).toBeDefined();
 });
 
-it('工作区配置改变切换差异缓存，磁盘差异失败也停止反馈', async () => {
+it('磁盘差异失败时撤下diff并停止行反馈', async () => {
   const f = setup();
-  await waitFor(() => expect(f.result.current.displayDiff?.text).toBe('cached diff'));
-  let complete!: (value: Awaited<ReturnType<typeof api.turnDiff>>) => void;
-  vi.mocked(api.turnDiff).mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        complete = resolve;
-      }),
-  );
-  act(() => {
-    f.client.setQueryData(['workspaces'], [{ ...workspace, localDir: 'changed' }]);
-  });
-  await waitFor(() => expect(f.result.current.displayDiff).toBeUndefined());
-  await waitFor(() => expect(complete).toBeDefined());
-  await act(async () =>
-    complete({ text: 'new target', files: ['main.py'], truncated: false, changes: record.changes, excluded: [] }),
-  );
-  await waitFor(() => expect(f.result.current.displayDiff?.text).toBe('new target'));
+  act(() => f.result.current.choose({}));
   vi.spyOn(api, 'versionStatus').mockResolvedValue({
     initialized: true,
     revision: 'b'.repeat(64),
@@ -120,15 +89,14 @@ it('工作区配置改变切换差异缓存，磁盘差异失败也停止反馈'
     revision: 'b'.repeat(64),
     truncated: false,
   });
-  act(() => f.result.current.choose({}));
   await act(async () => {
     await f.result.current.status.refetch();
   });
   await waitFor(() => expect(f.result.current.displayDiff?.text).toBe('working'));
   expect(f.result.current.source?.id).toBe('b'.repeat(64));
-  vi.mocked(api.versionStatus).mockRejectedValue(new ApiError(409, '范围改变', { code: 'stale_revision' }));
+  vi.mocked(api.versionDiff).mockRejectedValue(new ApiError(409, '范围改变', { code: 'stale_revision' }));
   await act(async () => {
-    await f.result.current.status.refetch();
+    await f.result.current.diff.refetch();
   });
   await waitFor(() => expect(f.result.current.displayDiff).toBeUndefined());
   expect(f.result.current.feedback).toBeUndefined();

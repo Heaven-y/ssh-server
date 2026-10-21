@@ -28,8 +28,6 @@ import type {
   VersionRestoreResult,
   VersionDiscardPreview,
   VersionDiscardInput,
-  TurnChangesRecord,
-  TurnDiff,
   SshAuthMode,
   SshHostInfo,
   SyncSettings,
@@ -246,27 +244,6 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
-  turnChanges: (id: string, target: { agent: AgentKind; sessionId?: string }, signal?: AbortSignal) => {
-    const query = new URLSearchParams({ agent: target.agent });
-    if (target.sessionId) query.set('sessionId', target.sessionId);
-    return request<{ records: TurnChangesRecord[] }>(
-      `/api/workspaces/${encodeURIComponent(id)}/turn-changes?${query}`,
-      { signal, cache: 'no-store' },
-    );
-  },
-  turnDiff: (
-    id: string,
-    input: { turnId: string; agent: AgentKind; sessionId?: string; path?: string },
-    signal?: AbortSignal,
-  ) => {
-    const query = new URLSearchParams({ agent: input.agent });
-    if (input.sessionId) query.set('sessionId', input.sessionId);
-    if (input.path) query.set('path', input.path);
-    return request<TurnDiff>(
-      `/api/workspaces/${encodeURIComponent(id)}/turn-changes/${encodeURIComponent(input.turnId)}/diff?${query}`,
-      { signal, cache: 'no-store' },
-    );
-  },
   listFiles: (id: string, relative = '', signal?: AbortSignal) =>
     request<WorkspaceDirectory>(fileUrl(id, 'files', relative), { signal, cache: 'no-store' }),
   /** 只读读取本地副本；网页不提供写入，改动交给 Agent、同步或外部编辑器。 */

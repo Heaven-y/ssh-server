@@ -1,14 +1,14 @@
 // 轮次按 Agent 与原生会话隔离；耗时准备前先建立应用轮次，允许及时中断。
 import { randomUUID } from 'node:crypto';
 import type { AgentEvent, AgentKind, ClientMessage, ServerMessage, SessionRef, Workspace } from '@ssh-server/shared';
-import type { AgentTurnInput, PermissionAnswer, TurnHandle, TurnRunner } from '../agents/types';
+import type { AgentTurnInput, PermissionAnswer, TurnEnv, TurnHandle, TurnRunner } from '../agents/types';
 import type { SessionRegistry } from './registry';
 import { SessionError, type SessionsService } from './sessions';
 import type { CapabilitiesService } from './capabilities';
 import type { SyncManager } from '../sync/manager';
 import { WorkspaceRemovalError } from '../workspaces/activity';
-import type { TurnChanges } from './turn-changes';
-import type { TurnChangesRecord } from '@ssh-server/shared';
+import type { TurnFileChange, TurnChangesRecord } from '@ssh-server/shared';
+import { mergeChanges, toolFileChanges, withDetected } from './turn-files';
 
 export type Socket = { send(msg: ServerMessage): void; isOpen(): boolean };
 export type TurnManagerDeps = {
@@ -20,7 +20,8 @@ export type TurnManagerDeps = {
   capabilities?: Pick<CapabilitiesService, 'prepare'>;
   sync: Pick<SyncManager, 'sync'>;
   acquireWorkspace?: (id: string) => () => void;
-  changes?: Pick<TurnChanges, 'begin' | 'finish'>;
+  /** 只读列出工作区相对版本基线的变更路径；用于补齐命令改动。 */
+  changedPaths?: (ws: Workspace) => Promise<string[]>;
 };
 type Turn = {
   id: string;
@@ -31,12 +32,13 @@ type Turn = {
   handle?: TurnHandle;
   sessionId?: string;
   workspace?: Workspace;
-  token?: string;
   finished: boolean;
   syncAfter?: boolean;
   releaseWorkspace?: () => void;
-  changesStarted?: boolean;
-  changesUnavailable?: string;
+  /** 本轮原生工具报告的文件变更，按路径合并 */
+  files: Map<string, TurnFileChange>;
+  /** 轮次开始时与结束时的变更路径，用于补齐没有原生 diff 的改动 */
+  baseline?: string[];
   failed?: boolean;
   startedAt: number;
 };
@@ -60,6 +62,8 @@ export class TurnManager {
   private pending = new Map<string, Pending>();
   private closed = new WeakSet<Socket>();
   private stopping = false;
+  /** 已交给运行时的令牌租约；关闭后端时统一撤销，避免运行时长驻后遗留。 */
+  private readonly leases = new Set<TurnEnv>();
   private readonly runners: Partial<Record<AgentKind, TurnRunner>>;
 
   constructor(private readonly deps: TurnManagerDeps) {
@@ -106,14 +110,15 @@ export class TurnManager {
     }
   }
 
-  /** 退出后端时停止本进程拥有的轮次，并立即撤销内部工具令牌。 */
+  /** 退出后端时停止本进程拥有的轮次，并关闭长驻运行时以撤销其内部工具令牌。 */
   async dispose(): Promise<void> {
     this.stopping = true;
+    // 关闭即收回能力：不等轮次收尾，先同步撤销所有已发出的令牌租约。
+    for (const lease of [...this.leases]) lease.release();
     const handles: TurnHandle[] = [];
     for (const turn of this.turns.values()) {
       this.closed.add(turn.socket);
       turn.controller.abort();
-      if (turn.token) this.deps.registry.unregister(turn.token);
       if (turn.handle) handles.push(turn.handle);
     }
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -127,6 +132,8 @@ export class TurnManager {
       ]);
     } finally {
       clearTimeout(timer);
+      // 运行时的令牌随其关闭释放；即使轮次未在超时内结束也要收回能力。
+      await Promise.allSettled(Object.values(this.runners).map((runner) => runner?.dispose?.() ?? Promise.resolve()));
     }
   }
 
@@ -162,6 +169,9 @@ export class TurnManager {
       if (!this.bindSession(turn, event.sessionId)) return;
       event = { ...event, agent: turn.agent };
     }
+    if (event.type === 'tool_call') {
+      mergeChanges(turn.files, toolFileChanges(turn.agent, event.name, event.input));
+    }
     if (event.type === 'permission_resolved') {
       const pending = this.pending.get(event.requestId);
       if (pending?.turn === turn) {
@@ -176,6 +186,20 @@ export class TurnManager {
     if (turn.controller.signal.aborted || turn.finished || this.closed.has(turn.socket))
       return Promise.resolve({ allow: false, message: '本轮或连接已结束' });
     return new Promise((resolve) => this.pending.set(req.requestId, { turn, resolve }));
+  }
+
+  /** 为运行时登记内部令牌；登记过的租约在后端关闭时统一撤销。 */
+  private acquireEnv(ws: Workspace): TurnEnv {
+    const token = this.deps.registry.register(ws.id);
+    const lease: TurnEnv = {
+      env: { SSH_SERVER_INTERNAL_URL: this.deps.internalUrl(), SSH_SERVER_SESSION_TOKEN: token },
+      release: () => {
+        this.leases.delete(lease);
+        this.deps.registry.unregister(token);
+      },
+    };
+    this.leases.add(lease);
+    return lease;
   }
 
   private acquireWorkspace(socket: Socket, msg: Send): { release?: () => void } | undefined {
@@ -221,6 +245,7 @@ export class TurnManager {
       sessionId: msg.sessionId,
       controller: new AbortController(),
       finished: false,
+      files: new Map<string, TurnFileChange>(),
       startedAt: Date.now(),
       releaseWorkspace: lease.release,
     };
@@ -259,7 +284,6 @@ export class TurnManager {
     turn.syncAfter = prepared.invocation?.kind !== 'command';
     await this.beginChanges(turn);
     signal.throwIfAborted();
-    turn.token = this.deps.registry.register(ws.id);
     turn.handle = runner({
       workspace: ws,
       sessionId: msg.sessionId,
@@ -267,7 +291,7 @@ export class TurnManager {
       reasoningEffort: msg.reasoningEffort,
       text: prepared.text,
       invocation: prepared.invocation,
-      mcpEnv: { SSH_SERVER_INTERNAL_URL: this.deps.internalUrl(), SSH_SERVER_SESSION_TOKEN: turn.token },
+      acquireEnv: () => this.acquireEnv(ws),
       emit: (event) => this.event(turn, event),
       requestPermission: (req) => this.permission(turn, req),
     });
@@ -280,48 +304,40 @@ export class TurnManager {
       .then(() => this.finish(turn));
   }
 
+  /** 只记录变更路径作为兜底基线，不读取文件内容也不创建 Git 对象。 */
   private async beginChanges(turn: Turn): Promise<void> {
-    if (turn.syncAfter && this.deps.changes && turn.workspace) {
-      try {
-        turn.changesStarted = true;
-        // 已开始的采集先收尾；准备取消不能提前释放工作区租约。
-        await this.deps.changes.begin(turn.workspace, turn.id, { agent: turn.agent, sessionId: turn.sessionId });
-      } catch {
-        turn.changesUnavailable = '本轮改动采集不可用，Agent仍可继续';
-      }
+    if (!turn.syncAfter || !this.deps.changedPaths || !turn.workspace) return;
+    try {
+      turn.baseline = await this.deps.changedPaths(turn.workspace);
+    } catch {
+      // 基线不可用只会少一层兜底，不影响本轮执行。
     }
   }
 
+  /** 合并原生工具报告与状态对比结果；没有任何改动时不生成记录。 */
   private async finishChanges(turn: Turn): Promise<TurnChangesRecord | undefined> {
-    if (!this.deps.changes || !turn.workspace || turn.syncAfter === false) return undefined;
-    if (turn.changesStarted) {
+    if (turn.syncAfter === false || !turn.workspace) return undefined;
+    let detected: string[] = [];
+    if (this.deps.changedPaths && turn.baseline && !turn.controller.signal.aborted) {
       try {
-        const record = await this.completeChanges(turn);
-        if (record) return record;
+        const before = new Set(turn.baseline);
+        detected = (await this.deps.changedPaths(turn.workspace)).filter((path) => !before.has(path));
       } catch {
-        turn.changesUnavailable = '本轮结束后的文件快照不可用；未改变Agent或同步结果';
+        // 兜底失败时只保留原生事件结果。
       }
     }
-    if (!turn.changesUnavailable) return undefined;
+    const files = withDetected(turn.files, detected);
+    if (!files.length) return undefined;
     return {
       turnId: turn.id,
       agent: turn.agent,
       sessionId: turn.sessionId,
       startedAt: turn.startedAt,
       completedAt: Date.now(),
-      phase: 'unavailable',
-      message: turn.changesUnavailable,
-      changes: [],
+      phase: turn.controller.signal.aborted ? 'incomplete' : 'complete',
+      ...(turn.controller.signal.aborted ? { message: '本轮已中断；显示已收到的文件变更' } : {}),
+      changes: files,
     };
-  }
-
-  private async completeChanges(turn: Turn): Promise<TurnChangesRecord | undefined> {
-    const current = await this.deps.getWorkspace(turn.workspaceId);
-    if (!current) return undefined;
-    return this.deps.changes!.finish(current, turn.id, {
-      sessionId: turn.sessionId,
-      interrupted: turn.controller.signal.aborted || turn.failed === true || !turn.handle,
-    });
   }
 
   private async synchronize(turn: Turn): Promise<void> {
@@ -342,7 +358,6 @@ export class TurnManager {
   private async finish(turn: Turn): Promise<void> {
     if (turn.finished) return;
     turn.finished = true;
-    if (turn.token) this.deps.registry.unregister(turn.token);
     for (const [id, pending] of this.pending) {
       if (pending.turn === turn) {
         this.pending.delete(id);

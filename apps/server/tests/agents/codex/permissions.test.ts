@@ -17,7 +17,7 @@ function setup(requestPermission: AgentTurnInput['requestPermission']) {
   const input: AgentTurnInput = {
     workspace: { id: 'workspace', name: '审批测试', localDir: '.', sshHost: 'my-server', remoteDir: '~/projects/demo' },
     text: '',
-    mcpEnv: {},
+    acquireEnv: () => ({ env: {}, release: () => {} }),
     emit: (event) => events.push(event),
     requestPermission,
   };

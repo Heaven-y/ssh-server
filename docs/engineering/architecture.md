@@ -150,14 +150,14 @@ Claude（Agent SDK `query()`）：
 - 省略未显式选择的`model`与`env`覆盖；`effort`使用网页当前轮次的选择，默认`high`，显式“自动”则省略。
 - `mcpServers` 注入远程工具服务；`systemPrompt` 的 preset `append` 注入工作区指令（见 5.3）。
 - `canUseTool` 把权限请求转成 `permission_request` 事件，等待网页答复。
-- 每轮发送仅一条消息的 AsyncIterable，在同一 Query 发送前验证技能/命令；收到该轮 result 后限时读取 summary 上下文，再关闭输入和 Query。纯 context 通过控制接口完成，不经模型消息。
+- 长驻输入流按会话复用原生进程：`agents/claude-runtime.ts` 保持同一 Query 与常驻消费循环，跨轮复用迭代器并按当前轮次路由事件；轮次结束后进程不退出，空闲 5 分钟或后端关闭时回收并释放令牌。同一运行时一次只接收一轮，并发由会话锁拦截，模型或推理强度变化即换新运行时。进程崩溃或原生退出标记不可复用，下一轮重建。发送前验证技能/命令；收到该轮 result 后限时读取 summary 上下文。纯 context 通过控制接口完成，不经模型消息。中断由原生 `interrupt()` 确认后立即以错误收尾该轮，未确认时关闭运行时，避免轮次悬挂。
 - `reasoningEffort`沿用共享轮次输入；Claude保留`low/medium/high/xhigh/max`协议与SDK枚举校验，直接映射`Options.effort`，不再要求先明确模型或调用目录验证档位。实际不支持由原生运行时报错，不静默降级/丢参或重试；不改thinking、权限或快模式。网页`reasoningEfforts`按Agent隔离，初始与新会话均为high；自动为空串，发送时省略字段。Codex保持原生字符串协议。
 
 Codex（app-server）：
 
-- `agents/codex/` 按启动解析、JSON-RPC 客户端、配置、事件转换、审批、对话和会话读取拆分。每轮启动独立进程，列表/历史使用短生命周期进程；正式读取原生 `CODEX_HOME/config.toml`，可用 `SSH_SERVER_CODEX` 指定已安装运行时。
+- `agents/codex/` 按启动解析、JSON-RPC 客户端、配置、事件转换、审批、对话和会话读取拆分。`agents/codex/runtime.ts` 按会话复用同一 app-server 进程：首次使用启动进程并完成 `initialize`、`config/read` 与 `thread/start`（续接用 `thread/resume`），后续轮次直接复用该线程；空闲 5 分钟、进程退出或后端关闭时回收并释放令牌。列表/历史仍使用短生命周期进程。正式读取原生 `CODEX_HOME/config.toml`，可用 `SSH_SERVER_CODEX` 指定已安装运行时。
 - 先 `initialize` / `initialized`，再 `config/read(cwd)`；保留生效的 `developer_instructions` 并追加工作区约束。`thread/start` / `thread/resume` 固定当前目录、`workspace-write` 沙箱、`on-request` 审批；普通/技能消息调用 `turn/start`，手动压缩在 resume 后调用 `thread/compact/start`。
-- 默认不传`model`、`modelProvider`、`baseUrl`、`apiKey`覆盖。新thread跟随配置中的新默认模型，续接保留原生会话模型，只有显式填写模型才覆盖。推理强度使用网页选择（默认high，自动省略）；历史实际模型不转成用户覆盖值。每轮重启原生进程只保证重读配置，不保证历史换模型。
+- 默认不传`model`、`modelProvider`、`baseUrl`、`apiKey`覆盖。新thread跟随配置中的新默认模型，续接保留原生会话模型，只有显式填写模型才覆盖。推理强度使用网页选择（默认high，自动省略）；历史实际模型不转成用户覆盖值。模型或推理强度改变时新建运行时，避免沿用旧线程的启动参数；续接既有会话时沿用该线程的原生模型。
 - 通过当前轮次 `config` 添加 required 的远程 MCP，保留其他原生 MCP 配置。内部地址与短期令牌仅放子进程环境，MCP 配置只列 `env_vars` 名称；argv、配置正文与 Agent 输入均不含这些值，本地 shell 过滤这些变量，结束后撤销令牌。MCP 启动失败即拒绝该轮，项目运行保持在远程。
 - JSON-RPC 按行读取，单条上限 8 MiB，待处理请求最多 128 个，普通请求超时 30 秒；退出时拒绝等待者，持续排空 stderr 而不回显原始配置诊断。
 - 原生命令/文件审批的范围限于单次 accept/decline；权限请求的范围限于该轮已明确的内容。网页 UUID 与原生 RPC ID 分离，后端验证 socket、turnId 与 requestId 的归属；未知交互请求明确拒绝。

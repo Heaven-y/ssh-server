@@ -4,7 +4,7 @@ import { useTurnChanges } from './use-turn-changes';
 
 export function TurnChangesCard({ workspaceId, open }: { workspaceId: string; open(turnId: string): void }) {
   const { records } = useTurnChanges(workspaceId);
-  const record = records.find((value) => value.phase !== 'running');
+  const record = records[0];
   if (!record) return null;
   return (
     <section
@@ -15,7 +15,7 @@ export function TurnChangesCard({ workspaceId, open }: { workspaceId: string; op
         <div className="flex min-w-0 items-center gap-2 text-xs">
           <FileDiff aria-hidden className="size-4 shrink-0" />
           <span>
-            最近一轮 · {record.phase === 'unavailable' ? '采集不可用' : `${record.changes.length}个文件`}
+            最近一轮 · {record.changes.length}个文件
             {record.phase === 'incomplete' ? ' · 未完整结束' : ''}
           </span>
         </div>

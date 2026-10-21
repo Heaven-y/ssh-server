@@ -127,7 +127,8 @@ export type {
   SessionActionInput,
   SessionForkInput,
 } from './agents';
-export type { TurnSnapshot, TurnFileChange, TurnDiff, TurnChangesRecord } from './turn-changes';
+export type { TurnFileChange } from './turn-files';
+export type { TurnChangesRecord } from './turn-changes';
 export { WorkspaceRemovalInputSchema } from './workspace-removal';
 export type {
   WorkspaceRemovalInput,

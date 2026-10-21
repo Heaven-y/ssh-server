@@ -5,13 +5,11 @@ import { createSessionRegistry } from './chat/registry';
 import { TurnManager } from './chat/turn-manager';
 import { createSessionsService } from './chat/sessions';
 import { createCapabilitiesService } from './chat/capabilities';
-import { createTurnChanges } from './chat/turn-changes';
-import { registerTurnChangesRoutes } from './http/turn-changes.routes';
 import { runClaudeTurn } from './agents/claude-adapter';
 import { discoverClaudeCapabilities } from './agents/claude-capabilities';
 import { createClaudeSessions } from './agents/claude-sessions';
 import {
-  runCodexTurn,
+  createCodexRunner,
   listCodexSessions,
   readCodexSession,
   assertCodexSession,
@@ -125,7 +123,6 @@ async function main(): Promise<void> {
   });
   const registry = createSessionRegistry();
   const versions = createVersionsService();
-  const changes = createTurnChanges({ configDir: config.configDir, versions });
   const setup = createWorkspaceSetup({ store, pool, sync, configDir: config.configDir, acquireWorkspace });
   const browse = createRemoteFilesService({ store, pool });
   const executor = createRemoteExecutor(pool);
@@ -171,11 +168,11 @@ async function main(): Promise<void> {
     registry,
     sessions,
     capabilities,
-    runners: { claude: runClaudeTurn, codex: runCodexTurn },
+    runners: { claude: runClaudeTurn, codex: createCodexRunner() },
     internalUrl: () => `http://${hostForUrl(config.host)}:${port}`,
     sync,
     acquireWorkspace,
-    changes,
+    changedPaths: (ws) => versions.changedPaths(ws),
   });
 
   const app = await buildApp({
@@ -203,7 +200,6 @@ async function main(): Promise<void> {
       registerRemoteFileActionRoutes(a, { preflights, tasks, downloads: createFileDownloads({ pool, browse }) });
       registerVersionRoutes(a, { store, versions, sync });
       registerDiscardRoutes(a, { store, versions, sync });
-      registerTurnChangesRoutes(a, { store, changes, sessions });
       registerSyncRoutes(a, { store, sync });
       registerWsRoutes(a, { turns });
       registerTerminalRoutes(a, { terminals, bindings: terminalBindings });
