@@ -8,7 +8,7 @@ import { useChangesPanel, type ChangesPanelInput, type ChangesPanelModel } from 
 
 const kindLabel = { added: '新增', modified: '修改', deleted: '删除' };
 function recordLabel(record: TurnChangesRecord): string {
-  const changes = record.phase === 'unavailable' ? '不可用' : `${record.changes.length}个文件`;
+  const changes = `${record.changes.length}个文件`;
   return `${new Date(record.startedAt).toLocaleTimeString()} · ${changes}${record.phase === 'incomplete' ? ' · 不完整' : ''}`;
 }
 function fileLabel(file: VersionChange | TurnFileChange): string {
@@ -117,7 +117,7 @@ function ChangeFiles({ model }: { model: ChangesPanelModel }) {
   );
 }
 function ExcludedChanges({ model }: { model: ChangesPanelModel }) {
-  const excluded = model.selection.turnId ? model.record?.excluded : model.status.data?.excluded;
+  const excluded = model.selection.turnId ? undefined : model.status.data?.excluded;
   return excluded ? <ExcludedList excluded={excluded} /> : null;
 }
 function ChangeResult({ model }: { model: ChangesPanelModel }) {

@@ -18,42 +18,48 @@ export const nativeClaudeQuery: QueryFn = (params) =>
 export const CLAUDE_CONTROL_TIMEOUT_MS = 10_000;
 export const CLAUDE_SUMMARY_TIMEOUT_MS = 3_000;
 
-/** 只允许投递一次；保留 stdin 到 summary 读取结束，close 同时释放未投递和已投递的等待。 */
-export function createClaudeInput() {
-  let begin!: (message: SDKUserMessage | undefined) => void;
-  let finish!: () => void;
-  let sent = false;
+/**
+ * 长驻输入流：进程存活期间可反复投递消息，close 结束输入并让原生进程退出。
+ * 与单轮 createClaudeInput 不同，这里不限制投递次数。
+ */
+export function createClaudeStream() {
+  const queue: SDKUserMessage[] = [];
+  let wake: (() => void) | undefined;
   let closed = false;
-  const first = new Promise<SDKUserMessage | undefined>((resolve) => {
-    begin = resolve;
-  });
-  const completed = new Promise<void>((resolve) => {
-    finish = resolve;
-  });
   const prompt = (async function* () {
-    const message = await first;
-    if (message) {
-      yield message;
-      await completed;
+    while (!closed) {
+      const next = queue.shift();
+      if (next) {
+        yield next;
+        continue;
+      }
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+      });
+      wake = undefined;
     }
   })();
+  const notify = () => {
+    wake?.();
+    wake = undefined;
+  };
   return {
     prompt,
     send(text: string) {
-      if (sent || closed) throw new Error('Claude 单轮输入已经关闭或投递');
-      sent = true;
-      begin({
+      if (closed) throw new Error('Claude 输入流已关闭');
+      queue.push({
         type: 'user',
         message: { role: 'user', content: text },
         session_id: '',
         parent_tool_use_id: null,
         uuid: randomUUID(),
       });
+      notify();
     },
     close() {
+      if (closed) return;
       closed = true;
-      begin(undefined);
-      finish();
+      notify();
     },
   };
 }

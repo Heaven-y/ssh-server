@@ -4,9 +4,8 @@ import { MCP_SERVER_NAME, resolveRemoteToolsCommand } from '../../remote-tools/l
 import { record, text, type RecordValue } from './types';
 
 /** 覆盖只包含本产品的 MCP 与工作区约束；模型和服务商默认由原生配置决定。 */
-export function threadParams(input: AgentTurnInput, nativeConfig: RecordValue): RecordValue {
+export function threadParams(input: AgentTurnInput, nativeConfig: RecordValue, envNames: string[]): RecordValue {
   const remote = resolveRemoteToolsCommand();
-  const envNames = Object.keys(input.mcpEnv);
   const config: RecordValue = {
     [`mcp_servers.${MCP_SERVER_NAME}`]: {
       command: remote.command,

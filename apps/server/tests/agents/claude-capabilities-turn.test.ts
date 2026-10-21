@@ -101,7 +101,7 @@ function run(fake: ReturnType<typeof controlledQuery>, extra: Partial<Parameters
   const handle = runClaudeTurn({
     workspace,
     text: '任务说明',
-    mcpEnv: {},
+    acquireEnv: () => ({ env: {}, release: () => {} }),
     emit: (event) => events.push(event),
     requestPermission: async () => ({ allow: false }),
     queryFn: fake.queryFn,
@@ -273,7 +273,7 @@ describe('Claude 能力轮次', () => {
       text: '',
       sessionId: 's1',
       invocation: { kind: 'command', name: 'compact' },
-      mcpEnv: {},
+      acquireEnv: () => ({ env: {}, release: () => {} }),
       emit: (event) => events.push(event),
       requestPermission: async () => ({ allow: false }),
       queryFn,

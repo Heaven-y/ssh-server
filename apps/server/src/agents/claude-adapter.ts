@@ -1,101 +1,89 @@
-// Claude 适配器：用 Claude Agent SDK 驱动本机 Claude Code，跑一轮对话并输出统一事件
-import { randomUUID } from 'node:crypto';
-import type { Options } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentTurnInput, PermissionAnswer, TurnHandle } from './types';
-import { MCP_SERVER_NAME, resolveRemoteToolsCommand } from '../remote-tools/launch';
-import type { QueryFn } from './claude-query';
-import { runClaudeQuery } from './claude-turn';
-import { isInsideDir } from './edit-scope';
-import { buildInstructions } from './instructions';
-import { claudeEffort } from './claude-effort';
+// Claude 适配器：同一会话复用长驻运行时，空闲超时后回收。
+import type { TurnHandle, TurnRunner } from './types';
+import { ClaudeRuntime, PERMISSION_TIMEOUT_MS, type ClaudeTurnInput } from './claude-runtime';
 
+export { PERMISSION_TIMEOUT_MS };
+export type { ClaudeTurnInput } from './claude-runtime';
 export type { QueryFn } from './claude-query';
-export type ClaudeTurnInput = AgentTurnInput & { queryFn?: QueryFn };
 export type { PermissionAnswer, TurnHandle } from './types';
 
-export const PERMISSION_TIMEOUT_MS = 300_000;
-const EDIT_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit']);
-const ALLOWED_TOOLS = [
-  `mcp__${MCP_SERVER_NAME}__remote_exec`,
-  `mcp__${MCP_SERVER_NAME}__remote_peek`,
-  `mcp__${MCP_SERVER_NAME}__sync_now`,
-  'Read',
-  'Glob',
-  'Grep',
-  'TodoWrite',
-];
+/** 没有新轮次时保留原生进程的时间；超过后关闭并释放令牌。 */
+export const CLAUDE_IDLE_TIMEOUT_MS = 5 * 60_000;
 
-/** Windows 上子进程缺少 PATH、SystemRoot 会起不来，所以在 process.env 基础上合并 */
-function childEnv(extra: Record<string, string>): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
-  return { ...env, ...extra };
-}
-
-function editTarget(input: Record<string, unknown>): string | undefined {
-  const p = input.file_path ?? input.notebook_path;
-  return typeof p === 'string' ? p : undefined;
-}
-
-/** 等待网页答复；超时或被中断时拒绝 */
-function waitAnswer(pending: Promise<PermissionAnswer>, signal: AbortSignal): Promise<PermissionAnswer> {
-  if (signal.aborted) return Promise.resolve({ allow: false, message: '本轮已中断' });
-  return new Promise((resolve) => {
-    let settled = false;
-    const finish = (a: PermissionAnswer) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      signal.removeEventListener('abort', onAbort);
-      resolve(a);
-    };
-    const timer = setTimeout(() => finish({ allow: false, message: '等待确认超时，已拒绝' }), PERMISSION_TIMEOUT_MS);
-    const onAbort = () => finish({ allow: false, message: '本轮已中断' });
-    signal.addEventListener('abort', onAbort, { once: true });
-    pending.then(finish, () => finish({ allow: false, message: '确认请求失败' }));
-  });
-}
-
+/** 单轮调用：创建运行时、跑完即关闭，用于能力探测与一次性操作。 */
 export function runClaudeTurn(input: ClaudeTurnInput): TurnHandle {
-  const { workspace } = input;
-  const effort = claudeEffort(input.reasoningEffort);
-  const remoteTools = resolveRemoteToolsCommand();
-  const abortController = new AbortController();
-
-  const canUseTool = async (toolName: string, toolInput: Record<string, unknown>, opts: { signal: AbortSignal }) => {
-    const target = editTarget(toolInput);
-    if (EDIT_TOOLS.has(toolName) && target && isInsideDir(workspace.localDir, target)) {
-      return { behavior: 'allow' as const, updatedInput: toolInput };
-    }
-    const requestId = randomUUID();
-    input.emit({ type: 'permission_request', requestId, toolName, input: toolInput });
-    const answer = await waitAnswer(input.requestPermission({ requestId, toolName, input: toolInput }), opts.signal);
-    input.emit({ type: 'permission_resolved', requestId, decision: answer.allow ? 'allowed' : 'denied' });
-    return answer.allow
-      ? { behavior: 'allow' as const, updatedInput: toolInput }
-      : { behavior: 'deny' as const, message: answer.message ?? '用户拒绝' };
+  const runtime = new ClaudeRuntime(input);
+  const handle = runtime.run(input);
+  return {
+    interrupt: () => handle.interrupt(),
+    done: handle.done.then(() => runtime.close()),
   };
+}
 
-  const options = {
-    cwd: workspace.localDir,
-    settingSources: ['user', 'project', 'local'],
-    systemPrompt: { type: 'preset', preset: 'claude_code', append: buildInstructions(workspace) },
-    mcpServers: {
-      [MCP_SERVER_NAME]: {
-        type: 'stdio',
-        command: remoteTools.command,
-        args: remoteTools.args,
-        env: childEnv(input.mcpEnv),
-      },
-    },
-    allowedTools: ALLOWED_TOOLS,
-    canUseTool,
-    includePartialMessages: true,
-    abortController,
-    ...(input.sessionId ? { resume: input.sessionId } : {}),
-    ...(input.model ? { model: input.model } : {}),
-    ...(effort ? { effort } : {}),
-  } as unknown as Options;
+type Entry = { runtime: ClaudeRuntime; key: string; timer?: NodeJS.Timeout };
 
-  return runClaudeQuery(input, options, abortController);
+/**
+ * 按工作区、原生会话与模型配置复用运行时。
+ * 模型或推理强度改变时创建新运行时，避免沿用旧进程的启动参数。
+ */
+export function createClaudeRunner(options: { idleMs?: number } = {}): TurnRunner {
+  const idleMs = options.idleMs ?? CLAUDE_IDLE_TIMEOUT_MS;
+  const runtimes = new Map<string, Entry>();
+  const keyOf = (input: ClaudeTurnInput) =>
+    JSON.stringify([
+      input.workspace.id,
+      input.workspace.localDir,
+      input.workspace.sshHost,
+      input.workspace.remoteDir,
+      input.sessionId ?? '',
+      input.model ?? '',
+      input.reasoningEffort ?? '',
+    ]);
+  const drop = async (entry: Entry) => {
+    clearTimeout(entry.timer);
+    if (runtimes.get(entry.key) === entry) runtimes.delete(entry.key);
+    await entry.runtime.close();
+  };
+  const schedule = (entry: Entry) => {
+    clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => void drop(entry), idleMs);
+    entry.timer.unref?.();
+  };
+  const runner = ((input: ClaudeTurnInput): TurnHandle => {
+    let entry = runtimes.get(keyOf(input));
+    if (entry && !entry.runtime.alive) {
+      void drop(entry);
+      entry = undefined;
+    }
+    if (!entry) {
+      entry = { runtime: new ClaudeRuntime(input), key: keyOf(input) };
+      runtimes.set(entry.key, entry);
+    }
+    clearTimeout(entry.timer);
+    const current = entry;
+    const handle = current.runtime.run(input);
+    return {
+      interrupt: () => handle.interrupt(),
+      done: handle.done.then(async () => {
+        if (!current.runtime.alive) {
+          await drop(current);
+          return;
+        }
+        // 新会话在首轮才拿到原生 id，收尾时改登记，后续轮次才能复用同一进程。
+        const learned = keyOf({ ...input, sessionId: current.runtime.sessionId ?? input.sessionId });
+        if (learned !== current.key && !runtimes.has(learned)) {
+          runtimes.delete(current.key);
+          current.key = learned;
+          runtimes.set(learned, current);
+        }
+        schedule(current);
+      }),
+    };
+  }) as TurnRunner;
+  runner.dispose = async () => {
+    const entries = [...runtimes.values()];
+    runtimes.clear();
+    await Promise.all(entries.map((entry) => drop(entry)));
+  };
+  return runner;
 }

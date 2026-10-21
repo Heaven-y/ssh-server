@@ -1,4 +1,4 @@
-export { runCodexTurn } from './adapter';
+export { createCodexRunner, runCodexTurn } from './adapter';
 export { discoverCodexCapabilities } from './capabilities';
 export {
   listCodexSessions,

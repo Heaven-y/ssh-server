@@ -463,7 +463,6 @@ function onTurnFinished(msg: Msg<'turn.finished'>): void {
       ? { latestChanges: msg.changes }
       : {}),
   });
-  void queryClient.invalidateQueries({ queryKey: ['turn-changes', msg.workspaceId, msg.agent] });
 }
 function onError(msg: Msg<'error'>): void {
   const current = useChat.getState();

@@ -1,6 +1,7 @@
 // Agent 对话事件：后端把 Claude / Codex 的原始消息统一转换成这些事件，再推送给前端
 import type { AgentKind } from './agents';
 import type { CompactionState, ContextUsage } from './capabilities';
+import type { TurnFileChange } from './turn-files';
 
 export type AgentEvent =
   | { type: 'context'; usage: ContextUsage | null }
@@ -18,6 +19,8 @@ export type AgentEvent =
   /** Agent 请求执行需要确认的操作，等待网页答复 */
   | { type: 'permission_request'; requestId: string; toolName: string; input: unknown; description?: string }
   | { type: 'permission_resolved'; requestId: string; decision: 'allowed' | 'denied' | 'cancelled' }
+  /** 本轮文件变更汇总，在 turn_end 之前发出 */
+  | { type: 'turn_files'; files: TurnFileChange[] }
   /** forkPoint 仅为已结束位置的原生轮次/消息 ID；缺失时只能分叉完整会话。 */
   | { type: 'turn_end'; isError: boolean; durationMs?: number; costUsd?: number; forkPoint?: string }
   | { type: 'error'; message: string };

@@ -111,7 +111,8 @@ export function fingerprint(file: WorkingFile): unknown[] {
   ];
 }
 
-async function changedPaths(repo: Repository): Promise<Set<string>> {
+/** 只列出与 HEAD/索引/未跟踪状态不同的路径，不读取文件内容。 */
+export async function changedPaths(repo: Repository): Promise<Set<string>> {
   const result = await git(repo.root, [
     'status',
     '--porcelain=v1',

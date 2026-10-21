@@ -1,27 +1,14 @@
 import type { AgentKind } from './agents';
-import type { VersionChange, VersionDiff, VersionExcluded } from './versions';
+import type { TurnFileChange } from './turn-files';
 
-/** 内部轮次快照；不接受网页传入Git对象或私有引用。 */
-export type TurnSnapshot = {
-  turnId: string;
-  edge: 'base' | 'result';
-  tree: string;
-  repositoryId: string;
-  scope: string;
-  revision: string;
-  createdAt: number;
-  excluded: VersionExcluded[];
-};
-export type TurnFileChange = VersionChange & { additions: number | null; deletions: number | null; binary: boolean };
-export type TurnDiff = VersionDiff & { changes: TurnFileChange[]; excluded: VersionExcluded[] };
+/** 一轮对话的文件变更记录；只描述原生报告与状态对比的结果，不含 Git 对象。 */
 export type TurnChangesRecord = {
   turnId: string;
   agent: AgentKind;
   sessionId?: string;
   startedAt: number;
   completedAt?: number;
-  phase: 'running' | 'complete' | 'incomplete' | 'unavailable';
+  phase: 'complete' | 'incomplete';
   message?: string;
   changes: TurnFileChange[];
-  excluded?: VersionExcluded[];
 };
