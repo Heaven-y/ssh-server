@@ -67,13 +67,15 @@
 | 类型检查 | `npm run typecheck` | shared、server、web、scripts 全部通过 |
 | 代码检查 | `npm run lint` | 0 error。圈复杂度 ≤ 10（`complexity`），认知复杂度 ≤ 15（`sonarjs/cognitive-complexity`），嵌套深度 ≤ 4，参数 ≤ 4 |
 | 格式 | `npm run format:check` | Prettier 无差异；修复用 `npm run format`。Markdown 不自动排版 |
+| 文档一致性 | `npm run docs:check` | git 跟踪的 Markdown：相对链接与锚点有效、无跨文档重复长句（≥ 40 字符）、`docs/` 下每个文档都在导航中登记；单文档超过 600 行只预警不失败 |
 | 重复率 | `npm run dup` | ≤ 3%（50 个 token 以上算重复，不统计测试文件） |
 | 测试与覆盖率 | `npm run coverage` | 全局行 / 语句 / 函数 ≥ 85%，分支 ≥ 75%；`policy/` 与 `http/security.ts` 行 ≥ 95%；`packages/shared` ≥ 90% |
 
 - 覆盖率不统计：进程入口、需要真实SSH的`ssh/pool.ts`、界面组件（`.tsx`，由行为组件测试和浏览器验收验证）、`features/ssh/use-ssh-connection.ts`（沿用所属组件的浏览器范围）、`lib/ws.ts`（逻辑由partysocket提供，状态在chat-store测试）。完整排除项见根`vitest.config.ts`；新增排除须说明原因，目录拆分不改变门槛。
 - 超过门槛时先拆分函数、补测试；确实需要例外时用行内 `// eslint-disable-next-line <规则> -- 原因`，不放宽全局门槛。
 - 报告输出到 `coverage/`（已忽略），打开 `coverage/index.html` 查看未覆盖的行。
-- 测试、构建与验收基准记在[最新验收](ui-usability-optimization-acceptance.md)；纯文档变更只检查引用、锚点、编号与编码，不重复全量代码门禁。
+- 测试、构建与验收基准记在[最新验收](ui-usability-optimization-acceptance.md)；纯文档变更跑 `npm run docs:check` 与 `npm run format:check`，不重复全量代码门禁。
+- 文档不设硬性行数上限：长度本身不是缺陷，重复定义、混入过程流水和坏锚点才是。超长时先按[文档导航](../README.md)的参数归属规则查重复，再考虑拆分；拆分后须保留原锚点或同步全部入链。
 
 测试放各包独立的 `tests/`，与 `src/` 的模块路径对应；新增测试只覆盖核心行为和实际回归，复用现有路径，避免重复断言。需要绝对路径的本机 fixture 用 `path.resolve` / 临时目录生成，不写死开发机路径；协议和安全边界的路径字面量保留其测试意义。执行相关测试示例：`npm test -- apps/server/tests/ssh apps/server/tests/http/ssh.routes.test.ts`。目录总览见 [架构第 3 节](../engineering/architecture.md#3-仓库结构)。
 
