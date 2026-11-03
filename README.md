@@ -51,7 +51,7 @@ npm.cmd run dev
 
 - [文档导航](docs/README.md)
 - [需求](docs/product/requirements.md)、[界面](docs/product/ui-layout.md)、[架构](docs/engineering/architecture.md)、[路线图](docs/roadmap.md)
-- [设计决策](docs/engineering/decisions.md)：保留取舍与被放弃方案，供复盘
+- [设计决策](docs/engineering/decisions.md)：仍约束当前产品的取舍与被放弃方案；上一代产品的决策通过提交锚点追溯
 - `npm run check`：类型、ESLint、格式、重复率与覆盖率完整门禁
 - 分支使用 `main`、`feat/<功能域>` 大功能分支与 `<类型>/<主题>` 小分支，合并统一 `git merge --no-ff`；提交与推送须获授权，见[分支规范](docs/guides/dev-environment.md#16-本仓库的-git-分支与提交)
 

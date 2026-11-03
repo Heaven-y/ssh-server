@@ -284,7 +284,7 @@ stdio MCP 服务，由 Claude 与 Codex 按会话启动，只转发到后端内�
 
 `launch.ts` 用当前 Node 加 `tsx` 加载入口文件；工具名与 MCP 服务器名仍是旧前缀 `ssh-server`。`internal.routes.ts` 用会话令牌换出工作区，先过 `policy` 再执行 SSH，当前已没有任何同步前置或后置步骤。
 
-设计 D6 与 D45 决定删除这条桥：删除后 Agent 只在自己的项目目录里工作，服务器面板回到纯人工工具，`chat/registry.ts`、`TurnEnv`/`acquireEnv`、`instructions.ts` 的远程指令与两个 CLI 的 MCP 注入一并消失。
+设计 D6 与决策 D25 决定删除这条桥：删除后 Agent 只在自己的项目目录里工作，服务器面板回到纯人工工具，`chat/registry.ts`、`TurnEnv`/`acquireEnv`、`instructions.ts` 的远程指令与两个 CLI 的 MCP 注入一并消失。
 
 ### 5.10 policy：命令规则（待移除）
 
@@ -366,7 +366,7 @@ stdio MCP 服务，由 Claude 与 Codex 按会话启动，只转发到后端内�
 
 ## 7. 设计决策
 
-取舍集中在[设计决策](decisions.md)。D45 记录本次产品转向，并取代 D36–D44 中关于同步、版本、本地文件与网页形态的部分；SSH 认证、终端、资源与 Slurm 的既有判断继续有效。以下原则与代码一致：
+取舍集中在[设计决策](decisions.md)。D1 记录本次产品转向，取代上一代关于同步、版本、本地文件与网页形态的部分；SSH 认证、终端、资源与 Slurm 的既有判断继续有效。以下原则与代码一致：
 
 - 会话固定 Agent，沿用原生上下文与原生会话 id。
 - 会话正文只来自 CLI 存储，本产品不落库、不导出、不做事件投影缓存。

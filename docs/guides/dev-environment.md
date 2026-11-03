@@ -32,7 +32,7 @@
 
 | 功能 | 选择 | 理由 |
 |---|---|---|
-| 本地后端 | Node.js + TypeScript + Fastify | 协调异步 Agent / SSH / 子进程和流式消息，复用官方 TypeScript SDK 与前后端共享类型；选型比较见设计决策 D19 |
+| 本地后端 | Node.js + TypeScript + Fastify | 协调异步 Agent / SSH / 子进程和流式消息，复用官方 TypeScript SDK 与前后端共享类型；选型比较见[设计决策 D6](../engineering/decisions.md#d6-后端nodejs--typescript--fastify2026-10-02) |
 | `~/.ssh/config` 解析与 Host 匹配 | `ssh-config`（MIT） | 按 OpenSSH 规则处理引号、`Key=value`、通配符、`!` 取反和先出现优先；本项目只额外去掉 `Match` 块并标记不支持的选项 |
 | 命令黑名单分词（`policy/shell.ts`） | 手写 | `shell-quote` 把换行当作空白而不是命令分隔，`echo x` 换行后接 `sudo ...` 会被当成一条命令，绕过黑名单 |
 | known_hosts 校验（`ssh/known-hosts.ts`） | 手写 | ssh2 不提供 known_hosts 解析；逻辑约 100 行，含哈希条目与 `@revoked`，已有测试覆盖 |
@@ -90,7 +90,7 @@
 - 模型与能力：原生配置为唯一默认来源，`defaultModels` 只在磁盘读取边界剔除；能力目录只缓存公开元数据，技能/命令在实际原生实例发送前复验，目录与 summary 查询不发送模型消息（初始化可能探测服务）。
 - 会话与链接：分叉走官方 inclusive 接口，源会话与项目文件不回滚；链接是含工作区/Agent/原生ID的本网页 hash。
 - 密码：只在明确编辑时按需读取并回显，默认掩码、可查看修改，确认保存不自动连接；验收只用合成凭据，明文不进入日志、URL、普通列表或浏览器持久存储。
-- 布局与隔离：D42 停靠 Group 与已打开文件/PTY 生命周期按[最新验收](ui-usability-optimization-acceptance.md)记录；原生配置与真实目标只用已授权隔离副本或专用测试根。
+- 布局与隔离：停靠 Group 与已打开面板生命周期按[最新验收](ui-usability-optimization-acceptance.md)记录（该记录属上一代形态）；原生配置与真实目标只用已授权隔离副本或专用测试根。
 
 ### 1.5 后端职责、远程 Python 与并发
 
@@ -98,7 +98,7 @@
 
 Agent流、SSH通道、子进程输出和文件操作使用异步接口，避免阻塞请求或在后端重计算。同一会话只运行一轮，同一工作区同步串行，执行前等待自身同步成功；终端与资源独立。
 
-当前按 Node.js 本地启动，不增加 Go 工具链、独立 `.exe` 或安装器。详细约定见 [架构第 2 节](../engineering/architecture.md#2-技术栈) 与 [设计决策第 8 节](../engineering/decisions.md#8-后端选型分析位置与运行边界)。
+当前按 Node.js 本地启动，不增加 Go 工具链、独立 `.exe` 或安装器。详细约定见 [架构第 2 节](../engineering/architecture.md#2-技术栈) 与 [设计决策的技术选型](../engineering/decisions.md#2-技术选型)。
 
 ### 1.6 本仓库的 Git 分支与提交
 
@@ -215,15 +215,15 @@ skills-lock.json              # 记录每个 skill 的来源和内容哈希
 
 真实rclone 1.75.1验收在较长配置目录下出现状态锁文件名错误。其[固定版本源码](https://github.com/rclone/rclone/blob/v1.75.1/cmd/bisync/bilib/canonical.go)把两端规范化完整路径拼成一个文件名，再添加清单/锁后缀；alias会展开真实路径，实际实验不能解决此限制。
 
-当前使用固定版本自带combine单上游映射，仅bisync使用短逻辑根，其他命令仍指向实际目录；取舍见[D31](../engineering/decisions.md#d31-同步清单短名称与兼容升级2026-10-05)。不靠搬配置根或alias掩盖产品问题。
+当前使用固定版本自带combine单上游映射，仅bisync使用短逻辑根，其他命令仍指向实际目录；取舍见历史决策 D31（同步域已删除，原文用 `git show ec33148:docs/engineering/decisions.md` 查看）。不靠搬配置根或alias掩盖产品问题。
 
-只维护version=1、mirror-v1、combine-v1。非空基线缺签名，或已有签名但布局缺失/不匹配时停止，不提供升级或自动重建；确认初始化也不能覆盖旧数据。当前格式未完成任务仍走结果核对/恢复，不重放服务器写操作。坏配置/任务不视为空，不删除状态或搬配置根规避；D31的兼容升级已由D36取消。
+只维护version=1、mirror-v1、combine-v1。非空基线缺签名，或已有签名但布局缺失/不匹配时停止，不提供升级或自动重建；确认初始化也不能覆盖旧数据。当前格式未完成任务仍走结果核对/恢复，不重放服务器写操作。坏配置/任务不视为空，不删除状态或搬配置根规避；旧兼容升级已取消。
 
-Windows rclone会把远端根的反斜杠转换为斜杠，产品在同步/预览数据命令前拒绝，应重新选择已核对的实际兼容目录。服务器文件浏览与本人终端不套用此限制。`pwd`只去掉一个终止LF，保留尾随空格，截断/异常输出拒绝，见[D35](../engineering/decisions.md#d35-rclone-远端根的精确绑定2026-10-06)。
+Windows rclone会把远端根的反斜杠转换为斜杠，产品在同步/预览数据命令前拒绝，应重新选择已核对的实际兼容目录。服务器文件浏览与本人终端不套用此限制。`pwd`只去掉一个终止LF，保留尾随空格，截断/异常输出拒绝，见历史决策 D35（随同步域一起删除）。
 
 ## 4. 开发运行与验收说明
 
-- Windows PowerShell用`npm.cmd start`构建并启动，直接打开`http://127.0.0.1:4317/`；开发热更新用`npm.cmd run dev`并打开5173端口。无需令牌链接，同源握手后才启动业务查询；后端重启后刷新重新握手。安全契约见[D37](../engineering/decisions.md#d37-本机入口与统一服务器档案2026-10-07)。
+- Windows PowerShell用`npm.cmd start`构建并启动，直接打开`http://127.0.0.1:4317/`；开发热更新用`npm.cmd run dev`并打开5173端口。无需令牌链接，同源握手后才启动业务查询；后端重启后刷新重新握手。安全契约见[设计决策 D30](../engineering/decisions.md#d30-本机入口与同源握手2026-10-07)。
 - 设置`AGENTDECK_RCLONE`后，真实验收用`npm.cmd run e2e:m1 -- --host my-server --remote-dir ~/projects/demo --local-dir C:\Projects\demo --report <私有报告路径>`；M2将脚本名换为`e2e:m2`。两端必须是专用空测试根；M1保留原生验收会话，M2只创建/清理自身随机子目录，均不能在已有项目上运行。
 - 先在顶栏“服务器”保存连接档案并认证；SSH config只作为显式导入来源，生产工作区不直接使用未登记Host。私钥模式需要可读私钥，密码模式不回退私钥或SSH Agent；认证保存在服务器层，工作区只选目录和档案。已引用或有活动的服务器变更受保护，密码不进入工作区JSON、浏览器缓存、Agent、日志或argv。
 - 同步元数据、信任副本、缓存与临时目录在后端配置目录，`.git` 永不传输；只同步代码和小文件，排除范围变化需确认重建基线。
