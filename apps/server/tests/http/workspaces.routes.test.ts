@@ -9,7 +9,7 @@ import { registerWorkspaceRoutes } from '../../src/http/workspaces.routes';
 const WS: Workspace = {
   id: 'w1',
   name: 'demo',
-  localDir: path.join(os.tmpdir(), 'ssh-server-fixture', 'demo'),
+  localDir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
   sshHost: 'my-server',
   remoteDir: '~',
 };
@@ -66,7 +66,7 @@ describe('工作区接口', () => {
 
   it('通用PATCH始终404且配置不变', async () => {
     const { app, store } = setup();
-    for (const payload of [{ name: '改名' }, { policy: {} }, { sync: { maxFileBytes: 1 } }])
+    for (const payload of [{ name: '改名' }, { remoteDir: '/srv/demo' }, { sync: { maxFileBytes: 1 } }])
       expect((await app.inject({ method: 'PATCH', url: '/api/workspaces/w1', payload })).statusCode).toBe(404);
     expect(store.update).not.toHaveBeenCalled();
     expect(await store.list()).toEqual([WS]);

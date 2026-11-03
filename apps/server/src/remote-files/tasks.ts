@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { RemoteFileTask, RemoteFileTaskPhase, WorkspaceRemovalBlocker } from '@agentdeck/shared';
+import type { RemoteFileTask, RemoteFileTaskPhase } from '@agentdeck/shared';
 import { workspaceTarget } from '../ssh/connection';
 import { remoteFilesError, RemoteFilesError } from './errors';
 import type { RemoteExecutor } from './executor';
@@ -214,25 +214,6 @@ export function createFileTasks(deps: Deps) {
     }
   }
   return {
-    async blockers(workspaceId: string): Promise<WorkspaceRemovalBlocker[]> {
-      await ready;
-      // 不能使用只返回100项的展示列表；持久阻断包含发起者与全部受影响工作区。
-      const pending = [...records.values()].filter(({ task, action }) => {
-        const related =
-          task.workspaceId === workspaceId || action.public.affectedWorkspaces.some((item) => item.id === workspaceId);
-        return (
-          related &&
-          (controllers.has(task.id) ||
-            runningPhases.has(task.phase) ||
-            task.phase === 'needs_check' ||
-            task.phase === 'sync_pending' ||
-            (task.syncRequired && !task.syncCompleted))
-        );
-      });
-      return pending.length
-        ? [{ code: 'file_tasks_pending', message: `仍有 ${pending.length} 个相关文件任务运行或待核对、恢复，请先处理` }]
-        : [];
-    },
     submit(workspaceId: string, preflightId: string) {
       const key = JSON.stringify([workspaceId, preflightId]);
       const prior = submissions.get(key);

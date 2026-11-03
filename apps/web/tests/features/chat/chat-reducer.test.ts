@@ -47,7 +47,7 @@ describe('reduceChat', () => {
 
   it('tool_result 更新对应的工具条目', () => {
     const items = run([
-      { type: 'tool_call', id: 't1', name: 'mcp__ssh-server__remote_exec', input: { command: 'ls' } },
+      { type: 'tool_call', id: 't1', name: 'mcp__my-server__remote_exec', input: { command: 'ls' } },
       { type: 'tool_result', id: 't1', output: 'ok', isError: true },
       { type: 'turn_end', isError: true },
       { type: 'turn_end', isError: false },
@@ -56,7 +56,7 @@ describe('reduceChat', () => {
       {
         kind: 'tool',
         id: 't1',
-        name: 'mcp__ssh-server__remote_exec',
+        name: 'mcp__my-server__remote_exec',
         input: { command: 'ls' },
         output: 'ok',
         isError: true,

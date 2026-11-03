@@ -1,10 +1,10 @@
-import { ChevronRight, CircleAlert, CircleCheck, CircleX, LoaderCircle, Terminal, Wrench } from 'lucide-react';
+import { ChevronRight, CircleAlert, CircleCheck, CircleX, LoaderCircle, Wrench } from 'lucide-react';
 import type { ChatItem } from './chat-reducer';
 import type { ExpandedProps } from './timeline-model';
 
 type ToolItem = Extract<ChatItem, { kind: 'tool' }>;
 
-/** MCP 工具名形如 mcp__ssh-server__remote_exec，界面只显示最后一段 */
+/** 原生工具名可能是 `mcp__<服务器>__<工具>`，界面只显示最后一段 */
 export const shortToolName = (name: string) => name.split('__').at(-1) ?? name;
 
 /** 卡片标题中显示的关键参数 */
@@ -13,14 +13,6 @@ function keyArg(input: unknown): string | undefined {
   const o = input as Record<string, unknown>;
   const v = o.command ?? o.file_path ?? o.path ?? o.pattern ?? o.url;
   return typeof v === 'string' ? v : undefined;
-}
-
-/** remote_exec 的结果文本第一行是"退出码：N（耗时 …）"，被黑名单拒绝时以"命令被拒绝"开头 */
-function execSummary(output?: string): string | undefined {
-  if (!output) return undefined;
-  if (output.startsWith('命令被拒绝')) return '命令被拒绝';
-  const code = /^退出码：(\S+?)（/.exec(output)?.[1];
-  return code ? `退出码 ${code}` : undefined;
 }
 
 function StatusLabel({ item }: { item: ToolItem }) {
@@ -54,10 +46,7 @@ function StatusLabel({ item }: { item: ToolItem }) {
 /** 工具调用卡片：默认折叠，展开显示参数与结果 */
 export function ToolCard({ item, expanded, onExpandedChange }: { item: ToolItem } & ExpandedProps) {
   const name = shortToolName(item.name);
-  const isExec = name === 'remote_exec';
   const arg = keyArg(item.input);
-  const summary = isExec ? execSummary(item.output) : undefined;
-  const Icon = isExec ? Terminal : Wrench;
 
   return (
     <details
@@ -68,7 +57,7 @@ export function ToolCard({ item, expanded, onExpandedChange }: { item: ToolItem 
       }}
     >
       <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 rounded-lg px-3 py-2.5 marker:hidden hover:bg-muted/50">
-        <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        <Wrench aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="min-w-0 max-w-full break-words font-medium">{name}</span>
@@ -78,7 +67,6 @@ export function ToolCard({ item, expanded, onExpandedChange }: { item: ToolItem 
               </code>
             )}
           </span>
-          {summary && <span className="mt-0.5 block text-xs text-muted-foreground">{summary}</span>}
           {item.status === 'incomplete' && (
             <span className="mt-0.5 block text-xs text-warning">需核对实际执行状态</span>
           )}

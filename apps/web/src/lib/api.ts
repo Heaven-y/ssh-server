@@ -29,8 +29,6 @@ import type {
   ProductSettingsDocument,
   ProductSettingsInput,
   EnvironmentReport,
-  WorkspacePolicyDocument,
-  WorkspacePolicyInput,
 } from '@agentdeck/shared';
 
 export type { SessionSummary } from '@agentdeck/shared';
@@ -183,14 +181,6 @@ export const api = {
       body: JSON.stringify({ content: input.content, revision: input.revision }),
     }),
   listWorkspaces: (signal?: AbortSignal) => request<Workspace[]>('/api/workspaces', { signal }),
-  readWorkspacePolicy: (id: string, signal?: AbortSignal) =>
-    request<WorkspacePolicyDocument>(`/api/workspaces/${encodeURIComponent(id)}/policy`, { signal }),
-  saveWorkspacePolicy: (id: string, input: WorkspacePolicyInput, signal?: AbortSignal) =>
-    request<WorkspacePolicyDocument>(`/api/workspaces/${encodeURIComponent(id)}/policy`, {
-      method: 'PUT',
-      body: JSON.stringify(input),
-      signal,
-    }),
   listSshHosts: (signal?: AbortSignal) => request<ManagedServer[]>('/api/ssh-targets', { signal, cache: 'no-store' }),
   sshImportOptions: (signal?: AbortSignal) =>
     request<Array<SshHostInfo & { keyFile?: string }>>('/api/ssh-targets/import-options', { signal }),

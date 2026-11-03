@@ -9,7 +9,7 @@ import { CLAUDE_SUMMARY_TIMEOUT_MS, type ClaudeQuery } from '../../src/agents/cl
 const workspace: Workspace = {
   id: 'w1',
   name: 'demo',
-  localDir: path.join(os.tmpdir(), 'ssh-server-fixture', 'demo'),
+  localDir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
   sshHost: 'my-server',
   remoteDir: '~/projects/demo',
 };
@@ -101,7 +101,6 @@ function run(fake: ReturnType<typeof controlledQuery>, extra: Partial<Parameters
   const handle = runClaudeTurn({
     workspace,
     text: '任务说明',
-    acquireEnv: () => ({ env: {}, release: () => {} }),
     emit: (event) => events.push(event),
     requestPermission: async () => ({ allow: false }),
     queryFn: fake.queryFn,
@@ -273,7 +272,6 @@ describe('Claude 能力轮次', () => {
       text: '',
       sessionId: 's1',
       invocation: { kind: 'command', name: 'compact' },
-      acquireEnv: () => ({ env: {}, release: () => {} }),
       emit: (event) => events.push(event),
       requestPermission: async () => ({ allow: false }),
       queryFn,

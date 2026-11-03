@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { SyncSettingsSchema } from './sync';
-import { WorkspacePolicySchema } from './policy';
 
 // 服务器目录：以 / 或 ~ 开头，不能含换行和 NUL（会破坏远程命令拼装）
 const remoteDirSchema = z
@@ -19,7 +18,6 @@ export const WorkspaceInputSchema = z.strictObject({
   sshHost: z.string().min(1),
   remoteDir: remoteDirSchema,
   sync: SyncSettingsSchema.optional(),
-  policy: WorkspacePolicySchema.optional(),
 });
 
 export type WorkspaceInput = z.infer<typeof WorkspaceInputSchema>;

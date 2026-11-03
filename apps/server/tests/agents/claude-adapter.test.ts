@@ -8,11 +8,10 @@ import { PERMISSION_TIMEOUT_MS, runClaudeTurn, type QueryFn } from '../../src/ag
 const ws: Workspace = {
   id: 'w1',
   name: 'demo',
-  localDir: path.join(os.tmpdir(), 'ssh-server-fixture', 'demo'),
+  localDir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
   sshHost: 'my-server',
   remoteDir: '~/projects/demo',
 };
-const mcpEnv = { AGENTDECK_INTERNAL_URL: 'http://127.0.0.1:1', AGENTDECK_SESSION_TOKEN: 'tok' };
 
 type CanUseTool = (
   name: string,
@@ -67,7 +66,6 @@ function run(fake: ReturnType<typeof fakeQuery>, extra: Partial<Parameters<typeo
   const handle = runClaudeTurn({
     workspace: ws,
     text: '你好',
-    acquireEnv: () => ({ env: mcpEnv, release: () => {} }),
     emit: (e) => events.push(e),
     requestPermission,
     queryFn: fake.queryFn,
@@ -85,7 +83,7 @@ afterEach(async () => {
 });
 
 describe('runClaudeTurn：调用参数', () => {
-  it('按设计传入 cwd、设置来源、系统提示、MCP 与允许的工具', async () => {
+  it('按设计传入 cwd、设置来源与系统提示，不再注入网页侧工具策略', async () => {
     const fake = fakeQuery();
     await run(fake).handle.done;
     const o = fake.state.options!;
@@ -94,19 +92,8 @@ describe('runClaudeTurn：调用参数', () => {
     expect(o.settingSources).toEqual(['user', 'project', 'local']);
     expect(o.systemPrompt).toMatchObject({ type: 'preset', preset: 'claude_code' });
     expect((o.systemPrompt as { append: string }).append).toContain('my-server');
-    const mcp = (o.mcpServers as Record<string, { command: string; env: Record<string, string> }>)['ssh-server']!;
-    expect(mcp.command).toBe(process.execPath);
-    expect(mcp.env.AGENTDECK_INTERNAL_URL).toBe('http://127.0.0.1:1');
-    expect(mcp.env.AGENTDECK_SESSION_TOKEN).toBe('tok');
-    expect(mcp.env.PATH ?? mcp.env.Path).toBeTruthy();
-    expect(o.allowedTools).toEqual([
-      'mcp__ssh-server__remote_exec',
-      'mcp__ssh-server__remote_peek',
-      'Read',
-      'Glob',
-      'Grep',
-      'TodoWrite',
-    ]);
+    expect(o).not.toHaveProperty('mcpServers');
+    expect(o).not.toHaveProperty('allowedTools');
     expect(o.includePartialMessages).toBe(true);
     expect('model' in o).toBe(false);
     expect('env' in o).toBe(false);
@@ -174,22 +161,17 @@ describe('runClaudeTurn：权限', () => {
   }
   const signal = new AbortController().signal;
 
-  it('本地文件夹内的编辑直接允许', async () => {
-    const { fn, requestPermission } = await canUseTool();
-    const r = await fn('Edit', { file_path: path.join(ws.localDir, 'src', 'a.py') }, { signal });
-    expect(r.behavior).toBe('allow');
-    expect(requestPermission).not.toHaveBeenCalled();
-  });
-
-  it('本地文件夹外的编辑与 Bash 需要网页确认', async () => {
+  it('工作区内外的编辑与 Bash 一律交给网页确认，不再由网页预放行', async () => {
     const requestPermission = vi.fn(async () => ({ allow: false, message: '不允许' }));
     const { fn, events } = await canUseTool({ requestPermission });
+    const inside = await fn('Edit', { file_path: path.join(ws.localDir, 'src', 'a.py') }, { signal });
+    expect(inside).toMatchObject({ behavior: 'deny', message: '不允许' });
     const outside = await fn('Write', { file_path: path.join(ws.localDir, '..', 'other', 'a.txt') }, { signal });
     expect(outside).toMatchObject({ behavior: 'deny', message: '不允许' });
     const bash = await fn('Bash', { command: 'ls' }, { signal });
     expect(bash.behavior).toBe('deny');
-    expect(requestPermission).toHaveBeenCalledTimes(2);
-    expect(events.filter((e) => e.type === 'permission_request')).toHaveLength(2);
+    expect(requestPermission).toHaveBeenCalledTimes(3);
+    expect(events.filter((e) => e.type === 'permission_request')).toHaveLength(3);
   });
 
   it('网页同意时允许', async () => {

@@ -7,7 +7,7 @@ export type { ClaudeTurnInput } from './claude-runtime';
 export type { QueryFn } from './claude-query';
 export type { PermissionAnswer, TurnHandle } from './types';
 
-/** 没有新轮次时保留原生进程的时间；超过后关闭并释放令牌。 */
+/** 没有新轮次时保留原生进程的时间；超过后关闭。 */
 export const CLAUDE_IDLE_TIMEOUT_MS = 5 * 60_000;
 
 /** 单轮调用：创建运行时、跑完即关闭，用于能力探测与一次性操作。 */

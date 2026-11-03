@@ -1,6 +1,6 @@
 // 长驻 Codex 会话：一个 app-server 进程承载同一原生线程的多轮对话，空闲后回收。
 import type { AgentEvent } from '@agentdeck/shared';
-import type { AgentTurnInput, TurnEnv } from '../types';
+import type { AgentTurnInput } from '../types';
 import { sameSessionDirectory } from '../session-scope';
 import { CodexClient } from './client';
 import { validateCodexSkill } from './capabilities';
@@ -23,7 +23,6 @@ const INTERRUPT_FALLBACK_MS = 5_000;
 const TURN_START_TIMEOUT_MS = 30_000;
 
 export class CodexRuntime {
-  private readonly env: TurnEnv;
   private client?: CodexClient;
   private nativeConfig?: RecordValue;
   private thread?: string;
@@ -33,13 +32,7 @@ export class CodexRuntime {
   private broken = false;
   current?: CodexTurn;
 
-  constructor(
-    input: AgentTurnInput,
-    private readonly options: CodexRuntimeOptions = {},
-  ) {
-    // 令牌随会话存活：MCP 子进程在进程启动时拿到它，换令牌会让后续轮次失效。
-    this.env = input.acquireEnv();
-  }
+  constructor(private readonly options: CodexRuntimeOptions = {}) {}
 
   get alive(): boolean {
     return !this.broken && this.closing === undefined;
@@ -68,7 +61,6 @@ export class CodexRuntime {
   private async shutdown(): Promise<void> {
     this.current?.cancel();
     await this.client?.close().catch(() => undefined);
-    this.env.release();
   }
 
   private connect(input: AgentTurnInput, signal: AbortSignal): Promise<CodexClient> {
@@ -79,7 +71,6 @@ export class CodexRuntime {
   private async start(input: AgentTurnInput, signal: AbortSignal): Promise<CodexClient> {
     const client = await CodexClient.start({
       ...this.options,
-      env: { ...this.options.env, ...this.env.env },
       cwd: input.workspace.localDir,
       signal,
     });
@@ -107,7 +98,7 @@ export class CodexRuntime {
   /** 未指定会话时新建原生线程，已指定时续接并复核目录归属。 */
   private async openThread(client: CodexClient, input: AgentTurnInput, signal: AbortSignal): Promise<void> {
     const id = input.sessionId;
-    const params = threadParams(input, this.nativeConfig ?? {}, Object.keys(this.env.env));
+    const params = threadParams(input, this.nativeConfig ?? {});
     if (id) await checkedThread(client, id, input.workspace.localDir);
     if (signal.aborted) throw cancelled();
     const response = await client.request(id ? 'thread/resume' : 'thread/start', {

@@ -3,7 +3,6 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, ServerMessage, Workspace } from '@agentdeck/shared';
 import type { AgentTurnInput } from '../../src/agents/types';
-import { createSessionRegistry } from '../../src/chat/registry';
 import { SessionError } from '../../src/chat/sessions';
 import { TurnManager, type Socket, type TurnManagerDeps } from '../../src/chat/turn-manager';
 import { createWorkspaceActivity } from '../../src/workspaces/activity';
@@ -11,7 +10,7 @@ import { createWorkspaceActivity } from '../../src/workspaces/activity';
 const ws: Workspace = {
   id: 'w1',
   name: 'demo',
-  localDir: path.join(os.tmpdir(), 'ssh-server-fixture', 'demo'),
+  localDir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
   sshHost: 'my-server',
   remoteDir: '~/projects/demo',
 };
@@ -46,20 +45,17 @@ function fakeRunTurn() {
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 function setup(capabilities?: TurnManagerDeps['capabilities'], activity?: ReturnType<typeof createWorkspaceActivity>) {
-  const registry = createSessionRegistry();
   const fake = fakeRunTurn();
   const codex = fakeRunTurn();
   const sessions = { assertBelongs: vi.fn(async (): Promise<void> => undefined) };
   const turns = new TurnManager({
     getWorkspace: async (id) => (id === 'w1' ? ws : undefined),
-    registry,
-    internalUrl: () => 'http://127.0.0.1:1',
     runners: { claude: fake.runTurn, codex: codex.runTurn },
     sessions,
     capabilities,
     acquireWorkspace: activity?.acquire,
   });
-  return { registry, fake, codex, sessions, turns };
+  return { fake, codex, sessions, turns };
 }
 
 const send = (extra: Record<string, unknown> = {}) => ({
@@ -196,20 +192,6 @@ describe('TurnManager', () => {
       { type: 'agent.event', turnId, event: ev },
       { type: 'turn.finished', turnId, workspaceId: 'w1', agent: 'claude' },
     ]);
-  });
-
-  it('把内部地址与会话令牌传给适配器，长驻运行时关闭后注销令牌', async () => {
-    const { fake, turns, registry } = setup();
-    await turns.handle(fakeSocket().socket, send());
-    const lease = fake.turns[0]!.input.acquireEnv();
-    expect(lease.env.AGENTDECK_INTERNAL_URL).toBe('http://127.0.0.1:1');
-    expect(registry.resolve(lease.env.AGENTDECK_SESSION_TOKEN!)).toBe('w1');
-    fake.turns[0]!.finish();
-    await flush();
-    // 长驻运行时在轮次结束后继续持有令牌，只有关闭时才释放。
-    expect(registry.resolve(lease.env.AGENTDECK_SESSION_TOKEN!)).toBe('w1');
-    lease.release();
-    expect(registry.resolve(lease.env.AGENTDECK_SESSION_TOKEN!)).toBeUndefined();
   });
 
   it('同一会话正在运行时拒绝再次发送', async () => {
@@ -373,16 +355,14 @@ describe('TurnManager', () => {
     expect(sent.at(-1)?.type).toBe('turn.finished');
   });
 
-  it('关闭立即撤销令牌并停止已有轮次，准备中的请求与新启动均不能继续', async () => {
-    const { fake, codex, sessions, registry, turns } = setup();
+  it('关闭立即停止已有轮次，准备中的请求与新启动均不能继续', async () => {
+    const { fake, codex, sessions, turns } = setup();
     const first = fakeSocket();
     const second = fakeSocket();
     await turns.handle(first.socket, send({ sessionId: 'claude-session' }));
     await turns.handle(second.socket, send({ sessionId: 'codex-session', agent: 'codex' }));
     const claude = fake.turns[0]!;
     const native = codex.turns[0]!;
-    const token = claude.input.acquireEnv().env.AGENTDECK_SESSION_TOKEN!;
-    const codexToken = native.input.acquireEnv().env.AGENTDECK_SESSION_TOKEN!;
     let verified!: () => void;
     sessions.assertBelongs.mockImplementationOnce(
       () =>
@@ -396,8 +376,6 @@ describe('TurnManager', () => {
     );
     await flush();
     const closing = turns.dispose();
-    expect(registry.resolve(token)).toBeUndefined();
-    expect(registry.resolve(codexToken)).toBeUndefined();
     expect(claude.interrupt).toHaveBeenCalledOnce();
     expect(native.interrupt).toHaveBeenCalledOnce();
     const newcomer = fakeSocket();
@@ -443,14 +421,11 @@ describe('TurnManager', () => {
     await flush();
   });
 
-  it('异步运行失败完整收尾，令牌和审批撤销后可以重新续接', async () => {
-    const { fake, registry, turns } = setup();
+  it('异步运行失败完整收尾，审批撤销后可以重新续接', async () => {
+    const { fake, turns } = setup();
     const { socket, sent } = fakeSocket();
     await turns.handle(socket, send({ sessionId: 'retry-session' }));
     const first = fake.turns[0]!;
-    // 长驻运行时在构造时取得令牌，轮次结束不撤销，只有运行时关闭才释放。
-    const lease = first.input.acquireEnv();
-    const token = lease.env.AGENTDECK_SESSION_TOKEN!;
     const pending = first.input.requestPermission({
       requestId: 'failed-turn-approval',
       toolName: 'command',
@@ -458,7 +433,6 @@ describe('TurnManager', () => {
     });
     first.fail(new Error('内部运行时诊断'));
     await flush();
-    expect(registry.resolve(token)).toBe('w1');
     expect(await pending).toMatchObject({ allow: false, message: '本轮已结束' });
     expect(sent.map((message) => message.type)).toEqual(['turn.started', 'error', 'turn.finished']);
     expect(JSON.stringify(sent)).not.toContain('内部');
@@ -467,13 +441,6 @@ describe('TurnManager', () => {
     fake.turns[1]!.finish();
     await flush();
     expect(sent.at(-1)).toMatchObject({ type: 'turn.finished' });
-    // 两轮共用同一个长驻运行时，令牌要到运行时关闭时才被撤销。
-    const secondLease = fake.turns[1]!.input.acquireEnv();
-    expect(registry.resolve(secondLease.env.AGENTDECK_SESSION_TOKEN!)).toBe('w1');
-    lease.release();
-    secondLease.release();
-    expect(registry.resolve(token)).toBeUndefined();
-    expect(registry.resolve(secondLease.env.AGENTDECK_SESSION_TOKEN!)).toBeUndefined();
   });
 });
 

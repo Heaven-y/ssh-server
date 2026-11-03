@@ -1,8 +1,7 @@
 // 轮次按 Agent 与原生会话隔离；耗时准备前先建立应用轮次，允许及时中断。
 import { randomUUID } from 'node:crypto';
 import type { AgentEvent, AgentKind, ClientMessage, ServerMessage, SessionRef, Workspace } from '@agentdeck/shared';
-import type { AgentTurnInput, PermissionAnswer, TurnEnv, TurnHandle, TurnRunner } from '../agents/types';
-import type { SessionRegistry } from './registry';
+import type { AgentTurnInput, PermissionAnswer, TurnHandle, TurnRunner } from '../agents/types';
 import { SessionError, type SessionsService } from './sessions';
 import type { CapabilitiesService } from './capabilities';
 import { WorkspaceRemovalError } from '../workspaces/activity';
@@ -12,8 +11,6 @@ import { mergeChanges, toolFileChanges, withDetected } from './turn-files';
 export type Socket = { send(msg: ServerMessage): void; isOpen(): boolean };
 export type TurnManagerDeps = {
   getWorkspace(id: string): Promise<Workspace | undefined>;
-  registry: SessionRegistry;
-  internalUrl(): string;
   runners: Partial<Record<AgentKind, TurnRunner>>;
   sessions: Pick<SessionsService, 'assertBelongs'>;
   capabilities?: Pick<CapabilitiesService, 'prepare'>;
@@ -55,8 +52,6 @@ export class TurnManager {
   private pending = new Map<string, Pending>();
   private closed = new WeakSet<Socket>();
   private stopping = false;
-  /** 已交给运行时的令牌租约；关闭后端时统一撤销，避免运行时长驻后遗留。 */
-  private readonly leases = new Set<TurnEnv>();
   private readonly runners: Partial<Record<AgentKind, TurnRunner>>;
 
   constructor(private readonly deps: TurnManagerDeps) {
@@ -103,11 +98,9 @@ export class TurnManager {
     }
   }
 
-  /** 退出后端时停止本进程拥有的轮次，并关闭长驻运行时以撤销其内部工具令牌。 */
+  /** 退出后端时停止本进程拥有的轮次，并关闭长驻运行时。 */
   async dispose(): Promise<void> {
     this.stopping = true;
-    // 关闭即收回能力：不等轮次收尾，先同步撤销所有已发出的令牌租约。
-    for (const lease of [...this.leases]) lease.release();
     const handles: TurnHandle[] = [];
     for (const turn of this.turns.values()) {
       this.closed.add(turn.socket);
@@ -125,7 +118,7 @@ export class TurnManager {
       ]);
     } finally {
       clearTimeout(timer);
-      // 运行时的令牌随其关闭释放；即使轮次未在超时内结束也要收回能力。
+      // 运行时长驻时随其关闭一并停止。
       await Promise.allSettled(Object.values(this.runners).map((runner) => runner?.dispose?.() ?? Promise.resolve()));
     }
   }
@@ -179,20 +172,6 @@ export class TurnManager {
     if (turn.controller.signal.aborted || turn.finished || this.closed.has(turn.socket))
       return Promise.resolve({ allow: false, message: '本轮或连接已结束' });
     return new Promise((resolve) => this.pending.set(req.requestId, { turn, resolve }));
-  }
-
-  /** 为运行时登记内部令牌；登记过的租约在后端关闭时统一撤销。 */
-  private acquireEnv(ws: Workspace): TurnEnv {
-    const token = this.deps.registry.register(ws.id);
-    const lease: TurnEnv = {
-      env: { AGENTDECK_INTERNAL_URL: this.deps.internalUrl(), AGENTDECK_SESSION_TOKEN: token },
-      release: () => {
-        this.leases.delete(lease);
-        this.deps.registry.unregister(token);
-      },
-    };
-    this.leases.add(lease);
-    return lease;
   }
 
   private acquireWorkspace(socket: Socket, msg: Send): { release?: () => void } | undefined {
@@ -280,7 +259,6 @@ export class TurnManager {
       reasoningEffort: msg.reasoningEffort,
       text: prepared.text,
       invocation: prepared.invocation,
-      acquireEnv: () => this.acquireEnv(ws),
       emit: (event) => this.event(turn, event),
       requestPermission: (req) => this.permission(turn, req),
     });

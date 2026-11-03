@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError, queryKeys } from '../../src/lib/api';
 
-const localDir = path.join(os.tmpdir(), 'ssh-server-fixture', 'demo');
+const localDir = path.join(os.tmpdir(), 'agentdeck-fixture', 'demo');
 const respond = (status: number, body?: unknown) =>
   vi.stubGlobal(
     'fetch',
