@@ -4,7 +4,7 @@ import type { ManagedServer, ManualServerInput, Workspace } from '@ssh-server/sh
 import { api, queryKeys } from '../../lib/api';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { buttonClass } from '../../ui/styles';
-import { useCancelableRequest } from '../workspaces/setup/use-cancelable-request';
+import { useCancelableRequest } from '../../lib/use-cancelable-request';
 import { EMPTY_SERVER, ManualServerForm } from './ManualServerForm';
 import { ServerConnectionForm } from './ServerConnectionForm';
 import { SshImportOptions } from './SshImportOptions';

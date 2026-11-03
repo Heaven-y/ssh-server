@@ -1,6 +1,6 @@
 // Windows 当前用户 DPAPI；输入/输出经 stdin/stdout，命令行只有固定脚本。
 import path from 'node:path';
-import { runProcess, type ProcessRunner } from '../sync/process';
+import { runProcess, type ProcessRunner } from '../process/run';
 import { CredentialStorageError, storageFailure } from './credential-storage-error';
 
 export type SecretProtector = {

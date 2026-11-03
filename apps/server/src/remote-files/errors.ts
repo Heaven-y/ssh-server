@@ -1,5 +1,4 @@
 import { SshConnectionError } from '../ssh/connection';
-import { SyncError } from '../sync/errors';
 import { WorkspaceRemovalError } from '../workspaces/activity';
 
 const failures = {
@@ -59,12 +58,6 @@ export function fileOperationError(code: string | undefined): RemoteFilesError {
 function typedError(error: unknown) {
   if (error instanceof WorkspaceRemovalError) return error;
   if (error instanceof RemoteFilesError) return error;
-  if (error instanceof SyncError)
-    return {
-      code: error.code === 'case_collision' ? 'sync_case_collision' : 'sync_pending',
-      message: error.message,
-      status: 409,
-    };
   if (error instanceof SshConnectionError) return { ...error, message: error.message, status: 409 };
   return undefined;
 }

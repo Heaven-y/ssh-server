@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { useChat } from '../chat/chat-store';
+import { useChat } from './chat-store';
 import { buttonClass } from '../../ui/styles';
 
 export function PendingFeedback() {

@@ -69,16 +69,12 @@ describe('api', () => {
   });
 
   it('成功时返回 JSON；POST 带 content-type', async () => {
-    respond(201, { id: 'w1' });
+    respond(201, { alias: 'my-server' });
     await expect(
-      api.createVerifiedWorkspace({
-        input: { name: 'n', localDir, sshHost: 'h', remoteDir: '~' },
-        verification: '11111111-1111-4111-8111-111111111111',
-        initializationConfirmed: true,
-      }),
-    ).resolves.toEqual({ id: 'w1' });
+      api.saveSshTarget({ name: 'n', hostname: 'my-server', username: 'demo', port: 22, authMode: 'key' }),
+    ).resolves.toEqual({ alias: 'my-server' });
     const [url, init] = vi.mocked(fetch).mock.calls[0]!;
-    expect(url).toBe('/api/workspaces');
+    expect(url).toBe('/api/ssh-targets');
     expect(init).toMatchObject({ method: 'POST', headers: { 'content-type': 'application/json' } });
   });
 
@@ -88,7 +84,7 @@ describe('api', () => {
     expect(err).toBeInstanceOf(ApiError);
     expect(err).toMatchObject({ status: 400, field: 'localDir', message: '本地文件夹不存在' });
     respond(500, { code: 'partial_restore', message: '部分文件恢复失败', affectedPaths: ['main.py'] });
-    await expect(api.restoreVersion('w1', { commit: 'a'.repeat(40), revision: 'b'.repeat(64) })).rejects.toMatchObject({
+    await expect(api.deleteSshTarget({ alias: 'my-server' } as never)).rejects.toMatchObject({
       status: 500,
       code: 'partial_restore',
       affectedPaths: ['main.py'],
@@ -176,45 +172,19 @@ describe('api', () => {
     ]);
   });
 
-  it('同步决策只走对应工作区接口，创建不附带密码', async () => {
-    respond(200, { phase: 'ready' });
-    await api.initializeSync('w/1');
+  it('远端文件操作只走对应工作区接口，提交绑定确认预检', async () => {
+    respond(200, { path: 'a.txt' });
+    await api.remoteFileTaskAction('w/1', 'task 1', 'check');
     expect(vi.mocked(fetch).mock.calls[0]).toEqual([
-      '/api/workspaces/w%2F1/sync/initialize',
-      expect.objectContaining({ method: 'POST', body: '{"confirmed":true}' }),
+      '/api/workspaces/w%2F1/remote-files/tasks/task%201/check',
+      expect.objectContaining({ method: 'POST', body: '{}' }),
     ]);
-    await api.decideSyncDeletions('w/1', 'reject');
-    expect(vi.mocked(fetch).mock.calls[1]).toEqual([
-      '/api/workspaces/w%2F1/sync/deletions',
-      expect.objectContaining({ body: '{"decision":"reject"}' }),
+    respond(200, { id: 'preflight' });
+    await api.submitRemoteFileTask('w/1', 'preflight-1');
+    expect(vi.mocked(fetch).mock.calls[0]).toEqual([
+      '/api/workspaces/w%2F1/remote-files/tasks',
+      expect.objectContaining({ body: JSON.stringify({ preflightId: 'preflight-1', confirmed: true }) }),
     ]);
-    const input = {
-      name: 'n',
-      localDir,
-      sshHost: 'h',
-      remoteDir: '~',
-      sync: { maxFileBytes: 100, excludedExtensions: [] },
-    };
-    await api.createVerifiedWorkspace({
-      input,
-      verification: '11111111-1111-4111-8111-111111111111',
-      initializationConfirmed: true,
-    });
-    const body = vi.mocked(fetch).mock.calls[2]![1]!.body as string;
-    expect(body).not.toContain('never-save');
-    expect(JSON.parse(body).input).not.toHaveProperty('savePassword');
-    expect(JSON.parse(body)).toMatchObject({
-      input: { sync: input.sync },
-      verification: '11111111-1111-4111-8111-111111111111',
-      initializationConfirmed: true,
-    });
-    const legacy = { ...input, authMode: 'password' };
-    expect(() =>
-      api.createVerifiedWorkspace({
-        input: legacy,
-        verification: '11111111-1111-4111-8111-111111111111',
-        initializationConfirmed: true,
-      }),
-    ).toThrow();
+    expect(api).not.toHaveProperty('recoverRemoteFileTask');
   });
 });

@@ -82,12 +82,6 @@ beforeEach(() => {
   vi.spyOn(api, 'agentCapabilities').mockResolvedValue({ agent: 'claude', entries: [], models: [], warnings: [] });
   vi.spyOn(api, 'readResources').mockImplementation(async () => snapshot());
   vi.spyOn(api, 'readSlurm').mockResolvedValue({ sampledAt: 1, status: 'available', output: '', truncated: false });
-  vi.spyOn(api, 'listFiles').mockImplementation(async (_id, directory) => ({
-    path: directory ?? '',
-    entries: directory ? [] : [{ path: 'main.py', name: 'main.py', kind: 'file', size: 8 }],
-    truncated: false,
-  }));
-  vi.spyOn(api, 'readFile').mockResolvedValue({ path: 'main.py', content: 'print(1)', size: 8 });
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => new Response(JSON.stringify({ message: '受控未启用接口' }), { status: 503 })),
@@ -115,42 +109,29 @@ function mount() {
 function top() {
   return within(screen.getByRole('button', { name: '搜索与操作' }).closest('header')!);
 }
-function resize(value: boolean) {
-  act(() => {
-    wide = value;
-    vi.stubGlobal('innerWidth', value ? 1440 : 960);
-    window.dispatchEvent(new Event('resize'));
-    resized.forEach((callback) => callback());
-  });
-}
-it('资源与文件独立打开、同时可见，任一收起不影响另一面板', async () => {
+
+it('资源面板独立开关，收起后再打开仍是原节点', async () => {
   mount();
   const resources = await screen.findByRole('complementary', { name: '资源面板' });
   const toolbar = top();
-  const resourceTrigger = toolbar.getByRole('button', { name: '资源' });
-  const fileTrigger = toolbar.getByRole('button', { name: '文件' });
+  const trigger = toolbar.getByRole('button', { name: '资源' });
   expect(within(resources).getByRole('region', { name: '服务器资源' })).toBeTruthy();
   await waitFor(() => expect(api.readResources).toHaveBeenCalled());
-  const sampling = vi.mocked(api.readResources).mock.calls[0]![1]!;
-  fireEvent.click(fileTrigger);
-  const files = await screen.findByRole('complementary', { name: '文件面板' });
-  await within(files).findByRole('button', { name: 'main.py' });
-  expect(resources.hidden).toBe(false);
-  expect(sampling.aborted).toBe(false);
-  expect(toolbar.queryByRole('region', { name: '服务器资源' })).toBeNull();
-  expect(resourceTrigger.getAttribute('aria-expanded')).toBe('true');
-  expect(fileTrigger.getAttribute('aria-expanded')).toBe('true');
+  expect(trigger.getAttribute('aria-expanded')).toBe('true');
   fireEvent.click(within(resources).getByRole('button', { name: '收起资源面板' }));
   expect(resources.hidden).toBe(true);
-  expect(files.hidden).toBe(false);
-  fireEvent.click(resourceTrigger);
-  fireEvent.click(within(files).getByRole('button', { name: '收起文件面板' }));
-  expect(files.hidden).toBe(true);
-  expect(resources.hidden).toBe(false);
-  fireEvent.click(fileTrigger);
-  expect(screen.getByRole('complementary', { name: '文件面板' })).toBe(files);
+  fireEvent.click(trigger);
+  expect(screen.getByRole('complementary', { name: '资源面板' })).toBe(resources);
 });
-it('窄窗初始收起，两个非模态面板可共存，Escape只收起焦点所在面板并返回触发器', async () => {
+
+it('本地文件面板随镜像域一起删除，顶栏不再提供文件入口', async () => {
+  mount();
+  await screen.findByText('从一条消息开始');
+  expect(top().queryByRole('button', { name: '文件' })).toBeNull();
+  expect(screen.queryByRole('complementary', { name: '文件面板' })).toBeNull();
+});
+
+it('窄窗初始收起，Escape只收起焦点所在面板并返回触发器', async () => {
   wide = false;
   mount();
   await screen.findByText('从一条消息开始');
@@ -158,64 +139,36 @@ it('窄窗初始收起，两个非模态面板可共存，Escape只收起焦点�
   const trigger = top().getByRole('button', { name: '资源' });
   trigger.focus();
   fireEvent.click(trigger);
-  fireEvent.click(top().getByRole('button', { name: '文件' }));
-  await screen.findByRole('button', { name: 'main.py' });
-  expect(screen.queryByRole('dialog')).toBeNull();
-  const resources = screen.getByRole('complementary', { name: '资源面板' });
+  const resources = await screen.findByRole('complementary', { name: '资源面板' });
   const handle = within(resources).getByRole('button', { name: '收起资源面板' });
   handle.focus();
   fireEvent.keyDown(handle, { key: 'Escape' });
   expect(screen.queryByRole('complementary', { name: '资源面板' })).toBeNull();
-  expect(screen.getByRole('complementary', { name: '文件面板' })).toBeTruthy();
   expect(document.activeElement).toBe(trigger);
 });
-it.each([true, false])('嵌套设置弹窗取消时Escape不隐藏文件面板（宽屏=%s）', async (isWide) => {
-  wide = isWide;
+
+it('嵌套设置弹窗取消时Escape不收起资源面板', async () => {
   mount();
   await screen.findByText('从一条消息开始');
-  const toolbar = within(document.getElementById('workspace-topbar')!);
-  fireEvent.click(toolbar.getByRole('button', { name: '文件' }));
-  const parent = document.getElementById('workspace-files-panel')!;
+  const toolbar = top();
+  const parent = document.getElementById('workspace-resources-panel')!;
   fireEvent.click(toolbar.getByRole('button', { name: '设置' }));
   const settingsDialog = await screen.findByRole<HTMLDialogElement>('dialog', { name: '产品设置' });
   fireEvent.keyDown(settingsDialog, { key: 'Escape' });
   fireEvent(settingsDialog, new Event('cancel', { cancelable: true }));
   expect(parent.hidden).toBe(false);
-  fireEvent.keyDown(within(parent).getByRole('button', { name: '收起文件面板' }), { key: 'Escape' });
+  fireEvent.keyDown(within(parent).getByRole('button', { name: '收起资源面板' }), { key: 'Escape' });
   expect(parent.hidden).toBe(true);
 });
-it('只读预览随收起、缩放与换工作区保留内容，关闭不需确认', async () => {
-  mount();
-  await screen.findByText('从一条消息开始');
-  fireEvent.click(top().getByRole('button', { name: '文件' }));
-  fireEvent.doubleClick(await screen.findByRole('button', { name: 'main.py' }));
-  const textbox = await screen.findByRole('textbox', { name: '项目文件内容' });
-  expect(screen.getByText(/只读 · python/)).toBeTruthy();
-  expect(screen.queryByRole('button', { name: '保存文件' })).toBeNull();
-  fireEvent.click(top().getByRole('button', { name: '资源' }));
-  expect(screen.getByRole('textbox', { name: '项目文件内容' })).toBe(textbox);
-  fireEvent.click(screen.getByRole('button', { name: '收起文件面板' }));
-  expect(screen.queryByRole('textbox', { name: '项目文件内容' })).toBeNull();
-  act(() => useChat.getState().selectWorkspace(other.id));
-  resize(false);
-  fireEvent.click(top().getByRole('button', { name: '文件' }));
-  expect(screen.getByRole('textbox', { name: '项目文件内容' })).toBeTruthy();
-  expect(screen.getByText('工作区：示例项目')).toBeTruthy();
-  expect(screen.queryByRole('dialog')).toBeNull();
-  expect(screen.getAllByRole('complementary', { name: '文件面板' })).toHaveLength(1);
-  resize(true);
-  fireEvent.click(screen.getByRole('button', { name: '关闭文件面板' }));
-  expect(window.confirm).not.toHaveBeenCalled();
-  expect(screen.queryByRole('textbox', { name: '项目文件内容' })).toBeNull();
-  expect(api.readFile).toHaveBeenCalledWith(workspace.id, 'main.py', expect.any(AbortSignal));
-}, 20_000);
 
-it('切换工作区时状态栏组件身份不重复', async () => {
+it('切换工作区时资源面板保持同一节点，项目列表暂为占位', async () => {
   const errors = vi.spyOn(console, 'error');
   mount();
   await screen.findByText('从一条消息开始');
+  const resources = screen.getByRole('complementary', { name: '资源面板' });
+  expect(screen.getByRole('navigation', { name: '项目列表' }).textContent).toContain('项目列表将在后续任务接入');
   act(() => useChat.getState().selectWorkspace(other.id));
-  expect(screen.getByRole('button', { name: other.name }).getAttribute('aria-current')).toBe('true');
+  expect(screen.getByRole('complementary', { name: '资源面板' })).toBe(resources);
   expect(errors.mock.calls.flat().filter((value) => typeof value === 'string' && value.includes('same key'))).toEqual(
     [],
   );

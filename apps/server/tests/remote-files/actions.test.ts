@@ -157,7 +157,7 @@ it('冷启动阻断遍历全部持久任务及受影响工作区，不受100项�
   expect(await restored.blockers('unrelated')).toEqual([]);
 });
 
-it('预检保留原工作区根配置，复验配置并阻止同步范围内提交', async () => {
+it('预检保留原工作区根配置，复验配置并拒绝陈旧预检', async () => {
   const action = actionFixture();
   const workspace = { ...ws, remoteDir: '~/linked-project' };
   const executor = { run: vi.fn(async () => action.plan) };
@@ -198,15 +198,15 @@ it('预检保留原工作区根配置，复验配置并阻止同步范围内提�
   workspace.remoteDir = '~/linked-project';
   const insideDestination = path.posix.join(root, 'target.py');
   executor.run.mockResolvedValue({ ...action.plan, destination: insideDestination });
-  const affected = await preflights.create(
+  const unaffected = await preflights.create(
     ws.id,
     action.context.info.id,
     { kind: 'move', source, destination: insideDestination },
     new AbortController().signal,
   );
-  expect(affected.canSubmit).toBe(false);
-  expect(affected.affectedWorkspaces.map((item) => item.id)).toEqual([ws.id]);
-  expect(() => preflights.take(ws.id, affected.id)).toThrow('同步');
+  // 同步域删除后远端操作不再影响本机镜像，任何目标都可直接提交。
+  expect(unaffected.canSubmit).toBe(true);
+  expect(unaffected.affectedWorkspaces).toEqual([]);
   const serverOnly = path.posix.join(root, 'data:2026.bin');
   executor.run.mockResolvedValue({
     ...action.plan,
@@ -366,7 +366,6 @@ it.each(['syncRequired', 'dispatched', 'id', 'identity', 'json', 'read'])('%s损
     () => restored.status(ws.id, task.id),
     () => restored.cancel(ws.id, task.id),
     () => restored.check(ws.id, task.id),
-    () => restored.recover(ws.id, task.id),
     () => restored.submit(ws.id, randomUUID()),
     () => restored.blockers(ws.id),
     () => restored.blockers('other'),

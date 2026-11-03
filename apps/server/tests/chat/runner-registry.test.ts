@@ -12,7 +12,6 @@ vi.mock('../../src/agents/claude-adapter', () => ({
 describe('显式Agent运行器注册表', () => {
   it('只注册Codex时Claude不可用，不能隐式启动Claude或改用Codex', async () => {
     const codex = vi.fn();
-    const sync = { sync: vi.fn() };
     const socket = { send: vi.fn(), isOpen: () => true };
     const turns = new TurnManager({
       getWorkspace: async () => ({ id: 'w1' }) as Workspace,
@@ -20,7 +19,6 @@ describe('显式Agent运行器注册表', () => {
       internalUrl: () => 'http://127.0.0.1:1',
       runners: { codex },
       sessions: { assertBelongs: vi.fn() },
-      sync,
     });
     await turns.handle(socket, {
       type: 'chat.send',
@@ -31,7 +29,6 @@ describe('显式Agent运行器注册表', () => {
     });
     expect(runClaudeTurn).not.toHaveBeenCalled();
     expect(codex).not.toHaveBeenCalled();
-    expect(sync.sync).not.toHaveBeenCalled();
     expect(socket.send).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'error', message: '当前 Agent 适配器不可用' }),
     );

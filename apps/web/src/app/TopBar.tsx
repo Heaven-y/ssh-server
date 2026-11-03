@@ -1,6 +1,5 @@
 import {
   Activity,
-  FileCode2,
   Command as CommandIcon,
   FolderOpen,
   LoaderCircle,
@@ -89,8 +88,6 @@ export function TopBar({
   workspace,
   onOpenSettings,
   onOpenServers,
-  onOpenFiles,
-  filesOpen,
   onOpenTerminal,
   terminalOpen,
   resourcesOpen,
@@ -100,8 +97,6 @@ export function TopBar({
   workspace?: Workspace;
   onOpenSettings(): void;
   onOpenServers(): void;
-  onOpenFiles(): void;
-  filesOpen: boolean;
   onOpenTerminal(): void;
   terminalOpen: boolean;
   resourcesOpen: boolean;
@@ -159,17 +154,6 @@ export function TopBar({
         >
           <Activity aria-hidden className="size-4" />
           资源
-        </button>
-        <button
-          type="button"
-          className={buttonClass('ghost')}
-          disabled={!workspace}
-          aria-expanded={filesOpen}
-          aria-controls="workspace-files-panel"
-          onClick={onOpenFiles}
-        >
-          <FileCode2 aria-hidden className="size-4" />
-          文件
         </button>
         <button type="button" className={buttonClass('ghost')} onClick={onOpenServers} aria-haspopup="dialog">
           <Server aria-hidden className="size-4" />

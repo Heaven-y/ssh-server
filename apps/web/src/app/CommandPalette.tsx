@@ -9,11 +9,8 @@ import { sessionActionKey, useChat } from '../features/chat/chat-store';
 import { useUiPreferences } from '../ui/ui-preferences';
 
 export type PaletteActions = {
-  files(): boolean;
   terminal(): boolean;
   settings(): boolean;
-  sync(id: string): boolean;
-  versions(id: string): boolean;
   resources(id: string): boolean;
 };
 type Action = { id: string; label: string; workspace?: boolean; run(): boolean };
@@ -30,10 +27,7 @@ function commonActions(actions: PaletteActions, id: string): Action[] {
         return true;
       },
     },
-    { id: 'files', label: '打开文件', workspace: true, run: actions.files },
     { id: 'terminal', label: '打开终端', workspace: true, run: actions.terminal },
-    { id: 'sync', label: '立即同步', workspace: true, run: () => actions.sync(id) },
-    { id: 'versions', label: '保存版本（填写说明）', workspace: true, run: () => actions.versions(id) },
     { id: 'resources', label: '查看资源详情', workspace: true, run: () => actions.resources(id) },
     { id: 'settings', label: '打开设置', run: actions.settings },
     {

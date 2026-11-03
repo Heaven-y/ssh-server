@@ -1,7 +1,7 @@
 import { access } from 'node:fs/promises';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { detectEnvironment } from '../../src/settings/environment';
-import type { ProcessRunner } from '../../src/sync/process';
+import type { ProcessRunner } from '../../src/process/run';
 
 // 执行器已模拟，Codex入口也应显式隔离，不能依赖测试机是否安装CLI。
 beforeEach(() => vi.stubEnv('SSH_SERVER_CODEX', 'fixture-codex'));

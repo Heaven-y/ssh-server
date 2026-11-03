@@ -1,13 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  SyncSettingsSchema,
-  type AgentEvent,
-  type ServerMessage,
-  type SyncStatus,
-  type Workspace,
-} from '@ssh-server/shared';
+import type { AgentEvent, ServerMessage, Workspace } from '@ssh-server/shared';
 import type { AgentTurnInput } from '../../src/agents/types';
 import { createSessionRegistry } from '../../src/chat/registry';
 import { SessionError } from '../../src/chat/sessions';
@@ -51,27 +45,11 @@ function fakeRunTurn() {
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-function setup(
-  syncOperation?: (workspace: Workspace) => Promise<SyncStatus>,
-  capabilities?: TurnManagerDeps['capabilities'],
-  activity?: ReturnType<typeof createWorkspaceActivity>,
-  changedPaths?: TurnManagerDeps['changedPaths'],
-) {
+function setup(capabilities?: TurnManagerDeps['capabilities'], activity?: ReturnType<typeof createWorkspaceActivity>) {
   const registry = createSessionRegistry();
   const fake = fakeRunTurn();
   const codex = fakeRunTurn();
   const sessions = { assertBelongs: vi.fn(async (): Promise<void> => undefined) };
-  const sync = {
-    sync: vi.fn(
-      syncOperation ??
-        (async () => ({
-          phase: 'ready' as const,
-          deletions: [],
-          conflicts: [],
-          settings: SyncSettingsSchema.parse({}),
-        })),
-    ),
-  };
   const turns = new TurnManager({
     getWorkspace: async (id) => (id === 'w1' ? ws : undefined),
     registry,
@@ -79,11 +57,9 @@ function setup(
     runners: { claude: fake.runTurn, codex: codex.runTurn },
     sessions,
     capabilities,
-    sync,
     acquireWorkspace: activity?.acquire,
-    changedPaths,
   });
-  return { registry, fake, codex, sessions, turns, sync };
+  return { registry, fake, codex, sessions, turns };
 }
 
 const send = (extra: Record<string, unknown> = {}) => ({
@@ -96,15 +72,10 @@ const send = (extra: Record<string, unknown> = {}) => ({
 });
 
 describe('TurnManager', () => {
-  it('准备、运行与轮次同步收尾始终保护工作区，closing拒绝新轮次', async () => {
+  it('准备与运行全程保护工作区，closing拒绝新轮次', async () => {
     const activity = createWorkspaceActivity();
     let prepare!: (value: { text: string }) => void;
-    let finishSync!: (value: SyncStatus) => void;
     const fixture = setup(
-      () =>
-        new Promise((resolve) => {
-          finishSync = resolve;
-        }),
       {
         prepare: () =>
           new Promise((resolve) => {
@@ -122,9 +93,6 @@ describe('TurnManager', () => {
     await pending;
     expect(activity.active(ws.id)).toBe(1);
     fixture.fake.turns[0]!.finish();
-    await vi.waitFor(() => expect(finishSync).toBeDefined());
-    expect(activity.active(ws.id)).toBe(1);
-    finishSync({ phase: 'ready', settings: SyncSettingsSchema.parse({}), deletions: [], conflicts: [] });
     await vi.waitFor(() => expect(activity.active(ws.id)).toBe(0));
     await activity.exclusive(ws.id, async () => {
       await fixture.turns.handle(socket.socket, send({ clientTurnId: 'c2' }));
@@ -133,12 +101,12 @@ describe('TurnManager', () => {
     });
     await fixture.turns.dispose();
   });
-  it('原生能力解析在启动前完成，纯上下文命令不触发服务器同步', async () => {
+  it('原生能力解析在启动前完成，纯上下文命令照常交给适配器', async () => {
     const prepare = vi.fn(async () => ({
       text: '',
       invocation: { kind: 'command' as const, name: 'compact' as const },
     }));
-    const { turns, codex, sync } = setup(undefined, { prepare });
+    const { turns, codex } = setup({ prepare });
     await turns.handle(
       fakeSocket().socket,
       send({ agent: 'codex', sessionId: 'native', selection: { id: 'compact' }, text: '' }),
@@ -146,7 +114,6 @@ describe('TurnManager', () => {
     expect(codex.turns[0]!.input).toMatchObject({ text: '', invocation: { kind: 'command', name: 'compact' } });
     codex.turns[0]!.finish();
     await flush();
-    expect(sync.sync).not.toHaveBeenCalled();
     prepare.mockRejectedValueOnce(new SessionError(400, 'capability_missing', '技能已变化'));
     const rejected = fakeSocket();
     await turns.handle(rejected.socket, send({ agent: 'codex', selection: { id: 'stale' } }));
@@ -156,7 +123,7 @@ describe('TurnManager', () => {
 
   it('能力发现中取消后，迟到结果不能启动适配器', async () => {
     let resolve!: (value: { text: string }) => void;
-    const { turns, fake, sync } = setup(undefined, {
+    const { turns, fake } = setup({
       prepare: () =>
         new Promise((done) => {
           resolve = done;
@@ -171,17 +138,10 @@ describe('TurnManager', () => {
     resolve({ text: '迟到输入' });
     await flush();
     expect(fake.turns).toHaveLength(0);
-    expect(sync.sync).not.toHaveBeenCalled();
   });
 
-  it('会话管理与运行及同步收尾互斥，同 ID 的另一 Agent 可独立操作', async () => {
-    let finishSync!: (status: SyncStatus) => void;
-    const { turns, fake } = setup(
-      () =>
-        new Promise((resolve) => {
-          finishSync = resolve;
-        }),
-    );
+  it('会话管理与运行互斥，同 ID 的另一 Agent 可独立操作', async () => {
+    const { turns, fake } = setup();
     const session = { agent: 'claude' as const, sessionId: 'managed' };
     const mutation = vi.fn(async () => undefined);
     await turns.handle(fakeSocket().socket, send({ sessionId: session.sessionId }));
@@ -190,9 +150,6 @@ describe('TurnManager', () => {
     await turns.withIdleSession({ ...session, agent: 'codex' }, mutation);
     expect(mutation).toHaveBeenCalledOnce();
     fake.turns[0]!.finish();
-    await flush();
-    await expect(turns.withIdleSession(session, mutation)).rejects.toMatchObject({ status: 409 });
-    finishSync({ phase: 'ready', conflicts: [], deletions: [], settings: SyncSettingsSchema.parse({}) });
     await flush();
     await turns.withIdleSession(session, mutation);
     expect(mutation).toHaveBeenCalledTimes(2);
@@ -387,7 +344,7 @@ describe('TurnManager', () => {
   });
 
   it('准备阶段已能中断，迟到的验证结果不会启动 Agent', async () => {
-    const { fake, sessions, turns, sync } = setup();
+    const { fake, sessions, turns } = setup();
     const { socket, sent } = fakeSocket();
     let ready!: () => void;
     sessions.assertBelongs.mockImplementation(
@@ -404,16 +361,14 @@ describe('TurnManager', () => {
     ready();
     await flush();
     expect(fake.turns).toHaveLength(0);
-    expect(sync.sync).not.toHaveBeenCalled();
     expect(sent.at(-1)).toMatchObject({ type: 'turn.finished', turnId });
   });
-  it('轮次结束后同步，并保持仅一轮 Agent 调用', async () => {
-    const { fake, turns, sync } = setup();
+  it('轮次结束后正常收尾，并保持仅一轮 Agent 调用', async () => {
+    const { fake, turns } = setup();
     const { socket, sent } = fakeSocket();
     await turns.handle(socket, send());
     fake.turns[0]!.finish();
     await flush();
-    expect(sync.sync).toHaveBeenCalledWith(ws);
     expect(fake.turns).toHaveLength(1);
     expect(sent.at(-1)?.type).toBe('turn.finished');
   });
@@ -488,18 +443,8 @@ describe('TurnManager', () => {
     await flush();
   });
 
-  it('异步运行失败与同步异常均完整收尾，令牌和审批撤销后可以重新续接', async () => {
-    const synchronize = vi
-      .fn<(workspace: Workspace) => Promise<SyncStatus>>()
-      .mockRejectedValueOnce(new Error('内部同步诊断'))
-      .mockResolvedValueOnce({
-        phase: 'confirmation_required',
-        reason: 'deletions',
-        deletions: ['example.txt'],
-        conflicts: [],
-        settings: SyncSettingsSchema.parse({}),
-      });
-    const { fake, registry, turns } = setup(synchronize);
+  it('异步运行失败完整收尾，令牌和审批撤销后可以重新续接', async () => {
+    const { fake, registry, turns } = setup();
     const { socket, sent } = fakeSocket();
     await turns.handle(socket, send({ sessionId: 'retry-session' }));
     const first = fake.turns[0]!;
@@ -515,13 +460,12 @@ describe('TurnManager', () => {
     await flush();
     expect(registry.resolve(token)).toBe('w1');
     expect(await pending).toMatchObject({ allow: false, message: '本轮已结束' });
-    expect(sent.map((message) => message.type)).toEqual(['turn.started', 'error', 'error', 'turn.finished']);
+    expect(sent.map((message) => message.type)).toEqual(['turn.started', 'error', 'turn.finished']);
     expect(JSON.stringify(sent)).not.toContain('内部');
     await turns.handle(socket, send({ sessionId: 'retry-session', clientTurnId: 'retry-client' }));
     expect(fake.turns).toHaveLength(2);
     fake.turns[1]!.finish();
     await flush();
-    expect(sent.at(-2)).toMatchObject({ type: 'error', message: '同步尚未就绪，请在同步面板处理后继续' });
     expect(sent.at(-1)).toMatchObject({ type: 'turn.finished' });
     // 两轮共用同一个长驻运行时，令牌要到运行时关闭时才被撤销。
     const secondLease = fake.turns[1]!.input.acquireEnv();
@@ -533,70 +477,45 @@ describe('TurnManager', () => {
   });
 });
 
-it('准备阶段取消等待收尾再释放租约，不启动runner或同步', async () => {
+it('准备阶段取消后不启动runner并释放工作区租约', async () => {
   const activity = createWorkspaceActivity();
   let release!: () => void;
-  const changedPaths = vi.fn(
+  const prepare = vi.fn(
     () =>
-      new Promise<string[]>((resolve) => {
-        release = () => resolve([]);
+      new Promise<{ text: string }>((resolve) => {
+        release = () => resolve({ text: 'hi' });
       }),
   );
-  const f = setup(undefined, undefined, activity, changedPaths);
+  const f = setup({ prepare }, activity);
   const socket = fakeSocket();
   const starting = f.turns.handle(socket.socket, send());
-  await vi.waitFor(() => expect(changedPaths).toHaveBeenCalledOnce());
+  await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
+  expect(activity.active(ws.id)).toBe(1);
   const first = socket.sent.find((message) => message.type === 'turn.started')!;
   if (first.type !== 'turn.started') throw new Error('未开始轮次');
   await f.turns.handle(socket.socket, { type: 'chat.interrupt', turnId: first.turnId });
-  expect(activity.active(ws.id)).toBe(1);
-  release();
   await starting;
   expect(f.fake.turns).toHaveLength(0);
-  expect(f.sync.sync).not.toHaveBeenCalled();
-  expect(activity.active(ws.id)).toBe(0);
+  await vi.waitFor(() => expect(activity.active(ws.id)).toBe(0));
+  // 迟到结果不能补启动适配器。
+  release();
+  await flush();
+  expect(f.fake.turns).toHaveLength(0);
   await f.turns.dispose();
 });
 
-it('变更基线不可读时仍运行，纯压缩跳过采集和同步', async () => {
+it('没有原生文件事件时 turn.finished 不带 changes', async () => {
   const activity = createWorkspaceActivity();
-  const changedPaths = vi.fn(async (): Promise<string[]> => {
-    throw new Error('状态不可读');
-  });
-  const f = setup(
-    async () => {
-      throw new Error('同步失败');
-    },
-    undefined,
-    activity,
-    changedPaths,
-  );
+  const f = setup(undefined, activity);
   const socket = fakeSocket();
   await f.turns.handle(socket.socket, send());
   expect(f.fake.turns).toHaveLength(1);
   f.fake.turns[0]!.finish();
   await vi.waitFor(() => expect(activity.active(ws.id)).toBe(0));
-  expect(changedPaths).toHaveBeenCalled();
   const finished = socket.sent.find((message) => message.type === 'turn.finished');
   expect(finished).toMatchObject({ type: 'turn.finished' });
   expect(finished && 'changes' in finished ? finished.changes : undefined).toBeUndefined();
-  const pure = setup(
-    undefined,
-    { prepare: async () => ({ text: '', invocation: { kind: 'command', name: 'compact' } }) },
-    activity,
-    changedPaths,
-  );
-  const calls = changedPaths.mock.calls.length;
-  await pure.turns.handle(
-    fakeSocket().socket,
-    send({ agent: 'codex', sessionId: 'native', selection: { id: 'compact' }, text: '' }),
-  );
-  pure.codex.turns[0]!.finish();
-  await vi.waitFor(() => expect(activity.active(ws.id)).toBe(0));
-  expect(changedPaths.mock.calls.length).toBe(calls);
-  expect(pure.sync.sync).not.toHaveBeenCalled();
   await f.turns.dispose();
-  await pure.turns.dispose();
 });
 
 it('Claude轮次不丢弃推理强度，未指定时沿用原生设置', async () => {

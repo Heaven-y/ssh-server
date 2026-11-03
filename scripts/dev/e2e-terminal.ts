@@ -1,10 +1,9 @@
-// 使用已构建的网页和隔离的本机 SSH 夹具，供浏览器验收使用。
+// 终端本机夹具：只装配仍然存在的 SSH、终端、资源、Slurm 与产品设置路由。
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SyncSettingsSchema } from '@ssh-server/shared';
 import { buildApp } from '../../apps/server/src/http/app';
 import { registerSshRoutes } from '../../apps/server/src/http/ssh.routes';
 import { registerTerminalRoutes } from '../../apps/server/src/http/terminal.routes';
@@ -19,7 +18,6 @@ import { createSlurmService } from '../../apps/server/src/slurm/service';
 import { SLURM_COMMAND } from '../../apps/server/src/slurm/commands';
 import { registerSlurmRoutes } from '../../apps/server/src/http/slurm.routes';
 import { createServerProfiles } from '../../apps/server/src/ssh/profiles';
-import { createWorkspaceActivity } from '../../apps/server/src/workspaces/activity';
 import { registerSshTargetRoutes } from '../../apps/server/src/http/ssh-targets.routes';
 import { createEnvironmentService } from '../../apps/server/src/settings/environment';
 import { createProductSettings } from '../../apps/server/src/settings/product-settings';
@@ -39,21 +37,11 @@ async function main() {
   const terminals = createTerminalManager({ ...fixture, bindings });
   const resources = createResourcesService(fixture);
   const slurm = createSlurmService(fixture);
-  const activity = createWorkspaceActivity();
-  const profiles = createServerProfiles({ ...fixture, activity, resources: { blockers: () => Promise.resolve([]) } });
-  const syncStatus = () =>
-    Promise.resolve({
-      phase: 'uninitialized',
-      deletions: [],
-      conflicts: [],
-      settings: SyncSettingsSchema.parse({}),
-    });
-  const versionStatus = () => Promise.resolve({ initialized: false, revision: 'fixture', changes: [], excluded: [] });
+  const profiles = createServerProfiles(fixture);
   const token = randomBytes(24).toString('hex');
   const app = await buildApp({
     token,
     port: 0,
-    activity,
     store: fixture.store,
     webDir: fileURLToPath(new URL('../../apps/web/dist', import.meta.url)),
     routes: (server) => {
@@ -68,10 +56,6 @@ async function main() {
       registerResourcesRoutes(server, resources);
       registerSlurmRoutes(server, slurm);
       server.get('/api/workspaces/:id/sessions', () => Promise.resolve([]));
-      server.get('/api/workspaces/:id/sync', syncStatus);
-      server.post('/api/workspaces/:id/sync', syncStatus);
-      server.get('/api/workspaces/:id/versions', versionStatus);
-      server.post('/api/workspaces/:id/versions/initialize', versionStatus);
       server.get('/__fixture', () => Promise.resolve({ shells: fixture.shells, resources: metrics.state }));
       server.post<{ Body: { failure: boolean } }>('/__fixture/resource-failure', (req) => {
         metrics.state.failure = req.body.failure;

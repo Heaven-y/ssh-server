@@ -4,10 +4,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Workspace } from '@ssh-server/shared';
 import type { WorkspaceStore } from '../../src/workspaces/store';
-import type { WorkspaceSetup } from '../../src/workspaces/setup/service';
-import { WorkspaceSetupError } from '../../src/workspaces/setup/errors';
-import { WorkspaceRemovalError } from '../../src/workspaces/activity';
-import { registerWorkspaceRoutes, type WorkspaceRoutesDeps } from '../../src/http/workspaces.routes';
+import { registerWorkspaceRoutes } from '../../src/http/workspaces.routes';
 
 const WS: Workspace = {
   id: 'w1',
@@ -21,7 +18,7 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
 
-function setup(services: Partial<Pick<WorkspaceRoutesDeps, 'setup' | 'removal'>> = {}) {
+function setup() {
   const list: Workspace[] = [{ ...WS }];
   const store: WorkspaceStore = {
     withSnapshot: async (operation) => operation(list),
@@ -45,30 +42,10 @@ function setup(services: Partial<Pick<WorkspaceRoutesDeps, 'setup' | 'removal'>>
   };
   const app = Fastify();
   apps.push(app);
-  registerWorkspaceRoutes(app, {
-    store,
-    ...services,
-  });
+  registerWorkspaceRoutes(app, { store });
   return { app, store };
 }
 const { id: _id, ...body } = WS;
-const verified = {
-  input: body,
-  verification: '11111111-1111-4111-8111-111111111111',
-  initializationConfirmed: true,
-};
-const confirmed = { configuration: 'a'.repeat(64), confirmed: true };
-
-function setupService() {
-  const create = vi.fn(async () => ({ workspace: WS }));
-  return { create, service: { create } as unknown as WorkspaceSetup };
-}
-function removalService() {
-  return {
-    preview: vi.fn(async () => ({ workspace: WS, configuration: confirmed.configuration, blockers: [] })),
-    remove: vi.fn(async () => ({ removed: true as const })),
-  };
-}
 
 describe('工作区接口', () => {
   it('工作区列表可用，旧ssh-hosts入口不存在', async () => {
@@ -77,33 +54,14 @@ describe('工作区接口', () => {
     expect((await app.inject('/api/ssh-hosts')).statusCode).toBe(404);
   });
 
-  it('缺少创建或移除服务时明确503，不退回存储写入', async () => {
+  it('创建与移除接口随双端向导一起删除，不退回存储写入', async () => {
     const { app, store } = setup();
-    for (const payload of [body, verified])
-      expect((await app.inject({ method: 'POST', url: '/api/workspaces', payload })).statusCode).toBe(503);
-    for (const payload of [undefined, confirmed])
-      expect((await app.inject({ method: 'DELETE', url: '/api/workspaces/w1', payload })).statusCode).toBe(503);
-    expect((await app.inject('/api/workspaces/w1/removal')).statusCode).toBe(503);
+    expect((await app.inject({ method: 'POST', url: '/api/workspaces', payload: body })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'DELETE', url: '/api/workspaces/w1', payload: {} })).statusCode).toBe(404);
+    expect((await app.inject('/api/workspaces/w1/removal')).statusCode).toBe(404);
     expect(store.create).not.toHaveBeenCalled();
     expect(store.remove).not.toHaveBeenCalled();
     expect(await store.list()).toEqual([WS]);
-  });
-
-  it('旧POST无票据或无首次同步确认均拒绝，只将完整请求交给向导', async () => {
-    const service = setupService();
-    const { app, store } = setup({ setup: service.service });
-    for (const payload of [body, { input: body }, { ...verified, initializationConfirmed: false }]) {
-      const response = await app.inject({ method: 'POST', url: '/api/workspaces', payload });
-      expect(response.statusCode).toBe(400);
-      expect(response.json()).toMatchObject({ code: 'setup_verification_required' });
-    }
-    expect(service.create).not.toHaveBeenCalled();
-    const response = await app.inject({ method: 'POST', url: '/api/workspaces', payload: verified });
-    expect(response.statusCode).toBe(201);
-    expect(service.create).toHaveBeenCalledExactlyOnceWith(verified, expect.any(AbortSignal));
-    service.create.mockRejectedValueOnce(new WorkspaceSetupError('verification_expired', '请重新验证'));
-    expect((await app.inject({ method: 'POST', url: '/api/workspaces', payload: verified })).statusCode).toBe(409);
-    expect(store.create).not.toHaveBeenCalled();
   });
 
   it('通用PATCH始终404且配置不变', async () => {
@@ -111,28 +69,6 @@ describe('工作区接口', () => {
     for (const payload of [{ name: '改名' }, { policy: {} }, { sync: { maxFileBytes: 1 } }])
       expect((await app.inject({ method: 'PATCH', url: '/api/workspaces/w1', payload })).statusCode).toBe(404);
     expect(store.update).not.toHaveBeenCalled();
-    expect(await store.list()).toEqual([WS]);
-  });
-
-  it('DELETE没有确认拒绝，只将完整确认交给移除服务', async () => {
-    const removal = removalService();
-    const { app, store } = setup({ removal });
-    for (const payload of [undefined, { confirmed: true }, { ...confirmed, confirmed: false }]) {
-      const response = await app.inject({ method: 'DELETE', url: '/api/workspaces/w1', payload });
-      expect(response.statusCode).toBe(400);
-      expect(response.json()).toMatchObject({ code: 'workspace_confirmation_required' });
-    }
-    expect(removal.remove).not.toHaveBeenCalled();
-    expect((await app.inject('/api/workspaces/w1/removal')).json()).toMatchObject({ workspace: WS });
-    const response = await app.inject({ method: 'DELETE', url: '/api/workspaces/w1', payload: confirmed });
-    expect(response.json()).toEqual({ removed: true });
-    expect(response.headers['cache-control']).toBe('no-store');
-    expect(removal.remove).toHaveBeenCalledExactlyOnceWith('w1', confirmed);
-    removal.remove.mockRejectedValueOnce(new WorkspaceRemovalError('workspace_busy', '工作区正在使用'));
-    expect((await app.inject({ method: 'DELETE', url: '/api/workspaces/w1', payload: confirmed })).statusCode).toBe(
-      409,
-    );
-    expect(store.remove).not.toHaveBeenCalled();
     expect(await store.list()).toEqual([WS]);
   });
 });

@@ -85,11 +85,6 @@ function setup() {
     internalUrl: () => 'http://127.0.0.1:1',
     runners: {},
     sessions: { assertBelongs: async () => undefined },
-    sync: {
-      sync: async () => {
-        throw new Error('分叉不得运行同步或文件回退');
-      },
-    },
   });
   const sessions = createSessionsService({ claude: createClaudeSessions(api), codex }, turns);
   const app = Fastify();

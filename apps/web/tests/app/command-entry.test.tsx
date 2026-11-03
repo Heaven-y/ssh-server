@@ -10,8 +10,6 @@ it('搜索与操作只有一个明确按钮入口，点击交给原命令面板�
     <TopBar
       onOpenSettings={vi.fn()}
       onOpenServers={vi.fn()}
-      onOpenFiles={vi.fn()}
-      filesOpen={false}
       onOpenResources={vi.fn()}
       resourcesOpen={false}
       onOpenTerminal={vi.fn()}

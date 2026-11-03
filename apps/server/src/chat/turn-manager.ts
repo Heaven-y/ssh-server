@@ -5,7 +5,6 @@ import type { AgentTurnInput, PermissionAnswer, TurnEnv, TurnHandle, TurnRunner 
 import type { SessionRegistry } from './registry';
 import { SessionError, type SessionsService } from './sessions';
 import type { CapabilitiesService } from './capabilities';
-import type { SyncManager } from '../sync/manager';
 import { WorkspaceRemovalError } from '../workspaces/activity';
 import type { TurnFileChange, TurnChangesRecord } from '@ssh-server/shared';
 import { mergeChanges, toolFileChanges, withDetected } from './turn-files';
@@ -18,10 +17,7 @@ export type TurnManagerDeps = {
   runners: Partial<Record<AgentKind, TurnRunner>>;
   sessions: Pick<SessionsService, 'assertBelongs'>;
   capabilities?: Pick<CapabilitiesService, 'prepare'>;
-  sync: Pick<SyncManager, 'sync'>;
   acquireWorkspace?: (id: string) => () => void;
-  /** 只读列出工作区相对版本基线的变更路径；用于补齐命令改动。 */
-  changedPaths?: (ws: Workspace) => Promise<string[]>;
 };
 type Turn = {
   id: string;
@@ -33,12 +29,9 @@ type Turn = {
   sessionId?: string;
   workspace?: Workspace;
   finished: boolean;
-  syncAfter?: boolean;
   releaseWorkspace?: () => void;
   /** 本轮原生工具报告的文件变更，按路径合并 */
   files: Map<string, TurnFileChange>;
-  /** 轮次开始时与结束时的变更路径，用于补齐没有原生 diff 的改动 */
-  baseline?: string[];
   failed?: boolean;
   startedAt: number;
 };
@@ -262,7 +255,7 @@ export class TurnManager {
       await this.prepare(turn, msg);
     } catch (error) {
       this.preparationFailed(turn, error);
-      await this.finish(turn);
+      this.finish(turn);
     }
   }
 
@@ -280,10 +273,6 @@ export class TurnManager {
     signal.throwIfAborted();
     const runner = this.runners[turn.agent];
     if (!runner) throw new SessionError(503, 'agent_unavailable', '当前 Agent 适配器不可用');
-    // 纯上下文查询/压缩不编辑项目文件，也不触发服务器同步。
-    turn.syncAfter = prepared.invocation?.kind !== 'command';
-    await this.beginChanges(turn);
-    signal.throwIfAborted();
     turn.handle = runner({
       workspace: ws,
       sessionId: msg.sessionId,
@@ -304,29 +293,10 @@ export class TurnManager {
       .then(() => this.finish(turn));
   }
 
-  /** 只记录变更路径作为兜底基线，不读取文件内容也不创建 Git 对象。 */
-  private async beginChanges(turn: Turn): Promise<void> {
-    if (!turn.syncAfter || !this.deps.changedPaths || !turn.workspace) return;
-    try {
-      turn.baseline = await this.deps.changedPaths(turn.workspace);
-    } catch {
-      // 基线不可用只会少一层兜底，不影响本轮执行。
-    }
-  }
-
-  /** 合并原生工具报告与状态对比结果；没有任何改动时不生成记录。 */
-  private async finishChanges(turn: Turn): Promise<TurnChangesRecord | undefined> {
-    if (turn.syncAfter === false || !turn.workspace) return undefined;
-    let detected: string[] = [];
-    if (this.deps.changedPaths && turn.baseline && !turn.controller.signal.aborted) {
-      try {
-        const before = new Set(turn.baseline);
-        detected = (await this.deps.changedPaths(turn.workspace)).filter((path) => !before.has(path));
-      } catch {
-        // 兜底失败时只保留原生事件结果。
-      }
-    }
-    const files = withDetected(turn.files, detected);
+  /** 汇总本轮原生工具报告的文件变更；没有任何改动时不生成记录。 */
+  private finishChanges(turn: Turn): TurnChangesRecord | undefined {
+    if (!turn.workspace) return undefined;
+    const files = withDetected(turn.files, []);
     if (!files.length) return undefined;
     return {
       turnId: turn.id,
@@ -340,22 +310,7 @@ export class TurnManager {
     };
   }
 
-  private async synchronize(turn: Turn): Promise<void> {
-    if (!turn.handle || !turn.workspace || turn.syncAfter === false) return;
-    try {
-      const status = await this.deps.sync.sync(turn.workspace);
-      if (status.phase !== 'ready')
-        this.send(turn.socket, {
-          type: 'error',
-          turnId: turn.id,
-          message: status.message ?? '同步尚未就绪，请在同步面板处理后继续',
-        });
-    } catch {
-      this.send(turn.socket, { type: 'error', turnId: turn.id, message: '本轮结束后同步失败，请检查同步面板' });
-    }
-  }
-
-  private async finish(turn: Turn): Promise<void> {
+  private finish(turn: Turn): void {
     if (turn.finished) return;
     turn.finished = true;
     for (const [id, pending] of this.pending) {
@@ -366,8 +321,7 @@ export class TurnManager {
     }
     let changes: TurnChangesRecord | undefined;
     try {
-      await this.synchronize(turn);
-      changes = await this.finishChanges(turn);
+      changes = this.finishChanges(turn);
     } finally {
       this.turns.delete(turn.id);
       const key = turn.sessionId && sessionKey(turn.agent, turn.sessionId);

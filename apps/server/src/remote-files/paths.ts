@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { RemoteFileEntry, SyncSettings } from '@ssh-server/shared';
 import type { FileEntryWithStats, Stats } from 'ssh2';
-import { eligibleFile, excludedPath, safeRelativePath } from '../sync/filters';
+import { eligibleFile, excludedPath, safeRelativePath } from './sync-scope';
 import { RemoteFilesError } from './errors';
 
 export function remotePath(input: string, root: string, home: string): string {

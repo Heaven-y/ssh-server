@@ -148,7 +148,7 @@ describe('访问控制', () => {
     expect(r.json()).toEqual([]);
   });
 
-  it('修改类请求：Origin 不对或缺失时403，正确时进入业务服务可用性校验', async () => {
+  it('修改类请求：Origin 不对或缺失时403，正确时进入业务路由', async () => {
     const app = await make();
     const post = (origin?: string) =>
       app.inject({
@@ -160,7 +160,8 @@ describe('访问控制', () => {
     expect((await post('http://evil.com')).statusCode).toBe(403);
     expect((await post()).statusCode).toBe(403);
     expect((await post('http://127.0.0.1:9999')).statusCode).toBe(403);
-    expect((await post(ORIGIN)).statusCode).toBe(503);
+    // 项目创建接口与双端向导已删除，放行后由路由层给出 404。
+    expect((await post(ORIGIN)).statusCode).toBe(404);
   });
 
   it('/internal 不认 Cookie', async () => {

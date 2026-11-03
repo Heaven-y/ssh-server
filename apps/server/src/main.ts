@@ -24,8 +24,6 @@ import { registerSessionRoutes } from './http/sessions.routes';
 import { registerCapabilityRoutes } from './http/capabilities.routes';
 import { registerSshRoutes } from './http/ssh.routes';
 import { registerAgentConfigRoutes } from './http/agent-config.routes';
-import { registerFileRoutes } from './http/files.routes';
-import { createFileSyncCoordinator } from './remote-files/sync-coordinator';
 import { registerRemoteFileRoutes } from './http/remote-files.routes';
 import { registerRemoteFileActionRoutes } from './http/remote-file-actions.routes';
 import { createRemoteExecutor } from './remote-files/executor';
@@ -33,10 +31,6 @@ import { createFilePreflights } from './remote-files/preflight';
 import { createFileTasks } from './remote-files/tasks';
 import { createFileDownloads } from './remote-files/downloads';
 import { createRemoteFilesService } from './remote-files/service';
-import { registerDiscardRoutes, registerVersionRoutes } from './http/versions.routes';
-import { createWorkspaceFilesService } from './files/service';
-import { createVersionsService } from './vcs/service';
-import { registerSyncRoutes } from './http/sync.routes';
 import { registerWsRoutes } from './http/ws.routes';
 import { registerTerminalRoutes } from './http/terminal.routes';
 import { createTerminalBindings } from './terminal/binding';
@@ -56,12 +50,6 @@ import { createWorkspaceStore } from './workspaces/store';
 import { createWorkspacePolicy } from './workspaces/policy';
 import { registerWorkspacePolicyRoutes } from './http/workspace-policy.routes';
 import { createWorkspaceActivity } from './workspaces/activity';
-import { createWorkspaceRemoval } from './workspaces/removal';
-import { createWorkspaceRemovalResources } from './workspaces/removal-resources';
-import { createWorkspaceSetup } from './workspaces/setup/service';
-import { registerWorkspaceSetupRoutes } from './http/workspace-setup.routes';
-import { createRcloneDriver } from './sync/rclone';
-import { createSyncManager } from './sync/manager';
 import { createNativeConfigService } from './settings/native-config';
 import { createProductSettings } from './settings/product-settings';
 import { registerProductSettingsRoutes } from './http/product-settings.routes';
@@ -117,34 +105,18 @@ async function main(): Promise<void> {
     settings: async () => (await productSettings.read()).settings,
   });
   const slurm = createSlurmService({ store, pool });
-  const sync = createSyncManager({
-    configDir: config.configDir,
-    driver: createRcloneDriver({ configDir: config.configDir, pool }),
-  });
   const registry = createSessionRegistry();
-  const versions = createVersionsService();
-  const setup = createWorkspaceSetup({ store, pool, sync, configDir: config.configDir, acquireWorkspace });
   const browse = createRemoteFilesService({ store, pool });
   const executor = createRemoteExecutor(pool);
-  const preflights = createFilePreflights({
-    store,
-    pool,
-    browse,
-    executor,
-    syncAvailable: true,
-    syncPaths: sync.remoteFiles.checkPaths,
-  });
+  const preflights = createFilePreflights({ store, pool, browse, executor });
   const tasks = createFileTasks({
     configDir: config.configDir,
     preflights,
     executor,
-    coordinator: createFileSyncCoordinator({ store, sync }),
     acquireWorkspace,
     onCorrupt: (name) => console.warn('文件任务记录损坏，已保留原文件，未重放操作：', name),
   });
-  const removalResources = createWorkspaceRemovalResources({ browse, preflights, tasks, sync, terminals });
-  const profiles = createServerProfiles({ targets, store, activity, resources: removalResources, pool });
-  const removal = createWorkspaceRemoval({ store, activity, ...removalResources });
+  const profiles = createServerProfiles({ targets, store, pool });
   const capabilities = createCapabilitiesService({
     claude: (dir, signal) => discoverClaudeCapabilities(dir, { signal }),
     codex: (dir, signal) => discoverCodexCapabilities(dir, { signal }),
@@ -170,9 +142,7 @@ async function main(): Promise<void> {
     capabilities,
     runners: { claude: runClaudeTurn, codex: createCodexRunner() },
     internalUrl: () => `http://${hostForUrl(config.host)}:${port}`,
-    sync,
     acquireWorkspace,
-    changedPaths: (ws) => versions.changedPaths(ws),
   });
 
   const app = await buildApp({
@@ -180,27 +150,19 @@ async function main(): Promise<void> {
     port: config.port,
     devOrigin: config.devOrigin,
     store,
-    setup,
-    activity,
-    removal,
     webDir: WEB_DIST,
     routes: (a) => {
-      registerInternalRoutes(a, { registry, getWorkspace: (id) => store.get(id), pool, sync });
+      registerInternalRoutes(a, { registry, getWorkspace: (id) => store.get(id), pool });
       registerSessionRoutes(a, { store, sessions });
       registerCapabilityRoutes(a, { store, capabilities });
       registerSshRoutes(a, { pool, profiles });
       registerSshTargetRoutes(a, profiles);
-      registerWorkspaceSetupRoutes(a, setup);
       registerHostTrustRoutes(a, createHostTrust({ pool }));
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
       registerProductSettingsRoutes(a, productSettings, environment);
       registerWorkspacePolicyRoutes(a, createWorkspacePolicy(store));
-      registerFileRoutes(a, { store, files: createWorkspaceFilesService() });
       registerRemoteFileRoutes(a, browse);
       registerRemoteFileActionRoutes(a, { preflights, tasks, downloads: createFileDownloads({ pool, browse }) });
-      registerVersionRoutes(a, { store, versions, sync });
-      registerDiscardRoutes(a, { store, versions, sync });
-      registerSyncRoutes(a, { store, sync });
       registerWsRoutes(a, { turns });
       registerTerminalRoutes(a, { terminals, bindings: terminalBindings });
       registerResourcesRoutes(a, resources);
@@ -224,7 +186,6 @@ async function main(): Promise<void> {
     terminals.dispose();
     resources.dispose();
     slurm.dispose();
-    sync.dispose();
     pool.dispose();
     void turns.dispose().finally(() => app.close().finally(() => process.exit(0)));
   };

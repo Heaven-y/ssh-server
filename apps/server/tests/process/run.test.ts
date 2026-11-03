@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { runProcess } from '../../src/sync/process';
+import { runProcess } from '../../src/process/run';
 
-describe('受限同步子进程', () => {
+describe('受限子进程', () => {
   it('stdin 与环境只交给子进程，不放到 argv', async () => {
     const result = await runProcess(
       process.execPath,

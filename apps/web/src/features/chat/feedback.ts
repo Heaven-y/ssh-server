@@ -1,6 +1,8 @@
+// 行内反馈：随下一条消息发送，不依赖已删除的差异面板。
 import type { AgentKind } from '@ssh-server/shared';
 
 export type ConversationScope = { workspaceId: string; agent: AgentKind; conversationVersion: number };
+
 export type FeedbackSource = { kind: 'turn' | 'working'; id: string; label: string };
 export type LineFeedbackInput = {
   path: string;

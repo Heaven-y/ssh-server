@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { RemoteDirectory, SyncSettings } from '@ssh-server/shared';
 import type { SftpReader } from '../ssh/sftp';
-import { compareDirectoryEntries, createDirectoryBudget } from '../files/directory-order';
+import { compareDirectoryEntries, createDirectoryBudget } from './directory-order';
 import { directoryEntry, inside } from './paths';
 import { RemoteFilesError } from './errors';
 

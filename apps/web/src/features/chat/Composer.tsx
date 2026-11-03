@@ -4,7 +4,7 @@ import { managementPending, useChat } from './chat-store';
 import { CapabilityPicker } from './CapabilityPicker';
 import { selectionRestriction } from './capability-selection';
 import { ComposerInput } from './ComposerInput';
-import { PendingFeedback } from '../changes/PendingFeedback';
+import { PendingFeedback } from './PendingFeedback';
 import type { AgentCapability } from '@ssh-server/shared';
 import { AgentControls } from './AgentControls';
 

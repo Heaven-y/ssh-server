@@ -23,7 +23,7 @@ import {
   type ConversationScope,
   type LineFeedback,
   type LineFeedbackInput,
-} from '../changes/types';
+} from './feedback';
 
 const LAST_WORKSPACE_KEY = 'ssh-server.lastWorkspace';
 const DEFAULT_REASONING_EFFORTS: Record<AgentKind, string> = { claude: 'high', codex: 'high' };

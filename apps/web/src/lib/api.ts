@@ -1,5 +1,4 @@
 // REST 接口封装：启动同源本机会话后，Cookie 由浏览器自动携带。
-import { WorkspaceInputSchema } from '@ssh-server/shared';
 import type {
   AgentKind,
   AgentCapabilities,
@@ -10,30 +9,15 @@ import type {
   NativeConfigAgent,
   NativeConfigDocument,
   NativeConfigInput,
-  WorkspaceDirectory,
-  WorkspaceFile,
   RemoteBrowseTarget,
   RemoteBrowseSession,
   RemoteDirectory,
   RemoteFileActionInput,
   RemoteFilePreflight,
   RemoteFileTask,
-  VersionStatus,
-  VersionHistory,
-  VersionDiff,
-  VersionSaveInput,
-  VersionSaveResult,
-  VersionRestoreInput,
-  VersionRestorePreview,
-  VersionRestoreResult,
-  VersionDiscardPreview,
-  VersionDiscardInput,
   SshAuthMode,
   SshHostInfo,
-  SyncSettings,
-  SyncStatus,
   Workspace,
-  WorkspaceInput,
   TerminalTarget,
   TerminalBinding,
   HostTrustStatus,
@@ -42,14 +26,6 @@ import type {
   ManagedServer,
   ResourceSnapshot,
   SlurmSnapshot,
-  LocalDirectory,
-  WorkspaceSetupCreate,
-  WorkspaceSetupVerification,
-  WorkspaceSetupPreview,
-  WorkspaceSetupResult,
-  WorkspaceRemovalPreview,
-  WorkspaceRemovalInput,
-  WorkspaceRemovalResult,
   ProductSettingsDocument,
   ProductSettingsInput,
   EnvironmentReport,
@@ -113,13 +89,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
-const syncUrl = (id: string) => `/api/workspaces/${encodeURIComponent(id)}/sync`;
-const versionsUrl = (id: string) => `/api/workspaces/${encodeURIComponent(id)}/versions`;
 const remoteSessionsUrl = (id: string) => `/api/workspaces/${encodeURIComponent(id)}/remote-files/sessions`;
-const fileUrl = (id: string, suffix: string, relative: string) =>
-  `/api/workspaces/${encodeURIComponent(id)}/${suffix}?path=${encodeURIComponent(relative)}`;
-const postSync = (id: string, suffix = '', body: unknown = {}) =>
-  request<SyncStatus>(syncUrl(id) + suffix, { method: 'POST', body: JSON.stringify(body) });
 
 export const api = {
   readProductSettings: (signal?: AbortSignal) =>
@@ -169,14 +139,6 @@ export const api = {
       `/api/workspaces/${encodeURIComponent(id)}/remote-files/tasks/${encodeURIComponent(taskId)}/${action}`,
       { method: 'POST', body: '{}' },
     ),
-  recoverRemoteFileTask: (id: string, taskId: string) =>
-    request<RemoteFileTask>(
-      `/api/workspaces/${encodeURIComponent(id)}/remote-files/tasks/${encodeURIComponent(taskId)}/recover`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ confirmed: true }),
-      },
-    ),
   remoteFileDownloadUrl: (id: string, sessionId: string, path: string) =>
     `${remoteSessionsUrl(id)}/${encodeURIComponent(sessionId)}/download?${new URLSearchParams({ path })}`,
   bindRemoteBrowseTarget: (id: string, target: RemoteBrowseTarget) =>
@@ -210,45 +172,6 @@ export const api = {
       signal,
       cache: 'no-store',
     }),
-  initializeVersions: (id: string) =>
-    request<VersionStatus>(versionsUrl(id) + '/initialize', { method: 'POST', body: '{}' }),
-  versionStatus: (id: string, signal?: AbortSignal) =>
-    request<VersionStatus>(versionsUrl(id), { signal, cache: 'no-store' }),
-  versionHistory: (id: string, skip = 0) =>
-    request<VersionHistory>(versionsUrl(id) + `/history?skip=${skip}`, { cache: 'no-store' }),
-  versionDiff: (id: string, input: { commit?: string; path?: string } = {}, signal?: AbortSignal) => {
-    const query = new URLSearchParams();
-    if (input.commit) query.set('commit', input.commit);
-    if (input.path) query.set('path', input.path);
-    return request<VersionDiff>(versionsUrl(id) + '/diff?' + query.toString(), { signal, cache: 'no-store' });
-  },
-  saveVersion: (id: string, input: VersionSaveInput) =>
-    request<VersionSaveResult>(versionsUrl(id) + '/save', { method: 'POST', body: JSON.stringify(input) }),
-  previewVersionRestore: (id: string, input: VersionRestoreInput) =>
-    request<VersionRestorePreview>(versionsUrl(id) + '/restore/preview', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
-  restoreVersion: (id: string, input: VersionRestoreInput & { revision: string }) =>
-    request<VersionRestoreResult>(versionsUrl(id) + '/restore', {
-      method: 'POST',
-      body: JSON.stringify({ ...input, confirmed: true }),
-    }),
-  previewDiscard: (id: string, path: string) =>
-    request<VersionDiscardPreview>(versionsUrl(id) + '/discard/preview', {
-      method: 'POST',
-      body: JSON.stringify({ path }),
-    }),
-  discardFile: (id: string, input: VersionDiscardInput) =>
-    request<VersionRestoreResult>(versionsUrl(id) + '/discard', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
-  listFiles: (id: string, relative = '', signal?: AbortSignal) =>
-    request<WorkspaceDirectory>(fileUrl(id, 'files', relative), { signal, cache: 'no-store' }),
-  /** 只读读取本地副本；网页不提供写入，改动交给 Agent、同步或外部编辑器。 */
-  readFile: (id: string, relative: string, signal?: AbortSignal) =>
-    request<WorkspaceFile>(fileUrl(id, 'file', relative), { signal, cache: 'no-store' }),
   /** 原生配置内容只能由显式打开的编辑区持有，不接入查询缓存或持久存储。 */
   readAgentConfig: (agent: NativeConfigAgent, signal?: AbortSignal) =>
     request<NativeConfigDocument>(`/api/agent-config/${agent}`, { signal, cache: 'no-store' }),
@@ -268,89 +191,9 @@ export const api = {
       body: JSON.stringify(input),
       signal,
     }),
-  previewWorkspaceRemoval: (id: string, signal?: AbortSignal) =>
-    request<WorkspaceRemovalPreview>(`/api/workspaces/${encodeURIComponent(id)}/removal`, {
-      signal,
-      cache: 'no-store',
-    }),
-  removeWorkspace: (id: string, input: WorkspaceRemovalInput) =>
-    request<WorkspaceRemovalResult>(`/api/workspaces/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-      cache: 'no-store',
-      body: JSON.stringify(input),
-    }),
   listSshHosts: (signal?: AbortSignal) => request<ManagedServer[]>('/api/ssh-targets', { signal, cache: 'no-store' }),
   sshImportOptions: (signal?: AbortSignal) =>
     request<Array<SshHostInfo & { keyFile?: string }>>('/api/ssh-targets/import-options', { signal }),
-  setupLocalDirectory: (input: { path?: string; cursor?: string }, signal?: AbortSignal) =>
-    request<LocalDirectory>('/api/workspace-setup/local-directory', {
-      method: 'POST',
-      signal,
-      cache: 'no-store',
-      body: JSON.stringify(input),
-    }),
-  closeSetupLocal: (cursor: string) =>
-    request<{ closed: true }>('/api/workspace-setup/local-directory/close', {
-      method: 'POST',
-      body: JSON.stringify({ cursor }),
-    }),
-  openSetupRemote: (input: { sshHost: string }, signal?: AbortSignal) =>
-    request<RemoteBrowseSession>('/api/workspace-setup/remote/open', {
-      method: 'POST',
-      signal,
-      cache: 'no-store',
-      body: JSON.stringify(input),
-    }),
-  readSetupRemote: (session: string, input: { path: string; cursor?: string }, signal?: AbortSignal) =>
-    request<RemoteDirectory>('/api/workspace-setup/remote/list', {
-      method: 'POST',
-      signal,
-      cache: 'no-store',
-      body: JSON.stringify({ session, ...input }),
-    }),
-  closeSetupRemote: (session: string) =>
-    request<{ closed: true }>('/api/workspace-setup/remote/close', {
-      method: 'POST',
-      body: JSON.stringify({ session }),
-    }),
-  setupRemoteSize: (session: string, path: string, signal?: AbortSignal) =>
-    request<{ path: string; bytes: number; sampledAt: number }>('/api/workspace-setup/remote/size', {
-      method: 'POST',
-      signal,
-      cache: 'no-store',
-      body: JSON.stringify({ session, path }),
-    }),
-  previewWorkspace: (input: WorkspaceInput, signal?: AbortSignal) =>
-    request<WorkspaceSetupPreview>('/api/workspace-setup/preview', {
-      method: 'POST',
-      signal,
-      cache: 'no-store',
-      body: JSON.stringify(input),
-    }),
-  verifyWorkspace: (input: WorkspaceInput, signal?: AbortSignal, previousBinding?: string) =>
-    request<WorkspaceSetupVerification>('/api/workspace-setup/verify', {
-      method: 'POST',
-      signal,
-      cache: 'no-store',
-      body: JSON.stringify({ input, previousBinding }),
-    }),
-  revokeWorkspaceVerification: (verification: string) =>
-    request<{ revoked: true }>('/api/workspace-setup/revoke', {
-      method: 'POST',
-      body: JSON.stringify({ verification }),
-    }),
-  createVerifiedWorkspace: (input: WorkspaceSetupCreate, signal?: AbortSignal) =>
-    request<WorkspaceSetupResult>('/api/workspaces', {
-      method: 'POST',
-      signal,
-      cache: 'no-store',
-      // 只提交现行工作区字段，运行时附加的认证数据不进入配置请求。
-      body: JSON.stringify({
-        input: WorkspaceInputSchema.parse(input.input),
-        verification: input.verification,
-        initializationConfirmed: input.initializationConfirmed,
-      }),
-    }),
   saveSshTarget: (input: ManualServerInput, signal?: AbortSignal) =>
     request<ManagedServer>('/api/ssh-targets', { method: 'POST', signal, body: JSON.stringify(input) }),
   updateSshTarget: (alias: string, input: ManualServerInput, expected: ManagedServer, signal?: AbortSignal) =>
@@ -431,12 +274,6 @@ export const api = {
     }),
   disconnectSsh: (sshHost: string, signal?: AbortSignal) =>
     request<void>('/api/ssh/disconnect', { method: 'POST', signal, body: JSON.stringify({ sshHost }) }),
-  syncStatus: (id: string) => request<SyncStatus>(syncUrl(id)),
-  syncWorkspace: (id: string) => postSync(id),
-  initializeSync: (id: string) => postSync(id, '/initialize', { confirmed: true }),
-  decideSyncDeletions: (id: string, decision: 'confirm' | 'reject') => postSync(id, '/deletions', { decision }),
-  acknowledgeSyncConflicts: (id: string) => postSync(id, '/conflicts/ack'),
-  updateSyncSettings: (id: string, settings: SyncSettings) => postSync(id, '/settings', settings),
   listSessions: (workspaceId: string, agent: AgentKind, archived = false, signal?: AbortSignal) =>
     request<SessionSummary[]>(
       `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions?agent=${agent}${archived ? '&archived=true' : ''}`,
@@ -474,11 +311,8 @@ export const queryKeys = {
   sshImportOptions: ['ssh-import-options'] as const,
   agentCapabilities: (workspaceId: string, agent: AgentKind) => ['agent-capabilities', workspaceId, agent] as const,
   workspaces: ['workspaces'] as const,
-  workspaceRemoval: (id: string) => ['workspace-removal', id] as const,
   sshHosts: ['ssh-targets'] as const,
   sshCredentials: (sshHost: string) => ['ssh-credentials', sshHost] as const,
   sessions: (workspaceId: string, agent: AgentKind, archived = false) =>
     archived ? (['sessions', workspaceId, agent, 'archived'] as const) : (['sessions', workspaceId, agent] as const),
-  sync: (workspaceId: string) => ['sync', workspaceId] as const,
-  versions: (workspaceId: string) => ['versions', workspaceId] as const,
 };

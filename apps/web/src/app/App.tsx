@@ -1,12 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react';
 import type { Workspace } from '@ssh-server/shared';
 import { ChatView } from '../features/chat/ChatView';
 import { useChat } from '../features/chat/chat-store';
 import { useWorkspaceNavigation } from './use-workspace-navigation';
-import { SyncPanel, type SyncActions } from '../features/sync/SyncPanel';
-import { WorkspaceSidebar } from '../features/workspaces/WorkspaceSidebar';
-import { VersionsPanel, type VersionsActions } from '../features/versions/VersionsPanel';
 import { api, queryKeys } from '../lib/api';
 import { TopBar } from './TopBar';
 import { WorkspaceArea } from './WorkspaceArea';
@@ -14,13 +11,13 @@ import { useProductSettings } from '../features/settings/use-product-settings';
 import { useUiPreferences } from '../ui/ui-preferences';
 import { useCommandPalette } from './use-command-palette';
 import type { PaletteActions } from './CommandPalette';
-import type { ChangesRequest } from '../features/changes/types';
 import { ServerManagerDialog } from '../features/ssh/ServerManagerDialog';
 import { EnvironmentSummary } from '../features/settings/EnvironmentReport';
 import { WorkspacePanels } from './WorkspacePanels';
 
 const SettingsDialog = lazy(() => import('../features/settings/SettingsDialog'));
 const CommandPalette = lazy(() => import('./CommandPalette'));
+
 function OpenPalette({
   opened,
   workspace,
@@ -55,10 +52,8 @@ function OpenPalette({
   );
 }
 
-/** 对话与工具停靠分屏；收起及方向变化不关闭已打开文件或终端。 */
+/** 对话与资源停靠分屏；同步、版本与本地文件面板随三个域一起删除。 */
 export function App() {
-  const sync = useRef<SyncActions>(null);
-  const versions = useRef<VersionsActions>(null);
   const palette = useCommandPalette();
   const theme = useUiPreferences((state) => state.theme);
   useLayoutEffect(() => {
@@ -71,47 +66,17 @@ export function App() {
   }, [productSettings.data, setDefaults]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [serversOpen, setServersOpen] = useState(false);
-  const [filesWorkspace, setFilesWorkspace] = useState<Workspace>();
   const [resourcesOpen, setResourcesOpen] = useState(() => window.matchMedia('(min-width: 1280px)').matches);
-  const [filesOpen, setFilesOpen] = useState(false);
-  const [changesRequest, setChangesRequest] = useState<ChangesRequest>();
   const [terminalLoaded, setTerminalLoaded] = useState(false);
   const [terminalVisible, setTerminalVisible] = useState(false);
-  const hideTerminal = useCallback(() => setTerminalVisible(false), []);
   const workspaces = useQuery({ queryKey: queryKeys.workspaces, queryFn: ({ signal }) => api.listWorkspaces(signal) });
   const workspaceId = useChat((s) => s.workspaceId);
   useWorkspaceNavigation(workspaces.data);
   const current = workspaces.data?.find((w) => w.id === workspaceId);
   const resourcesVisible = resourcesOpen && !!current;
-  const filesVisible = filesOpen && !!filesWorkspace;
-  const workspaceRemoved = useCallback((id: string) => {
-    setFilesWorkspace((opened) => (opened?.id === id ? undefined : opened));
-    setChangesRequest((opened) => (opened?.workspaceId === id ? undefined : opened));
-  }, []);
   const openTerminal = () => {
     setTerminalLoaded(true);
     setTerminalVisible(true);
-  };
-  const openFiles = () => {
-    setFilesWorkspace((opened) => opened ?? current);
-    setFilesOpen(true);
-  };
-  const openChanges = (turnId: string) => {
-    const conversation = useChat.getState();
-    if (!current || conversation.workspaceId !== current.id) return;
-    if (filesWorkspace && filesWorkspace.id !== current.id) {
-      useChat.setState({ banner: '文件面板仍属于另一工作区，请先关闭该面板后查看此轮改动' });
-      return;
-    }
-    setChangesRequest({
-      workspaceId: current.id,
-      agent: conversation.agent,
-      conversationVersion: conversation.conversationVersion,
-      turnId,
-      nonce: crypto.randomUUID(),
-    });
-    setFilesWorkspace((opened) => opened ?? current);
-    setFilesOpen(true);
   };
 
   return (
@@ -123,8 +88,6 @@ export function App() {
         onOpenResources={() => setResourcesOpen((opened) => !opened)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenServers={() => setServersOpen(true)}
-        filesOpen={filesVisible}
-        onOpenFiles={() => (filesOpen && filesWorkspace ? setFilesOpen(false) : openFiles())}
         terminalOpen={terminalVisible}
         onOpenTerminal={openTerminal}
       />
@@ -136,10 +99,6 @@ export function App() {
         workspaces={workspaces.data}
         close={palette.close}
         actions={{
-          files: () => {
-            openFiles();
-            return true;
-          },
           terminal: () => {
             openTerminal();
             return true;
@@ -148,8 +107,6 @@ export function App() {
             setSettingsOpen(true);
             return true;
           },
-          sync: (id) => sync.current?.run(id) ?? false,
-          versions: (id) => versions.current?.open(id) ?? false,
           resources: (id) => {
             if (id !== current?.id) return false;
             setResourcesOpen(true);
@@ -172,37 +129,24 @@ export function App() {
         </Suspense>
       )}
       <WorkspacePanels
-        navigation={<WorkspaceSidebar workspaces={workspaces} currentId={current?.id} onRemoved={workspaceRemoved} />}
+        navigation={
+          <nav aria-label="项目列表" className="h-full overflow-auto p-3 text-sm text-muted-foreground">
+            项目列表将在后续任务接入
+          </nav>
+        }
         resourcesOpen={resourcesVisible}
-        filesOpen={filesVisible}
         workspace={current}
-        filesWorkspace={filesWorkspace}
-        changesRequest={changesRequest}
-        hide={(kind) => (kind === 'resources' ? setResourcesOpen(false) : setFilesOpen(false))}
-        closeFiles={() => {
-          setFilesOpen(false);
-          setFilesWorkspace(undefined);
-          setChangesRequest(undefined);
-        }}
+        hideResources={() => setResourcesOpen(false)}
       >
         <WorkspaceArea
           workspace={current}
           terminalLoaded={terminalLoaded}
           terminalVisible={terminalVisible}
-          onHideTerminal={hideTerminal}
+          onHideTerminal={() => setTerminalVisible(false)}
         >
           <main className="flex min-w-0 flex-1 flex-col">
             {current ? (
-              <>
-                <div
-                  aria-label="工作区状态"
-                  className="flex min-h-11 shrink-0 flex-wrap items-center gap-1 border-b border-border/60 px-4"
-                >
-                  <SyncPanel key={`sync:${current.id}`} workspace={current} ref={sync} />
-                  <VersionsPanel key={`versions:${current.id}`} workspace={current} ref={versions} />
-                </div>
-                <ChatView workspace={current} onOpenChanges={openChanges} />
-              </>
+              <ChatView workspace={current} />
             ) : (
               <div className="m-auto max-w-sm text-center text-sm text-muted-foreground">
                 {workspaces.isPending ? '正在加载工作区…' : '在左侧新建或选择一个工作区后开始对话。'}

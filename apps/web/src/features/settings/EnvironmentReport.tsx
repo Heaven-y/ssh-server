@@ -3,7 +3,7 @@ import { RefreshCw } from 'lucide-react';
 import type { EnvironmentTool } from '@ssh-server/shared';
 import { api, queryKeys } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
-import { useCancelableRequest } from '../workspaces/setup/use-cancelable-request';
+import { useCancelableRequest } from '../../lib/use-cancelable-request';
 import { useEnvironment } from './use-environment';
 
 const GUIDES: Record<EnvironmentTool['name'], { url: string; hint: string }> = {

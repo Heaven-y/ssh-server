@@ -1,6 +1,6 @@
 import type { EnvironmentReport, EnvironmentTool } from '@ssh-server/shared';
 import { resolveCodexCommand } from '../agents/codex/launch';
-import { runProcess, type ProcessRunner } from '../sync/process';
+import { runProcess, type ProcessRunner } from '../process/run';
 import { resolveClaudeExecutable } from '../agents/claude-launch';
 import { ProductSettingsError } from './product-settings';
 

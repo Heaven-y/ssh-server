@@ -1,6 +1,16 @@
 // 无 shell 的异步子进程；凭据可通过 stdin/独立环境传递，错误不含参数或原始 stderr。
+// 同步域删除后这里保留为中立能力：环境探测与 Windows 凭据保护都依赖它。
 import { spawn } from 'node:child_process';
-import { SyncError } from './errors';
+
+export class ProcessError extends Error {
+  override name = 'ProcessError';
+  constructor(
+    public readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 export type ProcessOptions = {
   env?: NodeJS.ProcessEnv;
@@ -23,24 +33,24 @@ export function runProcess(executable: string, args: string[], options: ProcessO
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let bytes = 0;
-    let failure: SyncError | undefined;
+    let failure: ProcessError | undefined;
     const stop = (code: string, message: string) => {
-      failure ??= new SyncError(code, message);
+      failure ??= new ProcessError(code, message);
       child.kill('SIGKILL');
     };
     const collect = (chunks: Buffer[]) => (chunk: Buffer) => {
       bytes += chunk.length;
-      if (bytes > options.outputCap) stop('output_limit', '同步子进程输出超限，已停止');
+      if (bytes > options.outputCap) stop('output_limit', '子进程输出超限，已停止');
       else chunks.push(chunk);
     };
     child.stdout.on('data', collect(stdout));
     child.stderr.on('data', collect(stderr));
     child.stdin.on('error', () => undefined);
     child.once('error', () => {
-      failure ??= new SyncError('executable_missing', '无法启动同步程序，请配置本机 rclone 1.75.1');
+      failure ??= new ProcessError('executable_missing', '无法启动程序，请检查本机安装与启动路径');
     });
-    const timer = setTimeout(() => stop('timeout', '同步超时，已停止；请检查连接后恢复'), options.timeoutMs);
-    const abort = () => stop('aborted', '同步已取消');
+    const timer = setTimeout(() => stop('timeout', '子进程超时，已停止；请检查连接后重试'), options.timeoutMs);
+    const abort = () => stop('aborted', '子进程已取消');
     options.signal?.addEventListener('abort', abort, { once: true });
     child.once('close', (exitCode) => {
       clearTimeout(timer);

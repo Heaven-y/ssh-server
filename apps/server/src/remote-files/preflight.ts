@@ -7,7 +7,6 @@ import { workspaceKey } from './binding';
 import { RemoteFilesError } from './errors';
 import { RemoteActionPlanSchema, type RemoteActionPlan, type RemoteExecutor } from './executor';
 import { remotePath } from './paths';
-import { destinationPaths, syncImpact } from './sync-impact';
 import type { RemoteFilesService } from './service';
 
 export type FileActionContext = Omit<Awaited<ReturnType<RemoteFilesService['context']>>, 'identity'>;
@@ -24,8 +23,6 @@ type Deps = {
   pool: Pick<SshPool, 'identity' | 'resolveConnection' | 'generation'>;
   browse: Pick<RemoteFilesService, 'context'>;
   executor: RemoteExecutor;
-  syncAvailable?: boolean;
-  syncPaths?: (workspace: Workspace, incoming: string[], signal: AbortSignal) => Promise<void>;
 };
 const identityHash = (value: string) => createHash('sha256').update(value).digest('hex');
 
@@ -58,17 +55,6 @@ export function createFilePreflights(deps: Deps) {
       .map((workspace) => ({ id: workspace.id, key: workspaceKey(workspace) }));
     const expected = action.configurations.filter((item) => relevant(item.id));
     if (JSON.stringify(configurations) !== JSON.stringify(expected)) throw new RemoteFilesError('stale_preflight');
-  }
-  async function checkDestinations(
-    workspaces: Workspace[],
-    affected: RemoteFilePreflight['affectedWorkspaces'],
-    input: { plan: RemoteActionPlan; action: RemoteFileActionInput; signal: AbortSignal },
-  ) {
-    const { plan, action, signal } = input;
-    for (const item of affected) {
-      const workspace = workspaces.find((workspace) => workspace.id === item.id)!;
-      await deps.syncPaths?.(workspace, destinationPaths(workspace, item.remoteRoot, plan, action), signal);
-    }
   }
   return {
     validate,
@@ -107,9 +93,7 @@ export function createFilePreflights(deps: Deps) {
           { signal },
         ),
       );
-      const impact = syncImpact(workspaces, plan, action);
-      const affectedWorkspaces = impact.affected;
-      await checkDestinations(workspaces, affectedWorkspaces, { plan, action, signal });
+      // 同步域删除后远端操作不再影响本机镜像，因此没有受影响工作区，也不需要同步前置条件。
       const preview: RemoteFilePreflight = {
         ...action,
         id: randomUUID(),
@@ -121,15 +105,9 @@ export function createFilePreflights(deps: Deps) {
         files: plan.files,
         bytes: plan.bytes,
         crossFilesystem: plan.crossFilesystem,
-        affectedWorkspaces,
-        canSubmit: affectedWorkspaces.length === 0 || (!!deps.syncAvailable && impact.complete),
-        warnings: affectedWorkspaces.length
-          ? [
-              deps.syncAvailable && impact.complete
-                ? '该操作会协调相关同步文件，存在未保存编辑、冲突或待确认删除时不执行。'
-                : '该操作涉及同步范围，当前仍待完整元数据与同步路径协调。',
-            ]
-          : [],
+        affectedWorkspaces: [],
+        canSubmit: true,
+        warnings: [],
       };
       const result: PreparedAction = {
         public: preview,

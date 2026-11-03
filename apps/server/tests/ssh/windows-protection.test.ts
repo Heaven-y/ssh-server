@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createWindowsProtector } from '../../src/ssh/windows-protection';
-import { runProcess, type ProcessRunner } from '../../src/sync/process';
+import { runProcess, type ProcessRunner } from '../../src/process/run';
 
 const entropy = Buffer.alloc(32, 7);
 describe('Windows 当前用户系统加密', () => {
