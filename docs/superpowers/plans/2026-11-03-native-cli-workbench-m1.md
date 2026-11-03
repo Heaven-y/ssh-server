@@ -185,9 +185,17 @@ git commit -m "refactor(server): 删除 Agent→SSH 的 MCP 桥与命令黑名�
 
 **Files:**
 - Modify: `packages/shared/src/workspace.ts`、`packages/shared/src/index.ts`
-- Delete: `packages/shared/src/sync.ts`、`policy.ts`、`files.ts`、`versions.ts`、`turn-changes.ts`、`turn-files.ts`
+- Modify: `packages/shared/src/setup.ts`（**只删向导部分，不要整文件删**）
+- Delete: `packages/shared/src/sync.ts`、`files.ts`、`versions.ts`、`turn-changes.ts`、`turn-files.ts`
 - Create: `packages/shared/src/session.ts`
 - Test: `packages/shared/tests/workspace.test.ts`（新建）、`packages/shared/tests/session.test.ts`（新建）
+
+> **不要删 `setup.ts` 整个文件。** 它同时装着两类东西：
+>
+> - **已死（删）**：`WorkspaceSetupInputSchema`、`WorkspaceSetupVerifySchema`、`WorkspaceSetupCreateSchema`、`WorkspaceSetupCreate`、`LocalDirectory`、`SetupDirectoryInfo`、`WorkspaceSetupVerification`、`SetupInventory`、`WorkspaceSetupPreview`、`WorkspaceSetupResult`。
+> - **仍在用（留）**：`ManualServerInputSchema`、`ManagedServerSchema`、`HostTrustConfirmationSchema` 与对应类型 `ManualServerInput`、`ManagedServer`、`HostTrustStatus`、`HostTrustConfirmation`。它们被 `ssh/targets.ts`、`ssh/pool.ts`、`ssh/profiles.ts`、`http/ssh-targets.routes.ts`、`features/ssh/ServerManagerDialog.tsx` 等大量引用。
+>
+> `policy.ts` 与 `workspace-removal.ts` 已由 Task 2 删除，本任务不要重复处理。
 
 **Interfaces:**
 - Consumes: 无
