@@ -1,8 +1,54 @@
+import { z } from 'zod';
+
+/**
+ * 文件浏览里「同步范围」标记的判定参数。
+ * 同步域已删除，这两个值只剩默认值；标记本身（included / excluded）保留，
+ * 行为与删除前完全一致，是否下线该标记由文件浏览的重做决定。
+ */
+export const DEFAULT_EXCLUDED_EXTENSIONS = [
+  'pkl',
+  'pickle',
+  'pt',
+  'pth',
+  'ckpt',
+  'safetensors',
+  'joblib',
+  'npy',
+  'npz',
+  'rdata',
+  'rds',
+  'h5',
+  'hdf5',
+  'parquet',
+  'arrow',
+  'zip',
+  'gz',
+  'bz2',
+  'xz',
+  'tar',
+  '7z',
+  'rar',
+];
+export const RemoteFileFilterSchema = z.object({
+  maxFileBytes: z
+    .number()
+    .int()
+    .min(1)
+    .max(100 * 1024 * 1024)
+    .default(10 * 1024 * 1024),
+  excludedExtensions: z
+    .array(z.string().regex(/^[a-zA-Z0-9]{1,20}$/))
+    .max(100)
+    .default(DEFAULT_EXCLUDED_EXTENSIONS)
+    .transform((items) => [...new Set(items.map((item) => item.toLowerCase()))].sort()),
+});
+export type RemoteFileFilter = z.infer<typeof RemoteFileFilterSchema>;
+
 /** 面板打开时的配置快照；只用于绑定目标，不用于更新工作区。 */
 export type RemoteBrowseTarget = {
+  /** 服务器档案别名 */
   sshHost: string;
   remoteDir: string;
-  localDir: string;
 };
 export type RemoteBrowseSession = {
   id: string;

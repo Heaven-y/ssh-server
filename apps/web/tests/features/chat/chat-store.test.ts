@@ -72,8 +72,8 @@ beforeEach(() => {
   useChat.setState({
     workspaceId: undefined,
     connection: 'open',
-    modelOverrides: { claude: '', codex: '' },
-    reasoningEfforts: { claude: '', codex: '' },
+    modelOverrides: { claude: '', codex: '', antigravity: '' },
+    reasoningEfforts: { claude: '', codex: '', antigravity: '' },
     sessionOperations: {},
     sessionModels: {},
     defaults: { defaultAgent: 'claude' },

@@ -12,8 +12,8 @@ import { api, queryKeys } from '../../../src/lib/api';
 const workspace: Workspace = {
   id: 'workspace',
   name: '演示项目',
-  sshHost: 'my-server',
-  localDir: 'project',
+  server: 'my-server',
+  dir: 'project',
   remoteDir: '~/projects/demo',
 };
 const skill = {

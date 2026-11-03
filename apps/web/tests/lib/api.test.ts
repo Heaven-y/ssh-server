@@ -1,9 +1,7 @@
-import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError, queryKeys } from '../../src/lib/api';
 
-const localDir = path.join(os.tmpdir(), 'agentdeck-fixture', 'demo');
 const respond = (status: number, body?: unknown) =>
   vi.stubGlobal(
     'fetch',
@@ -30,7 +28,7 @@ describe('api', () => {
   });
 
   it('服务器浏览请求保留绑定令牌并正确传递工作区、目录和游标', async () => {
-    const target = { sshHost: 'my-server', remoteDir: '~/projects/demo', localDir };
+    const target = { sshHost: 'my-server', remoteDir: '~/projects/demo' };
     respond(200, { binding: 'fixture-binding' });
     const identity = await api.bindRemoteBrowseTarget('w/1', target);
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('/api/workspaces/w%2F1/remote-files/bindings');
@@ -38,7 +36,10 @@ describe('api', () => {
     const controller = new AbortController();
     await api.createRemoteBrowseSession('w/1', target, identity.binding, controller.signal);
     const created = vi.mocked(fetch).mock.calls[0]?.[1];
-    expect(JSON.parse(created?.body as string)).toMatchObject({ ...target, binding: identity.binding });
+    const createdBody = JSON.parse(created?.body as string);
+    expect(createdBody).toMatchObject({ ...target, binding: identity.binding });
+    // 绑定快照只带服务器别名与目录；工作区模型收敛后不再发送本地目录。
+    expect(createdBody).not.toHaveProperty('localDir');
     expect(created?.signal).toBe(controller.signal);
     const remote = path.posix.join(path.posix.sep, 'fixture-home', 'data & weights');
     respond(200, { path: remote, entries: [] });
@@ -79,10 +80,10 @@ describe('api', () => {
   });
 
   it('接口错误保留字段名、分类及部分恢复路径', async () => {
-    respond(400, { field: 'localDir', message: '本地文件夹不存在' });
+    respond(400, { field: 'dir', message: '项目目录不存在' });
     const err = await api.listWorkspaces().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
-    expect(err).toMatchObject({ status: 400, field: 'localDir', message: '本地文件夹不存在' });
+    expect(err).toMatchObject({ status: 400, field: 'dir', message: '项目目录不存在' });
     respond(500, { code: 'partial_restore', message: '部分文件恢复失败', affectedPaths: ['main.py'] });
     await expect(api.deleteSshTarget({ alias: 'my-server' } as never)).rejects.toMatchObject({
       status: 500,

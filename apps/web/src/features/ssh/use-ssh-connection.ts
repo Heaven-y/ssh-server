@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { WorkspaceInputSchema, type SshAuthMode } from '@agentdeck/shared';
+import { z } from 'zod';
+import type { SshAuthMode } from '@agentdeck/shared';
 import { api, ApiError, queryKeys, type SshConnectionTarget, type SshCredentialStatus } from '../../lib/api';
 
 type Phase = 'idle' | 'connecting' | 'verified' | 'error' | 'disconnecting' | 'disconnected' | 'updating';
@@ -13,7 +14,8 @@ const EMPTY_STATUS: SshCredentialStatus = {
   hasPassword: false,
 };
 
-const TARGET_SCHEMA = WorkspaceInputSchema.pick({ sshHost: true });
+/** 认证目标仅为已保存服务器，不依赖工作区目录；这是 SSH 别名的校验，与项目模型的字段无关。 */
+const TARGET_SCHEMA = z.string().min(1);
 const SSH_ERRORS: Record<string, string> = {
   host_key_unknown: '尚未登记服务器主机密钥。请点击“检查实际指纹”，通过可信渠道核对并确认后重新测试连接。',
   host_key_mismatch: '服务器主机密钥与 known_hosts 不一致，已拒绝连接。请核实密钥变化原因后再重试。',
@@ -50,13 +52,7 @@ function sshErrorMessage(error: unknown, authMode: SshAuthMode): string {
 
 /** 认证目标仅为已保存服务器，不依赖工作区目录。 */
 export function sshTargetErrors(target: SshConnectionTarget): Partial<Record<'sshHost', string>> {
-  const result = TARGET_SCHEMA.safeParse({ sshHost: target.sshHost });
-  if (result.success) return {};
-  const errors: Partial<Record<'sshHost', string>> = {};
-  for (const issue of result.error.issues) {
-    if (issue.path[0] === 'sshHost') errors.sshHost = '请选择服务器 Host';
-  }
-  return errors;
+  return TARGET_SCHEMA.safeParse(target.sshHost).success ? {} : { sshHost: '请选择服务器 Host' };
 }
 
 function feedbackState(current: ConnectionState, status: SshCredentialStatus, error: unknown, authMode: SshAuthMode) {

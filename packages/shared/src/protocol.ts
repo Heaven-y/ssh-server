@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { AgentKindSchema, NativeSessionIdSchema, type AgentKind } from './agents';
 import { CapabilitySelectionSchema } from './capabilities';
 import type { AgentEvent } from './events';
-import type { TurnChangesRecord } from './turn-changes';
 
 const ClaudeEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 
@@ -34,7 +33,7 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
         ClaudeEffortSchema.safeParse(message.reasoningEffort).success,
       {
         path: ['reasoningEffort'],
-        message: 'Claude 推理强度必须为 low、medium、high、xhigh 或 max',
+        message: 'Claude 推理强度必须是 low、medium、high、xhigh 或 max',
       },
     ),
   z.object({
@@ -56,5 +55,5 @@ export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 export type ServerMessage =
   | { type: 'turn.started'; turnId: string; clientTurnId: string; workspaceId: string; agent: AgentKind }
   | { type: 'agent.event'; turnId: string; event: AgentEvent }
-  | { type: 'turn.finished'; turnId: string; workspaceId: string; agent: AgentKind; changes?: TurnChangesRecord }
+  | { type: 'turn.finished'; turnId: string; workspaceId: string; agent: AgentKind }
   | { type: 'error'; turnId?: string; clientTurnId?: string; message: string };

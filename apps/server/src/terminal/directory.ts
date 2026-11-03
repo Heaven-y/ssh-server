@@ -1,4 +1,4 @@
-import type { Workspace } from '@agentdeck/shared';
+import type { BoundWorkspace } from '@agentdeck/shared';
 import { workspaceTarget } from '../ssh/connection';
 import type { SshPool, SshChannelGuard } from '../ssh/pool';
 import { createSftpReader } from '../ssh/sftp';
@@ -6,7 +6,7 @@ import { remotePath } from '../remote-files/paths';
 import { TerminalError } from './errors';
 
 export async function resolveTerminalDirectory(options: {
-  workspace: Workspace;
+  workspace: BoundWorkspace;
   pool: Pick<SshPool, 'openSftp'>;
   guard: SshChannelGuard;
 }): Promise<string> {

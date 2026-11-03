@@ -1,8 +1,9 @@
-import type { SessionSummary } from '@agentdeck/shared';
+import type { SessionRef } from '@agentdeck/shared';
 import { sessionActionKey, useChat } from './chat-store';
 
 /** 仅消费原生报告；来源与模型分开，输入框选择值不参与展示。 */
-export function useSessionModel(workspaceId: string, session: SessionSummary) {
+/** 列表行与原生历史都只提供身份；模型元数据能带就带，缺失时回落到本页观测值。 */
+export function useSessionModel(workspaceId: string, session: SessionRef & { nativeModel?: string }) {
   const observed = useChat((state) => state.sessionModels[sessionActionKey(workspaceId, session)]);
   const actual = observed?.actualModel;
   const native = session.nativeModel?.trim() || observed?.nativeModel;

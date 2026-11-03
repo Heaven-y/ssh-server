@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RemoteBrowseSession, RemoteBrowseTarget, RemoteDirectory, Workspace } from '@agentdeck/shared';
+import type { BoundWorkspace, RemoteBrowseSession, RemoteBrowseTarget, RemoteDirectory } from '@agentdeck/shared';
 import { api, ApiError } from '../../lib/api';
 import { createBrowseConnection } from './browse-connection';
 
@@ -13,13 +13,12 @@ function failureOf(error: unknown, requestId: number): DirectoryFailure {
 }
 
 /** 仅保存当前页；浏览请求不经过本地文件、同步或正文读取接口。 */
-export function useRemoteDirectory(workspace: Workspace, active: boolean) {
+export function useRemoteDirectory(workspace: BoundWorkspace, active: boolean) {
   const [binding] = useState(() => ({
     workspaceId: workspace.id,
     target: {
-      sshHost: workspace.sshHost,
+      sshHost: workspace.server,
       remoteDir: workspace.remoteDir,
-      localDir: workspace.localDir,
     } satisfies RemoteBrowseTarget,
   }));
   const [connection] = useState(() => createBrowseConnection(binding.workspaceId, binding.target));

@@ -18,7 +18,7 @@ function editedPassword(current: ManagedServer, next: ManagedServer, password?: 
 /** 服务器档案写队列；工作区快照只用于判断该服务器是否仍被引用。 */
 export function createServerProfiles(deps: Deps) {
   function withServer<T>(alias: string, operation: (workspaces: readonly Workspace[]) => Promise<T>) {
-    return deps.store.withSnapshot((all) => operation(all.filter((workspace) => workspace.sshHost === alias)));
+    return deps.store.withSnapshot((all) => operation(all.filter((workspace) => workspace.server === alias)));
   }
   return {
     list: deps.targets.list,

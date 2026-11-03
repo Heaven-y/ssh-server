@@ -9,8 +9,8 @@ import { CLAUDE_SUMMARY_TIMEOUT_MS, type ClaudeQuery } from '../../src/agents/cl
 const workspace: Workspace = {
   id: 'w1',
   name: 'demo',
-  localDir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
-  sshHost: 'my-server',
+  dir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
+  server: 'my-server',
   remoteDir: '~/projects/demo',
 };
 const compact = { name: 'compact', description: '原生压缩', argumentHint: '', builtin: true };

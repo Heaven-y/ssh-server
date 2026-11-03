@@ -6,16 +6,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createWorkspaceStore, WorkspaceValidationError } from '../../src/workspaces/store';
 
 let configDir: string;
-let localDir: string;
+let projectDir: string;
 
 beforeEach(async () => {
   configDir = await mkdtemp(path.join(os.tmpdir(), 'agentdeck-cfg-'));
-  localDir = await mkdtemp(path.join(os.tmpdir(), 'agentdeck-local-'));
+  projectDir = await mkdtemp(path.join(os.tmpdir(), 'agentdeck-project-'));
 });
 
 afterEach(async () => {
   await rm(configDir, { recursive: true, force: true });
-  await rm(localDir, { recursive: true, force: true });
+  await rm(projectDir, { recursive: true, force: true });
 });
 
 const make = (opts: { dirExists?: boolean } = {}) =>
@@ -25,7 +25,7 @@ const make = (opts: { dirExists?: boolean } = {}) =>
     knownHosts: async () => ['my-server'],
   });
 
-const input = () => ({ name: 'demo', localDir, sshHost: 'my-server', remoteDir: '~/projects/demo' });
+const input = () => ({ name: 'demo', dir: projectDir, server: 'my-server', remoteDir: '~/projects/demo' });
 
 describe('createWorkspaceStore', () => {
   it('创建后返回 UUID，并持久化到磁盘', async () => {
@@ -34,31 +34,41 @@ describe('createWorkspaceStore', () => {
     expect(await make().list()).toEqual([ws]);
   });
 
-  it('localDir 保存为 path.resolve 后的绝对路径', async () => {
-    const raw = localDir.replace(/\\/g, '/');
-    const ws = await make().create({ ...input(), localDir: raw });
-    expect(ws.localDir).toBe(path.resolve(raw));
+  it('不绑定服务器的项目也能创建', async () => {
+    const ws = await make().create({ name: '纯本地项目', dir: projectDir });
+    expect(ws).toMatchObject({ name: '纯本地项目', dir: path.resolve(projectDir) });
+    expect(ws).not.toHaveProperty('server');
   });
 
-  it('本地文件夹不存在时报 localDir 字段错误', async () => {
+  it('dir 保存为 path.resolve 后的绝对路径', async () => {
+    const raw = projectDir.replace(/\\/g, '/');
+    const ws = await make().create({ ...input(), dir: raw });
+    expect(ws.dir).toBe(path.resolve(raw));
+  });
+
+  it('项目目录不存在时报 dir 字段错误', async () => {
     await expect(make({ dirExists: false }).create(input())).rejects.toMatchObject({
       name: 'WorkspaceValidationError',
-      field: 'localDir',
+      field: 'dir',
     });
   });
 
-  it('相对路径的本地文件夹报错', async () => {
-    await expect(make().create({ ...input(), localDir: 'relative/dir' })).rejects.toBeInstanceOf(
-      WorkspaceValidationError,
-    );
+  it('相对路径的项目目录报错', async () => {
+    await expect(make().create({ ...input(), dir: 'relative/dir' })).rejects.toBeInstanceOf(WorkspaceValidationError);
   });
 
-  it('未登记的服务器时报 sshHost 字段错误', async () => {
-    await expect(make().create({ ...input(), sshHost: 'unknown' })).rejects.toMatchObject({ field: 'sshHost' });
+  it('未登记的服务器时报 server 字段错误', async () => {
+    await expect(make().create({ ...input(), server: 'unknown' })).rejects.toMatchObject({ field: 'server' });
   });
 
   it('服务器目录不合法时报 remoteDir 字段错误', async () => {
     await expect(make().create({ ...input(), remoteDir: 'projects' })).rejects.toMatchObject({ field: 'remoteDir' });
+  });
+
+  it('未绑定服务器时不能设置默认目录', async () => {
+    await expect(make().create({ name: 'demo', dir: projectDir, remoteDir: '~/projects/demo' })).rejects.toMatchObject({
+      field: 'remoteDir',
+    });
   });
 
   it.each(['{private-secret', '{}', '[null]', '[{"id":"secret"}]'])('%s损坏拒绝读写并保留原文', async (text) => {
@@ -88,16 +98,25 @@ describe('createWorkspaceStore', () => {
   it('混合有效与无效条目不能过滤后写回', async () => {
     const valid = await make().create(input());
     const file = path.join(configDir, 'workspaces.json');
-    const text = JSON.stringify([valid, { ...valid, id: 'other', authMode: 'invalid' }]);
+    const text = JSON.stringify([valid, { ...valid, id: 'other', dir: '' }]);
     await writeFile(file, text, 'utf8');
     await expect(make().remove(valid.id)).rejects.toMatchObject({ name: 'WorkspaceStorageError' });
+    expect(await readFile(file, 'utf8')).toBe(text);
+  });
+
+  it('落盘文件里的相对目录同样阻止读取，不能带病当 cwd 用', async () => {
+    const valid = await make().create(input());
+    const file = path.join(configDir, 'workspaces.json');
+    const text = JSON.stringify([valid, { ...valid, id: 'other', dir: 'relative/dir' }]);
+    await writeFile(file, text, 'utf8');
+    await expect(make().list()).rejects.toMatchObject({ name: 'WorkspaceStorageError' });
     expect(await readFile(file, 'utf8')).toBe(text);
   });
 
   it('当前可选字段与默认配置合法，不要求SSH或目录仍在线', async () => {
     const valid = await make().create(input());
     expect(await make({ dirExists: false }).list()).toEqual([valid]);
-    expect(await make().update(valid.id, { name: 'renamed' })).toMatchObject({ sshHost: valid.sshHost });
+    expect(await make().update(valid.id, { name: 'renamed' })).toMatchObject({ server: valid.server });
   });
 
   it('update 只改指定字段，id 不变', async () => {
@@ -119,7 +138,7 @@ describe('createWorkspaceStore', () => {
     const ws = await store.create(input());
     expect(await store.remove(ws.id)).toBe(true);
     expect(await store.get(ws.id)).toBeUndefined();
-    expect(existsSync(localDir)).toBe(true);
+    expect(existsSync(projectDir)).toBe(true);
   });
 
   it('并发创建不会丢失记录', async () => {

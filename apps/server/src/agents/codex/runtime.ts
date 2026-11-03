@@ -71,7 +71,7 @@ export class CodexRuntime {
   private async start(input: AgentTurnInput, signal: AbortSignal): Promise<CodexClient> {
     const client = await CodexClient.start({
       ...this.options,
-      cwd: input.workspace.localDir,
+      cwd: input.workspace.dir,
       signal,
     });
     this.client = client;
@@ -80,7 +80,7 @@ export class CodexRuntime {
     try {
       await client.initialize();
       this.nativeConfig = await client.request('config/read', {
-        cwd: input.workspace.localDir,
+        cwd: input.workspace.dir,
         includeLayers: false,
       });
     } catch (error) {
@@ -99,21 +99,21 @@ export class CodexRuntime {
   private async openThread(client: CodexClient, input: AgentTurnInput, signal: AbortSignal): Promise<void> {
     const id = input.sessionId;
     const params = threadParams(input, this.nativeConfig ?? {});
-    if (id) await checkedThread(client, id, input.workspace.localDir);
+    if (id) await checkedThread(client, id, input.workspace.dir);
     if (signal.aborted) throw cancelled();
     const response = await client.request(id ? 'thread/resume' : 'thread/start', {
       ...params,
       ...(id ? { threadId: id, excludeTurns: true } : {}),
     });
     const thread = record(response.thread);
-    await this.verifyThread(thread, id, input.workspace.localDir);
+    await this.verifyThread(thread, id, input.workspace.dir);
     this.thread = text(thread.id);
     this.model = text(response.model) || text(thread.model);
   }
 
   /** 复核原生线程身份：必须带 ID、属于当前工作区，且与续接目标一致。 */
-  private async verifyThread(thread: RecordValue, id: string | undefined, localDir: string): Promise<void> {
-    if (!text(thread.id) || !(await sameSessionDirectory(text(thread.cwd), localDir))) {
+  private async verifyThread(thread: RecordValue, id: string | undefined, dir: string): Promise<void> {
+    if (!text(thread.id) || !(await sameSessionDirectory(text(thread.cwd), dir))) {
       throw new CodexError('Codex 返回了不属于当前工作区的会话。');
     }
     if (id && thread.id !== id) throw new CodexError('Codex 返回的会话标识与续接目标不一致。');
@@ -177,7 +177,7 @@ export class CodexTurn {
         type: 'session',
         sessionId: threadId,
         model: this.runtime.sessionModel ?? '',
-        cwd: this.input.workspace.localDir,
+        cwd: this.input.workspace.dir,
         agent: 'codex',
       });
       this.ensureActive();
@@ -267,7 +267,7 @@ export class CodexTurn {
 
   private async startTurn(client: CodexClient, threadId: string): Promise<AgentEvent> {
     if (this.input.invocation?.kind === 'skill')
-      await validateCodexSkill(client, this.input.workspace.localDir, this.input.invocation);
+      await validateCodexSkill(client, this.input.workspace.dir, this.input.invocation);
     this.ensureActive();
     this.phase = 'starting';
     await this.sendTurn(client, threadId);

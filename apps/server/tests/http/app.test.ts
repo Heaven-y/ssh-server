@@ -52,8 +52,8 @@ afterEach(async () => {
 
 const body: WorkspaceInput = {
   name: 'demo',
-  localDir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
-  sshHost: 'my-server',
+  dir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
+  server: 'my-server',
   remoteDir: '~/projects/demo',
 };
 

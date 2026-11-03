@@ -4,6 +4,7 @@ import type {
   AgentCapabilities,
   SessionSummary,
   SessionHistory,
+  SessionRecord,
   SessionActionInput,
   SessionForkInput,
   NativeConfigAgent,
@@ -283,7 +284,7 @@ export const api = {
     ),
   /** 分叉可能已写入原生历史，不随弹窗卸载取消或自动重试。 */
   sessionFork: (workspaceId: string, sessionId: string, agent: AgentKind, input: SessionForkInput) =>
-    request<{ session: SessionSummary }>(
+    request<{ session: SessionRecord }>(
       `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/fork?agent=${agent}`,
       { method: 'POST', body: JSON.stringify(input), cache: 'no-store' },
     ),

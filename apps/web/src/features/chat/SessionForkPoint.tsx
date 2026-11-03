@@ -1,12 +1,12 @@
 import { GitFork } from 'lucide-react';
 import { useState } from 'react';
-import type { SessionSummary } from '@agentdeck/shared';
+import type { SessionRef } from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
 import { managementPending, useChat } from './chat-store';
 import { SessionForkDialog } from '../workspaces/SessionForkDialog';
 
 export function SessionForkPoint({ pointId }: { pointId: string }) {
-  const [selected, setSelected] = useState<{ workspaceId: string; session: SessionSummary }>();
+  const [selected, setSelected] = useState<{ workspaceId: string; session: SessionRef & { title: string } }>();
   const available = useChat(
     (state) =>
       !!state.workspaceId && !!state.sessionId && !state.running && !state.loadingHistory && !managementPending(state),
@@ -16,7 +16,7 @@ export function SessionForkPoint({ pointId }: { pointId: string }) {
     if (!available || !current.workspaceId || !current.sessionId) return;
     setSelected({
       workspaceId: current.workspaceId,
-      session: { agent: current.agent, sessionId: current.sessionId, summary: '当前会话', lastModified: 0 },
+      session: { agent: current.agent, sessionId: current.sessionId, title: '当前会话' },
     });
   };
   return (

@@ -7,8 +7,22 @@ import { SessionList } from '../../../src/features/workspaces/SessionList';
 import { useChat } from '../../../src/features/chat/chat-store';
 import { useSessionPins } from '../../../src/features/workspaces/session-preferences';
 
-const session = { agent: 'claude' as const, sessionId: 'native-id', summary: '原生历史仍可打开', lastModified: 1 };
-const archived = { agent: 'codex' as const, sessionId: 'archived-id', summary: '归档记录', lastModified: 2 };
+const session = {
+  agent: 'claude' as const,
+  sessionId: 'native-id',
+  projectId: null,
+  title: '原生历史仍可打开',
+  updatedAt: new Date(1).toISOString(),
+  running: false,
+};
+const archived = {
+  agent: 'codex' as const,
+  sessionId: 'archived-id',
+  projectId: null,
+  title: '归档记录',
+  updatedAt: new Date(2).toISOString(),
+  running: false,
+};
 let client: QueryClient;
 beforeEach(() => {
   useSessionPins.setState({ pins: [] });
@@ -38,7 +52,7 @@ function mount() {
     </QueryClientProvider>,
   );
 }
-async function openAction(name: string, agent = 'Claude', title = session.summary) {
+async function openAction(name: string, agent = 'Claude', title = session.title) {
   fireEvent.click(screen.getByRole('button', { name: `${agent} 会话“${title}”的更多操作` }));
   fireEvent.click(await screen.findByRole('menuitem', { name }));
 }
@@ -52,18 +66,26 @@ it('Codex来源失败仍保留Claude历史与独立重试入口', async () => {
     })
     .catch(() => undefined);
   mount();
-  expect(screen.getByText(session.summary)).toBeTruthy();
+  expect(screen.getByText(session.title)).toBeTruthy();
   expect(screen.getByRole('alert').textContent).toContain('运行时不可用');
   expect(screen.getByRole('button', { name: '重新读取 Codex' })).toBeTruthy();
 });
 
+/** 历史接口返回原生记录行，列表行与它是两套契约。 */
+const history = {
+  agent: session.agent,
+  sessionId: session.sessionId,
+  summary: session.title,
+  lastModified: Date.parse(session.updatedAt),
+};
+
 it('标题仅选择会话，更多先展示菜单，不直接打开综合管理弹窗', async () => {
-  const read = vi.spyOn(api, 'sessionEvents').mockResolvedValue({ session, events: [] });
+  const read = vi.spyOn(api, 'sessionEvents').mockResolvedValue({ session: history, events: [] });
   mount();
-  const title = screen.getByText(session.summary);
+  const title = screen.getByText(session.title);
   // 行尾新增相对更新时间（lastModified=1 → “1/1”），标题文本本身保持单行省略。
-  expect(title.textContent).toBe(session.summary);
-  expect(title.closest('button')?.textContent).toContain(session.summary);
+  expect(title.textContent).toBe(session.title);
+  expect(title.closest('button')?.textContent).toContain(session.title);
   expect(title.closest('button')?.textContent).toContain('1/1');
   fireEvent.click(title);
   await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
@@ -135,24 +157,24 @@ it('归档列表成功为空时显示中性空状态，仍只读取Codex原生�
 });
 
 it('普通会话按Codex与Claude分别成组，不混排来源', () => {
-  client.setQueryData(queryKeys.sessions('workspace', 'codex'), [{ ...archived, summary: 'Codex 活跃会话' }]);
+  client.setQueryData(queryKeys.sessions('workspace', 'codex'), [{ ...archived, title: 'Codex 活跃会话' }]);
   mount();
   const codex = screen.getByRole('region', { name: 'Codex 会话' });
   const claude = screen.getByRole('region', { name: 'Claude 会话' });
   expect(within(codex).getByText('Codex 活跃会话')).toBeTruthy();
-  expect(within(claude).getByText(session.summary)).toBeTruthy();
-  expect(within(codex).queryByText(session.summary)).toBeNull();
+  expect(within(claude).getByText(session.title)).toBeTruthy();
+  expect(within(codex).queryByText(session.title)).toBeNull();
 });
 
 it('置顶只改变当前来源的排序，取消置顶恢复按更新时间排序', async () => {
   client.setQueryData(queryKeys.sessions('workspace', 'claude'), [
     session,
-    { ...session, sessionId: 'newer', summary: '较新会话', lastModified: 20 },
+    { ...session, sessionId: 'newer', title: '较新会话', updatedAt: new Date(20).toISOString() },
   ]);
   mount();
   await openAction('置顶');
   const group = screen.getByRole('region', { name: 'Claude 会话' });
-  expect(within(group).getAllByRole('listitem')[0]?.textContent).toContain(session.summary);
+  expect(within(group).getAllByRole('listitem')[0]?.textContent).toContain(session.title);
   await openAction('取消置顶');
   expect(within(group).getAllByRole('listitem')[0]?.textContent).toContain('较新会话');
 });

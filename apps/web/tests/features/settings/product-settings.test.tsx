@@ -13,7 +13,7 @@ import { ProductSettingsForm } from '../../../src/features/settings/ProductSetti
 
 const document: ProductSettingsDocument = { settings: ProductSettingsSchema.parse({}), revision: 'missing' };
 const saved: ProductSettingsDocument = {
-  settings: ProductSettingsSchema.parse({ syncIntervalSeconds: 5 }),
+  settings: ProductSettingsSchema.parse({ resources: { intervalSeconds: 20, timeoutSeconds: 8 } }),
   revision: 'a'.repeat(64),
 };
 const wrapper = ({ children }: { children: ReactNode }) => (

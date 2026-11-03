@@ -5,8 +5,6 @@ import type { AgentTurnInput, PermissionAnswer, TurnHandle, TurnRunner } from '.
 import { SessionError, type SessionsService } from './sessions';
 import type { CapabilitiesService } from './capabilities';
 import { WorkspaceRemovalError } from '../workspaces/activity';
-import type { TurnFileChange, TurnChangesRecord } from '@agentdeck/shared';
-import { mergeChanges, toolFileChanges, withDetected } from './turn-files';
 
 export type Socket = { send(msg: ServerMessage): void; isOpen(): boolean };
 export type TurnManagerDeps = {
@@ -27,8 +25,6 @@ type Turn = {
   workspace?: Workspace;
   finished: boolean;
   releaseWorkspace?: () => void;
-  /** 本轮原生工具报告的文件变更，按路径合并 */
-  files: Map<string, TurnFileChange>;
   failed?: boolean;
   startedAt: number;
 };
@@ -56,6 +52,11 @@ export class TurnManager {
 
   constructor(private readonly deps: TurnManagerDeps) {
     this.runners = deps.runners;
+  }
+
+  /** 该原生会话是否正被本网页占用（运行中或正在执行原生管理操作）。 */
+  isRunning(session: SessionRef): boolean {
+    return this.sessions.has(sessionKey(session.agent, session.sessionId));
   }
 
   /** 原生管理从范围校验到写入结果全程占锁，避免与准备、运行及同步收尾交错。 */
@@ -155,9 +156,6 @@ export class TurnManager {
       if (!this.bindSession(turn, event.sessionId)) return;
       event = { ...event, agent: turn.agent };
     }
-    if (event.type === 'tool_call') {
-      mergeChanges(turn.files, toolFileChanges(turn.agent, event.name, event.input));
-    }
     if (event.type === 'permission_resolved') {
       const pending = this.pending.get(event.requestId);
       if (pending?.turn === turn) {
@@ -217,7 +215,6 @@ export class TurnManager {
       sessionId: msg.sessionId,
       controller: new AbortController(),
       finished: false,
-      files: new Map<string, TurnFileChange>(),
       startedAt: Date.now(),
       releaseWorkspace: lease.release,
     };
@@ -271,23 +268,6 @@ export class TurnManager {
       .then(() => this.finish(turn));
   }
 
-  /** 汇总本轮原生工具报告的文件变更；没有任何改动时不生成记录。 */
-  private finishChanges(turn: Turn): TurnChangesRecord | undefined {
-    if (!turn.workspace) return undefined;
-    const files = withDetected(turn.files, []);
-    if (!files.length) return undefined;
-    return {
-      turnId: turn.id,
-      agent: turn.agent,
-      sessionId: turn.sessionId,
-      startedAt: turn.startedAt,
-      completedAt: Date.now(),
-      phase: turn.controller.signal.aborted ? 'incomplete' : 'complete',
-      ...(turn.controller.signal.aborted ? { message: '本轮已中断；显示已收到的文件变更' } : {}),
-      changes: files,
-    };
-  }
-
   private finish(turn: Turn): void {
     if (turn.finished) return;
     turn.finished = true;
@@ -297,21 +277,15 @@ export class TurnManager {
         pending.resolve({ allow: false, message: '本轮已结束' });
       }
     }
-    let changes: TurnChangesRecord | undefined;
-    try {
-      changes = this.finishChanges(turn);
-    } finally {
-      this.turns.delete(turn.id);
-      const key = turn.sessionId && sessionKey(turn.agent, turn.sessionId);
-      if (key && this.sessions.get(key) === turn.id) this.sessions.delete(key);
-      turn.releaseWorkspace?.();
-      this.send(turn.socket, {
-        type: 'turn.finished',
-        turnId: turn.id,
-        workspaceId: turn.workspaceId,
-        agent: turn.agent,
-        changes,
-      });
-    }
+    this.turns.delete(turn.id);
+    const key = turn.sessionId && sessionKey(turn.agent, turn.sessionId);
+    if (key && this.sessions.get(key) === turn.id) this.sessions.delete(key);
+    turn.releaseWorkspace?.();
+    this.send(turn.socket, {
+      type: 'turn.finished',
+      turnId: turn.id,
+      workspaceId: turn.workspaceId,
+      agent: turn.agent,
+    });
   }
 }

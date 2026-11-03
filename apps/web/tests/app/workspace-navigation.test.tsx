@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { SessionHistory, Workspace } from '@agentdeck/shared';
+import type { AgentKind, SessionHistory, Workspace } from '@agentdeck/shared';
 import { useWorkspaceNavigation } from '../../src/app/use-workspace-navigation';
 import { useChat } from '../../src/features/chat/chat-store';
 import { api } from '../../src/lib/api';
@@ -9,11 +9,11 @@ import { api } from '../../src/lib/api';
 const workspaces: Workspace[] = ['one', 'two'].map((id) => ({
   id,
   name: id,
-  localDir: '/projects/demo',
-  sshHost: 'my-server',
+  dir: '/projects/demo',
+  server: 'my-server',
   remoteDir: '~/projects/demo',
 }));
-const history = (sessionId: string, agent: 'codex' | 'claude' = 'codex'): SessionHistory => ({
+const history = (sessionId: string, agent: AgentKind = 'codex'): SessionHistory => ({
   session: { sessionId, agent, summary: sessionId, lastModified: 1 },
   events: [{ type: 'text', delta: sessionId }],
 });

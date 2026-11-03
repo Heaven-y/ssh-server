@@ -9,7 +9,11 @@ import { useAgentCapabilities } from './use-agent-capabilities';
 import { AgentIcon } from '../../ui/BrandIcons';
 import { ManualModelDialog } from './ManualModelDialog';
 
-export const AGENT_LABELS: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex' };
+export const AGENT_LABELS: Record<AgentKind, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  antigravity: 'Antigravity',
+};
 const STANDARD_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const menuClass =
   'z-50 max-h-[min(440px,var(--popover-available-height))] w-72 overflow-y-auto rounded-xl border border-border-strong bg-card p-1.5 text-foreground shadow-xl';

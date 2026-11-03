@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { terminalTargetKey, workspaceTerminalTarget, type Workspace } from '@agentdeck/shared';
+import { isBoundWorkspace, terminalTargetKey, workspaceTerminalTarget, type Workspace } from '@agentdeck/shared';
 import { ResourcesPanel } from '../features/resources/ResourcesPanel';
 import { WorkspacePanelFrame } from './WorkspacePanelFrame';
 import { WorkspaceLayout } from './WorkspaceLayout';
@@ -21,16 +21,18 @@ export function WorkspacePanels({
   workspace?: Workspace;
   hideResources(): void;
 }) {
+  // 资源面板以服务器为身份：只有绑定了服务器与默认目录的项目才渲染。
+  const bound = workspace && isBoundWorkspace(workspace) ? workspace : undefined;
   return (
     <WorkspaceLayout
       navigation={navigation}
       resourcesOpen={resourcesOpen}
       resources={
         <WorkspacePanelFrame kind="resources" opened={resourcesOpen} hide={hideResources}>
-          {workspace && (
+          {bound && (
             <ResourcesPanel
-              key={terminalTargetKey(workspaceTerminalTarget(workspace))}
-              workspace={workspace}
+              key={terminalTargetKey(workspaceTerminalTarget(bound))}
+              workspace={bound}
               active={resourcesOpen}
             />
           )}

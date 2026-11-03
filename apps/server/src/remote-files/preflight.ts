@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { type RemoteFileActionInput, type RemoteFilePreflight, type Workspace } from '@agentdeck/shared';
+import { type BoundWorkspace, type RemoteFileActionInput, type RemoteFilePreflight } from '@agentdeck/shared';
 import type { SshPool } from '../ssh/pool';
 import { workspaceTarget } from '../ssh/connection';
 import type { WorkspaceStore } from '../workspaces/store';
+import { boundWorkspace } from '../workspaces/bound';
 import { workspaceKey } from './binding';
 import { RemoteFilesError } from './errors';
 import { RemoteActionPlanSchema, type RemoteActionPlan, type RemoteExecutor } from './executor';
@@ -30,21 +31,22 @@ export function createFilePreflights(deps: Deps) {
   const prepared = new Map<string, PreparedAction>();
   async function managed(identity: string, signal: AbortSignal) {
     const workspaces = (await deps.store.list()).sort((a, b) => a.id.localeCompare(b.id));
-    const related: Workspace[] = [];
+    const related: BoundWorkspace[] = [];
     for (const workspace of workspaces) {
       signal.throwIfAborted();
-      if (identityHash(await deps.pool.identity(workspace.sshHost)) === identity) related.push(workspace);
+      const bound = boundWorkspace(workspace);
+      if (bound && identityHash(await deps.pool.identity(bound.server)) === identity) related.push(bound);
     }
     return related;
   }
   async function validate(action: PreparedAction, strictGeneration = true) {
-    const current = await deps.store.get(action.context.workspace.id);
+    const current = boundWorkspace(await deps.store.get(action.context.workspace.id));
     if (!current || workspaceKey(current) !== workspaceKey(action.context.workspace))
       throw new RemoteFilesError('target_changed');
     const connection = await deps.pool.resolveConnection(workspaceTarget(current));
     if (
       connection.cacheKey !== action.context.key ||
-      (strictGeneration && deps.pool.generation(current.sshHost) !== action.context.generation)
+      (strictGeneration && deps.pool.generation(current.server) !== action.context.generation)
     )
       throw new RemoteFilesError('target_changed');
     // 受影响工作区核对已随同步域移除：affectedWorkspaces 恒为空，这里实际只剩工作区配置校验。
@@ -101,7 +103,7 @@ export function createFilePreflights(deps: Deps) {
         ...action,
         id: randomUUID(),
         workspaceId,
-        sshHost: context.workspace.sshHost,
+        sshHost: context.workspace.server,
         expiresAt: Date.now() + 120_000,
         sourceType: plan.sourceType,
         entries: plan.entries,

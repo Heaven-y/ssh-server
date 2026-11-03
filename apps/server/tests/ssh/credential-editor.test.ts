@@ -331,7 +331,7 @@ it('新服务器加密失败不留下半份档案、密码或系统异常正文'
 
 it('携带新密码也不能绕过被引用连接目标的变更限制', async () => {
   const f = await fixture();
-  await f.store.create({ name: '项目', localDir: f.root, remoteDir: '~/projects/demo', sshHost: f.server.alias });
+  await f.store.create({ name: '项目', dir: f.root, server: f.server.alias, remoteDir: '~/projects/demo' });
   const response = await f.edit(await revision(f), {
     input: { ...input, hostname: 'other.invalid' },
     password: 'fixture-new-secret',

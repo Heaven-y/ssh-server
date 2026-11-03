@@ -136,7 +136,10 @@ async function main(): Promise<void> {
         fork: (id, dir, input) => forkCodexSession(id, dir, input),
       },
     },
-    { withIdleSession: (session, operation) => turns.withIdleSession(session, operation) },
+    {
+      withIdleSession: (session, operation) => turns.withIdleSession(session, operation),
+      isRunning: (s) => turns.isRunning(s),
+    },
   );
   const turns: TurnManager = new TurnManager({
     getWorkspace: (id) => store.get(id),

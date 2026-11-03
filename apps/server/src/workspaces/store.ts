@@ -2,8 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { z } from 'zod';
-import { WorkspaceInputSchema, type Workspace, type WorkspaceInput } from '@agentdeck/shared';
+import { WorkspaceInputSchema, WorkspaceSchema, type Workspace, type WorkspaceInput } from '@agentdeck/shared';
 
 export class WorkspaceValidationError extends Error {
   override name = 'WorkspaceValidationError';
@@ -44,12 +43,12 @@ export type WorkspaceStoreDeps = {
 };
 
 const FILE_NAME = 'workspaces.json';
-const StoredWorkspacesSchema = WorkspaceInputSchema.extend({
-  id: z.string().min(1),
-  localDir: z.string().refine((directory) => path.isAbsolute(directory)),
-})
-  .array()
-  .refine((items) => new Set(items.map((item) => item.id)).size === items.length);
+// 落盘文件比接口更严格：id 唯一、dir 必须是绝对路径。
+// dir 若非绝对路径，会被下游当作 cwd 直接传给 CLI，等于静默跑错目录，
+// 所以这里拦住整份配置，让人先去修文件，而不是带着坏数据继续跑。
+const StoredWorkspacesSchema = WorkspaceSchema.array()
+  .refine((items) => new Set(items.map((item) => item.id)).size === items.length)
+  .refine((items) => items.every((item) => path.isAbsolute(item.dir)));
 
 export function createWorkspaceStore(deps: WorkspaceStoreDeps): WorkspaceStore {
   const file = path.join(deps.configDir, FILE_NAME);
@@ -83,6 +82,7 @@ export function createWorkspaceStore(deps: WorkspaceStoreDeps): WorkspaceStore {
     await rename(tmp, file);
   }
 
+  /** 目录必须是绝对路径且存在；服务器绑定可选，但一旦提供就必须已登记。 */
   async function validate(input: WorkspaceInput): Promise<WorkspaceInput> {
     const parsed = WorkspaceInputSchema.safeParse(input);
     if (!parsed.success) {
@@ -90,13 +90,16 @@ export function createWorkspaceStore(deps: WorkspaceStoreDeps): WorkspaceStore {
       throw new WorkspaceValidationError(String(issue.path[0] ?? 'input'), issue.message);
     }
     const value = parsed.data;
-    if (!path.isAbsolute(value.localDir)) throw new WorkspaceValidationError('localDir', '本地文件夹必须是绝对路径');
-    const localDir = path.resolve(value.localDir);
-    if (!(await deps.dirExists(localDir))) throw new WorkspaceValidationError('localDir', '本地文件夹不存在');
-    if (!(await deps.knownHosts()).includes(value.sshHost)) {
-      throw new WorkspaceValidationError('sshHost', '服务器未登记，请先保存服务器档案');
+    if (!path.isAbsolute(value.dir)) throw new WorkspaceValidationError('dir', '项目目录必须是绝对路径');
+    const dir = path.resolve(value.dir);
+    if (!(await deps.dirExists(dir))) throw new WorkspaceValidationError('dir', '项目目录不存在');
+    if (value.server !== undefined && !(await deps.knownHosts()).includes(value.server)) {
+      throw new WorkspaceValidationError('server', '服务器未登记，请先保存服务器档案');
     }
-    return { ...value, localDir };
+    // 默认目录只在绑定服务器时有意义，避免出现「有目录没服务器」的半绑定状态。
+    if (value.remoteDir !== undefined && value.server === undefined)
+      throw new WorkspaceValidationError('remoteDir', '未绑定服务器时不能设置默认目录');
+    return { ...value, dir };
   }
 
   return {

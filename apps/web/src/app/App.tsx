@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react';
-import type { Workspace } from '@agentdeck/shared';
+import { isBoundWorkspace, type Workspace } from '@agentdeck/shared';
 import { ChatView } from '../features/chat/ChatView';
 import { useChat } from '../features/chat/chat-store';
 import { useWorkspaceNavigation } from './use-workspace-navigation';
@@ -73,7 +73,10 @@ export function App() {
   const workspaceId = useChat((s) => s.workspaceId);
   useWorkspaceNavigation(workspaces.data);
   const current = workspaces.data?.find((w) => w.id === workspaceId);
-  const resourcesVisible = resourcesOpen && !!current;
+  // 服务器面板要真实的服务器与目录；未绑定服务器的纯本地项目没有可采样的目标，
+  // 打开它只会得到一块空面板，所以这里就不算"可见"。
+  const bound = current !== undefined && isBoundWorkspace(current);
+  const resourcesVisible = resourcesOpen && bound;
   const openTerminal = () => {
     setTerminalLoaded(true);
     setTerminalVisible(true);

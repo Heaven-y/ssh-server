@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Tab, TabList, TabProvider } from '@ariakit/react';
 import { Columns2, Rows2, Maximize2, Minimize2, Plus, X, ChevronDown } from 'lucide-react';
-import { TERMINAL_LIMITS, type Workspace } from '@agentdeck/shared';
+import { TERMINAL_LIMITS, type BoundWorkspace } from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { TerminalFrame } from './TerminalFrame';
@@ -118,7 +118,7 @@ function TerminalToolbar({
   closePane,
   replace,
 }: {
-  workspace?: Workspace;
+  workspace?: BoundWorkspace;
   active?: TerminalTab;
   maximized: boolean;
   onMaximize: () => void;
@@ -211,7 +211,7 @@ export default function TerminalDock({
   overlay,
   onHide,
 }: {
-  workspace?: Workspace;
+  workspace?: BoundWorkspace;
   visible: boolean;
   overlay: boolean;
   onHide: () => void;
@@ -246,7 +246,13 @@ export default function TerminalDock({
         {tabs.map((tab) => (
           <TerminalLayout key={tab.id} tab={tab} shown={visible && tab.id === selected} />
         ))}
-        {!tabs.length && <p className="m-auto text-sm text-muted-foreground">新建标签以连接当前工作区。</p>}
+        {!tabs.length && (
+          <p className="m-auto max-w-72 text-center text-sm text-muted-foreground">
+            {workspace
+              ? '新建标签以连接当前项目绑定的服务器。'
+              : '当前项目没有绑定服务器，请先在项目设置里绑定一台服务器，或从服务器面板直接连接主机。'}
+          </p>
+        )}
       </div>
       {actions.closeRequest && <CloseDialog request={actions.closeRequest} cancel={actions.cancel} />}
     </TerminalFrame>

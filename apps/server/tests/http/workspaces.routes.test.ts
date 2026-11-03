@@ -9,8 +9,8 @@ import { registerWorkspaceRoutes } from '../../src/http/workspaces.routes';
 const WS: Workspace = {
   id: 'w1',
   name: 'demo',
-  localDir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
-  sshHost: 'my-server',
+  dir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
+  server: 'my-server',
   remoteDir: '~',
 };
 const apps: FastifyInstance[] = [];

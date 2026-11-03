@@ -18,7 +18,13 @@ import { markPermissionPending, reduceChat, type ChatItem } from './chat-reducer
 import { capabilityRestriction, selectionRestriction } from './capability-selection';
 
 const LAST_WORKSPACE_KEY = 'agentdeck.lastProject';
-const DEFAULT_REASONING_EFFORTS: Record<AgentKind, string> = { claude: 'high', codex: 'high' };
+const DEFAULT_REASONING_EFFORTS: Record<AgentKind, string> = {
+  claude: 'high',
+  codex: 'high',
+  antigravity: 'high',
+};
+/** 模型覆盖按 CLI 分开；Antigravity 在 M1 只读会话，先留空避免缺键。 */
+const EMPTY_MODEL_OVERRIDES: Record<AgentKind, string> = { claude: '', codex: '', antigravity: '' };
 export type SessionOperation = { action: SessionActionInput['action'] | 'fork'; pending: boolean; error?: string };
 export const sessionActionKey = (workspaceId: string, session: SessionRef): string =>
   JSON.stringify([workspaceId, session.agent, session.sessionId]);
@@ -129,7 +135,7 @@ function nativeStatus(event: AgentEvent): { contextUsage?: ContextUsage | null; 
 function newDefaults(current: ChatState) {
   return {
     agent: current.defaults.defaultAgent,
-    modelOverrides: { claude: '', codex: '' },
+    modelOverrides: { ...EMPTY_MODEL_OVERRIDES },
     reasoningEfforts: { ...DEFAULT_REASONING_EFFORTS },
   };
 }
@@ -153,7 +159,7 @@ export const useChat = create<ChatState>()((set, get) => ({
   connection: 'connecting',
   conversationVersion: 0,
   agent: 'claude',
-  modelOverrides: { claude: '', codex: '' },
+  modelOverrides: { ...EMPTY_MODEL_OVERRIDES },
   defaults: { defaultAgent: 'claude' },
   initialDefaultsEligible: true,
   reasoningEfforts: { ...DEFAULT_REASONING_EFFORTS },

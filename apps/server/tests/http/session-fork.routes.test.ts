@@ -14,15 +14,15 @@ import { registerSessionRoutes } from '../../src/http/sessions.routes';
 const ws: Workspace = {
   id: 'w1',
   name: '分叉测试',
-  localDir: path.join(tmpdir(), 'agentdeck-fork-fixture', 'workspace'),
-  sshHost: 'my-server',
+  dir: path.join(tmpdir(), 'agentdeck-fork-fixture', 'workspace'),
+  server: 'my-server',
   remoteDir: '~/projects/demo',
 };
 const sourceId = 'source-session';
 const forkedId = 'forked-session';
 const forked = {
   session: { sessionId: forkedId, summary: '原生分叉', lastModified: 200 },
-  cwd: ws.localDir,
+  cwd: ws.dir,
 };
 const apps: FastifyInstance[] = [];
 afterEach(async () => {
@@ -46,7 +46,7 @@ function setup() {
       sessionId: id,
       summary: id === sourceId ? '源会话' : '原生分叉',
       lastModified: id === sourceId ? 100 : 200,
-      cwd: ws.localDir,
+      cwd: ws.dir,
     })),
     messages: vi.fn(async (): Promise<unknown[]> => [
       {
@@ -71,7 +71,7 @@ function setup() {
     list: vi.fn(async () => []),
     read: vi.fn(async (): Promise<NativeSessionRead> => ({
       session: { sessionId: sourceId, summary: '源会话', lastModified: 100 },
-      cwd: ws.localDir,
+      cwd: ws.dir,
       events: [],
     })),
     assertBelongs: vi.fn(async () => undefined),
@@ -109,8 +109,8 @@ describe('原生会话分叉 HTTP 契约', () => {
       });
     }
     const nativeFork = agent === 'claude' ? api.fork : codex.fork;
-    expect(nativeFork).toHaveBeenNthCalledWith(1, sourceId, ws.localDir, { pointId: 'native-point' });
-    expect(nativeFork).toHaveBeenNthCalledWith(2, sourceId, ws.localDir, {});
+    expect(nativeFork).toHaveBeenNthCalledWith(1, sourceId, ws.dir, { pointId: 'native-point' });
+    expect(nativeFork).toHaveBeenNthCalledWith(2, sourceId, ws.dir, {});
     expect(api.rename).not.toHaveBeenCalled();
     expect(api.delete).not.toHaveBeenCalled();
     expect(codex.mutate).not.toHaveBeenCalled();
@@ -211,7 +211,7 @@ describe('原生会话分叉 HTTP 契约', () => {
       expect((await post('claude')).statusCode).toBe(409);
       expect((await post('codex')).statusCode).toBe(200);
     } finally {
-      gate.resolve({ sessionId: sourceId, summary: '源会话', lastModified: 100, cwd: ws.localDir });
+      gate.resolve({ sessionId: sourceId, summary: '源会话', lastModified: 100, cwd: ws.dir });
     }
     expect((await pending).statusCode).toBe(200);
     expect((await post('claude')).statusCode).toBe(200);
@@ -239,10 +239,10 @@ describe('原生会话分叉 HTTP 契约', () => {
   });
 
   it.each([
-    { session: { ...forked.session, sessionId: sourceId }, cwd: ws.localDir },
-    { session: { ...forked.session, sessionId: '' }, cwd: ws.localDir },
-    { session: { ...forked.session, sessionId: '../outside' }, cwd: ws.localDir },
-    { session: forked.session, cwd: path.join(ws.localDir, 'other') },
+    { session: { ...forked.session, sessionId: sourceId }, cwd: ws.dir },
+    { session: { ...forked.session, sessionId: '' }, cwd: ws.dir },
+    { session: { ...forked.session, sessionId: '../outside' }, cwd: ws.dir },
+    { session: forked.session, cwd: path.join(ws.dir, 'other') },
   ])('服务再次核验提供方的新 ID/目录，异常结果不返回且释放锁：%j', async (invalid) => {
     const { post, codex } = setup();
     codex.fork.mockResolvedValueOnce(invalid);

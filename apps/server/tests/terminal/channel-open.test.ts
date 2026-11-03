@@ -112,7 +112,7 @@ it('不是目录时释放SFTP并拒绝创建PTY，初始化失败帧和取消均
   });
   await expect(
     resolveTerminalDirectory({
-      workspace: { id: 'w', name: '工作区', localDir: 'fixture', sshHost: 'my-server', remoteDir: '~/missing' },
+      workspace: { id: 'w', name: '工作区', dir: 'fixture', server: 'my-server', remoteDir: '~/missing' },
       pool: { openSftp: async () => sftp as unknown as SFTPWrapper },
       guard: { generation: 0, cacheKey: 'key', signal: new AbortController().signal },
     }),
