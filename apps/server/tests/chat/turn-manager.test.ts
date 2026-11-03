@@ -5,7 +5,6 @@ import type { AgentEvent, ServerMessage, Workspace } from '@agentdeck/shared';
 import type { AgentTurnInput } from '../../src/agents/types';
 import { SessionError } from '../../src/chat/sessions';
 import { TurnManager, type Socket, type TurnManagerDeps } from '../../src/chat/turn-manager';
-import { createWorkspaceActivity } from '../../src/workspaces/activity';
 
 const ws: Workspace = {
   id: 'w1',
@@ -44,7 +43,7 @@ function fakeRunTurn() {
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-function setup(capabilities?: TurnManagerDeps['capabilities'], activity?: ReturnType<typeof createWorkspaceActivity>) {
+function setup(capabilities?: TurnManagerDeps['capabilities']) {
   const fake = fakeRunTurn();
   const codex = fakeRunTurn();
   const sessions = { assertBelongs: vi.fn(async (): Promise<void> => undefined) };
@@ -53,7 +52,6 @@ function setup(capabilities?: TurnManagerDeps['capabilities'], activity?: Return
     runners: { claude: fake.runTurn, codex: codex.runTurn },
     sessions,
     capabilities,
-    acquireWorkspace: activity?.acquire,
   });
   return { fake, codex, sessions, turns };
 }
@@ -68,35 +66,6 @@ const send = (extra: Record<string, unknown> = {}) => ({
 });
 
 describe('TurnManager', () => {
-  it('准备与运行全程保护工作区，closing拒绝新轮次', async () => {
-    const activity = createWorkspaceActivity();
-    let prepare!: (value: { text: string }) => void;
-    const fixture = setup(
-      {
-        prepare: () =>
-          new Promise((resolve) => {
-            prepare = resolve;
-          }),
-      },
-      activity,
-    );
-    const socket = fakeSocket();
-    const pending = fixture.turns.handle(socket.socket, send());
-    await vi.waitFor(() => expect(prepare).toBeDefined());
-    expect(activity.active(ws.id)).toBe(1);
-    await expect(activity.exclusive(ws.id, async () => undefined)).rejects.toMatchObject({ code: 'workspace_busy' });
-    prepare({ text: 'hi' });
-    await pending;
-    expect(activity.active(ws.id)).toBe(1);
-    fixture.fake.turns[0]!.finish();
-    await vi.waitFor(() => expect(activity.active(ws.id)).toBe(0));
-    await activity.exclusive(ws.id, async () => {
-      await fixture.turns.handle(socket.socket, send({ clientTurnId: 'c2' }));
-      expect(fixture.fake.turns).toHaveLength(1);
-      expect(socket.sent.at(-1)).toMatchObject({ type: 'error' });
-    });
-    await fixture.turns.dispose();
-  });
   it('原生能力解析在启动前完成，纯上下文命令照常交给适配器', async () => {
     const prepare = vi.fn(async () => ({
       text: '',
@@ -444,8 +413,7 @@ describe('TurnManager', () => {
   });
 });
 
-it('准备阶段取消后不启动runner并释放工作区租约', async () => {
-  const activity = createWorkspaceActivity();
+it('准备阶段取消后不启动runner', async () => {
   let release!: () => void;
   const prepare = vi.fn(
     () =>
@@ -453,17 +421,16 @@ it('准备阶段取消后不启动runner并释放工作区租约', async () => {
         release = () => resolve({ text: 'hi' });
       }),
   );
-  const f = setup({ prepare }, activity);
+  const f = setup({ prepare });
   const socket = fakeSocket();
   const starting = f.turns.handle(socket.socket, send());
   await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
-  expect(activity.active(ws.id)).toBe(1);
   const first = socket.sent.find((message) => message.type === 'turn.started')!;
   if (first.type !== 'turn.started') throw new Error('未开始轮次');
   await f.turns.handle(socket.socket, { type: 'chat.interrupt', turnId: first.turnId });
   await starting;
   expect(f.fake.turns).toHaveLength(0);
-  await vi.waitFor(() => expect(activity.active(ws.id)).toBe(0));
+  expect(socket.sent.at(-1)).toMatchObject({ type: 'turn.finished' });
   // 迟到结果不能补启动适配器。
   release();
   await flush();
@@ -472,13 +439,12 @@ it('准备阶段取消后不启动runner并释放工作区租约', async () => {
 });
 
 it('没有原生文件事件时 turn.finished 不带 changes', async () => {
-  const activity = createWorkspaceActivity();
-  const f = setup(undefined, activity);
+  const f = setup();
   const socket = fakeSocket();
   await f.turns.handle(socket.socket, send());
   expect(f.fake.turns).toHaveLength(1);
   f.fake.turns[0]!.finish();
-  await vi.waitFor(() => expect(activity.active(ws.id)).toBe(0));
+  await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: 'turn.finished' }));
   const finished = socket.sent.find((message) => message.type === 'turn.finished');
   expect(finished).toMatchObject({ type: 'turn.finished' });
   expect(finished && 'changes' in finished ? finished.changes : undefined).toBeUndefined();

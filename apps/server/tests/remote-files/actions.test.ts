@@ -98,35 +98,48 @@ async function tasksFixture(
   return { tasks, action, executor, preflights, deps, corrupt, dir: path.join(configDir, 'remote-file-tasks') };
 }
 
-it('跨工作区提交从异步复验前持有全部租约，部分获取失败释放已取得租约', async () => {
+// 工作区移除链条已删除，租约不再阻断任何操作；仍要保证提交前给发起者与受影响
+// 工作区登记活动，并在完成或失败后如实归还，避免泄漏。
+it('跨工作区提交在异步复验前登记全部活动，完成后全部释放', async () => {
   const activity = createWorkspaceActivity();
+  const acquired: string[] = [];
+  const released: string[] = [];
+  const acquire = (id: string) => {
+    acquired.push(id);
+    const release = activity.acquire(id);
+    return () => {
+      released.push(id);
+      release();
+    };
+  };
   const action = actionFixture();
   action.public.affectedWorkspaces = [{ id: 'other', name: '另一个项目', remoteRoot: root }];
-  const fixture = await tasksFixture(async () => ({ completed: true }), action, activity.acquire);
+  const fixture = await tasksFixture(async () => ({ completed: true }), action, acquire);
   let finish!: () => void;
   const validation = new Promise<void>((resolve) => {
     finish = resolve;
   });
   vi.mocked(fixture.preflights.validate).mockImplementationOnce(() => validation);
   const submission = fixture.tasks.submit(ws.id, action.public.id);
-  try {
-    await vi.waitFor(() => expect(activity.active('other')).toBe(1));
-    for (const id of [ws.id, 'other'])
-      await expect(activity.exclusive(id, async () => undefined)).rejects.toMatchObject({ code: 'workspace_busy' });
-  } finally {
-    finish();
-  }
+  await vi.waitFor(() => expect(acquired).toEqual([ws.id, 'other']));
+  finish();
   await submission;
   await fixture.tasks.dispose();
-  expect(activity.active(ws.id)).toBe(0);
-  expect(activity.active('other')).toBe(0);
-  // closing第二项时第一项已获取；失败必须全部归还，且不开始异步复验。
-  const rejected = await tasksFixture(async () => ({ completed: true }), action, activity.acquire);
-  await activity.exclusive('other', async () => {
-    await expect(rejected.tasks.submit(ws.id, action.public.id)).rejects.toMatchObject({ code: 'workspace_deleting' });
-    expect(activity.active(ws.id)).toBe(0);
-    expect(rejected.preflights.validate).not.toHaveBeenCalled();
-  });
+  expect(released.sort()).toEqual([ws.id, 'other'].sort());
+});
+
+it('登记活动部分失败时释放已取得的活动，且不开始异步复验', async () => {
+  const released: string[] = [];
+  const acquire = (id: string) => {
+    if (id === 'other') throw new Error('活动不可用');
+    return () => released.push(id);
+  };
+  const action = actionFixture();
+  action.public.affectedWorkspaces = [{ id: 'other', name: '另一个项目', remoteRoot: root }];
+  const fixture = await tasksFixture(async () => ({ completed: true }), action, acquire);
+  await expect(fixture.tasks.submit(ws.id, action.public.id)).rejects.toThrow('活动不可用');
+  expect(released).toEqual([ws.id]);
+  expect(fixture.preflights.validate).not.toHaveBeenCalled();
 });
 
 it('冷启动任务列表受100项展示限制，且只列本工作区', async () => {
