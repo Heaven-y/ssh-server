@@ -136,9 +136,12 @@ git commit -m "refactor(server): 删除同步、版本与本地文件镜像三�
 **Files:**
 - Delete: `apps/server/src/remote-tools/`、`apps/server/src/policy/`
 - Delete: `apps/server/src/http/internal.routes.ts`、`apps/server/src/http/workspace-policy.routes.ts`
-- Delete: `apps/server/tests/remote-tools/`、`apps/server/tests/policy/`、`apps/web/tests/features/workspaces/`（policy 相关用例）
+- Delete: `apps/server/tests/remote-tools/`、`apps/server/tests/policy/`、`apps/web/tests/features/workspaces/policy.test.tsx`、`apps/server/tests/workspaces/policy.test.ts`
 - Modify: `apps/server/src/main.ts`、`apps/server/src/workspaces/policy.ts`（删除）
 - Modify: `apps/web/src/features/workspaces/WorkspacePolicyDialog.tsx`、`WorkspacePolicyForm.tsx`、`use-workspace-policy.ts`（删除）
+- Modify: `packages/shared/src/policy.ts`（删除）、`packages/shared/src/index.ts`（移除 policy 导出）
+
+**已完成，不要再做**：`sync_now` 工具、`formatExecResult` 的 `r.sync` 分支、`agents/instructions.ts` 里「执行前同步 / 使用 sync_now」两句、`claude-runtime.ts` 工具白名单里的 `sync_now`，均在 Task 1 的修复轮中删除。`scripts/dev/e2e-m1.ts` 也已删除——它的重写属于 Task 9 之后的新工作，**不要还原**。
 
 **Interfaces:**
 - Consumes: Task 1 的清理结果
@@ -151,6 +154,14 @@ git commit -m "refactor(server): 删除同步、版本与本地文件镜像三�
 - [ ] **Step 2: 删除前端策略编辑入口**
 
 删除 `WorkspacePolicyDialog.tsx`、`WorkspacePolicyForm.tsx`、`use-workspace-policy.ts`，以及 `WorkspaceSidebar.tsx` 等处对它们的引用。
+
+- [ ] **Step 2b: 清理 shared 的 policy 协议**
+
+删除 `packages/shared/src/policy.ts`，从 `index.ts` 移除 policy 相关导出。`apps/server/src/workspaces/store.ts` 与 `WorkspaceInputSchema` 若仍引用 `WorkspacePolicySchema`，一并删除该字段（Task 4 会彻底改写校验，此处只求不引用）。
+
+- [ ] **Step 2c: 清掉 tasks.ts 的 removal 残留**
+
+`apps/server/src/remote-files/tasks.ts:217` 的 `blockers()` 已无调用方，且仍 import `WorkspaceRemovalBlocker`。删除 `blockers()`、它的 import，以及 `sync_pending`/`syncRequired` 的判断分支；`packages/shared/src/workspace-removal.ts` 一并删除并从 `index.ts` 移除导出。
 
 - [ ] **Step 3: 类型检查**
 
@@ -302,6 +313,9 @@ git commit -m "feat(shared): 收敛工作区模型并新增探测与会话类型
 
 **Files:**
 - Modify: `apps/server/src/workspaces/store.ts`
+- Modify: `apps/server/src/ssh/profiles.ts`（`workspace.sshHost` → `workspace.server`）
+- Modify: `apps/server/src/workspaces/activity.ts`（见 Step 6）
+- Modify: `apps/server/src/chat/turn-manager.ts`（见 Step 6）
 - Test: `apps/server/tests/workspaces/store.test.ts`
 - Modify: `apps/server/src/main.ts`（`createWorkspaceStore` 的 `knownHosts` 依赖改为可选校验）
 
@@ -346,9 +360,15 @@ Expected: PASS
 - [ ] **Step 5: 修 `main.ts` 调用点并类型检查**
 
 Run: `npm.cmd run typecheck`
-Expected: 通过。
+Expected: 通过。`apps/server/src/ssh/profiles.ts:21` 的 `workspace.sshHost === alias` 必须改成 `workspace.server`，否则编译会断——`target_referenced` 这条业务规则保留，只改字段名。
 
-- [ ] **Step 6: 提交**
+- [ ] **Step 6: 清理随 removal 一起失效的活动租赁**
+
+Task 1 删掉 `workspaces/removal` 后，`apps/server/src/workspaces/activity.ts` 的 `active()`/`exclusive()`/`close()` 在生产代码里已无调用方（只剩测试与 `turn-manager` 引用），`closing` 集合再无写入者；`apps/server/src/chat/turn-manager.ts:8` 仍 import `WorkspaceRemovalError` 只为区分两种错误。
+
+删除 `activity.ts` 里的 `active()`、`exclusive()`、`closing` 相关代码，只保留仍被 `terminal`/`resources` 用到的部分；删除 `turn-manager.ts` 对 `WorkspaceRemovalError` 的 import 与分类，错误统一按普通错误处理。删完跑 `npm.cmd test`，把因此失效的测试用例一并删除，**不要把断言改成空断言**。
+
+- [ ] **Step 7: 提交**
 
 ```bash
 git add -A
@@ -922,7 +942,17 @@ git commit -m "feat(web): 会话只读历史视图" -m "- 时间线复用既有 
 
 - [ ] **Step 2: 更新架构与需求**
 
-`architecture.md` 的总览图与模块表按新结构改写，删除 sync/vcs/files/remote-tools/policy；`requirements.md` 按 M1 实际交付的功能与边界改写；`ui-layout.md` 按新三段式布局改写。
+`architecture.md` 的总览图与模块表按新结构改写，删除 sync/vcs/files/remote-tools/policy。**必须点名改掉这三处仍在描述已删功能的正文**（Task 1 审查发现，原文未覆盖）：
+
+- `docs/engineering/architecture.md:350-358`：仍把 `workspaces/setup` 的双端向导与绑定票据写成现行架构。
+- `docs/engineering/architecture.md:429`：仍描述 `workspaces/removal` 的 SHA256 与阻断语义。
+- `docs/guides/dev-environment.md:205`：仍让人运行已删除的 `e2e-m1` / `e2e-m2` 脚本。
+
+`requirements.md` 按 M1 实际交付的功能与边界改写；`ui-layout.md` 按新三段式布局改写。
+
+- [ ] **Step 2b: 清掉前端外壳的空槽位**
+
+Task 1 为保住 `docked-layout.test.tsx` 暂时留下了 `files` 槽位：`apps/web/src/app/WorkspaceLayout.tsx`、`WorkspaceTools.tsx`、`WorkspacePanels.tsx` 里的 `files` 槽位、`files-column` 面板、`filesOpen` 分支与 `toolSizing` 的 files 尺寸规则。本步骤把它们和对应测试一起删掉，确保外壳里不再有任何文件面板的残留引用。
 
 - [ ] **Step 3: 追加决策记录**
 
