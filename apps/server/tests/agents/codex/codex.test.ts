@@ -104,9 +104,14 @@ describe('Codex app-server 核心边界', () => {
     ).done;
     const records = await messages();
     const start = records.find((value) => value.method === 'thread/start')?.params;
-    expect(start).toMatchObject({ cwd: workspace.localDir, sandbox: 'workspace-write', approvalPolicy: 'on-request' });
+    expect(start).toMatchObject({ cwd: workspace.localDir, approvalsReviewer: 'user' });
+    // 审批与沙箱策略沿用原生配置，网页不再用常量覆盖
+    expect(start).not.toHaveProperty('sandbox');
+    expect(start).not.toHaveProperty('approvalPolicy');
     expect(start?.developerInstructions).toContain('原生约束');
-    expect(start?.developerInstructions).toContain('my-server');
+    expect(start?.developerInstructions).toContain(workspace.localDir);
+    expect(start?.developerInstructions).not.toContain('my-server');
+    expect(start?.developerInstructions).not.toContain('~/projects/demo');
     expect(start?.config).toEqual({});
     expect(JSON.stringify(records)).not.toContain('AGENTDECK');
     expect(start).not.toHaveProperty('model');

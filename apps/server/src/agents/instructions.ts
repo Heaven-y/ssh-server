@@ -1,11 +1,10 @@
-// 按会话注入给 Agent 的工作区指令（不写入工作区文件）
+// 按会话注入给 Agent 的项目指令（不写入工作区文件）
 import type { Workspace } from '@agentdeck/shared';
 
 export function buildInstructions(ws: Workspace): string {
   return [
-    `你在操作 SSH 服务器 ${ws.sshHost} 上的目录 ${ws.remoteDir}。本地工作目录是 ${ws.localDir}。`,
-    '- 大数据、模型权重和超过工作区阈值的文件留在服务器。不要把依赖安装、凭据或 AI 会话上传到服务器。',
-    '- 不要在本地用 Bash 运行项目代码：本地没有服务器上的环境和数据。分析优先使用服务器已有的 Python 与依赖；缺少依赖时说明情况。',
-    '- 长时间任务用 nohup 或 Slurm 提交。只有用户发消息要求查看进度或分析结果时才检查；不要自动监测完成或继续分析。',
+    `当前工作在本地项目目录 ${ws.localDir}。`,
+    '- 代码、测试、脚本都在本机这个目录里读写；不涉及任何远程服务器。',
+    '- 需要运行命令时直接用本机的 Bash。',
   ].join('\n');
 }

@@ -91,7 +91,8 @@ describe('runClaudeTurn：调用参数', () => {
     expect(o.cwd).toBe(ws.localDir);
     expect(o.settingSources).toEqual(['user', 'project', 'local']);
     expect(o.systemPrompt).toMatchObject({ type: 'preset', preset: 'claude_code' });
-    expect((o.systemPrompt as { append: string }).append).toContain('my-server');
+    expect((o.systemPrompt as { append: string }).append).toContain(ws.localDir);
+    expect((o.systemPrompt as { append: string }).append).not.toContain('my-server');
     expect(o).not.toHaveProperty('mcpServers');
     expect(o).not.toHaveProperty('allowedTools');
     expect(o.includePartialMessages).toBe(true);

@@ -129,6 +129,32 @@ it('跨工作区提交从异步复验前持有全部租约，部分获取失败�
   });
 });
 
+it('冷启动任务列表受100项展示限制，且只列本工作区', async () => {
+  const fixture = await tasksFixture(async () => ({ completed: true }));
+  const task = await fixture.tasks.submit(ws.id, fixture.action.public.id);
+  await fixture.tasks.dispose();
+  const record = JSON.parse(await readFile(path.join(fixture.dir, task.id + '.json'), 'utf8'));
+  record.task.phase = 'needs_check';
+  record.task.createdAt = 0;
+  await writeFile(path.join(fixture.dir, task.id + '.json'), JSON.stringify(record));
+  for (let index = 1; index <= 101; index++) {
+    const completed = structuredClone(record);
+    completed.task.id = randomUUID();
+    completed.task.phase = 'completed';
+    completed.task.syncRequired = false;
+    completed.task.syncCompleted = true;
+    completed.task.createdAt = index;
+    await writeFile(path.join(fixture.dir, completed.task.id + '.json'), JSON.stringify(completed));
+  }
+  const restored = createFileTasks(fixture.deps);
+  cleanups.push(() => restored.dispose());
+  const list = await restored.list(ws.id);
+  expect(list).toHaveLength(100);
+  // 最新创建（createdAt 最大）的 100 项胜出，createdAt=0 的那条被挤出
+  expect(list.every((item) => item.phase === 'completed')).toBe(true);
+  expect(await restored.list('unrelated')).toEqual([]);
+});
+
 it('预检保留原工作区根配置，复验配置并拒绝陈旧预检', async () => {
   const action = actionFixture();
   const workspace = { ...ws, remoteDir: '~/linked-project' };

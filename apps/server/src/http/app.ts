@@ -20,7 +20,7 @@ export type AppDeps = {
 };
 
 /** 后端接口前缀：这些路径不回退到前端页面，未匹配时保持 404 */
-const API_PREFIXES = ['/api/', '/internal/', '/ws', '/auth'];
+const API_PREFIXES = ['/api/', '/internal', '/ws', '/auth'];
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({ logger: false, bodyLimit: 1024 * 1024 });
