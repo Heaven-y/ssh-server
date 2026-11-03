@@ -108,7 +108,7 @@ export function TopBar({
       <div className="flex h-14 shrink-0 items-center gap-2.5 px-4">
         <AppearanceActions />
         <TerminalSquare aria-hidden className="size-5 text-accent" />
-        <span className="text-sm font-semibold tracking-wide">ssh-server</span>
+        <span className="text-sm font-semibold tracking-wide">AgentDeck</span>
       </div>
       {workspace && (
         <div className="flex min-w-0 flex-[1_1_24rem] items-center gap-2 px-3 text-sm text-muted-foreground">

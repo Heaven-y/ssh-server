@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { AgentKindSchema, NativeSessionIdSchema, type SessionRef } from '@agentdeck/shared';
 import { sessionActionKey } from '../chat/chat-store';
 
-export const SESSION_PINS_KEY = 'ssh-server.session-pins.v1';
+export const SESSION_PINS_KEY = 'agentdeck.session-pins.v1';
 const LIMIT = 1000;
 const PinSchema = z.tuple([NativeSessionIdSchema, AgentKindSchema, NativeSessionIdSchema]);
 const StorageSchema = z.object({ version: z.literal(1), pins: z.array(z.unknown()).max(LIMIT) }).strict();

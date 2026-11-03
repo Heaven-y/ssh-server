@@ -14,7 +14,7 @@ export type UiWidthKey = Exclude<SizeKey, 'resourceShare' | 'resourceHeight'>;
 type SplitKey = 'resourceShare' | 'resourceHeight';
 type UiPreferences = { theme: 'dark' | 'light'; sidebarCollapsed: boolean } & Record<SizeKey, number>;
 const sizeKeys = Object.keys(SIZES) as SizeKey[];
-const KEY = 'ssh-server.ui.v1';
+const KEY = 'agentdeck.ui.v1';
 const DEFAULTS: UiPreferences = {
   theme: 'light',
   sidebarCollapsed: false,

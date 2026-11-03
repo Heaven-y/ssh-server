@@ -182,7 +182,7 @@ async function main(): Promise<void> {
   await app.listen({ host: config.host, port: config.port });
   const addr = app.server.address();
   port = addr && typeof addr === 'object' ? addr.port : config.port;
-  console.log(`ssh-server 已启动，只监听 ${config.host}:${port}`);
+  console.log(`AgentDeck 已启动，只监听 ${config.host}:${port}`);
   console.log(`访问地址：${accessUrl(config.host, port, config.devOrigin)}`);
   const report = await startupEnvironment;
   for (const tool of report.tools)

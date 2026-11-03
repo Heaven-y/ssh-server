@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 it('初始链接等待工作区列表后优先定位原生会话，后续hash变化继续导航', async () => {
-  localStorage.setItem('ssh-server.lastWorkspace', 'one');
+  localStorage.setItem('agentdeck.lastProject', 'one');
   hash('#session?workspace=two&agent=codex&id=native-two');
   const { rerender } = renderHook(({ list }) => useWorkspaceNavigation(list), {
     initialProps: { list: undefined as Workspace[] | undefined },

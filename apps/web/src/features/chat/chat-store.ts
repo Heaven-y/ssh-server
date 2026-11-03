@@ -17,7 +17,7 @@ import { connectChat, type ChatSocket, type ConnectionStatus } from '../../lib/w
 import { markPermissionPending, reduceChat, type ChatItem } from './chat-reducer';
 import { capabilityRestriction, selectionRestriction } from './capability-selection';
 
-const LAST_WORKSPACE_KEY = 'ssh-server.lastWorkspace';
+const LAST_WORKSPACE_KEY = 'agentdeck.lastProject';
 const DEFAULT_REASONING_EFFORTS: Record<AgentKind, string> = { claude: 'high', codex: 'high' };
 export type SessionOperation = { action: SessionActionInput['action'] | 'fork'; pending: boolean; error?: string };
 export const sessionActionKey = (workspaceId: string, session: SessionRef): string =>

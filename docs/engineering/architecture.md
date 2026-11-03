@@ -1,439 +1,385 @@
 # 架构
 
-更新日期：2026-10-09。本文描述当前架构与接口规则，不维护旧版本接口或迁移路径。交付与验证范围见[路线图](../roadmap.md)和[最新验收](../guides/ui-usability-optimization-acceptance.md)，关键取舍见[设计决策](decisions.md)，文档入口见[索引](../README.md)。
+更新日期：2026-11-03。本文按当前工作树描述 AgentDeck（原 `ssh-server`）的真实分层。产品已从「本地改代码、rclone 同步、服务器上运行」转向「本机桌面端统一管理 Claude Code / Codex / Antigravity 的原生会话」，同步、版本与本地文件镜像三个域已从代码里删除；改名与旧数据迁移已完成，迁移仍在收尾。文中「待移除」标记已确定删除但尚未落地的模块，「待新增」标记尚未创建的部分。需求见[需求](../product/requirements.md)，取舍见[设计](../superpowers/specs/2026-11-03-native-cli-workbench-design.md)与[设计决策](decisions.md)，进度见[路线图](../roadmap.md)。
 
 ## 1. 总览
 
 ```text
-┌─────────────────────────── 本机 ───────────────────────────┐
-│  浏览器 http://127.0.0.1:<端口>/（同源自动握手）             │
-│      │ HTTP + WebSocket                                     │
-│  后端（Node.js + TypeScript + Fastify）                     │
-│   ├─ agents     ──► Claude Agent SDK ──► 本机 Claude Code    │
-│   │               └► Codex app-server ──► 本机 Codex         │
-│   │                    │ 调用 MCP 工具                        │
-│   ├─ remote-tools（stdio MCP，转发给后端内部接口）            │
-│   ├─ ssh        ──► ssh2（认证、执行、目录浏览、终端）         │
-│   ├─ sync       ──► rclone bisync（SFTP）                    │
-│   ├─ metrics    ──► SSH 只读采样 ──► 网页资源状态            │
-│   ├─ files      ──► 本地小文件只读浏览                       │
-│   ├─ remote-files ► SSH/SFTP 浏览、操作任务与显式下载     │
-│   ├─ vcs        ──► 本机 git（工作区本地文件夹）              │
-│   ├─ sessions   ──► SDK 会话接口 / Codex thread 接口          │
-│   └─ workspaces ──► 本地 JSON 配置                            │
-└─────────────────────────────┬──────────────────────────────┘
-                              │ SSH（账号密码 / 已有私钥）
-┌──────────────── 服务器（不安装任何东西）────────────────────┐
-│  ~/projects/demo  ← 代码与小文件双向同步；大文件只在这里      │
-└────────────────────────────────────────────────────────────┘
+┌────────────────────── 本机（AgentDeck）──────────────────────┐
+│ 桌面壳 apps/desktop（待新增，M1.5）                            │
+│   └─ 拉起后端并用窗口加载前端                                  │
+│ 前端 apps/web（React + Vite）                                 │
+│   │ HTTP 接口 + WebSocket（对话 /ws、终端）                     │
+│ 后端 apps/server（Fastify，只监听回环地址）                     │
+│   ├─ chat        TurnManager、会话服务、能力目录                 │
+│   ├─ agents      Claude（Agent SDK）· Codex（app-server）       │
+│   ├─ workspaces  工作区存储、旧数据迁移、活动租约                 │
+│   ├─ settings    原生配置、产品偏好、环境探测                    │
+│   ├─ process     中立子进程运行器                              │
+│   ├─ ssh         档案、连接池、主机信任、SFTP、执行               │
+│   ├─ terminal    服务器 SSH 的 PTY 通道                        │
+│   ├─ resources   资源采样                                     │
+│   ├─ slurm       当前账号作业查询                               │
+│   ├─ remote-files 服务器文件浏览与操作                          │
+│   └─ policy / remote-tools（待移除）                           │
+└───────────────────────────┬──────────────────────────────────┘
+                            │ SSH（密码或已有私钥）
+┌───────────────────────────服务器─────────────────────────────┐
+│ 只承载人的操作：PTY 命令、只读采样、squeue、文件增删改移          │
+│ 不安装 Agent、不驻留服务、不存放本产品的数据                     │
+└──────────────────────────────────────────────────────────────┘
 ```
+
+- 会话正文与原生配置的唯一来源是各 CLI 自己的存储（`~/.claude`、`~/.codex`）。本产品落盘的只有工作区、服务器档案、产品偏好、加密凭据与文件任务记录。
+- 桌面壳尚未存在。开发期 `npm run dev` 同时起 Vite（5173）与后端（默认 4317），浏览器访问后端地址；`--dev-origin` 或 `AGENTDECK_DEV_ORIGIN` 才允许这个开发来源。
+- 三个 CLI 里只接了 Claude 与 Codex。Antigravity 的适配器、事件映射与 `agy` 启动都不在代码中，`AgentKind` 也只枚举这两者。
+- 服务器面板的终端、资源、Slurm、文件操作目前仍以工作区（含其绑定服务器）为入口；改为以服务器档案为键属于 M3，尚未发生。
 
 ## 2. 技术栈
 
 | 层 | 选型 | 说明 |
 |---|---|---|
-| 运行环境 | Node.js 22 + TypeScript | 本机异步协调服务，沿用官方 TypeScript SDK 与前后端共享类型 |
-| 后端 | Fastify + `@fastify/websocket` | HTTP、访问控制和流式消息，继续现有实现 |
-| 参数校验 | zod | 接口入参、配置文件 |
-| Claude | `@anthropic-ai/claude-agent-sdk` | 调用本机 Claude Code |
-| Codex | 本机 Codex app-server（JSON-RPC over stdio） | 当前真实验收版本0.160.0；接入对话、原生会话、技能/模型目录和上下文/压缩，不另设旧版本协议栈 |
-| MCP | `@modelcontextprotocol/sdk` | 远程工具服务 |
-| SSH | `ssh2` | 支持账号密码与已有私钥，导入 `~/.ssh/config` 或手动配置；凭据在本地处理 |
-| 同步 | rclone（外部可执行文件） | `rclone bisync` 走 SFTP |
-| Python 分析 | 通过 SSH 调用服务器已有 Python / 项目环境 | 统计、绘图和结果处理留在数据所在服务器；本地后端收集输出和必要小文件 |
-| 版本记录 | 本机 git（外部命令） | |
-| 前端 | React 19 + Vite + Tailwind CSS 4 | |
-| 前端组件 | Ariakit（菜单、分类与浮层）、react-resizable-panels（停靠分栏）、cmdk（命令面板）、lucide-react（图标） | 沿用已有成熟组件，不增加自由浮窗框架；交互规范见ui-layout |
-| 消息渲染 | streamdown（流式 Markdown）+ shiki（代码高亮）、react-virtuoso4.18.16（动态长列表） | 时间线投影合并明确读取工具；展开状态留在列表父层，选择代次重置视图。diff使用按需加载的@pierre/diffs1.5.1及GitHub高对比双主题，解析和组件失败降级为有界原文本 |
-| 前端状态与接口数据 | zustand、`@tanstack/react-query`、partysocket | zustand 管流式状态，react-query 管接口加载与刷新，partysocket 管 WebSocket 重连 |
-| 终端 | @xterm/xterm + @xterm/addon-fit | |
-| 文件与配置查看 | `@uiw/react-codemirror` / CodeMirror 6 | 原生配置编辑与本地文件只读查看共用，按需加载，不引入完整 IDE |
-| 资源状态 | SSH只读采样、有界共享缓存、HTTP/React Query单controller | 仅资源面板自身可见、网页连接open且设置有效时刷新；资源隐藏/页面隐藏/断线取消HTTP并暂停，文件开关不干扰；宿主按认证身份共享，磁盘按目录隔离 |
-| 字体 | @fontsource/ibm-plex-sans、@fontsource/jetbrains-mono | 本地打包，不访问外部字体服务 |
-| 存储 | 本机JSON与独立系统加密凭据 | 工作区、服务器档案及产品偏好；不另存原生对话正文 |
+| 运行环境 | Node.js ≥22 + TypeScript 5.9 | 用 `tsx` 直接运行，尚无打包产物 |
+| 后端 | Fastify 5 + `@fastify/websocket` 11 | 回环 HTTP、WebSocket 升级与静态托管 |
+| 参数校验 | zod 4 | 接口入参、配置文件、共享协议 |
+| Claude | `@anthropic-ai/claude-agent-sdk` 0.3.286 | 只作协议客户端，实际驱动 SDK 平台包里的原生程序 |
+| Codex | 本机 `codex app-server` | JSON-RPC over stdio，不打包、不锁定版本 |
+| SSH | `ssh2` 1.17 | 密码或已有私钥，主机密钥校验，SFTP 与 PTY |
+| 前端 | React 19 + Vite 8 + Tailwind CSS 4 | |
+| 前端组件 | Ariakit、react-resizable-panels、cmdk、lucide-react | 弹层、停靠分栏、命令面板与图标 |
+| 时间线渲染 | streamdown、react-virtuoso | 流式 Markdown 与长列表虚拟滚动 |
+| 状态与数据 | zustand、`@tanstack/react-query`、partysocket | 会话状态、接口缓存、WebSocket 重连 |
+| 终端 | `@xterm/xterm` + `@xterm/addon-fit` | |
+| 配置与文件编辑 | `@uiw/react-codemirror` + CodeMirror 6 | JSON、Markdown 语言包 |
+| 字体 | `@fontsource/ibm-plex-sans`、`@fontsource/jetbrains-mono` | 本地打包，不访问外部字体服务 |
+| 存储 | 本机 JSON + Windows 当前用户加密 | 配置明文，密码与密钥值只存密文 |
 
-依赖版本在开始实现时固定，并与本机 Codex CLI 版本对齐。已确认继续 Node.js + TypeScript + Fastify；与 Python + FastAPI、NestJS、Go 的比较及打包边界见 [设计决策第 8 节](decisions.md#8-后端选型分析位置与运行边界)。当前沿用 Node.js 本地启动方式，尚无独立 `.exe`、安装器或 Go 迁移要求。
+依赖版本固定在根与各包的 `package.json`。rclone、本机 git 与 `@pierre/diffs` 已随三个域一起从依赖中消失；外部命令不再经过 shell，统一走 `process/run.ts` 或 SSH 通道。
 
-### 2.1 本地协调与远程计算
+### 2.1 本机协调与远程计算
 
-本地后端负责启动 / 续接官方 Agent、校验网页访问、管理 SSH 认证、调度同步与外部命令，以及向网页转发输出和状态。对话运行时负责模型调用与上下文；服务器现有环境负责项目运行、训练、测试和数据分析。
+后端负责启动与回收 CLI 子进程、把原生事件转成统一事件、维护会话锁与工作区租约，并转发网页指令。模型调用发生在 CLI 进程内部，后端自己不请求任何模型端点，也不保存密钥值。
 
-Python 分析默认通过 SSH 在服务器已有解释器或项目环境内执行，大数据在服务器侧完成计算。需要新脚本时由 Agent 编辑本地同步范围内文件，完成执行前同步后远程运行；仅返回必要统计、日志、结果表或小图文件。缺少环境或依赖时报告缺失，不在服务器安装软件。本机 Python 可供开发 skill 按需使用，与网页后端运行时分离。
+服务器侧只执行人点出来的操作：只读资源采样、Slurm 文本查询、终端命令、服务器文件管理。旧产品里「把工作搬到服务器执行」的约束仍以指令形式残留（见 5.1 与 5.9），删除 MCP 桥之后才完全消失。
 
-后端语言影响本机协调和分发方式，不直接改变服务器的训练速度；耗时由远程算法、数据、依赖和计算资源决定。
+本地目录不再有镜像与副本：CLI 的工作目录就是工作区目录本身，没有前置或后置传输，也没有版本快照。
 
 ### 2.2 异步处理与并发边界
 
-- Agent 消息、HTTP / WebSocket、SSH、文件和子进程使用异步接口；不在请求路径使用阻塞式外部命令或执行大规模 Python / 数据计算。Node.js 的事件循环负责协调多个进行中的 I/O，不要求每项活动占用一个线程。
-- 同一会话同时只允许一轮对话，重复发送时返回运行中状态；不同会话的流和权限请求分别管理。对话、终端、资源采样与同步不共用全局等待锁。
-- 同一工作区同步串行，手动、定时、执行前后和轮次结束请求进入同一同步调度。远程执行须等待自身前置同步成功及相关待确认事项处理完毕，不能用另一轮同步的旧结果跳过检查。
-- 远端文件管理按同一 SSH 目标及实际源/目标路径协调变更，目录操作包含子路径；涉及本工具管理的同步目录时与相应工作区同步共用调度边界。仅服务器文件操作不要求无关工作区同步成功，目录读取也不占用全局变更锁；不宣称可以锁住外部 SSH 客户端或训练进程。
-- SSH 使用独立执行 / PTY 通道；连接复用不意味着所有命令全局串行。远程命令保留超时和输出上限，子进程以异步输出处理；网页消费者变慢时控制缓冲，避免持续输出阻塞其他消息或无限增长。
-- 同一目标的资源采样共享结果，同一次采样未结束时不重复启动，失败后超时 / 退避；采样不等待 Agent 回复，也不唤起 Agent。长训练提交后返回启动信息或任务 ID，后端不一直等待训练结束。
-
-以上是单用户多活动的并发边界，不增加多用户服务或未经测量的吞吐量指标；实际验证范围独立记录，不由架构描述推断全部组合已经通过。
+- 请求路径上不跑阻塞命令。子进程由 `runProcess` 异步执行，带超时、输出上限与取消信号；SSH 操作同样带本机截止时间。
+- 同一会话同一时刻只允许一轮：`TurnManager` 用 `${agent}:${sessionId}` 记占用，重复发送立刻回错误，不同会话互不阻塞。
+- 改名、删除、归档、分叉与运行互斥：`withIdleSession` 在原生操作期间占用同一把会话锁，忙时返回 409。
+- 轮次启动前向 `workspaces/activity` 取工作区租约，轮次结束时释放；租约存在期间该工作区不能进入移除流程。
+- 回合事件只发给发起该轮的 WebSocket。连接断开时，待审批请求按拒绝收尾，不做服务端缓冲或跨连接续传（设计要求按会话缓冲，尚未实现）。
+- SSH 连接按 alias 复用，exec、SFTP、PTY 各自独占通道；单通道失败只释放自己，不断开共享连接。
+- 资源与 Slurm 共用固定目标上下文，同身份的并发读取合并为一次采样；认证代次或连接 `cacheKey` 变化后，旧结果不能回填新身份。
+- 服务器文件任务按同目标的相交路径排队，最多四项并行；任务记录先原子落盘再派发。
+- 终端每工作区最多 8 个会话、全局 32 个，单标签最多 4 个窗格。
+- 这是单用户、多活动的并发模型，不引入多用户服务，也不承诺未测量的吞吐指标。
 
 ## 3. 仓库结构
 
-使用 npm workspaces，前后端各自管理依赖、TypeScript 配置和测试，前后端共用的类型放在 `packages/shared`。
+使用 npm workspaces，前后端各自持有依赖、TypeScript 配置与测试。
 
 ```text
-ssh-server/
+agentdeck/
 ├─ apps/
+│  ├─ desktop/                    # 待新增（M1.5）：Electron 主进程与 preload
 │  ├─ server/
-│  │  ├─ src/                 # main/config 与 http、agents、chat、ssh、sync、files、vcs、settings、policy、workspaces、remote-tools
-│  │  └─ tests/               # 按 src 模块镜像排列的后端测试
+│  │  ├─ src/
+│  │  │  ├─ main.ts               # 组装依赖、启动、优雅退出
+│  │  │  ├─ config.ts             # 环境变量与命令行参数
+│  │  │  ├─ agents/               # 适配层：14 个文件 + codex/ 下 12 个文件
+│  │  │  ├─ chat/                 # 5 个：turn-manager、sessions、capabilities、registry、turn-files
+│  │  │  ├─ http/                 # 20 个：路由、访问控制、终端升级
+│  │  │  ├─ process/              # 1 个：run.ts
+│  │  │  ├─ remote-files/         # 15 个 TypeScript 文件 + remote-helper.py
+│  │  │  ├─ resources/            # 6 个：采样命令、解析、缓存、目标与服务
+│  │  │  ├─ settings/             # 5 个：safe-file、native-config、product-settings、environment、errors
+│  │  │  ├─ slurm/                # 4 个：commands、parse、service、abort
+│  │  │  ├─ ssh/                  # 18 个：档案、连接池、凭据、主机信任、SFTP、执行与保护
+│  │  │  ├─ terminal/             # 8 个：binding、manager、session、initialization、input、output 等
+│  │  │  ├─ workspaces/           # 4 个：store、activity、migrate-legacy、policy
+│  │  │  ├─ policy/               # 3 个，待移除
+│  │  │  └─ remote-tools/         # 3 个，待移除
+│  │  └─ tests/                   # 按 src 模块镜像
 │  └─ web/
 │     ├─ src/
-│     │  ├─ app/              # 页面外壳与顶栏
-│     │  ├─ features/         # chat、changes、workspaces、ssh、sync、files、versions、settings
-│     │  ├─ ui/               # 通用控件样式、CodeMirror 代码组件
-│     │  └─ lib/              # 接口客户端、查询与 WebSocket
-│     └─ tests/               # lib 与 features 下对应测试
-├─ packages/shared/
-│  ├─ src/                    # 共享协议、工作区、同步及事件类型
-│  └─ tests/                  # 共享协议的核心测试
-├─ scripts/dev/               # 真实链路验收与开发辅助脚本
-└─ docs/
-   ├─ product/                # 需求、界面布局
-   ├─ engineering/            # 架构与设计决策
-   ├─ guides/                 # 开发环境与验收记录
-   ├─ assets/                 # 最新验收的精选截图
-   └─ roadmap.md              # 里程碑与进度
+│     │  ├─ app/                  # 外壳、顶栏、停靠布局、命令面板、本机会话闸门
+│     │  ├─ features/             # chat、workspaces、ssh、terminal、resources、remote-files、settings
+│     │  ├─ ui/                   # 通用弹层、CodeMirror 组件、列表导航、界面偏好
+│     │  ├─ lib/                  # api、query-client、ws、可取消请求
+│     │  ├─ main.tsx、styles.css
+│     └─ tests/                   # 与 lib、features、app 对应
+├─ packages/shared/src/           # 前后端共享协议与类型（含待移除文件）
+├─ scripts/dev/                   # check-docs、e2e-*、夹具与安装脚本
+└─ docs/                          # 需求、界面、架构、决策、路线图、设计与验收记录
 ```
+
+已从工作树删除、不要再按现行架构阅读：`apps/server/src/{sync,vcs,files,workspaces/setup}`、`workspaces/removal.ts` 与 `removal-resources.ts`、`http/{sync,versions,files,workspace-setup,workspace-activity}.routes.ts`、`apps/web/src/features/{sync,versions,changes,files,workspaces/setup}`，以及 `@pierre/diffs` 依赖。
+
+待移除（下一轮落地，删除要成组进行）：
+
+- `apps/server/src/remote-tools/`、`apps/server/src/policy/`，以及 `http/internal.routes.ts`、`http/workspace-policy.routes.ts`、`workspaces/policy.ts`。
+- 只服务 MCP 桥的部分：`chat/registry.ts`、`agents/types.ts` 的 `TurnEnv`/`acquireEnv`、`agents/instructions.ts` 的远程工具指令、`chat/turn-files.ts` 与 `turn.finished.changes`。
+- `remote-files/downloads.ts`、`remote-files/sync-scope.ts`，以及前端 `RemoteDownloadDialog.tsx` 与 `shared` 的 `RemoteFileScope`。
+- `packages/shared/src/{policy,sync,versions,files,setup,workspace-removal,turn-changes,turn-files}.ts`。它们仍被工作区模型、产品设置与文件浏览引用（例如 `WorkspaceInputSchema` 依赖 `SyncSettingsSchema`），要先收敛模型再删文件。
 
 约定：
 
-- 前后端按功能划分模块，通用部分才放 `lib` / `ui`；不额外建立控制器、服务、仓储层或为每个文件包装入口。
-- 单元和模块集成测试统一放所属包的 `tests/`，路径镜像 `src/`，保留 `*.test.ts` 命名。测试夹具与辅助函数放同一测试模块内；确实共用时才提取到 `tests/helpers/`。
-- Vitest 只发现各包 `tests/` 下的用例；TypeScript 同时检查 `src/` 与 `tests/`，覆盖率仅统计生产源码，重复率排除测试目录。
-- 真实 Agent / SSH 验收继续使用 `scripts/dev/e2e-*.ts`。以后引入 Playwright 端到端测试时再建立 `tests/e2e/`，当前不建空目录。
-- `remote-tools` 是后端内部的独立进程入口，不单独拆包。SSH 认证交互集中在前端 `features/ssh/`，工作区表单复用它。
-- 根目录只放仓库入口文档和工具需要的根配置；资源模块仅在实施时创建。远端浏览位于 `remote-files/`，本地只读浏览继续放 `files/`，测试仍按模块位于所属包的 `tests/`。
+- 前后端按功能分目录，通用部分才放 `lib` / `ui`；不额外造控制器、服务或仓储层。
+- 单元与模块集成测试统一放所属包的 `tests/`，路径镜像 `src/`，保留 `*.test.ts` 命名；Vitest 只发现这些目录。
+- 真实链路验收仍用 `scripts/dev/e2e-*.ts`；还没有 Playwright 端到端目录。
+- `remote-tools` 是后端内部的子进程入口，不单独拆包（待删）。
+- 根目录只放仓库入口文档与工具需要的配置。
 
 ## 4. 本地数据存放
 
 ```text
-%LOCALAPPDATA%\ssh-server\
-├─ workspaces.json                # 工作区列表，不含明文密码
-├─ servers.json                   # 统一服务器档案，认证方式在服务器层
-├─ credentials\                  # Windows 当前用户加密凭据，按实际目标摘要保存
-└─ sync\<工作区ID的SHA-256>\
-   ├─ state.json                  # 同步状态、成功基线与待确认事项
-   ├─ filters.txt                 # rclone 过滤规则
-   ├─ known_hosts                 # 目标已有可信公钥，不修改用户 known_hosts
-   ├─ rclone.conf                 # 空配置，凭据仅放子进程环境
-   ├─ bisync\                     # rclone 文件清单
-   ├─ mirror\                     # 稳定的小文件传输副本，避免同步中编辑造成误删
-   └─ temp\、cache\               # 本机子进程临时目录
+%LOCALAPPDATA%\AgentDeck\
+├─ workspaces.json          # 工作区列表，不含密码
+├─ servers.json             # 服务器档案，最多 128 条
+├─ product-settings.json    # 产品偏好：默认 Agent、资源间隔与超时
+├─ credentials\             # <sha256>.json，Windows 当前用户加密后的密文
+└─ remote-file-tasks\       # 服务器文件任务：<uuid>.json 与临时文件
 ```
 
-- git 数据在工作区的本地文件夹内（`.git`），不放在这里。
-- 对话记录不在这里，由 Claude Code（`~/.claude`）和 Codex（`~/.codex`）自己保存。
-- 连接地址、端口、账号、认证方式和私钥路径保存在本机档案；密码仅在连接或明确编辑流程按需进入内存。保存项经Windows当前用户加密后放入独立凭据目录，断开清理连接内存但保留密文，取消保存才删除并断开；编辑表单离开后清理自身状态。
-- 明文密码不进入工作区 JSON、临时磁盘配置、浏览器持久存储、日志、命令行参数或 Agent 上下文。保存项绑定地址、端口和账号，不能对修改后的目标复用。
+- 目录名来自 `config.ts` 的 `CONFIG_DIR_NAME = 'AgentDeck'`；`AGENTDECK_CONFIG_DIR` 可改到别处，非 Windows 平台退到 `~/.local/share`。
+- 会话历史不在本产品目录：Claude 在 `~/.claude`（`CLAUDE_CONFIG_DIR` 可改），Codex 在 `~/.codex`（`CODEX_HOME` 可改）。本产品按原生 id 读取，不复制正文。
+- **旧目录一次性迁移**：`main` 启动时先调用 `workspaces/migrate-legacy.ts`，把 `%LOCALAPPDATA%\ssh-server` 下的 `servers.json` 与 `workspaces.json` 复制到新目录。新目录已有同名文件时不覆盖并写日志，旧目录原样保留不删；已删功能留下的 `sync/` 目录与 `file-editors.json` 不在迁移清单里；单个文件失败只记错误，启动继续。
+- 凭据：`credentials\` 下每个文件按目标摘要命名，内容是 DPAPI 密文；目录 0700、文件 0600。明文密码不进 JSON、日志、命令行或对话。
+- 原生配置保存不做备份：`settings/safe-file.ts` 只在同目录写临时文件再原子替换，设计里写的 `backups\` 尚未实现。
+- `remote-file-tasks\` 只在任务派发前写入。后端重启不重放，结果不确定的任务保持 `needs_check`。
+
+环境变量：
+
+| 变量 | 作用 |
+|---|---|
+| `AGENTDECK_PORT` | 监听端口，默认 4317 |
+| `AGENTDECK_HOST` | 监听地址，只接受 127.0.0.1、::1、localhost |
+| `AGENTDECK_CONFIG_DIR` | 覆盖数据目录 |
+| `AGENTDECK_TOKEN` | 覆盖进程内会话秘密，默认启动随机生成 |
+| `AGENTDECK_DEV_ORIGIN` / `--dev-origin` | 允许的 Vite 开发来源 |
+| `AGENTDECK_CODEX` | Codex 可执行文件或官方 JS 入口 |
+| `AGENTDECK_RCLONE` | 仅环境探测残留，随同步域删除 |
+| `AGENTDECK_INTERNAL_URL`、`AGENTDECK_SESSION_TOKEN` | 注入 MCP 子进程的内部地址与短期令牌（待移除） |
 
 ## 5. 模块设计
 
 ### 5.1 agents：Agent 适配器
 
-创建会话时选择适配器，历史会话按原 Agent 与官方会话 ID 继续；一个会话不能中途切换 Agent。共享身份是 `(agent, sessionId)`，Codex 使用可供 `thread/resume` 的 `thread.id`，不使用分叉树根 `thread.sessionId`。
+`agents/types.ts` 定义适配器契约：`AgentTurnInput`（工作区、会话 id、模型、推理强度、正文、能力调用、环境租约、事件投递、权限请求）、`TurnHandle`（`interrupt()` 与 `done`）、`TurnRunner`（可选 `dispose()`），以及 `NativeSessionSummary`、`NativeSessionRead`、`NativeSessionFork`。统一事件类型在 `packages/shared/src/events.ts`，含文本增量、思考、工具调用与结果、审批请求与结果、上下文用量、压缩状态、轮次结束与错误。
 
-两个适配器复用 `agents/types.ts` 的 `AgentTurnInput`、`TurnRunner` 和 `TurnHandle`（`interrupt()` / `done`），统一事件以 `packages/shared/src/events.ts` 为准。当前输出会话、文本、思考摘要、工具调用/结果、审批请求/处理、轮次结束及错误。未返回结果的工具卡在轮次结束或断线后标为“结果未返回”，不能推断执行成功。
+会话身份是 `(agent, sessionId)`，一个会话不能中途换 Agent；Codex 的 id 取 `thread.id`，不用分叉树根。`AgentKind` 目前只有 `claude` 与 `codex`。
 
-能力清单通过工作区 HTTP 接口按需读取，原生用量和压缩状态分别映射为 `context` / `compaction` 事件。资源采样和文件同步状态使用独立的工作区事件，不触发新的 Agent 轮次。
+Claude（Agent SDK）：
 
-Claude（Agent SDK `query()`）：
-
-- `cwd` 为工作区本地文件夹；继续会话时传 `resume`。
-- `settingSources: ['user', 'project', 'local']`：读取本机配置，cc-switch 写入的地址和密钥才能生效。
-- 省略未显式选择的`model`与`env`覆盖；`effort`使用网页当前轮次的选择，默认`high`，显式“自动”则省略。
-- `mcpServers` 注入远程工具服务；`systemPrompt` 的 preset `append` 注入工作区指令（见 5.3）。
-- `canUseTool` 把权限请求转成 `permission_request` 事件，等待网页答复。
-- 长驻输入流按会话复用原生进程：`agents/claude-runtime.ts` 保持同一 Query 与常驻消费循环，跨轮复用迭代器并按当前轮次路由事件；轮次结束后进程不退出，空闲 5 分钟或后端关闭时回收并释放令牌。同一运行时一次只接收一轮，并发由会话锁拦截，模型或推理强度变化即换新运行时。进程崩溃或原生退出标记不可复用，下一轮重建。发送前验证技能/命令；收到该轮 result 后限时读取 summary 上下文。纯 context 通过控制接口完成，不经模型消息。中断由原生 `interrupt()` 确认后立即以错误收尾该轮，未确认时关闭运行时，避免轮次悬挂。
-- `reasoningEffort`沿用共享轮次输入；Claude保留`low/medium/high/xhigh/max`协议与SDK枚举校验，直接映射`Options.effort`，不再要求先明确模型或调用目录验证档位。实际不支持由原生运行时报错，不静默降级/丢参或重试；不改thinking、权限或快模式。网页`reasoningEfforts`按Agent隔离，初始与新会话均为high；自动为空串，发送时省略字段。Codex保持原生字符串协议。
+- `query()` 驱动，`cwd` 为工作区本地目录，续接传 `resume`；`settingSources` 取 `user`、`project`、`local`，本机 Claude 配置因此生效。
+- `systemPrompt` 用 `claude_code` preset 加 `append` 注入 `buildInstructions()`；`includePartialMessages` 打开逐字增量。
+- 推理强度经 `claudeEffort()` 映射到 SDK `effort`，未显式选择则省略；模型同样只在显式选择时传入。
+- 审批经 `canUseTool` 转成 `permission_request`，网页答复后回 `permission_resolved`；等待上限 300 秒，超时、断线或中断按拒绝处理。
+- `createClaudeRunner` 按「工作区 + 会话 + 模型 + 强度」复用同一 Query 与消费循环，空闲 5 分钟回收；同一运行时一次只接一轮，进程退出或崩溃后下一轮重建；中断被原生确认后本轮直接以错误收尾。
+- 仍保留网页侧策略：`allowedTools` 预置 Read、Glob、Grep、TodoWrite 与两个 MCP 工具，`edit-scope.ts` 自动放行工作区内编辑。设计要求随 `policy/` 一起删除这层策略，尚未执行。
+- 可执行文件由 `claude-launch.ts` 的 `resolveClaudeExecutable()` 从 SDK 平台包解析，Windows 上即包内 `claude.exe`，与 PATH 上的 `claude` 无关。设计要求改为驱动本机安装并支持显式覆盖，尚未实现。
 
 Codex（app-server）：
 
-- `agents/codex/` 按启动解析、JSON-RPC 客户端、配置、事件转换、审批、对话和会话读取拆分。`agents/codex/runtime.ts` 按会话复用同一 app-server 进程：首次使用启动进程并完成 `initialize`、`config/read` 与 `thread/start`（续接用 `thread/resume`），后续轮次直接复用该线程；空闲 5 分钟、进程退出或后端关闭时回收并释放令牌。列表/历史仍使用短生命周期进程。正式读取原生 `CODEX_HOME/config.toml`，可用 `AGENTDECK_CODEX` 指定已安装运行时。
-- 先 `initialize` / `initialized`，再 `config/read(cwd)`；保留生效的 `developer_instructions` 并追加工作区约束。`thread/start` / `thread/resume` 固定当前目录、`workspace-write` 沙箱、`on-request` 审批；普通/技能消息调用 `turn/start`，手动压缩在 resume 后调用 `thread/compact/start`。
-- 默认不传`model`、`modelProvider`、`baseUrl`、`apiKey`覆盖。新thread跟随配置中的新默认模型，续接保留原生会话模型，只有显式填写模型才覆盖。推理强度使用网页选择（默认high，自动省略）；历史实际模型不转成用户覆盖值。模型或推理强度改变时新建运行时，避免沿用旧线程的启动参数；续接既有会话时沿用该线程的原生模型。
-- 通过当前轮次 `config` 添加 required 的远程 MCP，保留其他原生 MCP 配置。内部地址与短期令牌仅放子进程环境，MCP 配置只列 `env_vars` 名称；argv、配置正文与 Agent 输入均不含这些值，本地 shell 过滤这些变量，结束后撤销令牌。MCP 启动失败即拒绝该轮，项目运行保持在远程。
-- JSON-RPC 按行读取，单条上限 8 MiB，待处理请求最多 128 个，普通请求超时 30 秒；退出时拒绝等待者，持续排空 stderr 而不回显原始配置诊断。
-- 原生命令/文件审批的范围限于单次 accept/decline；权限请求的范围限于该轮已明确的内容。网页 UUID 与原生 RPC ID 分离，后端验证 socket、turnId 与 requestId 的归属；未知交互请求明确拒绝。
-- 审批收到后端处理事件后关闭，准备阶段可取消启动；运行阶段调用 `turn/interrupt`，5 秒未结束则终止该轮进程。完成、超时与中断均清理待审批项，迟到答复一律无效。
-- 网页断线后运行继续，但立即拒绝已有待审批请求；重连不自动创建新轮次。
-- Codex 保留本地命令能力；项目运行、训练、测试和数据读取使用远程工具的要求由工作区指令约束，不能把本地沙箱视为服务器安全边界。
+- `agents/codex/` 分工：`client`（JSON-RPC 行协议）、`launch`（启动解析）、`config`（线程参数）、`mapper`（事件）、`permissions`（审批）、`runtime`（长驻会话）、`sessions`（列表、读取、改名、删除、归档、分叉）、`capabilities`（技能与模型目录）、`compaction`、`types`。
+- 启动顺序：`AGENTDECK_CODEX` 显式指定；Windows 上依次找 PATH 里的 `codex.exe` 与官方 npm 包的 vendor 可执行文件；非 Windows 直接调用 `codex`。随后 spawn `codex app-server --listen stdio://`，不经 shell。
+- 协议约束：逐行 JSON-RPC，单条上限 8 MiB，待处理请求上限 128，普通请求超时 30 秒；stderr 持续排空，不回显原始诊断。
+- 首次使用依次 `initialize`、`config/read(cwd)`，然后 `thread/start` 或 `thread/resume`。线程参数固定 `sandbox: workspace-write`、`approvalPolicy: on-request`、`approvalsReviewer: user`，模型只在显式选择时覆盖；原生 `developer_instructions` 与工作区指令拼接后传入。
+- 当前仍通过线程 config 注入 remote-tools MCP，并把相关环境变量加入 shell 过滤（待删）。
+- 长驻 runtime 按会话复用进程与 thread，空闲 5 分钟回收；进行中的改名、删除、归档由会话锁挡住。
+- 会话读取与操作全部走 app-server 的 thread 接口，不直接解析 `~/.codex` 的 JSONL 或 SQLite。
 
-原生能力目录与上下文：
+Antigravity：尚未接入。代码里没有对应的目录、`AgentKind`、事件映射或 `agy` 启动逻辑，`workspace_uris` 归属与软拒提示都未实现，不能按已支持描述。
 
-- Claude 用官方 `resume`，Codex 用 `thread/resume`；历史接口供网页显示消息，与提示词组装相互独立。
-- `chat/capabilities.ts` 与固定工作区 `agent-capabilities` 路由返回技能/命令、模型建议及匿名警告。公开项含稳定 ID、来源提示、可用性、会话/参数要求；私有 invocation 不返回网页。目录按工作区/Agent 隔离，按需读取、支持刷新，部分失败保留可用分支。
-- Claude读取`supportedCommands()`/`supportedModels()`，目录元数据尊重`supportsEffort === false`及`supportedEffortLevels`；Codex按cwd读取`skills/list(forceReload: true)`/`model/list`。目录不作为常用强度选项的前置门槛；两Agent固定五档，Codex合并所选目录模型的额外值。目录默认项不是配置模型，缺失时可手填；保存配置只失效对应Agent能力元数据，不伪造登录或实际模型状态。
-- 网页只发送能力 ID，服务端先按当前目录解析，适配器在实际运行的同一实例再次验证。Codex 校验名称/path/enabled 后传原生 `{ type: 'skill', name, path }`；Claude 验证名称和来源后发送原生 slash 消息。未知、禁用、过期和歧义项不降级为普通提示词。
-- 直接 `/name 参数` 按精确名称再别名解析；普通文本不额外发现目录。当前命令为两类 compact 和 Claude context，均要求已有会话；Codex compact 无附加参数，Codex context 与其他未接入命令显示限制。纯 context/compact 沿用会话锁与停止能力，但不触发结束同步。
-- Claude 上下文来自 `getContextUsage({detail:'summary'})`，标为原生估计；Codex 取通知中的 `tokenUsage.last.totalTokens` 与 `modelContextWindow`，不使用累计 total 或配置窗口推算占用。仅 Claude 原生给出的 percentage 可展示，缺失值显示不可用。
-- Claude 手动压缩依据该轮状态和 manual `compact_boundary`；顶层 result success 与 Codex RPC 接受均只表示已提交，压缩完成由当前轮次的原生压缩/结束通知确认。失败、取消与未确认分别保留，历史只展示已有原生边界，用量按原生记录展示。
-- 切换工作区/Agent/会话清理能力选择与当前上下文，迟到结果隔离。新轮次清理旧 running 压缩摘要，历史仍保留未确认标记；普通运行态不能复活旧操作。
-- `ComposerInput` 使用 Ariakit combobox/textarea 自动补全首个 slash 命令名，复用能力缓存和 ID 选择，不改变后端协议。输入变化与光标移动更新补全范围，Enter 在候选代理处理前判断发送语义，避免确认候选后同一次按键误发；输入法、换行和原参数均保留。
-- `isInvocableCapability(entry)`由技能选择器与补全共用，限制按需查看。`ModelOptionsMenu`只以真实目录模型作为主候选，次级提供清除覆盖、手填及刷新，明确区分当前选择和native/actual报告；`ContextStatus`与模型/强度同区，Popover说明用量来源、窗口和压缩，未知值不推算。会话按Agent分组，菜单只选动作再挂对应表单。
+### 5.2 chat：轮次、会话与能力
 
-### 5.2 remote-tools：远程工具
+- `turn-manager.ts`：建立轮次、取工作区租约、串行准备、把事件投给发起连接、路由审批答复、收尾并释放锁。错误按 `SessionError` 文案或通用提示回给网页。
+- `sessions.ts`：按 Agent 注册 provider，提供列表、读取、归属校验、分叉与原生操作。读取时复核原生 `cwd` 与工作区目录（`sameSessionDirectory`），失败匿名化为 503；归档只对 Codex 开放。
+- `capabilities.ts`：读取原生目录并解析选择。`prepare()` 只接受服务端目录里的 ID 或精确 slash 名称，未知、禁用、歧义直接报错，不降级成普通文本；要求会话的命令在无 id 时拒绝。
+- `registry.ts`：进程内随机令牌到工作区 id 的映射，只给 MCP 子进程用（待移除）。
+- `turn-files.ts`：从工具调用事件累积文件变更，写进 `turn.finished.changes`。改动视图删除后前端已无消费方，属待清理残留。
 
-stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH，而是把请求转发到后端内部接口（带会话令牌），由后端统一处理连接、黑名单、同步和日志。
+### 5.3 process：中立子进程运行器
+
+`runProcess(executable, args, options)` 返回 `{ stdout, stderr, exitCode }`。`shell: false`、`windowsHide: true`，支持 stdin 输入、独立环境、超时、输出总上限与 `AbortSignal`；超限、超时、取消与启动失败统一抛 `ProcessError`，`code` 为 `output_limit`、`timeout`、`aborted` 或 `executable_missing`，错误信息不含参数与原始 stderr。
+
+依赖它的只有 `settings/environment.ts`（版本探测）与 `ssh/windows-protection.ts`（DPAPI 脚本）。CLI 适配器自己管理长驻管道，不走这条路径。
+
+### 5.4 workspaces：存储、活动与迁移
+
+- `store.ts`：读写 `workspaces.json`。schema 为 `name`、`localDir`（绝对路径）、`sshHost`、`remoteDir`，另有可选 `sync` 与 `policy`；所有读写串行，写盘用临时文件加 rename。`ENOENT` 视为空列表，其他读取或解析错误抛 `WorkspaceStorageError` 并保留原文件。
+- 校验：`localDir` 必须绝对且目录存在，`sshHost` 必须已在 `servers.json` 登记，否则抛带 `field` 的 `WorkspaceValidationError`。`withSnapshot()` 供跨档案事务使用，锁序为工作区、服务器档案。
+- 当前模型仍要求每个工作区绑定一台服务器，并保留 `sync` 字段；设计要的「本地目录必填、服务器可选」尚未落地。
+- `activity.ts`：按工作区计数的租约与 closing 门禁。`acquire()` 在关闭中抛错，`exclusive()` 目前没有调用方（移除服务已删）。
+- `migrate-legacy.ts`：只复制 `servers.json` 与 `workspaces.json`，不覆盖新目录已有文件，旧目录保留；两个目录相同或源目录不存在时安全跳过，单个失败记入报告继续。
+- `policy.ts`：工作区命令规则的读写服务，与 HTTP 路由一起待移除。
+
+### 5.5 settings：配置、偏好与环境
+
+- `safe-file.ts`：逐层 `lstat` 检查目录、拒绝符号链接与非常规文件、上限 256 KiB，`revision` 取内容 sha256；读取前后核对 inode、大小与时间，写入走同目录临时文件再 rename，提交前后复核目录身份。
+- `native-config.ts`：只覆盖两个文件——Claude `settings.json`（按 JSON 校验）与 Codex `config.toml`（按 TOML 校验）。路径取 `CLAUDE_CONFIG_DIR` / `CODEX_HOME` 或 `~/.claude`、`~/.codex`；保存要求 revision 未变，冲突拒绝；按 Agent 串行。
+- 需求里的 `CLAUDE.md`、`AGENTS.md`、项目级配置与 Antigravity 配置都还没有实现，接口只接受 `claude` 与 `codex` 两个固定 Agent。
+- `product-settings.ts`：字段为 `defaultAgent`、`syncDefaults`、`syncIntervalSeconds`、`resources.{intervalSeconds,timeoutSeconds}`；读取时定点剔除已退休的 `defaultModels`，其他未知字段仍拒绝；坏文件返回 503，版本冲突按 409 语义处理。
+- `syncDefaults` 与 `syncIntervalSeconds` 是同步域残留，随 `shared/sync.ts` 一起删除。
+- `environment.ts`：并行探测 Node.js（当前进程）、Claude Code、Codex、git、rclone，每项 5 秒、2 KiB，只提取版本号；共享一份报告，并发刷新返回 409。git 与 rclone 属遗留，Antigravity 尚未纳入。
+
+### 5.6 http：访问控制与路由
+
+- 只监听回环。`config.ts` 在启动时拒绝其他 host。
+- `security.ts` 的 `onRequest` 钩子依次校验：Host 必须是本机地址且端口匹配实际监听值（含开发来源），挡住 DNS 重绑定；修改类请求与 WebSocket 校验 Origin，`Sec-Fetch-Site: cross-site` 直接拒绝；`/api/*` 与 `/ws` 需要有效会话 Cookie。
+- 会话 Cookie 名为 `AGENTDECK_session`，HttpOnly、SameSite=Strict，比较用常量时间。唯一免登录入口是 `POST /api/local-session`：同源握手成功后写 Cookie 并返回 204；业务组件与 WebSocket 在握手成功前不挂载。
+- `/internal/*` 跳过 Origin 校验，改由路由自己校验 Bearer 会话令牌（待移除）。
+- 所有响应带 `X-Frame-Options: DENY` 与 `frame-ancestors 'none'`；请求体上限 1 MiB，对话 WebSocket 载荷上限同为 1 MiB，终端另有独立上限（见 5.15）。
+- 静态托管 `apps/web/dist`，非接口的 GET 回退到 `index.html`。
+
+| 模块 | 主要接口 |
+|---|---|
+| 本机会话 | `POST /api/local-session` |
+| 工作区 | `GET /api/workspaces`（仅列表，创建与修改接口尚未重写） |
+| 会话 | `GET /api/workspaces/:id/sessions`、`GET .../sessions/:sessionId/events`、`POST .../actions`、`POST .../fork` |
+| 能力 | `GET /api/workspaces/:id/agent-capabilities` |
+| 产品设置与环境 | `GET /api/settings/product`、`PUT /api/settings/product`、`GET /api/settings/environment`、`POST /api/settings/environment` |
+| 原生配置 | `GET /api/agent-config/:agent`、`PUT /api/agent-config/:agent` |
+| 服务器档案 | `GET /api/ssh-targets`、`GET /api/ssh-targets/import-options`、`POST /api/ssh-targets`、`PUT /api/ssh-targets/:alias`、`DELETE /api/ssh-targets/:alias`、密码读写子路径 |
+| 主机信任 | `POST /api/ssh/host-key`、`POST /api/ssh/host-key/confirm` |
+| 连接与凭据 | `POST /api/ssh/connect`、`GET /api/ssh/credentials`、`PUT /api/ssh/credentials`、`POST /api/ssh/disconnect` |
+| 终端 | `POST /api/workspaces/:id/terminal-binding`、`GET /api/workspaces/:id/terminal`（WebSocket） |
+| 资源与作业 | `GET /api/workspaces/:id/resources`、`GET /api/workspaces/:id/slurm` |
+| 服务器文件 | `/api/workspaces/:id/remote-files/` 下的 bindings、sessions、tasks 与 download |
+| 对话 | `GET /ws`（WebSocket） |
+| 命令规则 | `GET /api/workspaces/:id/policy`、`PUT /api/workspaces/:id/policy`（待移除） |
+| 内部接口 | `POST /internal/remote-exec`、`POST /internal/remote-peek`（待移除） |
+
+### 5.7 ssh：档案、连接与信任
+
+- 档案存 `servers.json`，alias 为 `managed-ssh-<uuid>`；同 hostname、端口、账号不允许重复，最多 128 条。删除或修改地址、端口、账号、私钥前检查工作区引用。
+- `~/.ssh/config` 只做显式导入（HostName、Port、User、IdentityFile）；不支持的选项保留提示，不改写用户配置。
+- 认证二选一：密码或已有私钥。私钥按档案指定路径读取，缺省在 `~/.ssh` 找 `id_ed25519`、`id_ecdsa`、`id_rsa`。
+- 连接解析入参只有 `SshTarget = { alias }`，认证方式从档案解析。`cacheKey` 覆盖真实身份、认证方式、私钥摘要与目标的 known_hosts 记录，任一变化即换新连接。
+- 认证代次：断开、凭据改写或重新连接都会递增 `pool.generation(alias)`；长任务在返回前复核代次，迟到结果不能回填新身份。
+- 主机信任：读用户 `~/.ssh/known_hosts` 校验。未知主机先做独立握手，返回 `SHA256:` 指纹和一次性挑战（两分钟、最多 32 个、一次消费）；确认后把公钥追加到 `~/.ssh/known_hosts`。不匹配或已吊销直接拒绝。
+- 凭据：密码只存在内存与 DPAPI 密文中；`GET /api/ssh/credentials` 只返回状态布尔值；编辑时按需解密回填，响应 `no-store`，明文不进入列表、日志或查询缓存。
+- 通道：`exec` 带超时与输出上限，`sftp` 与 `shell` 各自独占通道；单通道错误不影响连接池里的其他用途。
+
+### 5.8 remote-files：服务器文件
+
+- `binding.ts`：打开面板时把工作区配置、实际 SSH 身份与信任记录做成签名，创建或复用浏览会话都复验。
+- `service.ts` + `directory.ts`：浏览会话每工作区最多 32 个、空闲 15 分钟过期；按层读取元数据，单层 10000 项或 4 MiB，每页 200 项；排序规则在 `directory-order.ts`（目录、文件、链接、其他，中文数字序，同序用原文兜底）。
+- 操作：`preflight.ts` 生成两分钟有效的方案，`tasks.ts` 先把记录原子落盘再派发，`executor.ts` 用服务器已有 Python 标准库与 `renameat2(RENAME_NOREPLACE)` 执行，不覆盖、不跟随链接；`path-locks.ts` 按同身份相交路径排队，最多四项并行。
+- 任务记录：`remote-file-tasks/<uuid>.json` 原子写入；损坏记录保留并阻断；后端重启不重放；派发后断线或取消标 `needs_check`，需重新核对源与目标才能确认。
+- 下载（`downloads.ts` 与前端 `RemoteDownloadDialog.tsx`）仍在，但已决定移除，属待移除范围；删除后接口与界面都不再有下载入口。
+- `sync-scope.ts` 只为条目的 `scope` 字段提供「是否在同步范围」的展示判定，随工作区模型收敛一并删除。同步协调与影响扫描的文件已不存在，旧文档里的双端协调描述不再适用。
+
+### 5.9 remote-tools：MCP 桥（待移除）
+
+stdio MCP 服务，由 Claude 与 Codex 按会话启动，只转发到后端内部接口：
 
 | 工具 | 作用 |
 |---|---|
-| `remote_exec` | 在服务器工作区目录执行命令。执行前推送本地改动，成功且相关待确认事项已处理后才执行；执行后拉回同步范围内的小文件，返回 stdout、stderr、退出码。Python 分析使用服务器已有环境，支持超时 |
-| `remote_peek` | 查看服务器文件或目录：大小、`du`、头尾若干行。用于未同步的大文件 |
-| `sync_now` | 立即同步一次，返回结果和待确认事项 |
+| `remote_exec` | 在工作区服务器目录执行命令，返回 stdout、stderr 与退出码 |
+| `remote_peek` | 只读查看服务器文件或目录：stat、head、tail、du |
 
-长时间任务（训练）使用服务器已有的 `nohup` 或 Slurm 提交，工具返回启动信息或任务 ID，不一直等待训练结束。用户手动发消息后才查询进度、完成情况或读取结果；不部署任务完成检测或自动 AI 分析。执行后的同步只反映该次命令结束时可见的文件。
+`launch.ts` 用当前 Node 加 `tsx` 加载入口文件；工具名与 MCP 服务器名仍是旧前缀 `ssh-server`。`internal.routes.ts` 用会话令牌换出工作区，先过 `policy` 再执行 SSH，当前已没有任何同步前置或后置步骤。
 
-### 5.3 工作区指令注入
+设计 D6 与 D45 决定删除这条桥：删除后 Agent 只在自己的项目目录里工作，服务器面板回到纯人工工具，`chat/registry.ts`、`TurnEnv`/`acquireEnv`、`instructions.ts` 的远程指令与两个 CLI 的 MCP 注入一并消失。
 
-指令只在本地生成，按会话注入，不写入工作区文件夹（避免同步到服务器）：
+### 5.10 policy：命令规则（待移除）
 
-- Claude：`systemPrompt: { type: 'preset', preset: 'claude_code', append: <指令> }`；Codex：`developerInstructions`。
-- 内容：服务器名和目录；本地文件夹是同步副本；运行、训练、测试、查看数据必须用 `remote_exec`；哪些文件因体积未同步、需要用 `remote_peek` 查看；长任务结果由用户手动要求检查。SSH 密码不注入指令。
-
-### 5.4 ssh
-
-- 顶栏“服务器”统一管理本机档案，支持从 `~/.ssh/config` 显式导入HostName、Port、User、IdentityFile，也可手动填写。未登记Host不参与生产连接解析；不支持的选项（如ProxyJump）保留提示，不改写SSH config。
-- 认证支持账号密码和已有私钥；密码通过本机访问控制保护的接口进入内存，可使用Windows当前用户加密保存。普通连接留空仍可复用保存项；明确编辑时按需解密回填，默认掩码，可查看/修改并确认保存。主动断开保留密文，取消保存则移除并断开；密码不交给Agent，保存不触发SSH认证。
-- 保持 `known_hosts` 校验。未知主机通过网页指纹挑战明确确认，已有可信密钥变化或吊销时拒绝连接。
-- 内部连接入口统一 `SshTarget = { alias }`，认证方式仅从已登记服务器解析；工作区、终端和浏览目标不携带`authMode`旧字段。连接按实际地址、端口、账号、认证方式、可信记录与凭据代次复用；执行、同步、浏览、终端和资源共用resolver，参数变化不能复用旧连接。
-- 终端：`shell()` 打开 PTY，数据经 WebSocket 与 xterm.js 双向转发，支持窗口尺寸变化、多标签和可调整布局。视觉与分屏交互参考 Pebrel，仅参考设计。
-- `ssh/profiles`在工作区存储快照、活动排他和档案写队列内检查expected、引用与阻断。被引用目标不能删除或改变地址/端口/账号/私钥；重新认证及断开必须等待活动与未解决持久任务处理。复用移除资源的同步/编辑/任务检查；回调不得重入前置锁。管理界面显示受影响工作区。
-- 普通留空连接不发送未改变的savePassword，复用检查取消不关闭共享连接。删除档案在提交前通过`pool.forgetServerCredentials`使用已核对的hostname/port/username身份清理内存和磁盘凭据，不重新解析alias或重入档案队列；清理失败保留档案。
-- `ServerList`共用公开档案、工作区引用及凭据状态查询，选中只看详情，编辑/认证分开，不新增列表轮询。状态读取失败与未连接明确区分，密码正文不返回列表。
-- 密码编辑请求绑定完整档案expected和凭据revision，读取/保存响应no-store；前端只在编辑组件内保留明文，不进入列表、公开状态、URL、日志或长期query cache。目标变化、取消、关闭和迟到结果用身份/代次隔离，不暗中沿用旧密码；服务端在现有档案写队列、凭据身份和共享活动锁内提交。
-
-终端固定目标、签名票、独立WebSocket、背压、通道移交、EOF/退出、preClose、稳定窗格与粘贴模式的有效取舍见[设计决策第5节](decisions.md#5-终端参考的使用方式)。OS输入法未观察不等于已通过，也不因资料精简新增任务。
-
-### 5.5 sync
-
-- 使用 `rclone bisync`，远端用连接参数临时定义的 SFTP 远程（不写入 rclone 全局配置），状态目录用 `--workdir` 指向该工作区的 `bisync\`。
-- bisync 通过固定版本自带 combine 将实际双端根映射为 `localview:root/`、`remoteview:root/`，每次绑定实际镜像，避免完整路径进入单文件名；其他读写沿用真实 workspace backend。upstreams 按空格分隔 CSV 编码。
-- 当前状态固定 `version=1`、`signature=mirror-v1…`、`baselineLayout=combine-v1`。无基线可首次初始化；非空基线缺签名，或已有签名但布局缺失/不匹配时拒绝。初始化确认、删除批准/拒绝及文件任务恢复均不能迁移或重写旧数据。当前布局的中断恢复保留。D31的短逻辑根继续采用，其兼容升级部分已由[D36](decisions.md)替代。
-- ssh2 与 rclone 使用同一组连接参数和认证方式，均校验服务器主机密钥；仅转交运行需要的内存凭据，不写 rclone 全局配置。`rclone obscure` 只用于子进程环境转交，不视为加密保存。
-- 固定 rclone 1.75.1，通过 `AGENTDECK_RCLONE` 指定本机程序；同步与向导共用版本检查，并发共享成功结果、失败允许重试。过滤固定排除任意深度的 `.git`，按扩展名与默认 10 MiB 上限选择小文件，符号链接或 Windows 大小写冲突停止同步。
-- 同步和向导预览共用实际根解析：只去掉`pwd -P`的一个LF，保留目录名空格，拒绝不完整/异常路径；同步执行结果截断时拒绝采用。Windows含反斜杠的实际根在传输状态创建与凭据转交前停止，防止rclone改换目标。工具不支持不等于自动改名或替换分隔符，见[D35](decisions.md#d35-rclone-远端根的精确绑定2026-10-06)。
-- 传输使用本机 `mirror\` 中的稳定小文件副本，复制期间发现源变化则暂停；同步后仅将未被用户再次修改的文件更新到项目。双方在此期间都修改时保留冲突版本，新的本地删除留到下一次确认，不随进行中的传输传播。
-- 本地为空时可首拉并建立基线；非空初始化、目标/过滤变化和当前格式的中断状态须确认。状态读失败或非法结构不视为空，不以确认覆盖；初始化前保留同名不同内容的双方版本，不覆盖另一端同名的超限文件。
-- 删除检查使用本地成功基线与当前两端清单。发现本地删除后暂停整个工作区同步与执行；拒绝恢复远端最新内容，确认时重新核对本地重现和远端内容，实际删除前再校验。
-- 已确认的空基线可连续同步并上传首个文件；最后文件删除经逐项确认后建立空基线。非空基线一端意外清空则暂停并要求恢复确认，不传播整端清空。
-- 普通 bisync 保留两端冲突版本，并根据真实冲突文件名形成网页提示；恢复选定内容到原路径并确认后才继续执行。
-- 状态与 rclone 清单只放本机；不依赖解析日志判断删除，不在远端放标记文件，不使用 `--check-access`。
-- 不使用 `--backup-dir` 等备份选项。
-- 同一工作区的同步任务串行处理，避免定时拉取和执行前同步互相重叠；同步不依赖 git 提交。
-- 断开、替换认证与后端退出通知活动 rclone context 取消；完成后再次核对认证代次，迟到结果不能标记成功或清除新连接。
-- 执行前同步失败或相关删除 / 冲突待处理时，返回阻断原因，不调用 SSH 执行旧代码。执行后拉回失败时，保留命令的输出 / 退出码并另报同步错误。
-- 定时拉取只更新同步范围内文件，不监视训练完成，不产生 Agent 消息。
-
-### 5.6 vcs
-
-- 打开工作区时通过幂等 POST 初始化本地 Git，无初始提交；复用已有仓库、父仓库内子目录或 linked worktree，提交与恢复限定当前工作区。
-- “保存版本”在真实索引锁内构造隔离索引，使用原生 `git add` 保留 Git 属性和行尾转换；只提交同步范围内已保存的小文件，不生成空提交。工作区外和排除文件的原暂存内容保留，提交与索引安装失败不能伪装成功。
-- 历史每页 30 条，diff 支持按文件查看，输出有上限；作者身份沿用仓库配置，不修改全局配置、不推送。
-- 恢复预览绑定目标提交、单文件或整区范围、过滤规则及当前文件/索引状态；明确标注同名未跟踪覆盖，状态变化后旧确认失效。执行的写入范围限于工作树，HEAD 与实际索引保持原状；失败尽量回滚，无法回滚时列出受影响路径。
-- 写入复用同步事务，并按实际仓库串行；恢复成功后由网页调用同步，单独显示成功、失败、冲突或删除待确认，不能绕过删除确认。
-- 本地文件只在网页只读查看；改动由 Agent、同步流程或外部编辑器完成，网页不创建提交也不写文件。
-
-普通轮次快照：`vcs/turn-snapshots.ts`通过隔离索引生成树，写入`refs/ssh-server/turns`专用引用，不创建提交、不安装索引。范围摘要绑定工作区、仓库/目录身份与同步规则；读取前后核对所属引用和树，禁止外部diff/textconv，文件清单最多10000项、patch最多512KiB。清理使用期望旧树，目录换向或外部改写时保留引用。
-
-`chat/turn-changes.ts`和原子元数据存储接入TurnManager：runner前采集基线，已有同步后采集结果，故障只影响改动状态；已开始的采集取消须等待收尾后释放租约，纯上下文命令跳过。每工作区最多20轮（包含运行中），优先淘汰最早已结束；全运行则新采集不可用，Agent继续。先原子移除元数据再清引用；重启running标为incomplete，不重放。HTTP列表/diff验证工作区、Agent、原生会话所属，不接受任意OID，无原生id的历史查询返回空。
-
-单文件放弃复用原恢复原子写入和同步事务，目标为当前HEAD或空树；预览绑定磁盘、HEAD、索引与过滤，所选文件独立暂存内容/模式/删除差异则拒绝。前端changes查询按工作区、Agent、原生id、选择代次隔离并消费AbortSignal；反馈仅内存，普通socket发送成功才清空。
-
-### 5.7 sessions
-
-- 已接入列表与历史：Claude 使用 SDK 原生接口，Codex 使用 `thread/list` / `thread/read`，按工作区本地文件夹筛选。读取和续接再次校验原生 cwd 与官方 ID，拒绝越界或不完整历史。
-- `chat/sessions.ts` 统一两类 provider，HTTP 会话路由必须显式提供 `agent`，不猜测Claude。网页分别加载两类列表；一个运行时失败仍显示另一类历史，并为失败来源提供重新读取。provider管理方法和会话操作锁为当前必需契约。
-- 列表、选中状态和查询键保留所属 Agent；历史请求绑定工作区、Agent、官方 ID 与选择代次，切换后忽略迟到结果，读取期间禁止发送。展示历史不替代官方上下文续接。
-- 已接入管理：Claude `renameSession` / `deleteSession`，Codex `thread/name/set` / `thread/delete` / `thread/archive` / `thread/unarchive`；归档列表使用 `thread/list(archived: true)`，保持目录过滤、分页与子代理排除。产品不手工删除原生 JSONL。
-- 管理前验证原生 ID/cwd；Claude 缺少 cwd 时拒绝修改，Codex 拒绝 active 状态与内部子代理。`TurnManager.withIdleSession` 复用 `(agent, sessionId)` 锁，从验证前持有至原生操作返回，并与对话准备、运行及同步收尾互斥；忙时返回 409，失败时释放范围限于该次占用。
-- HTTP 管理入口校验删除 `confirmed: true` 与 1–200 字符标题。请求交给原生运行时后继续等待结果，网页断开不视为回滚；匿名错误提示重新读取核对。前端成功后刷新对应来源，删除/归档的迟到结果只清空仍匹配工作区、Agent 和 ID 的当前对话。
-- Codex归档记录只提供恢复/删除，恢复后从普通列表改名；能力分支按当前版本维护。删除说明相关子会话影响，归档说明派生子会话影响，恢复的保证范围限于该记录；加锁范围限于本服务的操作，外部客户端并发独立。
-- `SessionSummary.nativeModel`表示原生会话配置，不是执行遥测；Codex复用`thread/list`模型字段，不做逐条`thread/read`。Claude列表不启动额外CLI或读取每条正文；打开历史时复用SDK消息，倒序取主会话助手非空模型，排除子代理及`<synthetic>`。
-- `SessionHistory.actualModel`和运行时报告保留实际证据语义。网页按工作区/Agent/原生ID缓存已观察模型，仅内存且删除时清理。新列表的原生模型优先于旧历史缓存，缺失时才回退；实际报告和原生配置分别说明，证据只取这两类原生来源。底栏模型/推理控件拦截Enter隐式提交，正文发送/补全/审批保持现有行为。
-- 原生分叉接口为strict `POST /api/workspaces/:id/sessions/:sessionId/fork?agent=…`，body `{pointId?:string}`，响应`{session:SessionSummary}`且no-store。provider必需`fork`，与rename/delete同用`withIdleSession`，从源/点核验持有至新ID/cwd复核；请求派发后HTTP断开不提前解锁或当作撤销。
-- Codex完整读取源thread并拒绝未结束轮次，以`thread/fork {threadId,lastTurnId?}`inclusive分叉，不覆写cwd/config/path。Claude调用SDK `forkSession(id,{dir,upToMessageId?})`，核对transcript中主会话原生终止点和新metadata。源记录不手改，不调用文件历史回滚；外部客户端的活动不由本服务统一加锁。
-- `turn_end.forkPoint`仅为可信的已结束原生轮次/消息ID。Codex取终止turn.id，Claude取已核对的助手transcript UUID而非result.uuid；无可靠点不补造。前端reduceChat去重并投影分叉边界，分叉控制器复用全局sessionOperations，成功刷新来源且只在选择代次仍匹配、当前空闲时打开新会话。
-- `session-preferences`仅保存有界置顶三元身份（工作区/Agent/原生ID）；分组内置顶优先再按时间排序，不复制历史。`session-links`严格生成/解析当前站点hash；`useWorkspaceNavigation`统一首次恢复与hash变化，拒绝未知目标和忙碌导航，旧查询仍由选择代次取消/隔离。链接不是原生URI或自动上下文注入。
-
-### 5.8 policy：命令黑名单
-
-- 对 `remote_exec` 的命令做规则匹配，命中即拒绝，返回原因。默认规则见需求 F3.4，可按工作区追加或停用。
-- 只是防误操作的字符串匹配，不能防有意绕过（编码、写进脚本再执行等）。
-- 网页终端不经过黑名单。
-
-shared/policy提供严格规则目录/schema；policy支持工作区默认启停及20条有界自定义字面规则。独立GET/PUT使用完整工作区摘要，在store.update串行写盘内核对并只更新policy，不提供通用PATCH。未设置policy表示当前默认规则，显式坏值（包括null）拒绝读取/执行。每次remote-exec读取最新配置，命中先于同步/SSH；已检查在途命令继续。网页按需dialog绑定工作区和独立草稿，409保留，成功取消旧列表查询再刷新，取舍见[D24/D36](decisions.md)。
-
-### 5.9 http：访问控制
-
-- 只监听 `127.0.0.1`。
-- 启动生成内部随机会话秘密，直接打开干净首页。网页先同源 `POST /api/local-session {}`，成功后才挂载业务查询与WebSocket；失败提供重试。仅该握手免已有Cookie，旧`/auth`入口不存在。
-- 精确核对本机Host与实际端口（含显式开发来源）；修改类请求和WebSocket校验允许Origin，握手拒绝缺失/null/跨站Origin及cross-site元数据。HttpOnly/SameSite=Strict Cookie不向JS暴露秘密；页面和错误响应设置frame-ancestors none与X-Frame-Options DENY。
-- remote-tools 调后端内部接口时使用单独的会话令牌。
-- 工作区POST只经setup验证创建，DELETE只经removal确认服务，模块未注入时返回503；同步及policy使用各自专用接口，路由集合限于这些接口。
-- 工作区存储只将ENOENT视为空；其他读取、JSON及条目结构错误原样阻断，不过滤坏项、备份重置或覆盖原文。
-
-### 5.10 files：本地文件只读查看
-
-- 浏览同步范围内的本地文件，复用成熟只读组件提供语法高亮与搜索，不提供保存、编辑缓冲或写入入口。
-- 本地读取受工作区路径与大小限制，不能越出本地工作区；远程大型结果由远程工具按需读取，远端直接管理另见 5.12。
-- “改动”和“版本”视图仍负责展示 diff 与版本操作，本地文件查看只回答“现在是什么内容”。
-
-`files/`服务与固定工作区HTTP路由只提供列表与读取：按相对路径逐级浏览，目录最多扫描5000项、返回500项并标记截断；查看范围取同步阈值与2 MiB中较小值，仅普通UTF-8文本，拒绝链接、越界、二进制和被排除路径。读取期间多次核对文件身份与内容，返回的正文只来自同一份快照；正文只存在查看组件内存，不进入持久浏览器存储。接口不接受写入，没有PUT保存与revision查询路由。
-
-当前目录结果复用`files/directory-order`，先排序扫描到的全部合格条目，再截取500项；保留5000项扫描边界与`truncated`，不宣称超限目录完整。本地网页与远端共享键盘导航规则，但本地仅提供浏览，不新增本地文件CRUD。
-
-页面使用`WorkspaceLayout → WorkspaceColumns → WorkspaceTools`固定嵌套Group，资源/文件各自可见，不使用互斥槽或自由浮窗。≥1600px右区横排，较窄纵排，<1280px自动收起左栏；自动状态不写持久偏好，用户仍可展开。通常对话最小480px，紧凑窗口主动展开导航时为320px。工具各模式宽度及横纵比例分别有界记忆，只用户调节时写入，复位不改主题/左栏尺寸；具体范围见界面规范。960px最小支持，≥1280px初始资源打开。
-
-文件面板打开时固定工作区；收起、尺寸/方向/断点变化及聊天切换保留同一只读子树与已打开文件，不重新挂载内容，也不迁移目标。隐藏时停止目录GET并取消在途请求，恢复后按用户操作重新读取。PTY仍在对话主区的稳定底部宿主。停靠区无焦点陷阱，子dialog取消不误收起外层；本地/服务器/改动子视图保持。
+对 `remote_exec` 的字符串匹配：默认规则加每个工作区最多 20 条自定义字面规则，命中即拒绝并返回规则说明。它只是防误操作，不防有意绕过；终端与文件操作不经它。规则存在工作区记录的 `policy` 字段，读写走独立路由与完整工作区摘要。
 
 ### 5.11 metrics：服务器资源采样
 
-本地后端复用 SSH 连接执行固定的只读采样命令，解析为结构化状态，通过固定工作区HTTP请求读取缓存/采样结果；不经 Agent，不调用模型，不触发对话。
-
-| 指标 | 数据来源 | 边界 |
-|---|---|---|
-| GPU 型号、利用率、显存、温度、功耗 | `nvidia-smi --query-gpu=… --format=csv,noheader,nounits` | 不同驱动与设备字段可能不可用，按 GPU 标识展示 |
-| GPU 计算进程与显存用量 | `nvidia-smi --query-compute-apps=… --format=csv,noheader,nounits` | 不保证覆盖所有进程类型或提供每进程 GPU 利用率 |
-| CPU、负载、内存、进程 | `/proc/stat`、`/proc/meminfo`、系统负载、`ps` 等已有来源 | CPU 使用率由相邻样本差值计算，字段与权限缺失时标注不可用 |
-| 项目磁盘可用空间 | 项目所在文件系统的 `df` 等 | 不以递归 `du` 大项目目录作为定时采样 |
-
-- 默认采集当前 SSH 目标，响应包含采集主机、采样时间与字段可用性。指标归属限于实际采集主机。
-- 前端只在资源面板自身可见、页面可见且网页已连接时采样；资源隐藏取消网页请求并停时钟。`useResources`按固定目标与公开观察版本隔离，`gcTime: 0`避免重挂载复用旧身份数据；不在顶部或文件面板启动第二套控制器。资源默认5秒，间隔/超时沿用产品设置；文件打开或收起不影响资源active。
-- 后端资源协议保留已有进程采样字段；网页渲染范围限于当前账号的作业与资源指标，进程与共享账号作业保持主机级归属，个人任务身份只取当前账号范围。
-- 采样失败保留最近值并标为过期，缺少指标显示不可用，不能显示为零。服务器不安装采集器、不运行常驻监控服务，不要求 `nvitop`。
-- 采样函数统一 `{ signal, timeoutMs }` 选项对象，不保留直接AbortSignal重载。
-- `useServerObservationVersion`订阅公开档案/凭据缓存与显式重认证失效，不新增查询轮询；相同状态刷新不增加版本。内部连接key、凭据代次和认证摘要只在后端，不能返回网页。
-- 缓存与预算：按实际地址、端口、账号、认证方式、凭据及信任摘要共享宿主缓存，磁盘再按远端目录隔离；成功缓存5秒并随有效间隔重算，失败退避5/10/20/30秒、60秒空闲淘汰，最多64宿主/128目录。每组采样默认总时限8秒、每流128 KiB，GPU每项3秒、进程50条/GPU记录100条；singleflight与手动刷新同样有界，单HTTP取消不影响其他共享读取者。CPU连续差分且首帧为null、guest不重复计入，非法或N/A保留null；CSV解析保留物理GPU index/UUID，进程只采comm。
-- `ResourceMeter`提供具名仪表，`resources.css`在`.resource-scope`内定义明暗蓝/青/紫变量；缺值不渲染假零，过期/不可用继续显示文字，不以利用率高自动告警。
+- 采样命令固定且只读：hostname、`/proc/stat`、`/proc/loadavg`、`/proc/meminfo`、`nvidia-smi`（GPU 与计算进程各 3 秒）、`ps` 前 50 个进程；磁盘用 `df -Pk` 取项目目录所在文件系统。
+- 缺失值保留 `null`，不显示为零；失败时保留最近读数并标记过期。
+- 缓存按实际目标共享宿主读数，磁盘再按远端目录隔离；成功 5 秒、失败按间隔指数退避（上限 30 秒）、空闲 60 秒淘汰，最多 64 个宿主与 128 个目录。
+- 前端 `useResources` 只在面板可见、页面可见、网页已连接且设置就绪时按间隔请求；隐藏即取消在途请求并停表，`gcTime: 0` 避免复用旧身份数据。
+- 界面上的间隔（2–60 秒，默认 5）与超时（2–30 秒，默认 8）来自产品设置，页面隐藏时暂停。
 
 #### 5.11.1 slurm：当前账号只读作业
 
-- `shared/slurm`仅定义`SlurmSnapshot { sampledAt, status, output, truncated, message? }`。`slurm/commands`唯一执行`LC_ALL=C squeue --noheader --user="$(id -un)" --format="%.18i %.9P %.24j %.8u %.2t %.10M %.6D %R"`，显式格式避免用户`SQUEUE_FORMAT`影响。删除`SlurmJob`、`jobs`及JSON结构解析，不保留双协议或fallback。8秒覆盖全程，stdout/stderr合计512 KiB，超字节拒绝整份。
-- `slurm/parse`仅规范化CRLF、移除末尾空换行并保留表格空格，非空输出补固定列头；七个右对齐列宽18/9/24/8/2/10/6，末列为NODELIST(REASON)。最多保留200行作业输出，列头另计，不推导字段、时限或精确作业数。exit127为`unavailable`，其他失败为`error`；成功stderr只转通用不完整警告，不返回原始正文。
-- `resources/target`由资源和Slurm共享，绑定固定`TerminalTarget`、真实connection key、认证/信任摘要与密码代次，异步解析和返回前复查工作区。更换同alias实际目标或认证后拒绝旧结果，摘要不出后端。
-- Slurm非`error`结果缓存2秒、最多32项（包含`unavailable`），同身份pending共享；每个调用者独立取消，最后等待者取消才中止通道，不断开共享SSH。错误不缓存，认证变化清理并取消旧查询，返回前仍复验。
-- `GET /api/workspaces/:id/slurm?target=...`采用strict固定目标、no-store及现行本机认证/取消契约；无提交、取消、安装、全用户或节点遍历接口。
-- 网页`useSlurm(target, active)`只保留组件内快照；active只取资源自身可见性及页面/连接条件，文件打开不触发取消或重读。无定时/焦点刷新，首次激活或手动查询，资源隐藏取消；未完成首次可重开补读，成功后重开不自动查。公开身份变化立即丢弃旧快照并提示手动刷新，取消手动刷新复位loading并保留当前身份旧快照。
-- `SlurmJobs`展示独立时间和当前账号范围，`output`以`pre`纯文本渲染，最大高480px并在停靠区内部滚动。成功分支保留`message`；无警告空输出为“暂无作业”，警告空输出为“本次查询没有返回内容”。截断准确标200行，SSH节点指标保留所属采集主机归属。
+- 唯一命令是 `LC_ALL=C squeue --noheader --user="$(id -un)" --format=...`，8 秒、512 KiB、最多 200 行；退出码 127 记为未安装，其他失败记为错误，成功但 stderr 非空只给通用警告。
+- 结果短缓存 2 秒、最多 32 项，错误不缓存；认证变化清缓存并取消旧查询。
+- 前端只展示固定文本表格，首次或手动查询，不定时刷新。
 
-### 5.12 remote-files：远端文件管理（操作、下载与同步协调已接入）
+### 5.12 web：界面与状态
 
-对应需求 F10、决策 D21。后端提供结构化的目录读取、操作预检/提交、结果查询和显式下载接口；前端在现有文件面板增加服务器视图。接口复用访问控制、工作区配置、SSH 认证与主机指纹校验，不使用 Agent 会话令牌执行用户文件操作，也不为浏览或移动调用模型。
+- 启动：`LocalSessionGate` 先 `POST /api/local-session`，10 秒超时，失败显示原因与重试按钮；成功后才启动 WebSocket 并挂载业务组件。
+- 外壳：`App` 组合顶栏、环境摘要、服务器管理、设置、命令面板与 `WorkspacePanels`。`WorkspaceLayout` 管左栏与右区（导航 200–320px，≥1600px 横排，<1280px 自动收起），`WorkspaceArea` 用垂直分栏承载终端，终端首次打开后保持挂载。
+- 状态：zustand 的 `chat-store` 管连接、当前工作区、Agent、草稿、轮次、审批与 `sessionOperations`；react-query 管工作区、会话、能力、设置、资源与 Slurm；partysocket 负责 `/ws` 重连（1 秒起翻倍，上限 15 秒，禁用发送缓冲以免重发对话）。
+- 命令面板：`Ctrl+K`，包含新会话、打开终端、查看资源、设置、主题、侧栏，以及工作区与会话搜索。
+- 当前完成度：左栏是占位文案「项目列表将在后续任务接入」，没有新建项目或新建会话入口；`SessionList`、`SessionGroup`、`SessionActionsDialog` 等已写好但未挂载；`RemoteFilesPanel` 与 `WorkspaceTools` 的 files 槽位都没有调用方。今天可用的路径是切换已有工作区、对话、资源、终端、服务器档案与密码、设置与命令面板。
+- 顶栏标题、`LocalSessionGate` 标题与部分诊断文案仍写着 `ssh-server`，改名没有覆盖到界面。
 
-`remote-files` 的 binding、service、directory、operation 和 paths 负责目标签名、浏览会话、有界快照分页、截止时间及路径分类。面板打开时登记工作区配置、实际 SSH 身份与信任记录的签名，创建/重连会话均复验；登记不读取私钥/密码，也不连接 SSH。SFTP通道由当前目录独占，完整读取当前层后立即释放句柄和reader，再以内存快照分页；取消/错误清理且不返回半份有序列表，不断开共享SSH。HTTP中断传递到服务，排队与配置读取计入30秒总截止，迟到通道单独清理。
+### 5.13 desktop：桌面壳（待新增）
 
-`files/directory-order`统一directory/file/link/other分组、中文数字自然排序及同序原文兜底。服务器文件与向导每层上限10000项或4 MiB序列化元数据，每页200项；远端超限`directory_too_large`为HTTP413，本地向导`local_directory_too_large`按向导错误处理。只读取当前层，不递归、不读取正文。远端保留上一游标幂等重试和60秒分页空闲期限；本地快照按dev/ino/mtimeMs复查，变化拒绝旧游标。
+计划在 `apps/desktop` 放 Electron 主进程与 preload：主进程拉起本机 Fastify 服务后创建窗口加载其地址，preload 只经 `contextBridge` 暴露少量系统能力，关窗与退出时一并结束后端。开发循环用 `electron-vite`，安装包与签名留到 M4。目录尚未创建，当前入口仍只有浏览器。
 
-操作阶段：`preflight`生成两分钟有效方案，复验实际SSH身份、对象与相关工作区配置；`executor`通过独立exec发送固定处理器/base64参数，接收有界NDJSON事件。`tasks`/`task-record`先原子持久化再派发，重复提交返回同一任务；`path-locks`按同身份相交路径排队，最多四项并行。关闭面板不取消任务，后端重启不重放；派发后取消/断线标`needs_check`，只有充分的对象身份或内容证明才能确认。损坏记录保留并阻断；没有原任务复制证明时，即使目标完整存在也不能自动标成功。
+### 5.14 错误文案与日志
 
-- `sync-impact` 使用最多 50000 项、2 MiB 的目录元数据清单，逐项按各工作区的大小、排除和名称规则分类；NDJSON 单行不超过 64 KiB，最终数量必须匹配。完整路径的目录分量、既有远端文件及本地空目录均参与大小写/文件目录碰撞核对，不完整清单不能派发。
-- `sync-coordinator` 按工作区 ID 固定顺序取得事务，排队后复验配置，完成执行前同步并创建任务快照。快照保存原始文件身份/摘要和独立镜像；`sync/state.remoteTask` 持久阻断普通同步、初始化及执行。远端完成先记录 `sync_pending`，再单向拉取实际远端小文件，核对后复制到普通固定镜像，以远端优先 resync 重建其 bisync 基线，最后按原始身份回写本地。
-- 外部本地编辑保留为冲突；文件增长超过阈值时保留原文件作为本地副本，不读取其大正文。冲突或失败继续阻断普通同步，保留 Git 索引与历史。严格 `{ confirmed: true }` 的恢复只协调实际结果，不重放远端写操作；可单独取消，立即重试会等待前次取消清理结束。新增无关工作区不阻止原任务恢复，原相关配置及 SSH 身份变化仍拒绝。
-
-- 目录与下载复用 ssh2 的独立 SFTP 通道；写操作使用服务器已有 Python 3 标准库和 Linux `renameat2(RENAME_NOREPLACE)`。通过不跟随链接的目录描述符管理源与目标，使用原子不覆盖原语，复制与内容核对在服务器完成。网页提交操作类型与路径，不接受任意 shell 命令；缺少能力时拒绝写操作，不新增服务器安装或驻留服务。操作扫描限制为 50000 项、64 层及 30 秒元数据预算，不完整扫描阻止提交；正文传输与哈希耗时另受任务总截止时间控制。
-- 目标绑定打开面板时的工作区和 SSH 身份。相对路径从其服务器目录解析，其他绝对路径受当前账号权限约束并明确显示工作区外。浏览路径独立于工作区配置，目录读取不得改写本地/远端同步根或触发同步；返回工作区只改变浏览路径。规范化路径并核对对象类型，符号链接默认按链接本身管理，不隐式遍历链接目标；拒绝移动/删除已配置工作区根。
-- 目录读取分层分批，只取元数据，不因展示树递归读取内容；大小过滤仅用于判断同步关系，不隐藏服务器实际大文件。前端直接展示当前页返回条目，包括点文件和点目录，移除`showHidden`状态、属性和过滤；不改变同步范围或读取正文。目录体积和操作影响扫描仍由用户明确触发，保留范围、超时与截断反馈。
-- 操作预检返回实际源/目标、同名项、同步关联及需确认的影响。提交时重验对象，默认采用不覆盖语义，能力不支持时明确拒绝，不能先检查存在性再无条件覆盖。递归目录不隐式合并，删除与覆盖遵循绑定目标的确认。
-- 同文件系统移动优先原生重命名；跨文件系统按复制、结果核对、移除源分步执行，复制失败或未确认完成时保留源。阶段与进度只记录实际状态，回滚保证限于已确认完成的步骤。失败留下的部分目标须可识别、可查看，结果状态按实际阶段标注。
-- 同步关联按实际 SSH 目标和源/目标路径判断，覆盖本工具已管理的受影响工作区，不能仅按文件扩展名或当前面板判断混合目录。涉及同步范围时核对已有冲突，进入相应同步事务，完成前后状态核对；保留 Git 索引和历史，避免旧路径回传。仅服务器路径无需进入同步，移入范围的小文件仍遵守大小/排除规则。
-- 操作 ID 将远端执行结果和后续同步结果分开，查询/重开面板不重复执行变更。超时、断线或后端重启后不能确定结果时标为未确认，先重新读取源/目标再允许用户决定重试；取消只停止本工具拥有的该任务，不断开共享 SSH 连接，也不声称外部进程变化可被统一加锁。
-- 下载只在用户明确选择后进行，经 SSH/SFTP 和本地 HTTP 流式传输到用户选择的下载位置，控制缓冲并支持取消；不自动落入工作区镜像或 Git，不将大文件整体读入内存。服务器内部移动/复制不经过这条下载链路。
-- `downloads` 在打开前及打开句柄后复验普通文件属性。流的高水位为 64 KiB，ssh2 可预取更多数据，高水位不是硬内存上限；背压和中止传至独立 SFTP 通道。网页只用 File System Access API 选择位置并逐块写入，成功关闭后才报告完成；无该能力时明确不可用，不转交浏览器下载管理器。
-
-### 5.13 workspaces/setup：创建前向导与验证
-
-服务器档案存储在本机servers.json，以稳定managed-ssh-UUID别名接入共享resolver，认证方式为必填字段；不改写SSH config，密码继续使用独立凭据存储。host-trust通过独立无认证握手取得实际公钥，只接受显式确认后的未知公钥追加，变化/吊销拒绝；挑战两分钟、一次消费、有界32项。向导只选择档案及两端目录，缺少档案时打开同一管理入口并保留草稿。
-
-local/remote提供只读草稿目录浏览，每页200项、最多32组、15分钟空闲过期；remote复用RemoteFilesService独立SFTP通道，du按需执行。preview复用同步过滤，使用本地目录迭代和独立临时rclone lsjson清单，不读正文、不创建同步基线；20000项/30秒上限和20项排除例子，finally清理。
-
-verification生成五分钟/64项一次性快照票，绑定配置、认证代次、连接cacheKey、本地根身份及远端规范路径。生产POST工作区要求该票及首次同步确认；创建开始和store串行队列写盘前均复验，每轮race截止可释放挂起resolver。远端检查结束重新lstat/realpath，rclone拒绝逻辑/物理根重定向。最后检查之后的任意外部修改不属于已锁定保证。
-
-`POST /api/workspace-setup/verify`唯一请求为strict `{ input, previousBinding? }`。响应必含`binding`：进程随机秘密HMAC-SHA256绑定规范输入、connection cacheKey、凭据代次、认证模式、本地目录身份及解析远端路径；不返回这些敏感内部值。自动重验带原binding，服务端检查后不匹配就拒绝发票。绑定不依赖过期/撤销票的存储，重启失效，不能作为创建凭据。网页隐藏具体截止时间，到期/提交撞期/服务端过期均重验并取消确认；变化或失败保留草稿，不降级成无绑定重试。手动核对后可重新验证，创建仍必须新票和显式确认。
-
-保存是提交点，之后调用既有sync.initialize，真实失败/冲突保留工作区；不以HTTP30秒截止伪造首次同步失败。网页取消撤票、关闭草稿并清DOM密码；创建mutation完成后刷新列表，外部卸载不自动切换工作区。
-工作区记录不保存验证票或认证输入；网页按共享schema筛选工作区字段，再显式提交验证票与初始化确认，附加密码不会串入创建请求。
-
-### 5.14 settings：产品偏好与环境检测
-
-`shared/product-settings`定义严格设置与衍生resourceTiming；`settings/product-settings`独立保存JSON，复用safe-file身份、摘要、队列和原子替换。`defaultModels`已从公开schema/draft/store退休，仅磁盘读取边界定点剔除；其他未知/非法字段仍拒绝。读取不改原文，revision继续取原文件摘要，明确保存才写当前格式；坏文件503、陈旧409、接口no-store及本机访问控制保持。
-
-网页共享query管理偏好，实际window focus监听按QueryClient去重；保存发布新document前取消旧GET。产品设置编辑器单独保留读取基线/草稿，不被后台刷新覆盖。原生配置视图同时只挂一个dialog，编辑器按需加载，退出清理敏感内存。
-
-产品设置使用Ariakit四分类Tab，外层持有统一草稿/revision/phase，只挂当前内容并定位跨类错误。全局过滤/大小仅用于新向导，工作区规则继续独立保存。原生配置入口只放在“对话与模型”分类内，分别打开 Claude / Codex 约定文件，保持现有配置范围；模板只写成功读到的空白草稿，写入仍受revision与外部创建409约束。说明和可选规则教程按需展开，错误定位后保持输入。
-
-chat-store只保存默认Agent，初始与新会话模型覆盖为空；显式模型按Agent独立，native/actual报告只入证据缓存，选择以显式输入为准。high/auto沿用现行语义，已操作草稿优先于迟到偏好。新向导复制一次有效sync快照；页面自动文件同步默认/回退60秒，显式间隔保留，偏好变化销毁旧timer。3秒状态查询与手动/执行前后/保存后同步保持现有节奏；资源沿用独立间隔、超时、过期与失败退避。
-
-启动创建唯一environment service并开始一次并行检测，每工具5秒/2KiB；GET复用报告，POST手动刷新并拒绝并行刷新。正常执行即为可用，版本仅提取展示，无法解析显示未知；可用状态的条件限于退出码0、未超时且输出在限额内，输出与私有路径保留在后端。Claude原生路径在claude-launch统一，Codex沿用实际启动resolver；Node.js取当前进程，Git/rclone业务要求保持一致。网页共享查询，`EnvironmentSummary`在全部可用时返回null，缺失/失败保留设置入口；设置内保留状态、版本、检测时间和官方指引。全部Agent不可用仍可管理服务器；检测范围限于版本与环境探测，模型调用、SSH登录、安装与初始化均不在其中，检测基础见D37，显示策略见D40。
+- 对外错误只给分类与可操作提示（如「工作区不存在」「会话正在运行」「主机密钥已变化」），原始 stderr、绝对路径、凭据与协议诊断留在后端。
+- 启动日志只有数据迁移结果、监听地址与环境探测摘要；环境探测只提取版本号，不回显工具输出。
+- 原生配置的错误固定在 `settings/errors.ts`：格式或 Agent 不合法为 400，超限为 413，路径不安全与 revision 冲突为 409，读写失败为 500，未知异常统一折算成 500 的通用文案。产品设置文件损坏返回 503，工作区规则不可用同样返回 503。
+- 迁移与文件任务的异常不会中止启动，但会逐条打印，便于用户自行核对旧目录。
 
 ### 5.15 terminal：网页终端通道
 
-对应需求 F4、决策 D15。`terminal/binding` 签发五分钟签名票，绑定固定工作区、配置指纹、认证代次与随机值，不使用无界登记Map；过期原签名只允许刷新同一身份，不能开启PTY。固定绑定覆盖 IdentityFile 列表、所选私钥路径与内容摘要，私密摘要不进入令牌或日志。
-
-- 通道与协议：输入使用严格 base64 控制帧、输出为二进制，控制帧上限 64 KiB；独立终端 WebSocketServer 经 Fastify 公开升级入口与安全钩子选择，不改 ws 私有解析器、不降低聊天上限，`preClose` 回收活跃终端。
-- 移交与结束：SSH 通道 helper 统一取消与迟到回调；初始化用实际控制字节确认，避免回显误判，成功后暂停流再移交，SFTP 回调内即监听错误。PTY 开启后立即监听 EOF/退出，EOF 只是半关闭，未知退出码保持 `null`。
-- 背压：待发送与未确认输出分别计数，同时限制 stdout/stderr，输出排空后再发送退出；输入与输出队列独立。单窗格失败只释放所属通道与名额，不断开共享 SSH。
-- 稳定宿主：xterm 与原生 WS 放独立 runtime，分栏树只放槽位，所有窗格在稳定宿主下同级挂载。每标签最多4窗格、叶子最低 260×140px，不足时只显示活动窗格；收起、最大化、分屏和聊天切换不换实例，隐藏只停止 fit 并在 ready 后补发一次尺寸。
-- 输入保护：保留 Ctrl+C、原始粘贴与输入法事件，消费 OSC52、不加载自动链接插件；多行粘贴先确认，按 xterm 当前 bracketed-paste 模式封装，保留换行、不附 Enter，取消已开始粘贴仍闭合边界，断线或销毁则丢弃待发内容。
-- 终端不经过 Agent 黑名单与执行前同步，也不调用模型；目标、目录确认与独立 PTY 的生命周期见需求 F4 与界面规范 5.3。
+- 绑定：`POST terminal-binding` 签发五分钟有效的 HMAC 票，绑定固定目标（工作区、服务器、目录）、目标指纹与认证代次；过期只能换新票，不能直接开 PTY。
+- 通道：独立 `WebSocketServer` 复用 Fastify 的升级入口，只接管终端路径，避免降低对话帧上限；输入为 base64 控制帧，单帧 32 KiB、控制帧 64 KiB、输出缓冲上限 1 MiB。
+- 生命周期：打开 PTY 后立即监听 EOF 与退出，EOF 只算半关闭，退出码未知时保持 `null`；`preClose` 终止全部终端连接。
+- 背压：待发送与未确认输出分别计数，输入输出队列独立，排空后再发退出。
+- 前端：xterm 实例放在稳定运行时，分栏树只放槽位；每标签最多 4 窗格；多行粘贴先确认，按当前 bracketed-paste 模式封装。
 
 ## 6. 关键流程
 
 ### 6.1 一轮对话
 
-1. 网页消息显式提供Agent，新会话使用所选适配器，已有会话保持原Agent与官方ID；协议不填补隐式Claude。
-2. `TurnManager` 只接收 `runners` 注册表，main显式组装，未注册Agent拒绝。Claude固定SDK的close、supportedCommands、supportedModels及getContextUsage为必需契约；适配器启动/续接并注入远程工具，原生运行时负责上下文和压缩。
-3. Agent 在本地副本改代码；需要运行时调用 `remote_exec`。
-4. `remote_exec`：黑名单检查 → 执行前同步（含删除 / 冲突检查）→ 成功后 SSH 执行 → 拉回小文件 → 返回命令结果与同步状态。前置同步未成功则不执行。
-5. 普通消息或技能回复结束后再同步一次，界面更新待记录版本的改动数；纯 context/compact 不触发这次同步。不创建 git 提交，也不等待后台训练完成。
+1. 网页在 `/ws` 发送 `chat.send`，显式带 `agent`、`workspaceId`、`clientTurnId`，可选 `sessionId`、`model`、`reasoningEffort` 与能力选择。
+2. `TurnManager` 检查该会话是否在运行，在运行则回错误；取工作区租约后回 `turn.started`。
+3. 准备阶段读取工作区、复核会话归属、按选择或 `/` 名称解析能力、取对应 runner；任一步失败都以 `error` 收尾并释放租约。
+4. runner 启动或复用原生进程，事件经 `agent.event` 转发；审批事件挂起等待网页答复，答复必须同时匹配连接、轮次与请求 id。
+5. 轮次结束发 `turn.finished`；`changes` 只在原生工具事件报告过文件改动时出现，前端已不渲染。
+6. 全程没有同步、提交或快照动作，CLI 直接写工作区目录。
 
-### 6.2 保存与恢复
+### 6.2 会话发现与历史
 
-保存文件：由 Agent、外部编辑器或同步流程写入本地副本，网页不提供保存入口。保存版本：用户点“保存版本” → 过滤大文件 → git 提交。恢复：选择提交或文件 → git 恢复 → 同步到服务器。
+- 列表：`GET /api/workspaces/:id/sessions?agent=` 按工作区目录筛选（Claude 用 SDK 会话接口，Codex 用 `thread/list`，可带 `archived`），响应 `no-store`。
+- 历史：读原生记录后复核 id 与 `cwd`，返回事件数组；前端按选择代次丢弃迟到结果。
+- 管理：改名、删除、归档、分叉都调原生接口，并在会话锁内执行；删除要求 `confirmed`，标题 1–200 字符；分叉只接受服务端给出的可信点。
+- 归属只按原生 `cwd` 判定；不属于任何工作区目录的会话不会出现在列表里，「显示其他目录的会话」开关尚未实现。
 
-### 6.3 用户手动查看训练结果
+### 6.3 资源显示
 
-用户发送“查看这次训练的结果” → 原会话 Agent 继续 → 通过远程工具查询任务 / 日志 / 结果 → 如需统计或绘图，使用服务器已有 Python / 项目环境；新脚本先在本地编辑并同步 → 返回必要统计、日志或小图文件，未同步的大数据按需远程读取 → 在对话中分析。后台训练期间没有完成检测或自动 Agent 续跑。
+打开资源面板 → 固定目标（工作区、服务器、目录）→ `GET /resources` → 后端复验目标后命中缓存或采样 → 前端按设置间隔（默认 5 秒）刷新，面板隐藏、页面隐藏或断线即停。Slurm 独立首次或手动查询，两者都不进入对话，也不推断任务完成。
 
-### 6.4 资源显示
+### 6.4 直接管理服务器文件
 
-宽屏默认打开资源或用户主动打开资源面板 → 固定工作区目标 → HTTP读取对应SSH节点共享只读样本 → 更新独立节点时间。默认每5秒检查，资源自身隐藏/页面隐藏/网页断线暂停，文件开关不干扰；连接前后复验，失效输出不缓存。Slurm独立首次/手动读取当前账号固定文本，非error结果后端短缓存2秒，网页不定时刷新；目标/认证变化清快照并要求手动重查。两者均不进入对话适配器、不推断训练完成。
+打开服务器文件视图 → 绑定并建立浏览会话 → 逐层读取元数据 → 选择源与目标 → 预检并确认影响 → 提交任务 → 服务器侧执行 → 查询结果并刷新目录。仅服务器内操作，不经本机中转，不触发对话或模型。
 
-### 6.5 直接管理服务器文件
+当前后端与接口齐备，但面板尚未挂载到界面；下载链路仍在代码里，属待移除范围。
 
-用户切换“服务器文件” → 读取当前层元数据 → 选择源与目标 → 后端预检并确认必要影响 → 在服务器执行 → 刷新源/目标与任务结果。涉及同步范围时串行协调并分别反馈两端状态；仅服务器文件不下载、不触发模型或无关同步。权限、同名冲突和部分失败均就地反馈，验收见 A20–A23。
+### 6.5 启动与旧数据迁移
+
+`main` 依次执行：读取配置（拒绝非回环监听与非法端口）→ 迁移旧数据目录 → 创建数据目录 → 组装工作区存储、服务器档案、连接池、终端、资源、Slurm、文件服务与轮次管理 → 构建 Fastify 并注册路由 → 监听 → 打印访问地址与环境探测结果。收到 SIGINT 或 SIGTERM 时依次释放终端、资源、Slurm、连接池，再停止轮次并关闭 HTTP。
 
 ## 7. 设计决策
 
-完整记录见[设计决策](decisions.md)，长期维护D01–D44及后续背景与理由。现行方案遵循D36单版本、D37本机入口/档案、D38流程保护、D40强度/文本Slurm、D42停靠/原生分叉/密码编辑/模型收敛与D44本地文件只读/设置入口收敛；D41自由浮窗保留为被替代的历史，不并行维护。
+取舍集中在[设计决策](decisions.md)。D45 记录本次产品转向，并取代 D36–D44 中关于同步、版本、本地文件与网页形态的部分；SSH 认证、终端、资源与 Slurm 的既有判断继续有效。以下原则与代码一致：
 
-- 会话固定 Agent，沿用原生上下文、skills 与可接入的 `/` 命令。
-- 账号密码与私钥均支持，可选择本机系统加密保存密码；断开保留保存项，取消保存时清除并断开。
-- 自动同步连接本地编辑与远程运行，执行前同步失败时阻断。
-- 本地文件只读查看回答“现在是什么内容”，具体改动与版本对比交给改动/版本视图。
-- 文件区区分本地代码与服务器文件；未同步文件直接在远端管理，移动/复制不经本机中转。
-- 终端使用稳定PTY宿主，资源与文件自适应停靠且可同时存在；Slurm仅当前账号首次/手动，结果分析由用户发消息触发。
-- 本地后端继续 Node.js + TypeScript + Fastify，Python 分析默认在远端现有环境执行；打包与语言迁移未加入交付范围。
-- 以异步 I/O 协调对话、终端、同步和资源刷新，同一会话单轮、同一工作区同步串行。
-
-### 工作区移除生命周期
-
-`workspaces/activity` 提供按工作区的幂等租约与 closing 门禁；普通 HTTP 持有租约直到响应结束且 handler 完成，真实 WebSocket 升级以插件 `request.ws` 标记区分。对话租约覆盖准备至轮次同步收尾，初始化从新 ID 写盘前持有到结果完成。文件任务同时保护发起者及全部受影响工作区。
-
-`workspaces/removal`将确认绑定配置SHA256，在store串行写盘前复验摘要与阻断；阻断回调不重入store，读取全部持久任务、同步队列/remoteTask 与同步忙碌状态。保存失败保留配置；成功后关闭所属PTY/SFTP、撤销预检并清内存，单项失败返回清理警告，不断开共享SSH池、不删磁盘状态或原生历史。网页常驻业务收尾独立于确认弹窗，缓存按工作区取消，迟到结果不覆盖新选择。
+- 会话固定 Agent，沿用原生上下文与原生会话 id。
+- 会话正文只来自 CLI 存储，本产品不落库、不导出、不做事件投影缓存。
+- 服务器是人的工具：终端、资源、Slurm、文件管理都不经过 Agent。
+- 服务器凭据只用 Windows 当前用户加密保存，明文不进入配置与日志。
+- 同名目标只允许一条档案，连接按真实身份与认证代次复用。
+- 删除的域不保留开关或兼容路径；改名迁移只有一次，且不覆盖新目录。
 
 ## 8. 验证依据与边界
 
-实际结果统一见[最新验收](../guides/ui-usability-optimization-acceptance.md)。需求中的A编号是验收条件，不因架构已有实现就自动标为通过；旧V编号及分阶段过程记录不再在此重复。
-
-- D39共用右栏、D40优化、D41自由浮窗、D42停靠、D43界面简化与D44本地文件只读分别使用各自证据，其中D43/D44只在[决策](decisions.md)记录范围内成立；历史完整门禁、截图或CI不代替新树验证。
-- 原生模型、真实SSH/集群、受控夹具、合成IME和OS输入法分别标范围；没有新的付费模型、真实集群文本Slurm成功、OS输入法或CI检查时不得扩写通过。
-- A8只要求网页删除及官方API/原生记录核对；VS Code/CLI和系统选择器是检查手段，不派生外部客户端功能。被策略拒绝的系统界面检查不绕过。
-- 独立SSH连接中断、受控取消和成功哈希不能推导共享池、全网络故障或原任务已收到verified。
-- 保存API的网页替身不证明OS选择器已实测，旧Firefox下载分支不属于现行实现。只验证改动及关联部分；无可靠基准或影响不明时再扩大范围。
+- 验收编号 A1–A29 见[需求](../product/requirements.md)，是条件而不是现状；代码存在不等于条目通过。
+- 当前明确未满足的部分：桌面壳、Antigravity 接入、项目列表与新建入口、服务器面板以档案为键、原生配置覆盖面、启动环境注入、下载移除、会话实时监听。
+- 已有实现并有测试覆盖的部分：两个适配器的会话读取与轮次协议、审批、工作区与设置存储、SSH 档案与凭据、主机信任、终端、资源采样、Slurm 文本查询、服务器文件操作、环境探测。
+- 测试在各包 `tests/` 下按模块镜像；真实链路用 `scripts/dev/e2e-*.ts`；没有 Playwright 端到端测试。
+- 浏览器访问同一地址仍然可用，但按设计它不是产品入口；桌面壳落地前不应把它写成已交付形态。
+- 未验证项：真实 Antigravity 会话、真实集群上的 Slurm 成功输出、操作系统输入法、安装包与自动更新。

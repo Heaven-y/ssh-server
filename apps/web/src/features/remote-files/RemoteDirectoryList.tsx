@@ -102,7 +102,7 @@ export function RemoteDirectoryList({
     setDropPath(undefined);
     if (loading) return;
     try {
-      const data = JSON.parse(event.dataTransfer.getData('application/x-ssh-server-remote-file')) as {
+      const data = JSON.parse(event.dataTransfer.getData('application/x-agentdeck-remote-file')) as {
         sessionId?: unknown;
         path?: unknown;
       };
@@ -127,7 +127,7 @@ export function RemoteDirectoryList({
           if (!loading) openMenu(undefined, event.currentTarget);
         }}
         onDragOver={(event) => {
-          if (event.dataTransfer.types.includes('application/x-ssh-server-remote-file')) event.preventDefault();
+          if (event.dataTransfer.types.includes('application/x-agentdeck-remote-file')) event.preventDefault();
         }}
         onDrop={(event) => dropped(event, directory.path)}
       >
@@ -146,7 +146,7 @@ export function RemoteDirectoryList({
               menu={(anchor) => openMenu(entry, anchor)}
               drag={(event) => {
                 event.dataTransfer.setData(
-                  'application/x-ssh-server-remote-file',
+                  'application/x-agentdeck-remote-file',
                   JSON.stringify({ sessionId, path: entry.path }),
                 );
                 event.dataTransfer.effectAllowed = 'copyMove';
@@ -156,7 +156,7 @@ export function RemoteDirectoryList({
               dragOver={(event) => {
                 if (
                   entry.type === 'directory' &&
-                  event.dataTransfer.types.includes('application/x-ssh-server-remote-file')
+                  event.dataTransfer.types.includes('application/x-agentdeck-remote-file')
                 ) {
                   event.preventDefault();
                   event.stopPropagation();

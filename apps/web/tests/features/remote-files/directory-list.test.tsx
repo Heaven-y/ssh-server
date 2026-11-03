@@ -93,7 +93,7 @@ it('同一浏览会话拖放只提交待确认操作，外部与其他会话拖�
   render(<Harness action={action} />);
   const folder = screen.getByRole('button', { name: /^folder/, pressed: false }).closest('li')!;
   const transfer = (sessionId: string) => ({
-    types: ['application/x-ssh-server-remote-file'],
+    types: ['application/x-agentdeck-remote-file'],
     getData: () => JSON.stringify({ sessionId, path: '/project/file2.py' }),
   });
   fireEvent.drop(folder, { dataTransfer: transfer('other') });

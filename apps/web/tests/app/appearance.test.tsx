@@ -14,7 +14,7 @@ it('顶栏显示明确目标主题文字，切换保存偏好而不卸载其他�
   expect(screen.getByRole('button', { name: '切换深色主题' }).textContent).toBe('深色');
   fireEvent.click(screen.getByRole('button', { name: '切换深色主题' }));
   expect(screen.getByRole('button', { name: '切换浅色主题' }).textContent).toBe('浅色');
-  expect(JSON.parse(localStorage.getItem('ssh-server.ui.v1')!).theme).toBe('dark');
+  expect(JSON.parse(localStorage.getItem('agentdeck.ui.v1')!).theme).toBe('dark');
   fireEvent.click(screen.getByRole('button', { name: '切换浅色主题' }));
   expect(useUiPreferences.getState().theme).toBe('light');
 });
