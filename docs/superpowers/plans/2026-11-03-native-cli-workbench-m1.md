@@ -78,10 +78,12 @@ apps/web/src/
 
 **Files:**
 - Delete: `apps/server/src/sync/`（整个目录）、`apps/server/src/vcs/`、`apps/server/src/files/`
-- Delete: `apps/server/src/workspaces/setup/`（双端向导，依赖同步，随同步域一起走）
+- Delete: `apps/server/src/workspaces/setup/`（双端向导，依赖同步）、`apps/server/src/workspaces/removal.ts`、`removal-resources.ts`（删项目的阻断逻辑全部由同步与待恢复文件任务推导而来，新模型下删项目只是删一条配置）
 - Delete: `apps/server/src/http/sync.routes.ts`、`versions.routes.ts`、`files.routes.ts`、`workspace-setup.routes.ts`
-- Delete: `apps/web/src/features/sync/`、`versions/`、`changes/`、`files/`、`workspaces/setup/`
-- Delete: `apps/server/tests/sync/`、`vcs/`、`files/`；`apps/server/tests/workspaces/setup/`；`apps/web/tests/features/sync/`、`versions/`、`changes/`、`files/`、`workspaces/setup/`
+- Delete: `apps/web/src/features/sync/`、`versions/`、`changes/`、`files/`、`workspaces/setup/`、`workspaces/WorkspaceForm.tsx`、`workspaces/WorkspaceSidebar.tsx`、`workspaces/WorkspaceRemoveDialog.tsx`、`workspaces/removal-client.ts`
+- Delete: `apps/server/tests/sync/`、`vcs/`、`files/`；`apps/server/tests/workspaces/setup.test.ts`、`setup-review.test.ts`、`removal.test.ts`、`removal-review.test.ts`、`directory-order.test.ts`
+- Delete: `apps/web/tests/features/sync/`、`versions/`、`changes/`、`files/`、`workspaces/setup.test.tsx`、`setup-directory.test.tsx`、`removal.test.tsx`
+- Keep untouched: `apps/web/src/features/workspaces/` 下的会话相关文件（`session-fork.ts`、`session-links.ts`、`session-preferences.ts`、`SessionList.tsx`、`SessionGroup.tsx`、`SessionMenu.tsx`、`SessionActionsDialog.tsx`、`SessionForkDialog.tsx`、`use-session-link-copy.tsx`）——它们与同步无关，Task 10 会迁到 `features/sessions/`
 - Modify: `apps/server/src/main.ts`、`apps/web/src/app/*.tsx`（移除对上述模块的引用）
 - Modify: `apps/server/package.json`、`apps/web/package.json`（移除无用依赖）
 
@@ -96,15 +98,15 @@ Expected: 通过。若不通过，先解决基线问题再动手。
 
 - [ ] **Step 2: 删除后端三个域的目录与路由**
 
-删除上述 `apps/server/src/` 下的三个目录、`workspaces/setup/` 与四个路由文件，然后从 `main.ts` 中移除对应 import 与装配代码（`createSyncManager`、`createVersionsService`、`createWorkspaceFilesService`、`createWorkspaceSetup`、`registerSyncRoutes`、`registerVersionRoutes`、`registerDiscardRoutes`、`registerFileRoutes`、`registerWorkspaceSetupRoutes`）。
+删除上述 `apps/server/src/` 下的目录与四个路由文件，然后从 `main.ts` 中移除对应 import 与装配代码（`createSyncManager`、`createVersionsService`、`createWorkspaceFilesService`、`createWorkspaceSetup`、`createWorkspaceRemoval`、`createWorkspaceRemovalResources`、`registerSyncRoutes`、`registerVersionRoutes`、`registerDiscardRoutes`、`registerFileRoutes`、`registerWorkspaceSetupRoutes`，以及 `removal` 传给 `buildApp` 的参数）。
 
 - [ ] **Step 3: 修复被牵连的调用点**
 
-`chat/turn-manager.ts` 里对 `sync`、`changedPaths` 的依赖一并删除（对应构造参数、调用与类型）。`workspaces/removal-resources.ts` 里对 `sync`、`files` 的引用删除。`workspaces.routes.ts` 里删掉引用 setup 的分支——这个文件在 Task 9 会被 `projects.routes.ts` 取代，此处只需让它编译通过。
+`chat/turn-manager.ts` 里对 `sync`、`changedPaths` 的依赖一并删除（对应构造参数、调用与类型）。`ssh/profiles.ts` 里对 `activity`/`removal` 的引用删除——服务器档案管理不再需要「共享工作区影响」检查。`http/app.ts` 里删掉 `removal` 依赖。`workspaces.routes.ts` 里删掉 setup 与 removal 相关分支——这个文件在 Task 9 会被 `projects.routes.ts` 取代，此处只需让它编译通过。
 
 - [ ] **Step 4: 删除前端 feature 目录与引用**
 
-删除 `features/sync`、`features/versions`、`features/changes`、`features/files`，移除 `app/WorkspacePanels.tsx`、`WorkspaceTools.tsx`、`App.tsx`、`TopBar.tsx`、`CommandPalette.tsx` 中对它们的引用。这一步骤只求编译通过，布局的正式重写在 Task 12。
+删除上面列出的前端目录与文件，移除 `app/` 下 `App.tsx`、`TopBar.tsx`、`CommandPalette.tsx`、`WorkspacePanels.tsx`、`WorkspaceTools.tsx` 中对它们的引用。这一步骤只求编译通过，布局的正式重写在 Task 12（原文中的 Task 10）。
 
 - [ ] **Step 5: 移除无用依赖**
 
@@ -362,8 +364,10 @@ git commit -m "feat(workspaces): 项目改为本地目录加可选服务器绑�
 - Modify: `apps/server/src/main.ts`（启动时调用一次）
 
 **Interfaces:**
-- Consumes: Task 4 的 `WorkspaceStore`
-- Produces: `importLegacyWorkspaces(deps): Promise<ImportReport>`，其中 `ImportReport = { imported: number; skipped: number; backupFiles: string[] }`
+- Consumes: Task 3 的 `WorkspaceInputSchema`
+- Produces: `importLegacyWorkspaces(deps: { configDir: string; store: WorkspaceStore }): Promise<ImportReport>`，`ImportReport = { imported: number; skipped: number; backupFiles: string[]; message?: string }`
+
+注意：导入**不经过** `store.create()`，因为要保留旧 `id`；它直接写文件，与 `store.ts` 的 `save()` 用同一套原子写法。
 
 - [ ] **Step 1: 写失败测试 —— 旧字段被丢弃、文件改名为 .bak**
 
@@ -394,7 +398,15 @@ it('目录已不存在的旧项目跳过并计数', async () => {
 
 it('没有旧文件时什么都不做', async () => {
   const report = await importLegacyWorkspaces({ configDir, store });
-  expect(report).toEqual({ imported: 0, skipped: 0, backupFiles: [] });
+  expect(report).toMatchObject({ imported: 0, skipped: 0, backupFiles: [] });
+});
+
+it('旧文件不是合法 JSON 时保留原文件不迁移', async () => {
+  await writeFile(path.join(configDir, 'workspaces.json'), '{ 坏掉的 json');
+  const report = await importLegacyWorkspaces({ configDir, store });
+  expect(report.imported).toBe(0);
+  expect(report.message).toMatch(/无法解析/);
+  await expect(readFile(path.join(configDir, 'workspaces.json'), 'utf8')).resolves.toBe('{ 坏掉的 json');
 });
 ```
 
@@ -405,7 +417,16 @@ Expected: FAIL —— 模块不存在。
 
 - [ ] **Step 3: 实现 `import.ts`**
 
-读 `<configDir>/workspaces.json`；`ENOENT` 直接返回空报告。逐条：`localDir`→`dir`、`sshHost`→`server`；目录不存在计入 `skipped`；成功计入 `imported`。全部处理完后把旧文件 `rename` 成 `workspaces.json.bak`，路径记入 `backupFiles`。**不得删除旧文件**。写入新格式时用 Task 4 的 store 校验；单条失败只跳过该条，不中断整体。
+顺序必须是这样，否则会自己覆盖自己：
+
+1. 读 `<configDir>/workspaces.json` 原始内容；`ENOENT` 直接返回空报告 `{ imported: 0, skipped: 0, backupFiles: [] }`。
+2. 解析失败（不是合法 JSON 或不是数组）也返回空报告，并把原文件原样留在原地，只在 `message` 里说明「旧配置无法解析，未迁移」。
+3. **先把旧文件 `rename` 成 `workspaces.json.bak`**，路径记入 `backupFiles`。不删除旧文件。
+4. 再逐条把 `localDir`→`dir`、`sshHost`→`server`、其余未知字段丢弃；用 `path.isAbsolute` + `stat` 校验目录存在。目录不存在或不合法该条计入 `skipped`，不中断整体。
+5. **保留原 `id`**（不要调 `store.create`，那会生成新 UUID），把结果数组直接原子写入 `workspaces.json`（写临时文件再 `rename`，与 `store.ts` 的 `save()` 同一套做法）。
+6. 返回 `{ imported, skipped, backupFiles }`。
+
+单条失败只跳过该条，绝不因为一条坏数据丢掉整个列表。
 
 - [ ] **Step 4: 运行确认通过**
 
@@ -414,7 +435,7 @@ Expected: PASS
 
 - [ ] **Step 5: 接入启动流程**
 
-在 `main.ts` 里 `createWorkspaceStore` 之后、注册路由之前调用一次，并把 `ImportReport` 打进启动日志（中文，不含任何路径之外的敏感信息）。
+在 `main.ts` 里 `createWorkspaceStore` 之后、注册路由之前调用一次。**只有当新 `workspaces.json` 不存在时才调用**（避免每次启动都重复迁移把用户的 .bak 冲掉），并把 `ImportReport` 打进启动日志（中文，只报数量与是否有备份，不打印项目清单）。
 
 - [ ] **Step 6: 类型检查与全量测试**
 
@@ -682,7 +703,8 @@ git commit -m "feat(sessions): 三个 CLI 统一的会话归属裁决" -m "- Cla
 
 **Files:**
 - Create: `apps/server/src/http/projects.routes.ts`、`apps/server/src/http/probe.routes.ts`
-- Modify: `apps/server/src/http/sessions.routes.ts`、`apps/server/src/http/workspaces.routes.ts`（改为 projects）
+- Delete: `apps/server/src/http/workspaces.routes.ts`（被 `projects.routes.ts` 取代，不同时保留两套）
+- Modify: `apps/server/src/http/sessions.routes.ts`、`apps/server/src/http/app.ts`（`buildApp` 不再接收 `setup`/`removal`）
 - Test: `apps/server/tests/http/projects.routes.test.ts`、`apps/server/tests/http/sessions.routes.test.ts`
 
 **Interfaces:**
@@ -738,9 +760,9 @@ Expected: FAIL —— 路由不存在。
 Run: `npx vitest run apps/server/tests/http`
 Expected: PASS
 
-- [ ] **Step 5: 在 `main.ts` 注册新路由并移除旧的工作区路由**
+- [ ] **Step 5: 在 `main.ts` 注册新路由并删除旧的 `workspaces.routes.ts`**
 
-保留服务器档案、SSH、终端、资源、Slurm、远端文件的路由不动。
+保留服务器档案、SSH、终端、资源、Slurm、远端文件的路由不动。`buildApp` 的 `setup`、`removal` 参数随之删除，`app.ts` 里对应分支一并清掉。
 
 - [ ] **Step 6: 类型检查与全量测试**
 
@@ -760,8 +782,9 @@ git commit -m "feat(http): 项目、会话与探测路由" -m "- /api/projects �
 
 **Files:**
 - Create: `apps/web/src/app/Sidebar.tsx`、`apps/web/src/app/SessionPane.tsx`、`apps/web/src/app/ServerDock.tsx`
+- Move: `apps/web/src/features/workspaces/` 下的会话相关文件 → `apps/web/src/features/sessions/`（`session-fork.ts`、`session-links.ts`、`session-preferences.ts`、`SessionList.tsx`、`SessionGroup.tsx`、`SessionMenu.tsx`、`SessionActionsDialog.tsx`、`SessionForkDialog.tsx`、`use-session-link-copy.tsx`），并同步移动对应测试
 - Modify: `apps/web/src/app/App.tsx`、`TopBar.tsx`、`WorkspaceLayout.tsx`、`WorkspaceColumns.tsx`
-- Delete: `apps/web/src/app/WorkspacePanels.tsx`、`WorkspaceTools.tsx`、`WorkspacePanelFrame.tsx`、`WorkspaceArea.tsx`
+- Delete: `apps/web/src/app/WorkspacePanels.tsx`、`WorkspaceTools.tsx`、`WorkspacePanelFrame.tsx`、`WorkspaceArea.tsx`、`use-workspace-navigation.ts`
 - Test: `apps/web/tests/app/Sidebar.test.tsx`
 
 **Interfaces:**
