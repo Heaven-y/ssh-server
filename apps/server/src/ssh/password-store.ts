@@ -46,9 +46,7 @@ export function createPasswordStore(deps: Deps) {
   const revision = (key: string) => revisions.get(key) ?? 0;
   const target = (identity: string) => {
     const key = digest(identity).toString('hex');
-    // entropy 里的 'ssh-server' 是历史值，不可随产品改名而变：改动它会让已保存的凭据
-    // 无法解密（派生密钥不同）。保留旧串是兼容要求，不是遗漏。
-    return { key, file: path.join(directory, `${key}.json`), entropy: digest(`ssh-server:credential:${identity}`) };
+    return { key, file: path.join(directory, `${key}.json`), entropy: digest(`AgentDeck:credential:${identity}`) };
   };
   async function ensureDirectory() {
     await mkdir(directory, { recursive: true, mode: 0o700 });
