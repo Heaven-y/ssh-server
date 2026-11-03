@@ -51,6 +51,7 @@ describe('createWorkspaceStore', () => {
       name: 'WorkspaceValidationError',
       field: 'dir',
     });
+    await expect(make({ dirExists: false }).create(input())).rejects.toThrow(/项目目录不存在/);
   });
 
   it('相对路径的项目目录报错', async () => {
@@ -59,6 +60,7 @@ describe('createWorkspaceStore', () => {
 
   it('未登记的服务器时报 server 字段错误', async () => {
     await expect(make().create({ ...input(), server: 'unknown' })).rejects.toMatchObject({ field: 'server' });
+    await expect(make().create({ ...input(), server: 'unknown' })).rejects.toThrow(/服务器未登记/);
   });
 
   it('服务器目录不合法时报 remoteDir 字段错误', async () => {
@@ -68,7 +70,30 @@ describe('createWorkspaceStore', () => {
   it('未绑定服务器时不能设置默认目录', async () => {
     await expect(make().create({ name: 'demo', dir: projectDir, remoteDir: '~/projects/demo' })).rejects.toMatchObject({
       field: 'remoteDir',
+      message: '未绑定服务器时不能设置服务器目录',
     });
+  });
+
+  it('绑定服务器时必须同时设置服务器目录，不能留下半绑定项目', async () => {
+    // 只有 server 的项目打不开任何服务器面板，却会占住 target_referenced 名额。
+    await expect(make().create({ name: 'demo', dir: projectDir, server: 'my-server' })).rejects.toMatchObject({
+      name: 'WorkspaceValidationError',
+      field: 'remoteDir',
+      message: '绑定服务器时必须设置服务器目录',
+    });
+  });
+
+  it('update 不能把已绑定项目改成半绑定，也不能只解绑一半', async () => {
+    const store = make();
+    const ws = await store.create(input());
+    await expect(store.update(ws.id, { remoteDir: undefined })).rejects.toMatchObject({ field: 'remoteDir' });
+    await expect(store.update(ws.id, { server: undefined })).rejects.toMatchObject({ field: 'remoteDir' });
+    expect(await store.get(ws.id)).toEqual(ws);
+    // 同时解绑两半是允许的：项目退回纯本地。
+    const unbound = await store.update(ws.id, { server: undefined, remoteDir: undefined });
+    expect(unbound).toMatchObject({ id: ws.id });
+    expect(unbound).not.toHaveProperty('server');
+    expect(unbound).not.toHaveProperty('remoteDir');
   });
 
   it.each(['{private-secret', '{}', '[null]', '[{"id":"secret"}]'])('%s损坏拒绝读写并保留原文', async (text) => {
@@ -108,6 +133,19 @@ describe('createWorkspaceStore', () => {
     const valid = await make().create(input());
     const file = path.join(configDir, 'workspaces.json');
     const text = JSON.stringify([valid, { ...valid, id: 'other', dir: 'relative/dir' }]);
+    await writeFile(file, text, 'utf8');
+    await expect(make().list()).rejects.toMatchObject({ name: 'WorkspaceStorageError' });
+    expect(await readFile(file, 'utf8')).toBe(text);
+  });
+
+  const halfBoundPatches = [
+    { label: '只有服务器没有服务器目录', patch: { remoteDir: undefined } },
+    { label: '只有服务器目录没有服务器', patch: { server: undefined } },
+  ] as const;
+  it.each(halfBoundPatches)('落盘文件里的半绑定条目（$label）同样阻止读取', async ({ patch }) => {
+    const valid = await make().create(input());
+    const file = path.join(configDir, 'workspaces.json');
+    const text = JSON.stringify([{ ...valid, id: 'other', ...patch }]);
     await writeFile(file, text, 'utf8');
     await expect(make().list()).rejects.toMatchObject({ name: 'WorkspaceStorageError' });
     expect(await readFile(file, 'utf8')).toBe(text);

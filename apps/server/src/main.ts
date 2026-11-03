@@ -102,7 +102,6 @@ async function main(): Promise<void> {
     store,
     pool,
     bindings: terminalBindings,
-    assertWorkspaceOpen: activity.assertOpen,
   });
   const resources = createResourcesService({
     store,

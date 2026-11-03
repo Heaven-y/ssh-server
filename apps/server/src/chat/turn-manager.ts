@@ -4,7 +4,6 @@ import type { AgentEvent, AgentKind, ClientMessage, ServerMessage, SessionRef, W
 import type { AgentTurnInput, PermissionAnswer, TurnHandle, TurnRunner } from '../agents/types';
 import { SessionError, type SessionsService } from './sessions';
 import type { CapabilitiesService } from './capabilities';
-import { WorkspaceRemovalError } from '../workspaces/activity';
 
 export type Socket = { send(msg: ServerMessage): void; isOpen(): boolean };
 export type TurnManagerDeps = {
@@ -175,11 +174,11 @@ export class TurnManager {
   private acquireWorkspace(socket: Socket, msg: Send): { release?: () => void } | undefined {
     try {
       return { release: this.deps.acquireWorkspace?.(msg.workspaceId) };
-    } catch (error) {
+    } catch {
       this.send(socket, {
         type: 'error',
         clientTurnId: msg.clientTurnId,
-        message: error instanceof WorkspaceRemovalError ? error.message : '工作区当前不可用，请刷新后重试',
+        message: '工作区当前不可用，请刷新后重试',
       });
       return;
     }
