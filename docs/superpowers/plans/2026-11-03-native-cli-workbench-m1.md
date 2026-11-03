@@ -376,15 +376,19 @@ git commit -m "feat(workspaces): 项目改为本地目录加可选服务器绑�
 - 同步策略相关校验随域删除"
 ```
 
-## Task 5: 一次性导入旧配置
+## Task 5: 字段级转换旧配置
 
 **Files:**
 - Create: `apps/server/src/workspaces/import.ts`
 - Test: `apps/server/tests/workspaces/import.test.ts`
 - Modify: `apps/server/src/main.ts`（启动时调用一次）
 
+**已完成的前置，不要重做**：**目录级**迁移已经落地在 `apps/server/src/workspaces/migrate-legacy.ts`（测试 `tests/workspaces/migrate-legacy.test.ts`），由 `main.ts` 在 `mkdir(configDir)` 之前调用。它只负责把旧目录 `%LOCALAPPDATA%\ssh-server\` 里的 `servers.json` 与 `workspaces.json` **原样复制**到 `%LOCALAPPDATA%\AgentDeck\`：不覆盖已有文件、不删除旧目录、不转换字段。
+
+本任务做的是**字段级**转换——把已经位于新目录里的 `workspaces.json` 从旧结构改写成新结构。两者不要合并，也不要让 `import.ts` 再去找旧路径，那是 `migrate-legacy.ts` 的职责。
+
 **Interfaces:**
-- Consumes: Task 3 的 `WorkspaceInputSchema`
+- Consumes: Task 3 的 `WorkspaceInputSchema`、`migrate-legacy.ts` 已放好的 `workspaces.json`
 - Produces: `importLegacyWorkspaces(deps: { configDir: string; store: WorkspaceStore }): Promise<ImportReport>`，`ImportReport = { imported: number; skipped: number; backupFiles: string[]; message?: string }`
 
 注意：导入**不经过** `store.create()`，因为要保留旧 `id`；它直接写文件，与 `store.ts` 的 `save()` 用同一套原子写法。
@@ -973,10 +977,167 @@ git commit -m "docs: 按原生 CLI 工作台重构文档" -m "- README、需求�
 
 ---
 
+## Task 13: 移除服务器文件下载
+
+**前置说明**：这是本轮唯一的能力收缩。用户明确不用下载，其余 SSH 能力保持与现有 ssh console 一致。**只删下载，不要顺手改动新建/重命名/移动/复制/删除**——那些要保留。
+
+**Files:**
+- Delete: `apps/server/src/remote-files/downloads.ts`
+- Delete: `apps/web/src/features/remote-files/RemoteDownloadDialog.tsx`
+- Modify: `apps/server/src/remote-files/service.ts`、`apps/server/src/remote-files/tasks.ts`（去掉下载任务类型与分支）
+- Modify: `apps/server/src/http/remote-files.routes.ts`、`remote-file-actions.routes.ts`（删除下载路由）
+- Modify: `packages/shared/src/remote-files.ts`（删除下载相关的类型与 `RemoteDownload*`）
+- Modify: `apps/web/src/features/remote-files/RemoteActionToolbar.tsx`、`RemoteFilesPanel.tsx`（去掉下载入口）
+- Test: `apps/server/tests/remote-files/`、`apps/web/tests/features/remote-files/` 下与下载相关的用例一并删除
+
+**Interfaces:**
+- Consumes: 无
+- Produces: 后端没有任何下载路由；前端没有任何下载入口与 `showSaveFilePicker` 调用
+
+- [ ] **Step 1: 先找全引用**
+
+```powershell
+# 服务端
+Select-String -Path apps/server/src -Include *.ts -Recurse -Pattern 'download|Download' | Select-Object Path,LineNumber,Line
+# 前端
+Select-String -Path apps/web/src -Include *.ts,*.tsx -Recurse -Pattern 'download|Download|showSaveFilePicker' | Select-Object Path,LineNumber,Line
+# 共享协议
+Select-String -Path packages/shared/src -Include *.ts -Recurse -Pattern 'download|Download' | Select-Object Path,LineNumber,Line
+```
+
+把结果记进报告，确认没有漏掉的路由或界面入口。
+
+- [ ] **Step 2: 删服务端**
+
+删除 `downloads.ts`，从 `service.ts` 与 `tasks.ts` 移除下载任务类型、分支与校验；从两个路由文件移除下载端点。**注意保留** `operation.ts` 的其它操作类型、`path-locks.ts`、`preflight.ts`——它们服务文件增删改，不是下载专用。
+
+- [ ] **Step 3: 删前端**
+
+删除 `RemoteDownloadDialog.tsx`，从工具栏与面板移除下载入口，删掉 `showSaveFilePicker` 的全部用法（`RemoteDownloadDialog.tsx` 是全仓唯一一处，删完应该零处）。
+
+验证：`Select-String -Path apps/web/src -Include *.ts,*.tsx -Recurse -Pattern 'showSaveFilePicker'` 应无结果。
+
+- [ ] **Step 4: 删协议与测试**
+
+从 `packages/shared/src/remote-files.ts` 删除下载相关类型与导出；删除两侧对应的测试文件/用例。
+
+- [ ] **Step 5: 全量门禁**
+
+Run: `npm.cmd run typecheck && npm.cmd test`
+Expected: 通过。若某个测试因下载移除而失效，**删除该用例**，不要把断言改成空断言。
+
+- [ ] **Step 6: 提交**
+
+```bash
+git add -A
+git commit -m "refactor(remote-files): 移除服务器文件下载" -m "- 用户明确不用下载；新建、重命名、移动、复制、删除保留
+- 删除 downloads.ts、RemoteDownloadDialog 与 showSaveFilePicker 用法
+- 同步精简 shared 协议与两侧测试"
+```
+
+---
+
+## Task 14: Electron 桌面壳
+
+**前置说明**：本任务让产品从「浏览器访问端口」变成「双击打开的应用」。**不要改动任何业务代码**——Fastify 服务原样复用，只是换个启动方式与加载方式。浏览器访问同一地址仍然可用，那是调试手段。
+
+**Files:**
+- Create: `apps/desktop/package.json`、`apps/desktop/tsconfig.json`、`apps/desktop/electron.vite.config.ts`
+- Create: `apps/desktop/src/main.ts`、`apps/desktop/src/preload.ts`
+- Modify: `package.json`（workspaces 已含 `apps/*`，无需改；新增 `dev:desktop` 脚本与 `electron`、`electron-vite` 依赖）
+- Test: `apps/desktop/tests/main.test.ts`（启动编排的单元测试，不真的开窗口）
+
+**Interfaces:**
+- Consumes: `apps/server/src/config.ts` 的 `loadConfig` 与 `apps/server/src/main.ts` 的启动函数（若现在是 `main()` 自执行，抽出一个可复用的 `startServer(config)`）
+- Produces: `npm run dev:desktop` 打开桌面窗口；窗口关闭时后端随之退出
+
+- [ ] **Step 1: 先确认后端可被程序化启动**
+
+读 `apps/server/src/main.ts`。当前是 `void main()` 自执行。需要把它拆成：
+
+```ts
+export async function startServer(config: ServerConfig): Promise<{ url: string; close: () => Promise<void> }>
+```
+
+`close()` 要能真正释放端口并断开 SSH 池（现有代码里应该已有 `app.close()` 与 pool 的清理路径，复用即可）。**不要改业务逻辑**，只做「把自执行的 main 拆成可调用函数 + 保留 CLI 入口」。
+
+先写测试：调用 `startServer({ port: 0, ... })` 应返回一个能连上的 `url`，`close()` 后端口不再监听。
+
+- [ ] **Step 2: 建 desktop 包**
+
+`apps/desktop/package.json`：
+
+```json
+{
+  "name": "@agentdeck/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "out/main.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build"
+  }
+}
+```
+
+依赖：`electron`、`electron-vite`（devDependencies）。根 `package.json` 加脚本：
+
+```json
+"dev:desktop": "npm run dev:desktop -w @agentdeck/desktop"
+```
+
+- [ ] **Step 3: 写主进程**
+
+`apps/desktop/src/main.ts` 要点：
+
+- `app.whenReady()` 里先 `startServer(...)`，拿到实际 `url`（端口用 `0` 让系统分配，避免和工作中的后端抢 4317）。
+- 再 `new BrowserWindow({ webPreferences: { preload, contextIsolation: true, nodeIntegration: false } })`，`loadURL(url)`。
+- `window-all-closed` 与 `before-quit` 里调用 `close()`，**确保不留孤儿进程**。
+- 单实例：`app.requestSingleInstanceLock()`，拿不到锁就退出；第二次启动时聚焦已有窗口。
+- 开发模式加载 Vite dev server 的地址，生产模式加载打包后的静态文件。用 `process.env.ELECTRON_RENDERER_URL` 判断（`electron-vite` 的约定）。
+- **不要**在渲染层暴露 Node：`nodeIntegration: false`、`contextIsolation: true`。
+
+- [ ] **Step 4: 写 preload**
+
+`apps/desktop/src/preload.ts` 只暴露窄接口，本期先只留一个占位与未来扩展点：
+
+```ts
+import { contextBridge } from 'electron';
+
+contextBridge.exposeInMainWorld('agentDeck', {
+  platform: process.platform,
+});
+```
+
+**不要**暴露 `ipcRenderer` 整体或 `require`。将来需要系统对话框时再逐个加具名方法。
+
+- [ ] **Step 5: 补 CLI 路径覆盖的提示（只做后端准备，不做界面）**
+
+设计 §1.1 承诺：PATH 继承可能让从开始菜单启动的应用找不到 CLI。本步骤只做最小准备——确认 `agents/probe.ts`（Task 6 产物）在探测失败时返回的错误里**包含可执行文件名**，界面将来据此提示。不加新的设置项。
+
+- [ ] **Step 6: 手工验证**
+
+Run: `npm.cmd run dev:desktop`
+Expected: 打开一个窗口，看到 AgentDeck 界面；关掉窗口后任务管理器里没有残留的 node 进程。
+
+同时验证浏览器仍可访问（`npm.cmd run dev` 起的那个地址）。
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add -A
+git commit -m "feat(desktop): 加入 Electron 桌面壳" -m "- 主进程启动本机服务并用窗口加载它，关窗即退出、单实例
+- preload 只暴露窄接口，渲染层不开 Node 集成
+- 后端 main 拆出可编程的 startServer，CLI 入口保留"
+```
+
+---
+
 ## 后续计划（不在本计划内）
 
-M1 完成后另行编写：
+M1 与 M1.5 完成后另行编写：
 
 - **M2 对话**：回合管理按会话持有、事件缓冲与重连挂载、三个 CLI 的流式回合、审批卡片（Claude/Codex）与权限模式条（Antigravity）、软拒提示、会话级参数。
 - **M3 配置与服务器**：原生配置编辑（用户级 + 项目级、掩码可展开）、启动环境增删改停用、服务器面板改以服务器档案为键、命令面板。
-- **M4 打磨**：目录监听实时刷新、运行状态展示、键盘操作、CLI 升级后重新探测、验收记录。
+- **M4 打磨**：目录监听实时刷新、运行状态展示、键盘操作、CLI 升级后重新探测、安装包与自动更新、验收记录。

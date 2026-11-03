@@ -387,12 +387,7 @@ agy     : --version、--help
 
 复用现有 `native-config` 的做法：读时带 revision（内容摘要），保存时校验 revision 未变、格式合法、原子写入，冲突则拒绝并提示重读。
 
-覆盖两层，界面按「用户级」与「当前项目」分组：
-
-| 层 | 文件 |
-|---|---|
-| 用户级 | Claude `~/.claude/settings.json`、`~/.claude/CLAUDE.md`；Codex `~/.codex/config.toml`、`~/.codex/AGENTS.md`；Antigravity `~/.gemini/antigravity-cli/settings.json`、`~/.gemini/config/mcp_config.json`、`~/.gemini/config/config.json` |
-| 项目级 | Claude `CLAUDE.md`、`.mcp.json`、`.claude/skills`、`.claude/agents`、`.claude/commands`；Codex `AGENTS.md`；Antigravity `GEMINI.md`、`AGENTS.md`、`.agents/rules/*.md`、`.agents/skills.json`、`.agents/plugins.json`、`.agents/hooks.json`、`.agents/skills/<名称>/SKILL.md`、`.agents/plugins/<名称>/plugin.json` |
+覆盖两层，界面按「用户级」与「当前项目」分组。**文件清单以 [需求 F4.1](../../product/requirements.md#f4-原生配置编辑) 为准**，此处不重复列出，只说明设计层面的取舍。
 
 Antigravity 的项目级定制根同时接受 `.agents/`、`.agent/`、`_agents/`、`_agent/` 四种写法（CLI 自己会全部认）。编辑器优先展示 `.agents/`：存在就用它，四种都不存在时新建也建 `.agents/`。
 
@@ -494,7 +489,7 @@ Antigravity 的项目级定制根同时接受 `.agents/`、`.agent/`、`_agents/
 - 主区：会话头（CLI、实际驱动版本、模型、cwd、运行状态）、正文时间线、输入区。没有回合内审批的 CLI（Antigravity）在输入区上方常驻权限模式条，而不是审批卡片。
 - 右侧：服务器面板，与服务器终端共用停靠区，可收起。
 - 空态：没有项目时引导添加项目目录；没有会话时引导新建。
-- **不显示改动视图。** 对话里没有「本轮改动」卡片、没有 diff 渲染、没有行内反馈。工具卡片照常显示原生工具事件里的「写入/编辑了哪个文件」，点开只看路径，不算差异。`@pierre/diffs`、`features/changes`、`vcs` 一并移除。
+- **不显示改动视图**（需求 F8.3）。对话里没有「本轮改动」卡片、没有 diff 渲染、没有行内反馈，工具卡片点开只显示路径。`@pierre/diffs`、`features/changes`、`vcs` 一并移除。
 - 不属于任何项目的会话默认不进列表，避免噪音；每个项目内提供一个「显示其他目录的会话」开关。
 
   **范围定义**：开关打开后，列出该 CLI 存储中 `cwd` 不属于任何已配置项目的全部会话，按目录分组；不是只显示子目录，也不是全机扫描。分组标题显示规范化后的绝对路径，点一下可以「加为项目」。
