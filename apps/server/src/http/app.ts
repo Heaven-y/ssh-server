@@ -15,11 +15,12 @@ export type AppDeps = {
   store: WorkspaceStore;
   /** 前端构建产物目录，存在时托管静态文件 */
   webDir?: string;
-  /** 注册其余路由（内部接口、会话接口、/ws） */
+  /** 注册其余路由（会话接口、/ws） */
   routes?: (app: FastifyInstance) => void | Promise<void>;
 };
 
-const API_PREFIXES = ['/api/', '/internal/', '/ws', '/auth'];
+/** 后端接口前缀：这些路径不回退到前端页面，未匹配时保持 404 */
+const API_PREFIXES = ['/api/', '/internal', '/ws', '/auth'];
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({ logger: false, bodyLimit: 1024 * 1024 });

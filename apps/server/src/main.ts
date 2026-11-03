@@ -1,7 +1,6 @@
 // 后端入口：读取配置、组装依赖、只在本机地址上启动
 import { mkdir, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { createSessionRegistry } from './chat/registry';
 import { TurnManager } from './chat/turn-manager';
 import { createSessionsService } from './chat/sessions';
 import { createCapabilitiesService } from './chat/capabilities';
@@ -19,7 +18,6 @@ import {
 } from './agents/codex';
 import { legacyConfigDir, loadConfig } from './config';
 import { buildApp } from './http/app';
-import { registerInternalRoutes } from './http/internal.routes';
 import { registerSessionRoutes } from './http/sessions.routes';
 import { registerCapabilityRoutes } from './http/capabilities.routes';
 import { registerSshRoutes } from './http/ssh.routes';
@@ -48,8 +46,6 @@ import { createHostTrust } from './ssh/host-trust';
 import { createPasswordStore } from './ssh/password-store';
 import { createWorkspaceStore } from './workspaces/store';
 import { migrateLegacyConfig } from './workspaces/migrate-legacy';
-import { createWorkspacePolicy } from './workspaces/policy';
-import { registerWorkspacePolicyRoutes } from './http/workspace-policy.routes';
 import { createWorkspaceActivity } from './workspaces/activity';
 import { createNativeConfigService } from './settings/native-config';
 import { createProductSettings } from './settings/product-settings';
@@ -114,7 +110,6 @@ async function main(): Promise<void> {
     settings: async () => (await productSettings.read()).settings,
   });
   const slurm = createSlurmService({ store, pool });
-  const registry = createSessionRegistry();
   const browse = createRemoteFilesService({ store, pool });
   const executor = createRemoteExecutor(pool);
   const preflights = createFilePreflights({ store, pool, browse, executor });
@@ -143,14 +138,11 @@ async function main(): Promise<void> {
     },
     { withIdleSession: (session, operation) => turns.withIdleSession(session, operation) },
   );
-  let port = config.port;
   const turns: TurnManager = new TurnManager({
     getWorkspace: (id) => store.get(id),
-    registry,
     sessions,
     capabilities,
     runners: { claude: runClaudeTurn, codex: createCodexRunner() },
-    internalUrl: () => `http://${hostForUrl(config.host)}:${port}`,
     acquireWorkspace,
   });
 
@@ -161,7 +153,6 @@ async function main(): Promise<void> {
     store,
     webDir: WEB_DIST,
     routes: (a) => {
-      registerInternalRoutes(a, { registry, getWorkspace: (id) => store.get(id), pool });
       registerSessionRoutes(a, { store, sessions });
       registerCapabilityRoutes(a, { store, capabilities });
       registerSshRoutes(a, { pool, profiles });
@@ -169,7 +160,6 @@ async function main(): Promise<void> {
       registerHostTrustRoutes(a, createHostTrust({ pool }));
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
       registerProductSettingsRoutes(a, productSettings, environment);
-      registerWorkspacePolicyRoutes(a, createWorkspacePolicy(store));
       registerRemoteFileRoutes(a, browse);
       registerRemoteFileActionRoutes(a, { preflights, tasks, downloads: createFileDownloads({ pool, browse }) });
       registerWsRoutes(a, { turns });
@@ -181,7 +171,7 @@ async function main(): Promise<void> {
 
   await app.listen({ host: config.host, port: config.port });
   const addr = app.server.address();
-  port = addr && typeof addr === 'object' ? addr.port : config.port;
+  const port = addr && typeof addr === 'object' ? addr.port : config.port;
   console.log(`AgentDeck 已启动，只监听 ${config.host}:${port}`);
   console.log(`访问地址：${accessUrl(config.host, port, config.devOrigin)}`);
   const report = await startupEnvironment;

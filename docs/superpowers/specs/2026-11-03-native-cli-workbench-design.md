@@ -181,6 +181,8 @@ type AgentAdapter = {
 | Codex | `~/.codex/config.toml` 的 approval / sandbox 策略 | 沿用，不覆盖 |
 | Antigravity | `permissions.allow` 规则，无回合内批准 | 只展示，不介入 |
 
+**唯一的例外：`approvalsReviewer`。** 发起 `thread/start` 时仍传 `approvalsReviewer: 'user'`。它不决定「要不要问」，只决定「问谁」——把原生决定要问的审批路由给网页用户，而不是交给某个自动审阅者。这与「网页不加自己的规则」不冲突：规则仍全部来自原生配置，网页只是接住它。
+
 「始终允许」= 写进原生配置文件（是一次显式操作，有确认），不是网页内存里的临时规则。这样三个 CLI 的行为都只有一个真相来源，也避免了「网页上点了允许，换个客户端就不生效」的困惑。
 
 ### 6.2 Claude

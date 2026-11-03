@@ -67,7 +67,7 @@ export class CodexClient {
 
   async initialize(): Promise<void> {
     await this.request('initialize', {
-      clientInfo: { name: 'ssh-server', title: 'SSH Server', version: '0.1.0' },
+      clientInfo: { name: 'agentdeck', title: 'AgentDeck', version: '0.1.0' },
       capabilities: { experimentalApi: false, requestAttestation: false },
     });
     this.notify('initialized', {});

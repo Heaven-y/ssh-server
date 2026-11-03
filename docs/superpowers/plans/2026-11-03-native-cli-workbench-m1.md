@@ -163,6 +163,19 @@ git commit -m "refactor(server): 删除同步、版本与本地文件镜像三�
 
 `apps/server/src/remote-files/tasks.ts:217` 的 `blockers()` 已无调用方，且仍 import `WorkspaceRemovalBlocker`。删除 `blockers()`、它的 import，以及 `sync_pending`/`syncRequired` 的判断分支；`packages/shared/src/workspace-removal.ts` 一并删除并从 `index.ts` 移除导出。
 
+- [ ] **Step 2d: 删除网页自带的工具策略层**
+
+设计 §6.1（`design.md:174-184`）要求：审批面由 CLI 自己的原生配置决定，网页不加自己的规则。现有代码有两处网页自带策略，一并删除：
+
+- `apps/server/src/agents/claude-runtime.ts` 的 `ALLOWED_TOOLS`（预放行 Read/Glob/Grep/TodoWrite）与 `allowedTools` 选项。
+- 同文件 `permission()` 里对工作区内 Edit/Write 的自动放行分支，以及随之失效的 `EDIT_TOOLS`、`editTarget`、`isInsideDir`。
+
+`canUseTool` 保留——它仍是「把 CLI 决定要问的东西弹给网页」的通道，只是不再含网页自己的判断。审批、超时、中断逻辑不变。
+
+- [ ] **Step 2e: 一并删除 MCP 桥的令牌租约链**
+
+这条在计划初稿里漏了，但删路由而不删它等于留一条指向 404 的注入链。删除：`chat/registry.ts`、`AgentTurnInput.acquireEnv` / `TurnEnv`、`TurnManagerDeps.registry` / `internalUrl`、`ClaudeRuntime` / `CodexRuntime` 的 env 租约、Codex 的 `mcp_servers.*` 与 `shell_environment_policy.*` 注入与 MCP 确认分支、`instructions.ts` 的 remote_exec / remote_peek 指令、`http/{app,security}.ts` 的 `/internal` 残留、`vitest.config.ts` 里 `remote-tools/main.ts` 排除项与 `policy/**` 覆盖率阈值。前端 `ToolCard.tsx` 的 `remote_exec` 分支与 `timeline-model.ts` 的 `remote_peek` 一并删除。
+
 - [ ] **Step 3: 类型检查**
 
 Run: `npm.cmd run typecheck`
@@ -459,6 +472,10 @@ Expected: FAIL —— 模块不存在。
 6. 返回 `{ imported, skipped, backupFiles }`。
 
 单条失败只跳过该条，绝不因为一条坏数据丢掉整个列表。
+
+> **必须丢弃的旧字段清单（Task 2 实测提醒）**：`sync`、**`policy`**、以及任何未在新 schema 中声明的键。
+>
+> 这一点很关键：`StoredWorkspacesSchema` 是 strict 继承，`store.load()` 遇到任何未声明字段会抛 `WorkspaceStorageError`，表现为**整个项目列表读不出来**，而不是跳过那一条。Task 2 已把 `policy` 从 `WorkspaceInputSchema` 删除，所以旧文件里只要有一条带 `policy` 就会触发。转换时必须显式重建对象（只挑 `id`/`name`/`dir`/`server`/`remoteDir` 五个键），**不要用展开运算符保留原对象**。
 
 - [ ] **Step 4: 运行确认通过**
 

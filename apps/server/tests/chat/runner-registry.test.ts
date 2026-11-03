@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Workspace } from '@agentdeck/shared';
 import { runClaudeTurn } from '../../src/agents/claude-adapter';
-import { createSessionRegistry } from '../../src/chat/registry';
 import { TurnManager } from '../../src/chat/turn-manager';
 
 // 防止旧的隐式回退在回归测试中启动真实运行时。
@@ -15,8 +14,6 @@ describe('显式Agent运行器注册表', () => {
     const socket = { send: vi.fn(), isOpen: () => true };
     const turns = new TurnManager({
       getWorkspace: async () => ({ id: 'w1' }) as Workspace,
-      registry: createSessionRegistry(),
-      internalUrl: () => 'http://127.0.0.1:1',
       runners: { codex },
       sessions: { assertBelongs: vi.fn() },
     });

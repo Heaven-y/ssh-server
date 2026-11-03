@@ -44,7 +44,7 @@ describe('ClaudeEventMapper.map', () => {
   });
   it('init → session', () => {
     const m = new ClaudeEventMapper();
-    const cwd = path.join(os.tmpdir(), 'ssh-server-fixture', 'demo');
+    const cwd = path.join(os.tmpdir(), 'agentdeck-fixture', 'demo');
     expect(
       m.map({
         type: 'system',
@@ -66,10 +66,10 @@ describe('ClaudeEventMapper.map', () => {
   it('assistant 中的 tool_use → tool_call', () => {
     const m = new ClaudeEventMapper();
     const evs = m.map(
-      assistant('m1', [{ type: 'tool_use', id: 't1', name: 'mcp__ssh-server__remote_exec', input: { command: 'ls' } }]),
+      assistant('m1', [{ type: 'tool_use', id: 't1', name: 'mcp__my-server__remote_exec', input: { command: 'ls' } }]),
     );
     expect(evs).toEqual([
-      { type: 'tool_call', id: 't1', name: 'mcp__ssh-server__remote_exec', input: { command: 'ls' } },
+      { type: 'tool_call', id: 't1', name: 'mcp__my-server__remote_exec', input: { command: 'ls' } },
     ]);
   });
 

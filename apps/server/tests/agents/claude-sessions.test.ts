@@ -20,7 +20,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   renameSession: vi.fn(),
 }));
 
-const dir = path.join(tmpdir(), 'ssh-server-management', 'workspace');
+const dir = path.join(tmpdir(), 'agentdeck-management', 'workspace');
 const id = '11111111-1111-4111-8111-111111111111';
 const metadata = { sessionId: id, summary: '原始标题', lastModified: 1, cwd: dir };
 beforeEach(() => {

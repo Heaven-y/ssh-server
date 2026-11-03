@@ -15,14 +15,14 @@ const tool = (id: string, name = 'Read', status: ToolItem['status'] = 'done', is
 describe('对话时间线投影', () => {
   it('保留原条目、顺序及审批/错误/用户/压缩边界，不把执行或未知工具合并', () => {
     const boundary: ChatItem[] = [
-      tool('exec', 'mcp__ssh-server__remote_exec'),
-      tool('unknown', 'commandExecution'),
+      tool('exec', 'commandExecution'),
+      tool('unknown', 'mcp__other__some_tool'),
       { kind: 'permission', id: 'permission', toolName: 'Read', input: {} },
       { kind: 'error', id: 'error', message: '失败' },
       { kind: 'user', id: 'user', text: '下一轮' },
       { kind: 'compaction', id: 'compact', state: { status: 'completed' } },
     ];
-    const source = [tool('a'), tool('b', 'mcp__ssh-server__remote_peek'), ...boundary, tool('c', 'Grep')];
+    const source = [tool('a'), tool('b', 'Grep'), ...boundary, tool('c', 'Grep')];
     const rows = projectTimeline(source);
     expect(rows[0]).toMatchObject({ kind: 'read-group', items: source.slice(0, 2) });
     expect(rows.slice(1).map((row) => row.kind === 'message' && row.item)).toEqual(source.slice(2));

@@ -7,7 +7,7 @@ export type ExpandedProps = { expanded?: boolean; onExpandedChange?(open: boolea
 /** 单行内部也必须有界，避免连续读取绕过外层虚拟列表。 */
 const READ_GROUP_LIMIT = 40;
 
-/** 只接受明确的读取/搜索工具；不根据shell命令猜测只读，remote_exec始终独立。 */
+/** 只接受明确的读取/搜索工具；不根据shell命令猜测只读，执行类工具始终独立。 */
 const READ_TOOLS = new Set([
   'read',
   'read_file',
@@ -17,7 +17,6 @@ const READ_TOOLS = new Set([
   'search_files',
   'list_directory',
   'list_files',
-  'remote_peek',
 ]);
 const isRead = (item: ChatItem): item is ToolItem =>
   item.kind === 'tool' && READ_TOOLS.has(item.name.split('__').at(-1)!.toLowerCase());

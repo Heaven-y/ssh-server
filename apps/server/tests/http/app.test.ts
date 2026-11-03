@@ -1,3 +1,4 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
@@ -30,16 +31,13 @@ function memoryStore(): WorkspaceStore {
 }
 
 const apps: FastifyInstance[] = [];
+const webDirs: string[] = [];
 async function make(): Promise<FastifyInstance> {
   const app = await buildApp({
     token: TOKEN,
     port: 4317,
     store: memoryStore(),
     routes: (a) => {
-      // 测试用的内部接口：自行要求 Bearer
-      a.get('/internal/ping', async (req, reply) =>
-        req.headers.authorization === 'Bearer internal' ? { ok: true } : reply.code(401).send({ message: '未授权' }),
-      );
       a.get('/ws', { websocket: true }, (socket) => socket.send('hello'));
     },
   });
@@ -49,11 +47,12 @@ async function make(): Promise<FastifyInstance> {
 
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((a) => a.close()));
+  await Promise.all(webDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
 const body: WorkspaceInput = {
   name: 'demo',
-  localDir: path.join(os.tmpdir(), 'ssh-server-fixture', 'demo'),
+  localDir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
   sshHost: 'my-server',
   remoteDir: '~/projects/demo',
 };
@@ -163,17 +162,20 @@ describe('访问控制', () => {
     // 项目创建接口与双端向导已删除，放行后由路由层给出 404。
     expect((await post(ORIGIN)).statusCode).toBe(404);
   });
-
-  it('/internal 不认 Cookie', async () => {
-    const app = await make();
-    const r = await app.inject({ method: 'GET', url: '/internal/ping', headers: { host: HOST, cookie: COOKIE } });
-    expect(r.statusCode).toBe(401);
-    const ok = await app.inject({
-      method: 'GET',
-      url: '/internal/ping',
-      headers: { host: HOST, authorization: 'Bearer internal' },
-    });
-    expect(ok.statusCode).toBe(200);
+  it('挂载前端产物后，/internal 路径仍是 404 而不回退到页面', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'agentdeck-web-'));
+    webDirs.push(dir);
+    await writeFile(path.join(dir, 'index.html'), '<!doctype html><title>shell</title>', 'utf8');
+    const app = await buildApp({ token: TOKEN, port: 4317, store: memoryStore(), webDir: dir });
+    apps.push(app);
+    const header = { host: HOST, cookie: COOKIE };
+    const internal = await app.inject({ url: '/internal/remote-exec', headers: header });
+    expect(internal.statusCode).toBe(404);
+    expect(internal.json()).toEqual({ message: '未找到' });
+    // 普通页面路径仍回退到 index.html。
+    const page = await app.inject({ url: '/projects/1', headers: header });
+    expect(page.statusCode).toBe(200);
+    expect(page.body).toContain('<title>shell</title>');
   });
 });
 

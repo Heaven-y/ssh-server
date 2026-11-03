@@ -90,14 +90,13 @@ describe('Codex app-server 核心边界', () => {
     }
   });
 
-  it('默认配置只追加指令与自己的 MCP，实际令牌不进入协议参数', async () => {
+  it('默认配置只追加指令与工作区约束，不向 CLI 注入 MCP', async () => {
     const { workspace, options, messages } = await setup();
     const events: AgentEvent[] = [];
     await runCodexTurn(
       {
         workspace,
         text: '你好',
-        acquireEnv: () => ({ env: { AGENTDECK_TOKEN: 'synthetic-private-value' }, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: async () => ({ allow: false }),
       },
@@ -105,12 +104,16 @@ describe('Codex app-server 核心边界', () => {
     ).done;
     const records = await messages();
     const start = records.find((value) => value.method === 'thread/start')?.params;
-    expect(start).toMatchObject({ cwd: workspace.localDir, sandbox: 'workspace-write', approvalPolicy: 'on-request' });
+    expect(start).toMatchObject({ cwd: workspace.localDir, approvalsReviewer: 'user' });
+    // 审批与沙箱策略沿用原生配置，网页不再用常量覆盖
+    expect(start).not.toHaveProperty('sandbox');
+    expect(start).not.toHaveProperty('approvalPolicy');
     expect(start?.developerInstructions).toContain('原生约束');
-    expect(start?.developerInstructions).toContain('remote_exec');
-    expect(start?.config?.['mcp_servers.ssh-server']).toMatchObject({ required: true, env_vars: ['AGENTDECK_TOKEN'] });
-    expect(start?.config?.['shell_environment_policy.set.AGENTDECK_TOKEN']).toBe('');
-    expect(JSON.stringify(records)).not.toContain('synthetic-private-value');
+    expect(start?.developerInstructions).toContain(workspace.localDir);
+    expect(start?.developerInstructions).not.toContain('my-server');
+    expect(start?.developerInstructions).not.toContain('~/projects/demo');
+    expect(start?.config).toEqual({});
+    expect(JSON.stringify(records)).not.toContain('AGENTDECK');
     expect(start).not.toHaveProperty('model');
     expect(start).not.toHaveProperty('modelProvider');
     expect(events.filter((event) => event.type === 'session')).toEqual([
@@ -129,7 +132,6 @@ describe('Codex app-server 核心边界', () => {
       {
         workspace,
         text: '你好',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: async () => ({ allow: false }),
       },
@@ -153,7 +155,6 @@ describe('Codex app-server 核心边界', () => {
         text: '你好',
         model: 'selected-model',
         reasoningEffort: 'custom-effort',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: async () => ({ allow: false }),
       },
@@ -183,7 +184,6 @@ describe('Codex app-server 核心边界', () => {
       {
         workspace,
         text: '你好',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: async () => ({ allow: false }),
       },
@@ -202,7 +202,6 @@ describe('Codex app-server 核心边界', () => {
       {
         workspace,
         text: '执行',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: async () => ({ allow: true }),
       },
@@ -233,7 +232,6 @@ describe('Codex app-server 核心边界', () => {
       {
         workspace,
         text: '执行',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: () =>
           new Promise((resolve) => {
@@ -259,7 +257,6 @@ describe('Codex app-server 核心边界', () => {
       {
         workspace,
         text: '执行',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: () => {},
         requestPermission: async () => ({ allow: true }),
       },
@@ -275,7 +272,6 @@ describe('Codex app-server 核心边界', () => {
       {
         workspace,
         text: '执行',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: () => new Promise(() => {}),
       },
@@ -293,7 +289,6 @@ describe('Codex app-server 核心边界', () => {
         workspace,
         sessionId: 'native-thread',
         text: '续接',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: async () => ({ allow: false }),
       },
@@ -335,7 +330,6 @@ describe('原生会话读取', () => {
         workspace,
         sessionId: 'foreign',
         text: '续接',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: async () => ({ allow: false }),
       },
@@ -398,7 +392,6 @@ it('实时分叉点核验完成快照自身的轮次身份，不采纳外来 tur
     {
       workspace,
       text: '核验分叉点',
-      acquireEnv: () => ({ env: {}, release: () => {} }),
       emit: (event) => events.push(event),
       requestPermission: async () => ({ allow: false }),
     },

@@ -5,7 +5,7 @@ import type { ModelInfo, SlashCommand } from '@anthropic-ai/claude-agent-sdk';
 import { createClaudeCapabilityDiscovery } from '../../src/agents/claude-capabilities';
 import { CLAUDE_CONTROL_TIMEOUT_MS, type QueryFn } from '../../src/agents/claude-query';
 
-const directory = path.join(os.tmpdir(), 'ssh-server-fixture', 'capabilities');
+const directory = path.join(os.tmpdir(), 'agentdeck-fixture', 'capabilities');
 const fixture = { name: 'fixture', description: '项目技能', argumentHint: '<任务>' };
 function discovery(readCommands: () => Promise<SlashCommand[]>, models?: ModelInfo[]) {
   const calls: Array<Parameters<QueryFn>[0]> = [];

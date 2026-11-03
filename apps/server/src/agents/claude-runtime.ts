@@ -2,12 +2,11 @@
 import { randomUUID } from 'node:crypto';
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentEvent } from '@agentdeck/shared';
-import type { AgentTurnInput, TurnEnv, TurnHandle } from './types';
+import type { AgentTurnInput, TurnHandle } from './types';
 import { claudeInvocationText } from './claude-capabilities';
 import { claudeEffort } from './claude-effort';
 import { ClaudeCompactionTracker } from './claude-compaction';
 import { ClaudeEventMapper } from './claude-mapper';
-import { isInsideDir } from './edit-scope';
 import { buildInstructions } from './instructions';
 import {
   claudeControl,
@@ -17,19 +16,9 @@ import {
   type ClaudeQuery,
   type QueryFn,
 } from './claude-query';
-import { MCP_SERVER_NAME, resolveRemoteToolsCommand } from '../remote-tools/launch';
 
 export const PERMISSION_TIMEOUT_MS = 300_000;
 const ABORT_FALLBACK_MS = 5_000;
-const EDIT_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit']);
-const ALLOWED_TOOLS = [
-  `mcp__${MCP_SERVER_NAME}__remote_exec`,
-  `mcp__${MCP_SERVER_NAME}__remote_peek`,
-  'Read',
-  'Glob',
-  'Grep',
-  'TodoWrite',
-];
 /** 手动压缩是控制操作，原生保留/重放的对话不能作为本轮新增内容。 */
 const COMPACTION_EVENTS = new Set<AgentEvent['type']>(['session', 'context', 'compaction', 'turn_end', 'error']);
 type TurnEnd = Extract<AgentEvent, { type: 'turn_end' }>;
@@ -44,18 +33,6 @@ const isResult = (message: unknown): boolean =>
   'type' in message &&
   message.type === 'result' &&
   !('parent_tool_use_id' in message && message.parent_tool_use_id);
-
-/** Windows 上子进程缺少 PATH、SystemRoot 会起不来，所以在 process.env 基础上合并 */
-function childEnv(extra: Record<string, string>): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
-  return { ...env, ...extra };
-}
-
-function editTarget(input: Record<string, unknown>): string | undefined {
-  const p = input.file_path ?? input.notebook_path;
-  return typeof p === 'string' ? p : undefined;
-}
 
 /** 单轮状态：事件过滤、压缩跟踪与结束判定都属于这一轮，不属于进程。 */
 class ClaudeTurn {
@@ -134,7 +111,6 @@ export class ClaudeRuntime {
   private readonly mapper = new ClaudeEventMapper();
   private readonly query?: ClaudeQuery;
   private readonly consumer: Promise<void>;
-  private readonly env: TurnEnv;
   private current?: ClaudeTurn;
   private closing?: Promise<void>;
   private broken = false;
@@ -145,22 +121,10 @@ export class ClaudeRuntime {
   constructor(private readonly input: ClaudeTurnInput) {
     const { workspace } = input;
     const effort = claudeEffort(input.reasoningEffort);
-    const remoteTools = resolveRemoteToolsCommand();
-    // 令牌随运行时存活：MCP 子进程在创建时拿到它，换令牌会让后续轮次失效。
-    this.env = input.acquireEnv();
     const options = {
       cwd: workspace.localDir,
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code', append: buildInstructions(workspace) },
-      mcpServers: {
-        [MCP_SERVER_NAME]: {
-          type: 'stdio',
-          command: remoteTools.command,
-          args: remoteTools.args,
-          env: childEnv(this.env.env),
-        },
-      },
-      allowedTools: ALLOWED_TOOLS,
       canUseTool: (toolName: string, toolInput: Record<string, unknown>, opts: { signal: AbortSignal }) =>
         this.permission(toolName, toolInput, opts),
       includePartialMessages: true,
@@ -214,7 +178,6 @@ export class ClaudeRuntime {
     }
     this.current?.fail();
     await this.consumer.catch(() => undefined);
-    this.env.release();
   }
 
   /** 连续消费原生消息：跨轮保持同一迭代器，逐条投递给当前轮次。 */
@@ -289,7 +252,7 @@ export class ClaudeRuntime {
     if (turn.active) turn.fail('本轮已中断');
   }
 
-  /** canUseTool 由运行时创建一次，按调用时的活动轮次解析，避免令牌泄漏到旧轮次。 */
+  /** canUseTool 由运行时创建一次，按调用时的活动轮次解析；本轮已结束时不再弹审批。 */
   private async permission(
     toolName: string,
     toolInput: Record<string, unknown>,
@@ -297,10 +260,6 @@ export class ClaudeRuntime {
   ): Promise<{ behavior: 'allow'; updatedInput: Record<string, unknown> } | { behavior: 'deny'; message: string }> {
     const turn = this.current;
     if (!turn?.active) return { behavior: 'deny', message: '本轮已结束' };
-    const target = editTarget(toolInput);
-    if (EDIT_TOOLS.has(toolName) && target && isInsideDir(turn.input.workspace.localDir, target)) {
-      return { behavior: 'allow', updatedInput: toolInput };
-    }
     const requestId = randomUUID();
     turn.input.emit({ type: 'permission_request', requestId, toolName, input: toolInput });
     const answer = await waitAnswer(

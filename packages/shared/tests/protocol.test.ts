@@ -64,7 +64,7 @@ describe('ClientMessageSchema', () => {
 describe('WorkspaceInputSchema', () => {
   const base = {
     name: 'demo',
-    localDir: path.join(os.tmpdir(), 'ssh-server-fixture', 'demo'),
+    localDir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
     sshHost: 'my-server',
     remoteDir: '~/projects/demo',
   };
@@ -79,9 +79,9 @@ describe('WorkspaceInputSchema', () => {
     expect(WorkspaceInputSchema.safeParse({ ...base, remoteDir: '~/a\nb' }).success).toBe(false);
   });
 
-  it('接受停用的规则列表', () => {
+  it('不再接受已删除的命令规则字段', () => {
     const r = WorkspaceInputSchema.safeParse({ ...base, policy: { disabledRules: ['privilege'] } });
-    expect(r.success).toBe(true);
+    expect(r.success).toBe(false);
   });
 
   it('拒绝工作区认证方式和密码字段', () => {

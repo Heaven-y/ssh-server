@@ -129,14 +129,13 @@ it('跨工作区提交从异步复验前持有全部租约，部分获取失败�
   });
 });
 
-it('冷启动阻断遍历全部持久任务及受影响工作区，不受100项展示限制', async () => {
+it('冷启动任务列表受100项展示限制，且只列本工作区', async () => {
   const fixture = await tasksFixture(async () => ({ completed: true }));
   const task = await fixture.tasks.submit(ws.id, fixture.action.public.id);
   await fixture.tasks.dispose();
   const record = JSON.parse(await readFile(path.join(fixture.dir, task.id + '.json'), 'utf8'));
   record.task.phase = 'needs_check';
   record.task.createdAt = 0;
-  record.action.public.affectedWorkspaces = [{ id: 'other', name: '受影响项目', remoteRoot: root }];
   await writeFile(path.join(fixture.dir, task.id + '.json'), JSON.stringify(record));
   for (let index = 1; index <= 101; index++) {
     const completed = structuredClone(record);
@@ -151,10 +150,9 @@ it('冷启动阻断遍历全部持久任务及受影响工作区，不受100项�
   cleanups.push(() => restored.dispose());
   const list = await restored.list(ws.id);
   expect(list).toHaveLength(100);
+  // 最新创建（createdAt 最大）的 100 项胜出，createdAt=0 的那条被挤出
   expect(list.every((item) => item.phase === 'completed')).toBe(true);
-  for (const id of [ws.id, 'other'])
-    expect(await restored.blockers(id)).toContainEqual(expect.objectContaining({ code: 'file_tasks_pending' }));
-  expect(await restored.blockers('unrelated')).toEqual([]);
+  expect(await restored.list('unrelated')).toEqual([]);
 });
 
 it('预检保留原工作区根配置，复验配置并拒绝陈旧预检', async () => {
@@ -335,7 +333,6 @@ it.each(['mkdir', 'delete'] as const)('%s正式空路径记录在重启后仍可
   const restored = createFileTasks({ ...fixture.deps, executor });
   cleanups.push(() => restored.dispose());
   expect(await restored.status(ws.id, task.id)).toMatchObject({ kind, phase: 'completed' });
-  expect(await restored.blockers(ws.id)).toEqual([]);
   expect(executor.run).not.toHaveBeenCalled();
   expect(await readFile(file, 'utf8')).toBe(original);
 });
@@ -367,8 +364,6 @@ it.each(['syncRequired', 'dispatched', 'id', 'identity', 'json', 'read'])('%s损
     () => restored.cancel(ws.id, task.id),
     () => restored.check(ws.id, task.id),
     () => restored.submit(ws.id, randomUUID()),
-    () => restored.blockers(ws.id),
-    () => restored.blockers('other'),
   ]) {
     await expect(operation()).rejects.toMatchObject({ code: 'task_storage_error' });
     await expect(operation()).rejects.not.toThrow('private-secret');
@@ -378,7 +373,7 @@ it.each(['syncRequired', 'dispatched', 'id', 'identity', 'json', 'read'])('%s损
   await expect(restored.dispose()).resolves.toBeUndefined();
 });
 
-it('任务目录非ENOENT读取失败阻止新任务和工作区移除', async () => {
+it('任务目录非ENOENT读取失败阻止新任务', async () => {
   const fixture = await tasksFixture(async () => ({ completed: true }));
   await fixture.tasks.dispose();
   await writeFile(fixture.dir, 'private-secret', 'utf8');
@@ -386,7 +381,6 @@ it('任务目录非ENOENT读取失败阻止新任务和工作区移除', async (
   cleanups.push(() => restored.dispose());
   await expect(restored.list(ws.id)).rejects.toMatchObject({ code: 'task_storage_error' });
   await expect(restored.submit(ws.id, randomUUID())).rejects.toMatchObject({ code: 'task_storage_error' });
-  await expect(restored.blockers(ws.id)).rejects.toMatchObject({ code: 'task_storage_error' });
   expect(await readFile(fixture.dir, 'utf8')).toBe('private-secret');
 });
 

@@ -7,7 +7,6 @@ import type { SDKSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentKind, Workspace } from '@agentdeck/shared';
 import type { NativeSessionRead } from '../../src/agents/types';
 import { createClaudeSessions } from '../../src/agents/claude-sessions';
-import { createSessionRegistry } from '../../src/chat/registry';
 import { createSessionsService, SessionError } from '../../src/chat/sessions';
 import { TurnManager } from '../../src/chat/turn-manager';
 import { registerSessionRoutes } from '../../src/http/sessions.routes';
@@ -15,7 +14,7 @@ import { registerSessionRoutes } from '../../src/http/sessions.routes';
 const ws: Workspace = {
   id: 'w1',
   name: '分叉测试',
-  localDir: path.join(tmpdir(), 'ssh-server-fork-fixture', 'workspace'),
+  localDir: path.join(tmpdir(), 'agentdeck-fork-fixture', 'workspace'),
   sshHost: 'my-server',
   remoteDir: '~/projects/demo',
 };
@@ -81,8 +80,6 @@ function setup() {
   };
   const turns = new TurnManager({
     getWorkspace: async () => ws,
-    registry: createSessionRegistry(),
-    internalUrl: () => 'http://127.0.0.1:1',
     runners: {},
     sessions: { assertBelongs: async () => undefined },
   });

@@ -45,7 +45,7 @@ function testProtector(): SecretProtector {
   };
 }
 async function fixture() {
-  const configDir = await mkdtemp(path.join(os.tmpdir(), 'ssh-server-saved-test-'));
+  const configDir = await mkdtemp(path.join(os.tmpdir(), 'agentdeck-saved-test-'));
   // ssh2 的 Ed25519 生成器会误裁公钥前导零，改用 ECDSA 避免随机生成畸形 fixture。
   const key = ssh2.utils.generateKeyPairSync('ecdsa', { bits: 256 });
   const peers = new Set<Connection>();

@@ -9,8 +9,8 @@ let configDir: string;
 let localDir: string;
 
 beforeEach(async () => {
-  configDir = await mkdtemp(path.join(os.tmpdir(), 'ssh-server-cfg-'));
-  localDir = await mkdtemp(path.join(os.tmpdir(), 'ssh-server-local-'));
+  configDir = await mkdtemp(path.join(os.tmpdir(), 'agentdeck-cfg-'));
+  localDir = await mkdtemp(path.join(os.tmpdir(), 'agentdeck-local-'));
 });
 
 afterEach(async () => {
