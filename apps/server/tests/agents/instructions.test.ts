@@ -5,15 +5,15 @@ import { buildInstructions } from '../../src/agents/instructions';
 
 describe('buildInstructions', () => {
   it('只声明本地项目目录，不再提服务器、远端工具或 Slurm', () => {
-    const localDir = path.join(os.tmpdir(), 'agentdeck-fixture', 'demo');
+    const dir = path.join(os.tmpdir(), 'agentdeck-fixture', 'demo');
     const text = buildInstructions({
       id: 'w1',
       name: 'demo',
-      localDir,
-      sshHost: 'my-server',
+      dir,
+      server: 'my-server',
       remoteDir: '~/projects/demo',
     });
-    expect(text).toContain(localDir);
+    expect(text).toContain(dir);
     // 桥已删除，CLI 没有任何触达服务器的通道，指令里不能再让它操作服务器
     expect(text).not.toContain('my-server');
     expect(text).not.toContain('~/projects/demo');

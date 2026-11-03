@@ -8,6 +8,7 @@ import {
   type TerminalBinding,
 } from '@agentdeck/shared';
 import type { WorkspaceStore } from '../workspaces/store';
+import { boundWorkspace } from '../workspaces/bound';
 import type { SshPool } from '../ssh/pool';
 import { TerminalError } from './errors';
 
@@ -19,7 +20,8 @@ export function createTerminalBindings(deps: {
   async function readTarget(target: TerminalTarget, signal: AbortSignal) {
     signal.throwIfAborted();
     const generation = deps.pool.generation(target.sshHost);
-    const workspace = await deps.store.get(target.workspaceId);
+    // 终端只服务已绑定服务器与默认目录的项目；未绑定的项目没有可校验的目标。
+    const workspace = boundWorkspace(await deps.store.get(target.workspaceId));
     if (!workspace) throw new TerminalError('workspace_missing');
     if (terminalTargetKey(workspaceTerminalTarget(workspace)) !== terminalTargetKey(target))
       throw new TerminalError('target_changed');

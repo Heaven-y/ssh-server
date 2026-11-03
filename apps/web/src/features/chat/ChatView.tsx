@@ -57,7 +57,7 @@ export function ChatView({ workspace }: { workspace: Workspace }) {
     queryKey: queryKeys.sessions(workspace.id, agent),
     queryFn: () => api.listSessions(workspace.id, agent),
   });
-  const title = sessions.data?.find((session) => session.sessionId === sessionId)?.summary;
+  const title = sessions.data?.find((session) => session.sessionId === sessionId)?.title;
   return (
     <>
       <div className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-x-5 gap-y-2 px-4 py-3 sm:px-6">

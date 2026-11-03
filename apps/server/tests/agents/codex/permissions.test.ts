@@ -15,7 +15,7 @@ function setup(requestPermission: AgentTurnInput['requestPermission']) {
   const client = { respond: vi.fn(), rejectRequest: vi.fn() };
   const mapper = new CodexEventMapper();
   const input: AgentTurnInput = {
-    workspace: { id: 'workspace', name: '审批测试', localDir: '.', sshHost: 'my-server', remoteDir: '~/projects/demo' },
+    workspace: { id: 'workspace', name: '审批测试', dir: '.', server: 'my-server', remoteDir: '~/projects/demo' },
     text: '',
     emit: (event) => events.push(event),
     requestPermission,

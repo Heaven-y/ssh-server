@@ -44,9 +44,9 @@ async function fixture() {
   const server = await targets.save(input);
   const workspace = await store.create({
     name: '项目',
-    localDir: root,
+    dir: root,
     remoteDir: '~/projects/demo',
-    sshHost: server.alias,
+    server: server.alias,
   });
   return { root, targets, profiles, store, pool, server, workspace, app };
 }
@@ -109,9 +109,9 @@ describe('服务器档案事务及HTTP保护', () => {
     const f = await fixture();
     await f.store.create({
       name: '另一个项目',
-      localDir: f.root,
+      dir: f.root,
       remoteDir: '/other',
-      sshHost: f.server.alias,
+      server: f.server.alias,
     });
     const request = (password?: string) =>
       f.app.inject({ method: 'POST', url: '/api/ssh/connect', payload: { sshHost: f.server.alias, password } });
@@ -128,7 +128,7 @@ it('删除与创建竞争时持有工作区快照，排队创建不能引用已�
   const { id: _id, ...input } = f.workspace;
   const deletion = f.profiles.remove(f.server.alias, f.server);
   const creation = f.store.create(input);
-  await expect(creation).rejects.toMatchObject({ field: 'sshHost' });
+  await expect(creation).rejects.toMatchObject({ field: 'server' });
   await deletion;
   expect(await f.store.list()).toEqual([]);
   expect(await f.targets.list()).toEqual([]);

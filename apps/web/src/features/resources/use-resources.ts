@@ -5,7 +5,7 @@ import {
   resourceTiming,
   workspaceTerminalTarget,
   terminalTargetKey,
-  type Workspace,
+  type BoundWorkspace,
   type ResourceSnapshot,
 } from '@agentdeck/shared';
 import { api, ApiError } from '../../lib/api';
@@ -33,14 +33,14 @@ function usePageVisible(intervalMs: number, enabled: boolean) {
 }
 
 /** 资源面板只持有一个查询；自身隐藏时取消在途请求，停止采样与时钟刷新。 */
-export function useResources(workspace: Workspace, panelVisible: boolean) {
+export function useResources(workspace: BoundWorkspace, panelVisible: boolean) {
   const settings = useProductSettings();
   const connection = useChat((state) => state.connection);
   const client = useQueryClient();
   const timing = settings.data ? resourceTiming(settings.data.settings.resources) : RESOURCE_LIMITS;
   const target = workspaceTerminalTarget(workspace);
   const targetKey = terminalTargetKey(target);
-  const version = useServerObservationVersion(workspace.sshHost);
+  const version = useServerObservationVersion(workspace.server);
   const { visible, now } = usePageVisible(timing.intervalMs, panelVisible);
   const canRead = panelVisible && visible && connection === 'open';
   const active = canRead && settings.isSuccess;

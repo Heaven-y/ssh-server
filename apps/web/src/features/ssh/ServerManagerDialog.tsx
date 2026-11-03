@@ -86,7 +86,7 @@ function ReferenceNotice({ workspaces, alias }: { workspaces: UseQueryResult<Wor
       </p>
     );
   if (!alias) return null;
-  const referenced = workspaces.data?.filter((workspace) => workspace.sshHost === alias) ?? [];
+  const referenced = workspaces.data?.filter((workspace) => workspace.server === alias) ?? [];
   return (
     <div className="rounded border border-border p-3 text-sm leading-6">
       {referenced.length ? (
@@ -216,7 +216,7 @@ export function ServerManagerDialog({
   const [alias, setAlias] = useState(initialAlias);
   const [screen, setScreen] = useState<Screen>({ kind: 'view' });
   const selected = hosts.data?.find((server) => server.alias === alias);
-  const locked = !workspaces.isSuccess || workspaces.data.some((workspace) => workspace.sshHost === alias);
+  const locked = !workspaces.isSuccess || workspaces.data.some((workspace) => workspace.server === alias);
   const reset = () => setScreen({ kind: 'view' });
   const select = (value: string) => {
     const server = hosts.data?.find((item) => item.alias === value);

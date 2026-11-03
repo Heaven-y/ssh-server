@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { SessionSummary } from '@agentdeck/shared';
+import type { SessionRecord } from '@agentdeck/shared';
 import { api, queryKeys } from '../../../src/lib/api';
 import { queryClient } from '../../../src/lib/query-client';
 import { managementPending, sessionActionKey, useChat } from '../../../src/features/chat/chat-store';
 import { forkSession } from '../../../src/features/workspaces/session-fork';
 
-const source: SessionSummary = { agent: 'codex', sessionId: 'source', summary: '源会话', lastModified: 1 };
-const created: SessionSummary = { ...source, sessionId: 'forked', summary: '分叉' };
+const source: SessionRecord = { agent: 'codex', sessionId: 'source', summary: '源会话', lastModified: 1 };
+const created: SessionRecord = { ...source, sessionId: 'forked', summary: '分叉' };
 const key = sessionActionKey('workspace', source);
 const response = (session = created) => new Response(JSON.stringify({ session }), { status: 200 });
 beforeEach(() => {

@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowUp, FolderRoot, RefreshCw, Server } from 'lucide-react';
-import type { RemoteFileActionInput, RemoteFileEntry, Workspace } from '@agentdeck/shared';
+import type { BoundWorkspace, RemoteFileActionInput, RemoteFileEntry } from '@agentdeck/shared';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { RemoteDirectoryList } from './RemoteDirectoryList';
 import { useRemoteDirectory } from './use-remote-directory';
@@ -12,7 +12,7 @@ import { RemoteTasks, remoteTasksKey } from './RemoteTasks';
 
 type Browser = ReturnType<typeof useRemoteDirectory>;
 
-export function RemoteFilesPanel({ workspace, active }: { workspace: Workspace; active: boolean }) {
+export function RemoteFilesPanel({ workspace, active }: { workspace: BoundWorkspace; active: boolean }) {
   const browser = useRemoteDirectory(workspace, active);
   const directory = browser.directory;
   const targetChanged = browser.error?.code === 'target_changed';
@@ -23,8 +23,8 @@ export function RemoteFilesPanel({ workspace, active }: { workspace: Workspace; 
         <div className="flex min-w-0 items-center gap-2 text-sm">
           <Server aria-hidden className="size-4 shrink-0" />
           <span className="shrink-0 text-muted-foreground">Host</span>
-          <span className="truncate font-mono" title={workspace.sshHost}>
-            {workspace.sshHost}
+          <span className="truncate font-mono" title={workspace.server}>
+            {workspace.server}
           </span>
           {directory?.outsideWorkspace && (
             <span className="shrink-0 rounded bg-muted px-2 py-0.5 text-xs">工作区外</span>
@@ -188,7 +188,7 @@ function RemoteOperations({
   active,
   targetChanged,
 }: {
-  workspace: Workspace;
+  workspace: BoundWorkspace;
   browser: Browser;
   active: boolean;
   targetChanged: boolean;

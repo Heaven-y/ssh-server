@@ -3,7 +3,7 @@ import {
   TERMINAL_LIMITS,
   TerminalBindingSchema,
   workspaceTerminalTarget,
-  type Workspace,
+  type BoundWorkspace,
   type TerminalTarget,
   type TerminalBinding,
 } from '@agentdeck/shared';
@@ -45,7 +45,7 @@ const pane = (binding: TerminalBinding): TerminalPaneInfo => ({
 function updateTab(id: string, update: (tab: TerminalTab) => TerminalTab) {
   useTerminalStore.setState((state) => ({ tabs: state.tabs.map((tab) => (tab.id === id ? update(tab) : tab)) }));
 }
-export async function openTerminalTab(workspace: Workspace): Promise<void> {
+export async function openTerminalTab(workspace: BoundWorkspace): Promise<void> {
   const id = crypto.randomUUID();
   const target = workspaceTerminalTarget(workspace);
   const controller = new AbortController();
@@ -72,7 +72,7 @@ export async function openTerminalTab(workspace: Workspace): Promise<void> {
     if (pending.get(id) === controller) pending.delete(id);
   }
 }
-export function ensureInitialTerminal(workspace?: Workspace) {
+export function ensureInitialTerminal(workspace?: BoundWorkspace) {
   if (!workspace || useTerminalStore.getState().initialized) return;
   useTerminalStore.setState({ initialized: true });
   void openTerminalTab(workspace);

@@ -1,17 +1,17 @@
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { Workspace } from '@agentdeck/shared';
+import type { BoundWorkspace } from '@agentdeck/shared';
 import { workspaceTerminalTarget } from '@agentdeck/shared';
 import { createTerminalBindings } from '../../src/terminal/binding';
 import { createConnectionResolver } from '../../src/ssh/connection';
 import { createBrowseBinding } from '../../src/remote-files/binding';
 
 afterEach(() => vi.useRealTimers());
-const workspace: Workspace = {
+const workspace: BoundWorkspace = {
   id: 'w',
   name: '工作区',
-  localDir: path.resolve('fixture'),
-  sshHost: 'my-server',
+  dir: path.resolve('fixture'),
+  server: 'my-server',
   remoteDir: '~/projects/demo',
 };
 const target = workspaceTerminalTarget(workspace);
@@ -19,7 +19,7 @@ const signal = new AbortController().signal;
 
 it('令牌到期不能open、只能刷新同一目标，篡改/删除/代次变化均拒绝', async () => {
   vi.useFakeTimers();
-  let current: Workspace | undefined = workspace;
+  let current: BoundWorkspace | undefined = workspace;
   let fingerprint = 'a';
   let generation = 0;
   const bindings = createTerminalBindings({
@@ -103,12 +103,14 @@ it('中央认证方式变化使旧终端和浏览绑定失效，调用目标不�
   const terminal = createTerminalBindings({ store, pool });
   const browse = createBrowseBinding(store, pool);
   const before = await terminal.issue(target, { signal });
-  const browser = await browse(workspace.id, workspace, signal);
+  const browser = await browse(workspace.id, { sshHost: workspace.server, remoteDir: workspace.remoteDir }, signal);
   authMode = 'password';
   await expect(terminal.verify(target, before.binding, signal)).rejects.toMatchObject({ code: 'target_changed' });
-  expect((await browse(workspace.id, workspace, signal)).binding).not.toBe(browser.binding);
-  await resolver.setPassword(workspace.sshHost, 'fixture-password');
-  const uncheckedTarget = { alias: workspace.sshHost, authMode: 'key' };
+  expect(
+    (await browse(workspace.id, { sshHost: workspace.server, remoteDir: workspace.remoteDir }, signal)).binding,
+  ).not.toBe(browser.binding);
+  await resolver.setPassword(workspace.server, 'fixture-password');
+  const uncheckedTarget = { alias: workspace.server, authMode: 'key' };
   expect(await resolver.resolve(uncheckedTarget)).toMatchObject({ authMode: 'password', password: 'fixture-password' });
 });
 
@@ -118,7 +120,33 @@ it('重认证代次变化也使未打开的浏览绑定失效', async () => {
     { get: async () => workspace },
     { fingerprint: async () => 'same-profile', generation: () => generation },
   );
-  const before = await browse(workspace.id, workspace, signal);
+  const before = await browse(workspace.id, { sshHost: workspace.server, remoteDir: workspace.remoteDir }, signal);
   generation++;
-  expect((await browse(workspace.id, workspace, signal)).binding).not.toBe(before.binding);
+  expect(
+    (await browse(workspace.id, { sshHost: workspace.server, remoteDir: workspace.remoteDir }, signal)).binding,
+  ).not.toBe(before.binding);
 });
+
+// 项目现在可以不绑定服务器：服务器面板与终端在这种项目上必须明确拒绝，
+// 而不是拿 undefined 去拼目标或读到一个不存在的远程目录。
+for (const shape of [
+  { label: '没有 server 与 remoteDir', patch: { server: undefined, remoteDir: undefined } },
+  { label: '只有 server 没有 remoteDir', patch: { remoteDir: undefined } },
+  { label: '只有 remoteDir 没有 server', patch: { server: undefined } },
+] as const) {
+  it(`未绑定服务器的项目（${shape.label}）不能签发终端与浏览绑定`, async () => {
+    const unbound = { ...workspace, ...shape.patch } as unknown as BoundWorkspace;
+    const bindings = createTerminalBindings({
+      store: { get: async () => unbound },
+      pool: { fingerprint: async () => 'a', generation: () => 0 },
+    });
+    await expect(bindings.issue(target, { signal })).rejects.toMatchObject({ code: 'workspace_missing' });
+    const browse = createBrowseBinding(
+      { get: async () => unbound },
+      { fingerprint: async () => 'a', generation: () => 0 },
+    );
+    await expect(
+      browse(workspace.id, { sshHost: workspace.server, remoteDir: workspace.remoteDir }, signal),
+    ).rejects.toMatchObject({ code: 'workspace_missing' });
+  });
+}

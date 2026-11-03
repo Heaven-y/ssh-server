@@ -22,11 +22,23 @@ function chooseEntry(entries: Entry[], selection?: CapabilitySelection, name?: s
   return entry;
 }
 
-export function createCapabilitiesService(providers: Record<AgentKind, CapabilityProvider>) {
+const AGENT_LABELS: Record<AgentKind, string> = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+  antigravity: 'Antigravity',
+};
+
+function providerOf(providers: Partial<Record<AgentKind, CapabilityProvider>>, agent: AgentKind): CapabilityProvider {
+  const provider = providers[agent];
+  if (!provider) throw new SessionError(503, 'agent_unavailable', `${AGENT_LABELS[agent]} 适配器尚未接入`);
+  return provider;
+}
+
+export function createCapabilitiesService(providers: Partial<Record<AgentKind, CapabilityProvider>>) {
   async function discover(ws: Workspace, agent: AgentKind, signal?: AbortSignal) {
     try {
       signal?.throwIfAborted();
-      const catalog = await providers[agent](ws.localDir, signal);
+      const catalog = await providerOf(providers, agent)(ws.dir, signal);
       signal?.throwIfAborted();
       return catalog;
     } catch (error) {
@@ -34,7 +46,7 @@ export function createCapabilitiesService(providers: Record<AgentKind, Capabilit
       throw new SessionError(
         503,
         'capabilities_unavailable',
-        `${agent === 'claude' ? 'Claude Code' : 'Codex'} 能力读取失败，请检查本机运行时与配置`,
+        `${AGENT_LABELS[agent]} 能力读取失败，请检查本机运行时与配置`,
       );
     }
   }

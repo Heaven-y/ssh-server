@@ -10,8 +10,8 @@ import { createWorkspaceActivity } from '../../src/workspaces/activity';
 const ws: Workspace = {
   id: 'w1',
   name: 'demo',
-  localDir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
-  sshHost: 'my-server',
+  dir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
+  server: 'my-server',
   remoteDir: '~/projects/demo',
 };
 
@@ -206,7 +206,7 @@ describe('TurnManager', () => {
     const { fake, turns } = setup();
     const { socket, sent } = fakeSocket();
     await turns.handle(socket, send());
-    fake.turns[0]!.input.emit({ type: 'session', sessionId: 's9', model: 'm', cwd: ws.localDir });
+    fake.turns[0]!.input.emit({ type: 'session', sessionId: 's9', model: 'm', cwd: ws.dir });
     await turns.handle(socket, send({ sessionId: 's9', clientTurnId: 'c2' }));
     expect(sent.at(-1)).toEqual({ type: 'error', clientTurnId: 'c2', message: '该会话正在运行' });
   });
@@ -399,7 +399,7 @@ describe('TurnManager', () => {
     const contender = fakeSocket();
     await turns.handle(owner.socket, send({ sessionId: 'owned' }));
     await turns.handle(contender.socket, send({ clientTurnId: 'contender' }));
-    fake.turns[1]!.input.emit({ type: 'session', sessionId: 'owned', model: 'native-model', cwd: ws.localDir });
+    fake.turns[1]!.input.emit({ type: 'session', sessionId: 'owned', model: 'native-model', cwd: ws.dir });
     expect(contender.sent.at(-1)).toMatchObject({ type: 'error', message: '原生会话身份发生变化，已停止本轮' });
     expect(fake.turns[1]!.interrupt).toHaveBeenCalledOnce();
     fake.turns[1]!.finish();
@@ -407,7 +407,7 @@ describe('TurnManager', () => {
     const retry = fakeSocket();
     await turns.handle(retry.socket, send({ sessionId: 'owned', clientTurnId: 'still-owned' }));
     expect(retry.sent.at(-1)).toMatchObject({ type: 'error', clientTurnId: 'still-owned', message: '该会话正在运行' });
-    fake.turns[0]!.input.emit({ type: 'session', sessionId: 'unclaimed', model: 'native-model', cwd: ws.localDir });
+    fake.turns[0]!.input.emit({ type: 'session', sessionId: 'unclaimed', model: 'native-model', cwd: ws.dir });
     expect(fake.turns[0]!.interrupt).toHaveBeenCalledOnce();
     await turns.handle(retry.socket, send({ sessionId: 'unclaimed', clientTurnId: 'new-identity' }));
     expect(fake.turns).toHaveLength(3);

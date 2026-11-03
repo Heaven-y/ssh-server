@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import Fastify from 'fastify';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { Workspace } from '@agentdeck/shared';
+import type { BoundWorkspace, Workspace } from '@agentdeck/shared';
 import { createFilePreflights, type FilePreflights, type PreparedAction } from '../../src/remote-files/preflight';
 import { createFileTasks } from '../../src/remote-files/tasks';
 import { RemoteFilesError } from '../../src/remote-files/errors';
@@ -22,12 +22,12 @@ const remoteHome = path.posix.join(path.posix.sep, 'fixture-home');
 const root = path.posix.join(remoteHome, 'project');
 const source = path.posix.join(remoteHome, 'outside', 'source.py');
 const destination = path.posix.join(remoteHome, 'outside', 'target.py');
-const ws: Workspace = {
+const ws: BoundWorkspace = {
   id: 'w1',
   name: '测试工作区',
-  sshHost: 'my-server',
+  dir: path.join(os.tmpdir(), 'mirror'),
+  server: 'my-server',
   remoteDir: root,
-  localDir: path.join(os.tmpdir(), 'mirror'),
 };
 
 function actionFixture(): PreparedAction {
@@ -36,7 +36,7 @@ function actionFixture(): PreparedAction {
     public: {
       id,
       workspaceId: ws.id,
-      sshHost: ws.sshHost,
+      sshHost: ws.server,
       kind: 'move',
       source,
       destination,
@@ -52,7 +52,7 @@ function actionFixture(): PreparedAction {
     },
     context: {
       workspace: ws,
-      info: { id: randomUUID(), workspaceId: ws.id, sshHost: ws.sshHost, home: remoteHome, root },
+      info: { id: randomUUID(), workspaceId: ws.id, sshHost: ws.server, home: remoteHome, root },
       key: 'fixture-key',
       generation: 0,
     },

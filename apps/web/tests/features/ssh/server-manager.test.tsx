@@ -36,7 +36,7 @@ beforeEach(() => {
   };
   vi.spyOn(api, 'listSshHosts').mockResolvedValue([server]);
   vi.spyOn(api, 'listWorkspaces').mockResolvedValue([
-    { id: 'w', name: '项目一', localDir: 'demo', sshHost: server.alias, remoteDir: '~/demo' },
+    { id: 'w', name: '项目一', dir: 'demo', server: server.alias, remoteDir: '~/demo' },
   ]);
   vi.spyOn(api, 'sshCredentials').mockResolvedValue(status);
   vi.spyOn(api, 'readSshPassword').mockResolvedValue({

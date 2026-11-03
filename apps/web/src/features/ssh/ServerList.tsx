@@ -32,7 +32,7 @@ function ServerStatus({ server }: { server: ManagedServer }) {
 function referenceLabel(workspaces: UseQueryResult<Workspace[]>, alias: string) {
   if (workspaces.isError) return '引用读取失败';
   if (!workspaces.data) return '引用读取中…';
-  const count = workspaces.data.filter((workspace) => workspace.sshHost === alias).length;
+  const count = workspaces.data.filter((workspace) => workspace.server === alias).length;
   return count ? `${count} 个工作区引用` : '无工作区引用';
 }
 function ServerRow({

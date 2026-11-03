@@ -74,12 +74,12 @@ function SessionSource({
         <Command.Item
           key={session.sessionId}
           value={`session:${agent}:${session.sessionId}`}
-          keywords={[session.summary, agent, session.sessionId]}
+          keywords={[session.title, agent, session.sessionId]}
           className={itemClass}
           disabled={operations[sessionActionKey(workspaceId, session)]?.pending === true}
           onSelect={() => choose(session)}
         >
-          <span className="truncate">{session.summary || '无标题会话'}</span>
+          <span className="truncate">{session.title || '无标题会话'}</span>
           <span className="shrink-0 text-xs text-muted-foreground">{agent}</span>
         </Command.Item>
       ))}
@@ -153,7 +153,7 @@ export default function CommandPalette({
   const choose = (session: SessionSummary) =>
     run({
       id: session.sessionId,
-      label: session.summary,
+      label: session.title,
       workspace: true,
       run: () => {
         void useChat.getState().openSession(session);

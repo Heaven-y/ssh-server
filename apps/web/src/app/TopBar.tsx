@@ -13,7 +13,7 @@ import {
   TerminalSquare,
   WifiOff,
 } from 'lucide-react';
-import type { Workspace } from '@agentdeck/shared';
+import { isBoundWorkspace, type Workspace } from '@agentdeck/shared';
 import { reconnectChat, useChat } from '../features/chat/chat-store';
 import { buttonClass } from '../ui/styles';
 import { useUiPreferences } from '../ui/ui-preferences';
@@ -113,13 +113,15 @@ export function TopBar({
       {workspace && (
         <div className="flex min-w-0 flex-[1_1_24rem] items-center gap-2 px-3 text-sm text-muted-foreground">
           <FolderOpen aria-hidden className="size-4 shrink-0" />
-          <span className="truncate text-foreground" title={workspace.localDir}>
+          <span className="truncate text-foreground" title={workspace.dir}>
             {workspace.name}
           </span>
-          <SshConnectionPanel
-            key={JSON.stringify([workspace.id, workspace.sshHost, workspace.remoteDir])}
-            workspace={workspace}
-          />
+          {isBoundWorkspace(workspace) && (
+            <SshConnectionPanel
+              key={JSON.stringify([workspace.id, workspace.server, workspace.remoteDir])}
+              workspace={workspace}
+            />
+          )}
         </div>
       )}
       <div className="ml-auto flex h-14 shrink-0 items-center gap-1 pr-4">

@@ -44,7 +44,7 @@ export function SessionMenu({
         store={menu}
         render={<button type="button" />}
         className={`${buttonClass('ghost')} shrink-0 px-1.5`}
-        aria-label={`${AGENT_LABELS[session.agent]} 会话“${session.summary || '无标题会话'}”的更多操作`}
+        aria-label={`${AGENT_LABELS[session.agent]} 会话“${session.title || '无标题会话'}”的更多操作`}
         title={disabled ? '会话运行或操作中，结束后可管理' : '更多会话操作'}
         disabled={disabled}
       >

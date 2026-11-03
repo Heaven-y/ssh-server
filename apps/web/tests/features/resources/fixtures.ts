@@ -1,11 +1,16 @@
-import { ProductSettingsSchema, type ManagedServer, type ResourceSnapshot, type Workspace } from '@agentdeck/shared';
+import {
+  ProductSettingsSchema,
+  type BoundWorkspace,
+  type ManagedServer,
+  type ResourceSnapshot,
+} from '@agentdeck/shared';
 
-export const workspace: Workspace = {
+export const workspace: BoundWorkspace = {
   id: 'w1',
   name: '示例项目',
-  sshHost: 'my-server',
+  server: 'my-server',
   remoteDir: '~/projects/demo',
-  localDir: 'project',
+  dir: 'project',
 };
 export const server: ManagedServer = {
   alias: 'my-server',

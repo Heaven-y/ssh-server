@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { SessionSummary } from '@agentdeck/shared';
+import type { SessionRef } from '@agentdeck/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { buttonClass } from '../../ui/styles';
@@ -10,7 +10,8 @@ import { forkSession } from './session-fork';
 
 type Props = {
   workspaceId: string;
-  session: SessionSummary;
+  /** 分叉只需要原生身份与展示标题，列表行与会话头都能直接传。 */
+  session: SessionRef & { title: string };
   pointId?: string;
   onClose(): void;
 };
@@ -43,7 +44,7 @@ export function SessionForkDialog({ workspaceId, session, pointId, onClose }: Pr
     <DetailDialog title="分叉会话" busy={busy} onClose={onClose}>
       <div className="space-y-4">
         <p className="text-sm font-medium wrap-anywhere">
-          {session.summary || '无标题会话'} · {AGENT_LABELS[session.agent]}
+          {session.title || '无标题会话'} · {AGENT_LABELS[session.agent]}
         </p>
         <p className="text-sm leading-6">
           {pointId ? '保留截至所选位置的对话历史，创建独立会话。' : '从会话末尾创建独立会话。'}

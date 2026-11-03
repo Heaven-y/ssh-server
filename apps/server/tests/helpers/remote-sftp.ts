@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import ssh2 from 'ssh2';
 import type { Attributes, Connection, FileEntry, SFTPWrapper } from 'ssh2';
-import type { RemoteBrowseTarget, Workspace } from '@agentdeck/shared';
+import type { BoundWorkspace, RemoteBrowseTarget } from '@agentdeck/shared';
 import { createSshPool } from '../../src/ssh/pool';
 
 type Operation = 'READDIR' | 'REALPATH' | 'SFTP' | 'READ';
@@ -242,18 +242,14 @@ export async function startRemoteSftpFixture(options: { downloads?: boolean } = 
     },
   });
   await pool.setPassword('my-server', PASSWORD);
-  const workspace: Workspace = {
+  const workspace: BoundWorkspace = {
     id: 'fixture-workspace',
     name: '合成工作区',
-    sshHost: 'my-server',
+    dir: path.join(localHome, 'mirror'),
+    server: 'my-server',
     remoteDir: root,
-    localDir: path.join(localHome, 'mirror'),
   };
-  const target: RemoteBrowseTarget = {
-    sshHost: workspace.sshHost,
-    remoteDir: workspace.remoteDir,
-    localDir: workspace.localDir,
-  };
+  const target: RemoteBrowseTarget = { sshHost: workspace.server, remoteDir: workspace.remoteDir };
   return {
     port: address.port,
     pool,
@@ -274,7 +270,7 @@ export async function startRemoteSftpFixture(options: { downloads?: boolean } = 
       knownHosts = text;
     },
     trust: () => knownHosts,
-    authenticate: () => pool.setPassword(workspace.sshHost, PASSWORD),
+    authenticate: () => pool.setPassword(workspace.server, PASSWORD),
     async close() {
       pool.dispose();
       for (const gate of held) {

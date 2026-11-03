@@ -122,7 +122,7 @@ export class ClaudeRuntime {
     const { workspace } = input;
     const effort = claudeEffort(input.reasoningEffort);
     const options = {
-      cwd: workspace.localDir,
+      cwd: workspace.dir,
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code', append: buildInstructions(workspace) },
       canUseTool: (toolName: string, toolInput: Record<string, unknown>, opts: { signal: AbortSignal }) =>

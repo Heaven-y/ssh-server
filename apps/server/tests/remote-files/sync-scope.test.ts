@@ -1,9 +1,9 @@
 // 从已删除的 tests/sync/filters.test.ts 搬来的路径边界与过滤用例；只覆盖仍保留的三个纯函数。
 import { describe, expect, it } from 'vitest';
-import { SyncSettingsSchema } from '@agentdeck/shared';
+import { RemoteFileFilterSchema } from '@agentdeck/shared';
 import { eligibleFile, excludedPath, safeRelativePath } from '../../src/remote-files/sync-scope';
 
-const settings = SyncSettingsSchema.parse({});
+const settings = RemoteFileFilterSchema.parse({});
 describe('远端条目的同步范围判定', () => {
   it('默认只看代码和不超过 10 MiB 的小文件', () => {
     expect(eligibleFile('src/train.py', 100, settings)).toBe(true);
@@ -13,7 +13,7 @@ describe('远端条目的同步范围判定', () => {
       expect(eligibleFile(file, 1, settings)).toBe(false);
   });
   it('自定义扩展名生效，.git 永远排除', () => {
-    const changed = SyncSettingsSchema.parse({ excludedExtensions: ['csv'] });
+    const changed = RemoteFileFilterSchema.parse({ excludedExtensions: ['csv'] });
     expect(eligibleFile('data.csv', 1, changed)).toBe(false);
     expect(eligibleFile('weights.pt', 1, changed)).toBe(true);
     expect(excludedPath('data.csv', changed)).toBe(true);

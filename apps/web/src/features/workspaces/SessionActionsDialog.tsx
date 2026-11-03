@@ -28,8 +28,8 @@ type Submit = (input: SessionActionInput) => void;
 
 function RenameSession({ session, submit }: { session: SessionSummary; submit: Submit }) {
   const id = useId();
-  const [title, setTitle] = useState(session.summary);
-  const canRename = title.trim().length > 0 && title.trim() !== session.summary.trim();
+  const [title, setTitle] = useState(session.title);
+  const canRename = title.trim().length > 0 && title.trim() !== session.title.trim();
   return (
     <form
       className="space-y-3"
@@ -184,7 +184,7 @@ export function SessionActionsDialog({ workspaceId, session, archived, action, o
     <DetailDialog title={`${ACTION_LABELS[action]}会话`} busy={busy} onClose={onClose}>
       <div className="space-y-4">
         <div>
-          <p className="text-sm font-medium wrap-anywhere">{session.summary || '无标题会话'}</p>
+          <p className="text-sm font-medium wrap-anywhere">{session.title || '无标题会话'}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             运行来源：{AGENT_LABELS[session.agent]}
             {archived ? ' · 已归档' : ''}
@@ -192,9 +192,7 @@ export function SessionActionsDialog({ workspaceId, session, archived, action, o
           <p className="mt-1 text-xs leading-6 wrap-anywhere text-muted-foreground">{description}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             最后更新：
-            <time dateTime={new Date(session.lastModified).toISOString()}>
-              {new Date(session.lastModified).toLocaleString('zh-CN')}
-            </time>
+            <time dateTime={session.updatedAt}>{new Date(session.updatedAt).toLocaleString('zh-CN')}</time>
           </p>
         </div>
         {busy && (

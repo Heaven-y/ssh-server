@@ -10,8 +10,8 @@ describe('能力目录路由', () => {
     const ws = {
       id: 'workspace',
       name: 'demo',
-      localDir: path.join(tmpdir(), 'capabilities-route'),
-      sshHost: 'my-server',
+      dir: path.join(tmpdir(), 'capabilities-route'),
+      server: 'my-server',
       remoteDir: '~/projects/demo',
     };
     const provider = vi.fn(async () => ({ models: [], entries: [], warnings: ['模型目录暂不可用'] }));
@@ -27,7 +27,7 @@ describe('能力目录路由', () => {
       expect(result.statusCode).toBe(200);
       expect(result.headers['cache-control']).toBe('no-store');
       expect(result.json()).toEqual({ agent: 'codex', models: [], entries: [], warnings: ['模型目录暂不可用'] });
-      expect(provider).toHaveBeenCalledWith(ws.localDir, expect.any(AbortSignal));
+      expect(provider).toHaveBeenCalledWith(ws.dir, expect.any(AbortSignal));
       provider.mockRejectedValueOnce(new Error('private-config-sentinel'));
       const failed = await app.inject('/api/workspaces/workspace/agent-capabilities?agent=claude');
       expect(failed.statusCode).toBe(503);

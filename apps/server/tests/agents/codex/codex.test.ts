@@ -30,8 +30,8 @@ async function setup(mode = 'normal') {
   const workspace: Workspace = {
     id: 'workspace',
     name: '测试',
-    localDir: dir,
-    sshHost: 'my-server',
+    dir,
+    server: 'my-server',
     remoteDir: '~/projects/demo',
   };
   const log = path.join(dir, 'rpc.jsonl');
@@ -104,12 +104,12 @@ describe('Codex app-server 核心边界', () => {
     ).done;
     const records = await messages();
     const start = records.find((value) => value.method === 'thread/start')?.params;
-    expect(start).toMatchObject({ cwd: workspace.localDir, approvalsReviewer: 'user' });
+    expect(start).toMatchObject({ cwd: workspace.dir, approvalsReviewer: 'user' });
     // 审批与沙箱策略沿用原生配置，网页不再用常量覆盖
     expect(start).not.toHaveProperty('sandbox');
     expect(start).not.toHaveProperty('approvalPolicy');
     expect(start?.developerInstructions).toContain('原生约束');
-    expect(start?.developerInstructions).toContain(workspace.localDir);
+    expect(start?.developerInstructions).toContain(workspace.dir);
     expect(start?.developerInstructions).not.toContain('my-server');
     expect(start?.developerInstructions).not.toContain('~/projects/demo');
     expect(start?.config).toEqual({});
@@ -117,7 +117,7 @@ describe('Codex app-server 核心边界', () => {
     expect(start).not.toHaveProperty('model');
     expect(start).not.toHaveProperty('modelProvider');
     expect(events.filter((event) => event.type === 'session')).toEqual([
-      { type: 'session', sessionId: 'native-thread', cwd: workspace.localDir, model: 'native-model', agent: 'codex' },
+      { type: 'session', sessionId: 'native-thread', cwd: workspace.dir, model: 'native-model', agent: 'codex' },
     ]);
     expect(events.filter((event) => event.type === 'text')).toEqual([{ type: 'text', delta: '流式回复' }]);
     expect(events.filter((event) => event.type === 'turn_end')).toEqual([

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { WorkspaceInputSchema } from '@agentdeck/shared';
+import { WorkspaceSchema } from '@agentdeck/shared';
 import { RemoteActionPlanSchema } from './executor';
 
 const text = z.string().min(1).max(16_384);
@@ -9,6 +9,15 @@ const action = z.object({
   destination: text.optional(),
 });
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
+/**
+ * 远端文件任务只可能来自已绑定服务器的项目，记录里也必须带齐绑定字段。
+ * 这里用 `WorkspaceSchema.shape` 取原始的 remoteDir 规则（`/` 或 `~` 开头、无换行与 NUL），
+ * 而不是用通用 text 覆盖——否则任务记录回读时就丢掉了这条路径约束。
+ */
+const taskWorkspace = WorkspaceSchema.extend({
+  server: text,
+  remoteDir: WorkspaceSchema.shape.remoteDir.unwrap(),
+});
 const node = z.object({
   exists: z.boolean(),
   type: z.enum(['file', 'directory', 'link']).optional(),
@@ -63,7 +72,7 @@ export const TaskRecordSchema = z
         canSubmit: z.boolean(),
       }),
       context: z.object({
-        workspace: WorkspaceInputSchema.extend({ id: text }),
+        workspace: taskWorkspace,
         info: z.object({ id: z.string().uuid(), workspaceId: text, sshHost: text, root: text, home: text }),
         key: text,
         generation: z.number().int().nonnegative(),
@@ -80,7 +89,7 @@ export const TaskRecordSchema = z
     const { task, action } = value;
     const identities = [
       [task.workspaceId, action.public.workspaceId, action.context.workspace.id, action.context.info.workspaceId],
-      [task.sshHost, action.public.sshHost, action.context.workspace.sshHost, action.context.info.sshHost],
+      [task.sshHost, action.public.sshHost, action.context.workspace.server, action.context.info.sshHost],
       [task.preflightId, action.public.id],
       [task.kind, action.public.kind, action.plan.kind],
       [task.source, action.public.source, action.plan.source ?? undefined],

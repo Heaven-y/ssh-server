@@ -64,8 +64,8 @@ describe('ClientMessageSchema', () => {
 describe('WorkspaceInputSchema', () => {
   const base = {
     name: 'demo',
-    localDir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
-    sshHost: 'my-server',
+    dir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
+    server: 'my-server',
     remoteDir: '~/projects/demo',
   };
 
@@ -79,18 +79,19 @@ describe('WorkspaceInputSchema', () => {
     expect(WorkspaceInputSchema.safeParse({ ...base, remoteDir: '~/a\nb' }).success).toBe(false);
   });
 
-  it('不再接受已删除的命令规则字段', () => {
-    const r = WorkspaceInputSchema.safeParse({ ...base, policy: { disabledRules: ['privilege'] } });
-    expect(r.success).toBe(false);
+  it('丢弃已删除的 sync、policy 与旧字段名，而不是整份拒绝', () => {
+    const parsed = WorkspaceInputSchema.parse({
+      ...base,
+      localDir: base.dir,
+      sshHost: base.server,
+      sync: { mode: 'bisync' },
+      policy: { disabledRules: ['privilege'] },
+    });
+    expect(parsed).toEqual(base);
   });
 
-  it('拒绝工作区认证方式和密码字段', () => {
-    expect(WorkspaceInputSchema.safeParse({ ...base, authMode: 'password' }).success).toBe(false);
-    expect(WorkspaceInputSchema.safeParse({ ...base, password: 'test-secret' }).success).toBe(false);
-  });
-
-  it('拒绝旧认证字段，无认证字段的工作区正常解析', () => {
-    expect(WorkspaceInputSchema.safeParse({ ...base, authMode: 'automatic' }).success).toBe(false);
-    expect(WorkspaceInputSchema.safeParse(base).success).toBe(true);
+  it('工作区不承载认证方式与密码，未知字段一律丢弃', () => {
+    for (const extra of [{ authMode: 'password' }, { password: 'test-secret' }, { authMode: 'automatic' }])
+      expect(WorkspaceInputSchema.parse({ ...base, ...extra })).toEqual(base);
   });
 });

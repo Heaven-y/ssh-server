@@ -32,8 +32,8 @@ export function createClaudeRunner(options: { idleMs?: number } = {}): TurnRunne
   const keyOf = (input: ClaudeTurnInput) =>
     JSON.stringify([
       input.workspace.id,
-      input.workspace.localDir,
-      input.workspace.sshHost,
+      input.workspace.dir,
+      input.workspace.server,
       input.workspace.remoteDir,
       input.sessionId ?? '',
       input.model ?? '',

@@ -67,8 +67,9 @@ function SessionEntry({ session, workspaceId, archived, pinned, manage }: EntryP
   const openSession = useChat((state) => state.openSession);
   const pending = useChat((state) => state.sessionOperations[sessionActionKey(workspaceId, session)]?.pending === true);
   const active = current && running;
-  const title = session.summary || '无标题会话';
-  const details = `${title} · 运行来源：${AGENT_LABELS[session.agent]} · ${timeFormat.format(session.lastModified)}`;
+  const updated = new Date(session.updatedAt);
+  const title = session.title || '无标题会话';
+  const details = `${title} · 运行来源：${AGENT_LABELS[session.agent]} · ${timeFormat.format(updated)}`;
   return (
     <li className="flex items-center gap-0.5">
       <button
@@ -87,9 +88,9 @@ function SessionEntry({ session, workspaceId, archived, pinned, manage }: EntryP
         <span className="min-w-0 flex-1 truncate leading-5 group-aria-[current]:font-medium">{title}</span>
         <span
           className="shrink-0 text-xs tabular-nums text-muted-foreground"
-          title={`更新于 ${timeFormat.format(session.lastModified)}`}
+          title={`更新于 ${timeFormat.format(updated)}`}
         >
-          {relativeTime(session.lastModified)}
+          {relativeTime(updated.getTime())}
         </span>
       </button>
       <SessionMenu
@@ -114,7 +115,8 @@ export function SessionGroup({
   const pinned = new Set(pins);
   const isPinned = (session: SessionSummary) => !archived && pinned.has(sessionActionKey(workspaceId, session));
   const list = (query.data ?? []).toSorted(
-    (a, b) => Number(isPinned(b)) - Number(isPinned(a)) || b.lastModified - a.lastModified,
+    (a, b) =>
+      Number(isPinned(b)) - Number(isPinned(a)) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
   );
   return (
     <section aria-label={`${AGENT_LABELS[agent]} 会话`} className="space-y-1">

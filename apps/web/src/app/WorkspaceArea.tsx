@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Group, Panel, Separator, usePanelRef } from 'react-resizable-panels';
-import type { Workspace } from '@agentdeck/shared';
+import { isBoundWorkspace, type Workspace } from '@agentdeck/shared';
 
 const TerminalDock = lazy(() => import('../features/terminal/TerminalDock'));
 
@@ -63,7 +63,12 @@ export function WorkspaceArea({
                 </p>
               }
             >
-              <TerminalDock workspace={workspace} visible={terminalVisible} overlay={overlay} onHide={onHideTerminal} />
+              <TerminalDock
+                workspace={workspace && isBoundWorkspace(workspace) ? workspace : undefined}
+                visible={terminalVisible}
+                overlay={overlay}
+                onHide={onHideTerminal}
+              />
             </Suspense>
           )}
         </Panel>

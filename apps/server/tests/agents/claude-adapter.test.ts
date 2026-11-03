@@ -8,8 +8,8 @@ import { PERMISSION_TIMEOUT_MS, runClaudeTurn, type QueryFn } from '../../src/ag
 const ws: Workspace = {
   id: 'w1',
   name: 'demo',
-  localDir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
-  sshHost: 'my-server',
+  dir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
+  server: 'my-server',
   remoteDir: '~/projects/demo',
 };
 
@@ -88,10 +88,10 @@ describe('runClaudeTurn：调用参数', () => {
     await run(fake).handle.done;
     const o = fake.state.options!;
     expect(fake.state.prompt).toBe('你好');
-    expect(o.cwd).toBe(ws.localDir);
+    expect(o.cwd).toBe(ws.dir);
     expect(o.settingSources).toEqual(['user', 'project', 'local']);
     expect(o.systemPrompt).toMatchObject({ type: 'preset', preset: 'claude_code' });
-    expect((o.systemPrompt as { append: string }).append).toContain(ws.localDir);
+    expect((o.systemPrompt as { append: string }).append).toContain(ws.dir);
     expect((o.systemPrompt as { append: string }).append).not.toContain('my-server');
     expect(o).not.toHaveProperty('mcpServers');
     expect(o).not.toHaveProperty('allowedTools');
@@ -118,7 +118,7 @@ describe('runClaudeTurn：事件', () => {
         subtype: 'init',
         session_id: 's1',
         model: 'm',
-        cwd: ws.localDir,
+        cwd: ws.dir,
         parent_tool_use_id: null,
       },
       { type: 'result', subtype: 'success', is_error: false, duration_ms: 5, total_cost_usd: 0.01, session_id: 's1' },
@@ -165,9 +165,9 @@ describe('runClaudeTurn：权限', () => {
   it('工作区内外的编辑与 Bash 一律交给网页确认，不再由网页预放行', async () => {
     const requestPermission = vi.fn(async () => ({ allow: false, message: '不允许' }));
     const { fn, events } = await canUseTool({ requestPermission });
-    const inside = await fn('Edit', { file_path: path.join(ws.localDir, 'src', 'a.py') }, { signal });
+    const inside = await fn('Edit', { file_path: path.join(ws.dir, 'src', 'a.py') }, { signal });
     expect(inside).toMatchObject({ behavior: 'deny', message: '不允许' });
-    const outside = await fn('Write', { file_path: path.join(ws.localDir, '..', 'other', 'a.txt') }, { signal });
+    const outside = await fn('Write', { file_path: path.join(ws.dir, '..', 'other', 'a.txt') }, { signal });
     expect(outside).toMatchObject({ behavior: 'deny', message: '不允许' });
     const bash = await fn('Bash', { command: 'ls' }, { signal });
     expect(bash.behavior).toBe('deny');

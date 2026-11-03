@@ -18,7 +18,7 @@ export function threadParams(input: AgentTurnInput, nativeConfig: RecordValue): 
   if (input.reasoningEffort) config.model_reasoning_effort = input.reasoningEffort;
   const instructions = text(record(nativeConfig.config).developer_instructions);
   return {
-    cwd: input.workspace.localDir,
+    cwd: input.workspace.dir,
     approvalsReviewer: 'user',
     config,
     developerInstructions: [instructions, buildInstructions(input.workspace)].filter(Boolean).join('\n\n'),

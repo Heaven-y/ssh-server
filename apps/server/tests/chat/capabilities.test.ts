@@ -8,8 +8,8 @@ import { createCapabilitiesService } from '../../src/chat/capabilities';
 const ws: Workspace = {
   id: 'w',
   name: 'demo',
-  localDir: path.join(tmpdir(), 'capabilities-fixture'),
-  sshHost: 'my-server',
+  dir: path.join(tmpdir(), 'capabilities-fixture'),
+  server: 'my-server',
   remoteDir: '~/projects/demo',
 };
 function setup() {
@@ -25,7 +25,7 @@ function setup() {
         available: true,
         requiresSession: false,
         supportsArguments: true,
-        invocation: { kind: 'skill', name: 'inspect', path: path.join(ws.localDir, 'SKILL.md') },
+        invocation: { kind: 'skill', name: 'inspect', path: path.join(ws.dir, 'SKILL.md') },
       },
       {
         id: 'compact',
@@ -67,9 +67,9 @@ describe('原生能力解析', () => {
     const input = await service.prepare(ws, 'codex', { text: '', selection: { id: 'skill' } });
     expect(input).toEqual({
       text: '',
-      invocation: { kind: 'skill', name: 'inspect', path: path.join(ws.localDir, 'SKILL.md') },
+      invocation: { kind: 'skill', name: 'inspect', path: path.join(ws.dir, 'SKILL.md') },
     });
-    expect(provider).toHaveBeenCalledWith(ws.localDir, undefined);
+    expect(provider).toHaveBeenCalledWith(ws.dir, undefined);
   });
 
   it('拒绝过期、禁用、未知与有歧义的选择，不降级为模型文本', async () => {
@@ -126,6 +126,21 @@ describe('原生能力解析', () => {
     provider.mockRejectedValueOnce(new Error('private-config-sentinel'));
     await expect(service.read(ws, 'codex')).rejects.toMatchObject({
       message: 'Codex 能力读取失败，请检查本机运行时与配置',
+    });
+  });
+
+  it('尚未接入适配器的 CLI 报 503 并说明缺什么，不伪装成空目录', async () => {
+    const { service } = setup();
+    // antigravity 已在协议里，但还没有 provider；界面据此显示"不可用"而不是空清单
+    await expect(service.read(ws, 'antigravity')).rejects.toMatchObject({
+      status: 503,
+      code: 'agent_unavailable',
+      message: 'Antigravity 适配器尚未接入',
+    });
+    // 普通正文不探测能力，因此不会被这条 503 挡住；只有要解析能力时才需要适配器
+    expect(await service.prepare(ws, 'antigravity', { text: '你好' })).toEqual({ text: '你好' });
+    await expect(service.prepare(ws, 'antigravity', { text: '/help' })).rejects.toMatchObject({
+      code: 'agent_unavailable',
     });
   });
 });

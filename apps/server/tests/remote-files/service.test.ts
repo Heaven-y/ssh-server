@@ -85,7 +85,7 @@ describe('真实 SFTP 服务器目录集成', () => {
     remote.service.close(remote.workspace.id, session.id);
     await released(remote);
     expect(remote.audit.handlesClosed).toBe(remote.audit.handlesOpened);
-    remote.pool.disconnect(remote.workspace.sshHost);
+    remote.pool.disconnect(remote.workspace.server);
     await vi.waitFor(() => expect(remote.resources().peers).toBe(0));
   }, 15_000);
 

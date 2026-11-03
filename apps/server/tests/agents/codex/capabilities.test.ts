@@ -26,8 +26,8 @@ async function setup(mode = 'normal') {
   const workspace: Workspace = {
     id: 'workspace',
     name: '能力测试',
-    localDir: dir,
-    sshHost: 'my-server',
+    dir,
+    server: 'my-server',
     remoteDir: '~/projects/demo',
   };
   const options = {
@@ -144,7 +144,7 @@ describe('Codex 原生能力目录与发送', () => {
           invocation: {
             kind: 'skill',
             name: 'example',
-            path: mode === 'unknown-path' ? path.join(input.workspace.localDir, 'removed', 'SKILL.md') : skillPath,
+            path: mode === 'unknown-path' ? path.join(input.workspace.dir, 'removed', 'SKILL.md') : skillPath,
           },
         },
         options,

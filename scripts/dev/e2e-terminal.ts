@@ -63,13 +63,13 @@ async function main() {
       });
       server.get('/__fixture/sftp', async () => {
         const connection = await fixture.pool.resolveConnection({
-          alias: fixture.workspace.sshHost,
+          alias: fixture.workspace.server,
         });
         const root = await resolveTerminalDirectory({
           workspace: fixture.workspace,
           pool: fixture.pool,
           guard: {
-            generation: fixture.pool.generation(fixture.workspace.sshHost),
+            generation: fixture.pool.generation(fixture.workspace.server),
             cacheKey: connection.cacheKey,
             signal: new AbortController().signal,
           },

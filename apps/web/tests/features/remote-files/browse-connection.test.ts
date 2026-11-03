@@ -1,4 +1,3 @@
-import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { RemoteBrowseSession, RemoteBrowseTarget } from '@agentdeck/shared';
@@ -6,11 +5,7 @@ import { ApiError, type api } from '../../../src/lib/api';
 import { createBrowseConnection } from '../../../src/features/remote-files/browse-connection';
 
 const root = path.posix.join(path.posix.sep, 'fixture-project');
-const target: RemoteBrowseTarget = {
-  sshHost: 'my-server',
-  remoteDir: root,
-  localDir: path.join(os.tmpdir(), 'browse-fixture'),
-};
+const target: RemoteBrowseTarget = { sshHost: 'my-server', remoteDir: root };
 const session = (id: string): RemoteBrowseSession => ({
   id,
   workspaceId: 'fixture',

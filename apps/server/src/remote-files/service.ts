@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import {
-  SyncSettingsSchema,
+  RemoteFileFilterSchema,
+  type BoundWorkspace,
   type RemoteBrowseSession,
   type RemoteBrowseTarget,
-  type Workspace,
 } from '@agentdeck/shared';
 import { connectionIdentity, workspaceTarget } from '../ssh/connection';
 import type { SshPool } from '../ssh/pool';
 import { createSftpReader, type SftpReader } from '../ssh/sftp';
 import type { WorkspaceStore } from '../workspaces/store';
-import { createBrowseBinding } from './binding';
+import { browseTargetOf, createBrowseBinding } from './binding';
 import { createDirectoryCursor, type DirectoryCursor } from './directory';
 import { RemoteFilesError } from './errors';
 import { remoteOperation } from './operation';
@@ -23,7 +23,7 @@ type Deps = {
 };
 type Session = {
   info: RemoteBrowseSession;
-  workspace: Workspace;
+  workspace: BoundWorkspace;
   binding: string;
   key: string;
   identity: string;
@@ -61,7 +61,7 @@ export function createRemoteFilesService(deps: Deps) {
       ...(session ? [session.lifetime.signal] : []),
     ]);
   }
-  async function readerFor(workspace: Workspace, signal: AbortSignal): Promise<SftpReader> {
+  async function readerFor(workspace: BoundWorkspace, signal: AbortSignal): Promise<SftpReader> {
     signal.throwIfAborted();
     const reader = createSftpReader(await deps.pool.openSftp(workspaceTarget(workspace)));
     const stop = () => reader.close(signal.reason as Error);
@@ -76,14 +76,14 @@ export function createRemoteFilesService(deps: Deps) {
   async function validate(session: Session, signal: AbortSignal) {
     signal.throwIfAborted();
     if (sessions.get(session.info.id) !== session) throw new RemoteFilesError('session_expired');
-    const current = await bind(session.info.workspaceId, session.workspace, signal);
+    const current = await bind(session.info.workspaceId, browseTargetOf(session.workspace), signal);
     if (current.binding !== session.binding) {
       close(session, new RemoteFilesError('target_changed'));
       throw new RemoteFilesError('target_changed');
     }
     const connection = await deps.pool.resolveConnection(workspaceTarget(current.workspace));
     signal.throwIfAborted();
-    if (connection.cacheKey !== session.key || deps.pool.generation(current.workspace.sshHost) !== session.generation) {
+    if (connection.cacheKey !== session.key || deps.pool.generation(current.workspace.server) !== session.generation) {
       close(session);
       throw new RemoteFilesError('session_expired');
     }
@@ -110,11 +110,11 @@ export function createRemoteFilesService(deps: Deps) {
       const current = await bind(workspaceId, expected, signal);
       if (current.binding !== expected.binding) throw new RemoteFilesError('target_changed');
       const workspace = current.workspace;
-      const generation = deps.pool.generation(workspace.sshHost);
+      const generation = deps.pool.generation(workspace.server);
       const connection = await deps.pool.resolveConnection(workspaceTarget(workspace));
       signal.throwIfAborted();
       session = {
-        info: { id: randomUUID(), workspaceId, sshHost: workspace.sshHost, root: '', home: '' },
+        info: { id: randomUUID(), workspaceId, sshHost: workspace.server, root: '', home: '' },
         workspace,
         binding: current.binding,
         key: connection.cacheKey,
@@ -126,7 +126,7 @@ export function createRemoteFilesService(deps: Deps) {
       };
       const active = session;
       sessions.set(active.info.id, active);
-      active.unsubscribe = deps.pool.onCredentialsChanged(workspace.sshHost, () => close(active));
+      active.unsubscribe = deps.pool.onCredentialsChanged(workspace.server, () => close(active));
       const abort = () => close(active);
       signal.addEventListener('abort', abort, { once: true });
       try {
@@ -156,7 +156,7 @@ export function createRemoteFilesService(deps: Deps) {
       return createDirectoryCursor(reader, handle, {
         directory: path,
         root: session.info.root,
-        settings: SyncSettingsSchema.parse(session.workspace.sync ?? {}),
+        settings: RemoteFileFilterSchema.parse({}),
       });
     } catch (error) {
       reader.close();

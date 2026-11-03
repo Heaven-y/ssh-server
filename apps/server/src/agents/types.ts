@@ -1,4 +1,4 @@
-import type { AgentEvent, SessionSummary, Workspace } from '@agentdeck/shared';
+import type { AgentEvent, SessionRecord, Workspace } from '@agentdeck/shared';
 import type { NativeInvocation } from './capability-types';
 
 export type PermissionAnswer = { allow: boolean; message?: string };
@@ -17,7 +17,8 @@ export type TurnRunner = ((input: AgentTurnInput) => TurnHandle) & {
   /** 关闭长驻运行时；单轮实现可省略。 */
   dispose?(): Promise<void>;
 };
-export type NativeSessionSummary = Omit<SessionSummary, 'agent'>;
+/** 各 CLI 的原生会话行：只有原生元数据，不含项目归属与运行态。 */
+export type NativeSessionSummary = Omit<SessionRecord, 'agent'>;
 export type NativeSessionRead = {
   session: NativeSessionSummary;
   cwd: string;
