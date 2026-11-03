@@ -1,0 +1,929 @@
+# 原生 CLI 会话工作台 M1（外壳）实施计划
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 把现有「同步 + 版本 + 双端镜像」的产品剥掉，换成一个能列出并读取本机三套 CLI 原生会话的只读工作台外壳。
+
+**Architecture:** 保留 SSH、终端、资源、Slurm、远端文件这半边地基，删除同步、版本、本地文件镜像与 Agent→SSH 的 MCP 桥。领域模型从「本地目录 + 远端目录 + 同步策略」收敛为「项目目录 + 可选服务器绑定」。会话层引入统一的 `AgentAdapter` 探测与会话枚举，Antigravity 通过只读打开它的 SQLite 元数据表拿会话列表。前端外壳按项目/会话/服务器面板三段重写。
+
+**Tech Stack:** Node.js 22（内置 `node:sqlite`）、TypeScript、Fastify、zod、React 19、Vite、Tailwind 4、Vitest。
+
+**Spec:** `docs/superpowers/specs/2026-11-03-native-cli-workbench-design.md`
+
+## Global Constraints
+
+- 版本策略：驱动本机 PATH 上的 `claude`、`codex`、`agy`，不打包、不锁定、不做包内兜底；按能力探测而非版本号判断。
+- 请求策略：M1 全程只允许「第一层探测」——`--version`、`--help`、`codex app-server generate-json-schema`、读文件、`fs.watch`。不读能力目录，不发任何模型请求。
+- 单一真相：网页不存会话正文。`session-index.json` 只存簿记字段（id、agent、projectId、标题、时间、归属目录）。
+- 删除即删除：同步、版本、本地文件镜像、MCP 桥、`policy/` 不留开关与兼容路径。
+- 回复、文档、注释、提交信息使用中文；提交使用 `type(scope): 中文摘要`。
+- 分支：全部任务在 `feat/native-cli-workbench` 上以独立提交推进，不为单个任务另开小分支。合并 `main` 需用户授权。
+- 每个任务结束时 `npm.cmd test` 中与本任务相关的用例必须通过；全部任务结束后 `npm.cmd run check` 必须整体通过。
+- 仓库公开：测试与文档中不出现真实服务器地址、端口、用户名、密钥；示例用 `my-server`、`~/projects/demo`。
+
+## Review Focus
+
+以下五类输入/失败模式是规格隐含、但容易被实现者忽略的，各自在对应任务的测试中钉死：
+
+1. **旧配置里带 `sync` / `policy` / `localDir` 字段的工作区** —— 一次性导入后必须能正常打开并显示，不能因字段缺失或改名而报错或丢项目。
+2. **CLI 从未安装或会话目录不存在**（新机器、`~/.gemini` 尚未生成）—— 列表显示「未安装 / 无会话」，页面不崩、不抛未捕获异常。
+3. **Antigravity 的 `workspace_uris` 为空、非 `file://`、或指向不存在的路径** —— 标为「未归属」，绝不塞进第一个项目。
+4. **会话标题为空字符串或只有空白** —— 界面显示占位文案，不出现 `undefined` 或空白行。
+5. **某个 CLI 升级后 `--help` 缺了关键 flag** —— 该 CLI 单独标记「接口变化」并说明缺哪项，其余两个照常可用。
+
+---
+
+## File Structure
+
+```text
+packages/shared/src/
+├─ workspace.ts          改：Workspace 收敛为 { id, name, dir, server?, remoteDir? }
+├─ session.ts            新建：SessionSummary / SessionRef / 探测状态类型
+├─ index.ts              改：删掉 sync、policy、files、versions、turn-changes 导出
+└─ （删）sync.ts、policy.ts、files.ts、versions.ts、turn-changes.ts、turn-files.ts
+
+apps/server/src/
+├─ main.ts               改：删掉同步、版本、文件、MCP 桥的装配
+├─ agents/
+│  ├─ types.ts           改：加入 AgentProbe 类型
+│  ├─ probe.ts           新建：统一探测（版本 + flag 能力 + 凭据状态）
+│  ├─ claude/、codex/    保留，仅调整会话枚举的归属字段
+│  └─ antigravity/
+│     ├─ summaries.ts    新建：只读打开 conversation_summaries.db
+│     └─ sessions.ts     新建：SessionProvider 实现，列表走 SQLite
+├─ sessions/
+│  └─ ownership.ts       新建：三个 CLI 统一的隶属裁决（cwd / workspace_uris）
+├─ workspaces/
+│  ├─ store.ts           改：按新 Workspace 校验
+│  └─ import.ts          新建：一次性导入旧配置
+└─ http/
+   ├─ projects.routes.ts 新建：项目增删改查
+   ├─ sessions.routes.ts 改：按项目列会话
+   └─ probe.routes.ts    新建：只读探测结果
+
+apps/web/src/
+├─ app/
+│  ├─ App.tsx            改：三段布局
+│  ├─ TopBar.tsx         改：项目名 + 服务器 + 主题 + 设置
+│  ├─ Sidebar.tsx        新建：项目树与按 CLI 分组的会话
+│  ├─ SessionPane.tsx    新建：会话头 + 只读时间线
+│  └─ ServerDock.tsx     新建：右侧服务器面板容器
+└─ features/
+   └─ sessions/          新建：列表、只读时间线、CLI 徽标
+```
+
+---
+
+## Task 1: 删除同步、版本、本地文件三个域
+
+**Files:**
+- Delete: `apps/server/src/sync/`（整个目录）、`apps/server/src/vcs/`、`apps/server/src/files/`
+- Delete: `apps/server/src/workspaces/setup/`（双端向导，依赖同步，随同步域一起走）
+- Delete: `apps/server/src/http/sync.routes.ts`、`versions.routes.ts`、`files.routes.ts`、`workspace-setup.routes.ts`
+- Delete: `apps/web/src/features/sync/`、`versions/`、`changes/`、`files/`、`workspaces/setup/`
+- Delete: `apps/server/tests/sync/`、`vcs/`、`files/`；`apps/server/tests/workspaces/setup/`；`apps/web/tests/features/sync/`、`versions/`、`changes/`、`files/`、`workspaces/setup/`
+- Modify: `apps/server/src/main.ts`、`apps/web/src/app/*.tsx`（移除对上述模块的引用）
+- Modify: `apps/server/package.json`、`apps/web/package.json`（移除无用依赖）
+
+**Interfaces:**
+- Consumes: 无
+- Produces: 后端不再有 `sync`/`versions`/`files` 服务实例；后续任务可以直接假设这四处不存在
+
+- [ ] **Step 1: 记录删除前的基线**
+
+Run: `npm.cmd run typecheck`
+Expected: 通过。若不通过，先解决基线问题再动手。
+
+- [ ] **Step 2: 删除后端三个域的目录与路由**
+
+删除上述 `apps/server/src/` 下的三个目录、`workspaces/setup/` 与四个路由文件，然后从 `main.ts` 中移除对应 import 与装配代码（`createSyncManager`、`createVersionsService`、`createWorkspaceFilesService`、`createWorkspaceSetup`、`registerSyncRoutes`、`registerVersionRoutes`、`registerDiscardRoutes`、`registerFileRoutes`、`registerWorkspaceSetupRoutes`）。
+
+- [ ] **Step 3: 修复被牵连的调用点**
+
+`chat/turn-manager.ts` 里对 `sync`、`changedPaths` 的依赖一并删除（对应构造参数、调用与类型）。`workspaces/removal-resources.ts` 里对 `sync`、`files` 的引用删除。`workspaces.routes.ts` 里删掉引用 setup 的分支——这个文件在 Task 9 会被 `projects.routes.ts` 取代，此处只需让它编译通过。
+
+- [ ] **Step 4: 删除前端 feature 目录与引用**
+
+删除 `features/sync`、`features/versions`、`features/changes`、`features/files`，移除 `app/WorkspacePanels.tsx`、`WorkspaceTools.tsx`、`App.tsx`、`TopBar.tsx`、`CommandPalette.tsx` 中对它们的引用。这一步骤只求编译通过，布局的正式重写在 Task 12。
+
+- [ ] **Step 5: 移除无用依赖**
+
+从 `apps/web/package.json` 删除 `@pierre/diffs`。Run: `npm.cmd install`
+
+- [ ] **Step 6: 类型检查**
+
+Run: `npm.cmd run typecheck`
+Expected: 通过。若报「找不到模块」，说明还有引用没清干净，按报错逐个删除。
+
+- [ ] **Step 7: 全量测试**
+
+Run: `npm.cmd test`
+Expected: 通过（被删目录的用例随之消失）。
+
+- [ ] **Step 8: 提交**
+
+```bash
+git add -A
+git commit -m "refactor(server): 删除同步、版本与本地文件镜像三个域" -m "- 移除 sync、vcs、files 目录与其路由
+- 移除前端对应的 feature 与 @pierre/diffs 依赖
+- 保留 SSH、终端、资源、Slurm、远端文件"
+```
+
+## Task 2: 删除 MCP 桥与 policy 域
+
+**Files:**
+- Delete: `apps/server/src/remote-tools/`、`apps/server/src/policy/`
+- Delete: `apps/server/src/http/internal.routes.ts`、`apps/server/src/http/workspace-policy.routes.ts`
+- Delete: `apps/server/tests/remote-tools/`、`apps/server/tests/policy/`、`apps/web/tests/features/workspaces/`（policy 相关用例）
+- Modify: `apps/server/src/main.ts`、`apps/server/src/workspaces/policy.ts`（删除）
+- Modify: `apps/web/src/features/workspaces/WorkspacePolicyDialog.tsx`、`WorkspacePolicyForm.tsx`、`use-workspace-policy.ts`（删除）
+
+**Interfaces:**
+- Consumes: Task 1 的清理结果
+- Produces: 后端没有 `/internal/*` 路由，没有命令黑名单；`WorkspacePolicy` 类型不复存在
+
+- [ ] **Step 1: 删除目录与路由**
+
+删除 `remote-tools/`、`policy/` 两个目录，删除 `internal.routes.ts`、`workspace-policy.routes.ts`、`workspaces/policy.ts`，从 `main.ts` 移除 `registerInternalRoutes`、`registerWorkspacePolicyRoutes` 与相关装配。
+
+- [ ] **Step 2: 删除前端策略编辑入口**
+
+删除 `WorkspacePolicyDialog.tsx`、`WorkspacePolicyForm.tsx`、`use-workspace-policy.ts`，以及 `WorkspaceSidebar.tsx` 等处对它们的引用。
+
+- [ ] **Step 3: 类型检查**
+
+Run: `npm.cmd run typecheck`
+Expected: 通过。
+
+- [ ] **Step 4: 测试**
+
+Run: `npm.cmd test`
+Expected: 通过。
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add -A
+git commit -m "refactor(server): 删除 Agent→SSH 的 MCP 桥与命令黑名单" -m "- 服务器面板是人的工具，不再向 CLI 注入操作工具
+- 移除 /internal 路由与 policy 域"
+```
+
+## Task 3: 精简 shared 协议并按新模型定义 Workspace
+
+**Files:**
+- Modify: `packages/shared/src/workspace.ts`、`packages/shared/src/index.ts`
+- Delete: `packages/shared/src/sync.ts`、`policy.ts`、`files.ts`、`versions.ts`、`turn-changes.ts`、`turn-files.ts`
+- Create: `packages/shared/src/session.ts`
+- Test: `packages/shared/tests/workspace.test.ts`（新建）、`packages/shared/tests/session.test.ts`（新建）
+
+**Interfaces:**
+- Consumes: 无
+- Produces:
+  - `WorkspaceSchema` / `Workspace` / `WorkspaceInput`：`{ id?: string; name: string; dir: string; server?: string; remoteDir?: string }`
+  - `ProbeStatusSchema`：`'available' | 'missing' | 'changed' | 'credential-missing'`
+  - `AgentProbe`：`{ agent: AgentKind; status: ProbeStatus; version?: string; missing?: string[]; message?: string }`
+  - `SessionSummary`：`{ agent: AgentKind; sessionId: string; projectId: string | null; title: string; updatedAt: string; running: boolean }`
+
+- [ ] **Step 1: 写失败测试 —— 新 Workspace 模型**
+
+`packages/shared/tests/workspace.test.ts`：
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { WorkspaceInputSchema } from '../src/workspace';
+
+describe('WorkspaceInputSchema', () => {
+  it('接受只有名称和目录的最小工作区', () => {
+    const parsed = WorkspaceInputSchema.parse({ name: '示例项目', dir: 'E:\\web\\demo' });
+    expect(parsed).toEqual({ name: '示例项目', dir: 'E:\\web\\demo' });
+  });
+
+  it('接受可选的服务器绑定', () => {
+    const parsed = WorkspaceInputSchema.parse({ name: '示例项目', dir: '/home/dev/demo', server: 'my-server', remoteDir: '~/projects/demo' });
+    expect(parsed.server).toBe('my-server');
+    expect(parsed.remoteDir).toBe('~/projects/demo');
+  });
+
+  it('拒绝空名称与空目录', () => {
+    expect(WorkspaceInputSchema.safeParse({ name: '  ', dir: '/tmp' }).success).toBe(false);
+    expect(WorkspaceInputSchema.safeParse({ name: 'x', dir: '' }).success).toBe(false);
+  });
+
+  it('丢弃旧格式的 sync、policy、sshHost、localDir 字段', () => {
+    const parsed = WorkspaceInputSchema.parse({
+      name: '旧项目', dir: '/tmp/demo', sshHost: 'my-server', localDir: '/tmp/demo',
+      sync: { mode: 'bisync' }, policy: { disabledRules: ['privilege'] },
+    });
+    expect(parsed).toEqual({ name: '旧项目', dir: '/tmp/demo' });
+  });
+});
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `npx vitest run packages/shared/tests/workspace.test.ts`
+Expected: FAIL —— `WorkspaceInputSchema` 仍是旧字段，第四个用例与第一个用例失败。
+
+- [ ] **Step 3: 改写 `packages/shared/src/workspace.ts`**
+
+新 schema 为 `z.strictObject({ name, dir, server?, remoteDir? })`，但**要允许旧字段被丢弃而不是报错**：用 `z.object(...)。strip()`（zod 默认行为是 strip 未知键，strictObject 会报错）。`dir` 校验为非空字符串，绝对路径由后端校验。`remoteDir` 沿用原有「以 `/` 或 `~` 开头、不含换行与 NUL」的规则。保留 `SshAuthModeSchema`、`SshHostInfo` 不动。
+
+- [ ] **Step 4: 运行测试确认通过**
+
+Run: `npx vitest run packages/shared/tests/workspace.test.ts`
+Expected: PASS
+
+- [ ] **Step 5: 写失败测试 —— 探测与会话类型**
+
+`packages/shared/tests/session.test.ts`：
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { AgentProbeSchema, SessionSummarySchema } from '../src/session';
+
+describe('AgentProbeSchema', () => {
+  it('接受可用状态', () => {
+    expect(AgentProbeSchema.parse({ agent: 'claude', status: 'available', version: '2.1.317' }).status).toBe('available');
+  });
+  it('接受接口变化状态并列出缺失能力', () => {
+    const parsed = AgentProbeSchema.parse({ agent: 'codex', status: 'changed', version: '0.166.0', missing: ['turn/interrupt'] });
+    expect(parsed.missing).toEqual(['turn/interrupt']);
+  });
+  it('拒绝未知 agent', () => {
+    expect(AgentProbeSchema.safeParse({ agent: 'gemini', status: 'available' }).success).toBe(false);
+  });
+});
+
+describe('SessionSummarySchema', () => {
+  it('未归属会话的 projectId 是 null', () => {
+    const parsed = SessionSummarySchema.parse({
+      agent: 'antigravity', sessionId: 'abc', projectId: null, title: '示例', updatedAt: '2026-11-03T12:00:00.000Z', running: false,
+    });
+    expect(parsed.projectId).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 6: 运行测试确认失败**
+
+Run: `npx vitest run packages/shared/tests/session.test.ts`
+Expected: FAIL —— 模块不存在。
+
+- [ ] **Step 7: 新建 `packages/shared/src/session.ts`**
+
+导出 `ProbeStatusSchema`（四态）、`AgentProbeSchema`、`SessionSummarySchema` 与对应类型。`AgentProbeSchema` 里 `missing` 是可选字符串数组、`message` 可选字符串。
+
+- [ ] **Step 8: 运行测试确认通过**
+
+Run: `npx vitest run packages/shared/tests/session.test.ts`
+Expected: PASS
+
+- [ ] **Step 9: 精简 `packages/shared/src/index.ts`**
+
+删除 `sync`、`policy`、`files`、`versions`、`turn-changes`、`turn-files` 的导出；新增 `session.ts` 的导出；`Workspace` 相关导出保持同名。
+
+- [ ] **Step 10: 全量类型检查与测试**
+
+Run: `npm.cmd run typecheck && npm.cmd test`
+Expected: 通过。若报错，说明还有代码引用已删类型，就地删除引用。
+
+- [ ] **Step 11: 提交**
+
+```bash
+git add -A
+git commit -m "feat(shared): 收敛工作区模型并新增探测与会话类型" -m "- Workspace 改为项目目录 + 可选服务器绑定
+- 新增 AgentProbe 四态与 SessionSummary
+- 删除同步、策略、版本、文件相关协议"
+```
+
+## Task 4: 新工作区存储与校验
+
+**Files:**
+- Modify: `apps/server/src/workspaces/store.ts`
+- Test: `apps/server/tests/workspaces/store.test.ts`
+- Modify: `apps/server/src/main.ts`（`createWorkspaceStore` 的 `knownHosts` 依赖改为可选校验）
+
+**Interfaces:**
+- Consumes: Task 3 的 `WorkspaceInputSchema`
+- Produces: `WorkspaceStore` 签名不变（`list/get/withSnapshot/create/update/remove`），但校验规则变为：`dir` 必须存在且为绝对路径；`server` 若提供必须已登记
+
+- [ ] **Step 1: 写失败测试 —— 目录校验与可选服务器**
+
+`apps/server/tests/workspaces/store.test.ts`：
+
+```ts
+it('拒绝不存在的项目目录', async () => {
+  await expect(store.create({ name: '不存在', dir: 'E:\\web\\no-such-dir' })).rejects.toThrow(/不存在/);
+});
+
+it('不绑定服务器也能创建项目', async () => {
+  const ws = await store.create({ name: '本地项目', dir: tempDir });
+  expect(ws.server).toBeUndefined();
+});
+
+it('绑定未登记的服务器时报错', async () => {
+  await expect(store.create({ name: 'x', dir: tempDir, server: 'unknown-host' }))
+    .rejects.toThrow(/服务器未登记/);
+});
+```
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `npx vitest run apps/server/tests/workspaces/store.test.ts`
+Expected: FAIL —— 旧实现要求 `sshHost`，第一个与第二个用例失败。
+
+- [ ] **Step 3: 改 `store.ts`**
+
+把 `StoredWorkspacesSchema` 改为新 `WorkspaceInputSchema.extend({ id })`；`validate()` 里把 `localDir` 换成 `dir`，`sshHost` 校验改为「`server` 存在时才校验已登记」；错误信息改为「项目目录不存在」「服务器未登记，请先保存服务器档案」。
+
+- [ ] **Step 4: 运行确认通过**
+
+Run: `npx vitest run apps/server/tests/workspaces/store.test.ts`
+Expected: PASS
+
+- [ ] **Step 5: 修 `main.ts` 调用点并类型检查**
+
+Run: `npm.cmd run typecheck`
+Expected: 通过。
+
+- [ ] **Step 6: 提交**
+
+```bash
+git add -A
+git commit -m "feat(workspaces): 项目改为本地目录加可选服务器绑定" -m "- 目录必填且必须存在，服务器改为可选
+- 同步策略相关校验随域删除"
+```
+
+## Task 5: 一次性导入旧配置
+
+**Files:**
+- Create: `apps/server/src/workspaces/import.ts`
+- Test: `apps/server/tests/workspaces/import.test.ts`
+- Modify: `apps/server/src/main.ts`（启动时调用一次）
+
+**Interfaces:**
+- Consumes: Task 4 的 `WorkspaceStore`
+- Produces: `importLegacyWorkspaces(deps): Promise<ImportReport>`，其中 `ImportReport = { imported: number; skipped: number; backupFiles: string[] }`
+
+- [ ] **Step 1: 写失败测试 —— 旧字段被丢弃、文件改名为 .bak**
+
+`apps/server/tests/workspaces/import.test.ts`：
+
+```ts
+it('把旧的 localDir/sshHost 迁成新的 dir/server', async () => {
+  await writeFile(path.join(configDir, 'workspaces.json'), JSON.stringify([
+    { id: 'w1', name: '旧项目', localDir: tempDir, sshHost: 'my-server', remoteDir: '~/projects/demo', sync: { mode: 'bisync' } },
+  ]));
+  const report = await importLegacyWorkspaces({ configDir, store });
+  expect(report.imported).toBe(1);
+  const list = await store.list();
+  expect(list[0]).toMatchObject({ id: 'w1', name: '旧项目', dir: tempDir, server: 'my-server' });
+  expect(list[0]).not.toHaveProperty('sync');
+  expect(report.backupFiles).toContain(path.join(configDir, 'workspaces.json.bak'));
+  await expect(readFile(path.join(configDir, 'workspaces.json.bak'), 'utf8')).resolves.toContain('旧项目');
+});
+
+it('目录已不存在的旧项目跳过并计数', async () => {
+  await writeFile(path.join(configDir, 'workspaces.json'), JSON.stringify([
+    { id: 'w2', name: '已删项目', localDir: 'E:\\web\\gone', sshHost: 'my-server' },
+  ]));
+  const report = await importLegacyWorkspaces({ configDir, store });
+  expect(report.imported).toBe(0);
+  expect(report.skipped).toBe(1);
+});
+
+it('没有旧文件时什么都不做', async () => {
+  const report = await importLegacyWorkspaces({ configDir, store });
+  expect(report).toEqual({ imported: 0, skipped: 0, backupFiles: [] });
+});
+```
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `npx vitest run apps/server/tests/workspaces/import.test.ts`
+Expected: FAIL —— 模块不存在。
+
+- [ ] **Step 3: 实现 `import.ts`**
+
+读 `<configDir>/workspaces.json`；`ENOENT` 直接返回空报告。逐条：`localDir`→`dir`、`sshHost`→`server`；目录不存在计入 `skipped`；成功计入 `imported`。全部处理完后把旧文件 `rename` 成 `workspaces.json.bak`，路径记入 `backupFiles`。**不得删除旧文件**。写入新格式时用 Task 4 的 store 校验；单条失败只跳过该条，不中断整体。
+
+- [ ] **Step 4: 运行确认通过**
+
+Run: `npx vitest run apps/server/tests/workspaces/import.test.ts`
+Expected: PASS
+
+- [ ] **Step 5: 接入启动流程**
+
+在 `main.ts` 里 `createWorkspaceStore` 之后、注册路由之前调用一次，并把 `ImportReport` 打进启动日志（中文，不含任何路径之外的敏感信息）。
+
+- [ ] **Step 6: 类型检查与全量测试**
+
+Run: `npm.cmd run typecheck && npm.cmd test`
+Expected: 通过。
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add -A
+git commit -m "feat(workspaces): 启动时一次性导入旧工作区配置" -m "- 旧 localDir/sshHost 映射为 dir/server，同步字段丢弃
+- 旧文件改名为 .bak 保留，不删除
+- 目录已不存在的条目跳过并计数"
+```
+
+## Task 6: Agent 探测层
+
+**Files:**
+- Create: `apps/server/src/agents/probe.ts`
+- Test: `apps/server/tests/agents/probe.test.ts`
+- Delete: `apps/server/src/settings/environment.ts` 及其测试（被 probe 取代）
+- Modify: `apps/server/src/http/product-settings.routes.ts`（环境报告改为读 probe）
+
+**Interfaces:**
+- Consumes: Task 3 的 `AgentProbe`、`ProbeStatus`
+- Produces: `createAgentProbes(deps): { probe(agent: AgentKind): Promise<AgentProbe>; probeAll(): Promise<AgentProbe[]> }`；deps 为 `{ run: ProcessRunner }`
+
+规格 §6.1 的完整 `AgentAdapter`（含 `startTurn`、`control`、`configSurfaces`、`watchTargets`）**不在 M1 引入**：M1 只需要「探测 + 列会话 + 读历史」，其余方法等到 M2、M3 真正需要时再加，避免先写一堆空实现。M1 沿用现有 `SessionProvider`，另加 `probe`。
+
+- [ ] **Step 1: 写失败测试 —— 四态判定**
+
+`apps/server/tests/agents/probe.test.ts` 用假 `run` 实现：
+
+```ts
+it('版本能解析时为 available', async () => {
+  const probes = createAgentProbes({ run: fakeRun({ 'claude --version': { code: 0, stdout: '2.1.317 (Claude Code)' } }) });
+  await expect(probes.probe('claude')).resolves.toMatchObject({ status: 'available', version: '2.1.317' });
+});
+
+it('可执行文件找不到时为 missing', async () => {
+  const probes = createAgentProbes({ run: fakeRun({}, { enoent: ['codex'] }) });
+  await expect(probes.probe('codex')).resolves.toMatchObject({ status: 'missing' });
+});
+
+it('--help 缺关键 flag 时为 changed 并列出缺项', async () => {
+  const probes = createAgentProbes({ run: fakeRun({
+    'claude --version': { code: 0, stdout: '2.1.317 (Claude Code)' },
+    'claude --help': { code: 0, stdout: '--print --output-format' },
+  }) });
+  const result = await probes.probe('claude');
+  expect(result.status).toBe('changed');
+  expect(result.missing).toContain('--permission-prompts');
+});
+
+it('启动环境缺必需变量时为 credential-missing', async () => {
+  const probes = createAgentProbes({ run: fakeRun({
+    'agy --version': { code: 0, stdout: '1.4.12' },
+    'agy --help': { code: 0, stdout: '--print --input-format --output-format --conversation' },
+  }), env: () => ({}) });
+  await expect(probes.probe('antigravity')).resolves.toMatchObject({ status: 'credential-missing' });
+});
+```
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `npx vitest run apps/server/tests/agents/probe.test.ts`
+Expected: FAIL —— 模块不存在。
+
+- [ ] **Step 3: 实现 `probe.ts`**
+
+- 每个 agent 声明：可执行文件名、版本号正则、**必须具备的 flag 列表**、必需的环境变量列表。
+  - `claude`：`claude`，正则 `/^(\d+\.\d+\.\d+)\s+\(Claude Code\)/m`，必需 flag `--print`、`--input-format`、`--output-format`、`--permission-prompts`，无必需环境变量（它读 `~/.claude/settings.json`）。
+  - `codex`：`codex`，正则 `/codex-cli (\d+\.\d+\.\d+)/`，必需 capability 为 `codex app-server generate-json-schema` 能成功输出 JSON，无必需环境变量。
+  - `antigravity`：`agy`，正则 `/^(\d+\.\d+\.\d+)/m`，必需 flag `--print`、`--input-format`、`--output-format`、`--conversation`，必需环境变量 `GEMINI_API_KEY`。
+- 判定顺序：找不到可执行文件 → `missing`；版本解析失败 → `changed`（`missing: ['--version']`）；必需 flag 缺失 → `changed` 并列出缺项；必需环境变量缺失 → `credential-missing`；否则 `available`。
+- 全部使用短超时（5 秒）与输出上限，超时按 `missing` 处理。
+- **不读能力目录，不发任何模型请求。**
+
+- [ ] **Step 4: 运行确认通过**
+
+Run: `npx vitest run apps/server/tests/agents/probe.test.ts`
+Expected: PASS
+
+- [ ] **Step 5: 用 probe 替换 `settings/environment.ts`**
+
+删除 `environment.ts` 与其测试，把 `product-settings.routes.ts` 的环境报告改为调用 `probeAll()`。
+
+- [ ] **Step 6: 类型检查与全量测试**
+
+Run: `npm.cmd run typecheck && npm.cmd test`
+Expected: 通过。
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add -A
+git commit -m "feat(agents): 统一三个 CLI 的本机探测" -m "- 只跑 --version、--help 与 codex 的 schema 生成，不触网
+- 判定 available/missing/changed/credential-missing 四态
+- 取代旧的运行环境检测"
+```
+
+## Task 7: Antigravity 会话枚举
+
+**Files:**
+- Create: `apps/server/src/agents/antigravity/summaries.ts`、`apps/server/src/agents/antigravity/sessions.ts`
+- Test: `apps/server/tests/agents/antigravity/summaries.test.ts`
+- Modify: `apps/server/src/agents/types.ts`（`NativeSessionSummary` 增加可选 `workspaceUris`）
+
+**Interfaces:**
+- Consumes: Task 3 的 `SessionSummary`
+- Produces:
+  - `readSummaries(dbPath: string): SummaryRow[]`，`SummaryRow = { conversationId: string; title: string; workspaceUris: string; lastModified: string; preview: string }`
+  - `createAntigravitySessions(): SessionProvider`，`list()` 返回 `{ sessionId, summary, lastModified, workspaceUris }`
+
+- [ ] **Step 1: 写失败测试 —— 只读打开与字段映射**
+
+`apps/server/tests/agents/antigravity/summaries.test.ts` 用 `node:sqlite` 在临时目录造一个最小库：
+
+```ts
+it('读出会话 id、标题、时间与 workspace_uris', async () => {
+  const dbPath = await makeFixtureDb([
+    { id: 'c1', title: '示例会话', uris: 'file:///E:/web/demo', time: '2026-11-03 12:00:00' },
+  ]);
+  const rows = readSummaries(dbPath);
+  expect(rows).toEqual([{ conversationId: 'c1', title: '示例会话', workspaceUris: 'file:///E:/web/demo', lastModified: '2026-11-03 12:00:00', preview: '' }]);
+});
+
+it('库文件不存在时返回空数组而不抛错', () => {
+  expect(readSummaries(path.join(tmpdir(), 'no-such.db'))).toEqual([]);
+});
+
+it('表结构不符时返回空数组', async () => {
+  const dbPath = await makeEmptyDb();
+  expect(readSummaries(dbPath)).toEqual([]);
+});
+```
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `npx vitest run apps/server/tests/agents/antigravity/summaries.test.ts`
+Expected: FAIL —— 模块不存在。
+
+- [ ] **Step 3: 实现 `summaries.ts`**
+
+用 `node:sqlite` 的 `DatabaseSync`，连接串为 `file:<path>?mode=ro`（`readonly: true`），查询 `select conversation_id, title, preview, last_modified_time, workspace_uris from conversation_summaries order by last_modified_time desc`。任何异常（文件不存在、表不存在、锁冲突）都返回 `[]`，不抛。**只读，绝不写。**
+
+- [ ] **Step 4: 运行确认通过**
+
+Run: `npx vitest run apps/server/tests/agents/antigravity/summaries.test.ts`
+Expected: PASS
+
+- [ ] **Step 5: 写失败测试 —— SessionProvider 形态**
+
+```ts
+it('空标题替换为占位文案', async () => {
+  const provider = createAntigravitySessions({ readSummaries: () => [{ conversationId: 'c1', title: '   ', workspaceUris: '', lastModified: '2026-11-03 12:00:00', preview: '' }] });
+  const [item] = await provider.list(tempDir);
+  expect(item.summary).toBe('未命名会话');
+});
+
+it('read 明确报告历史不可读', async () => {
+  const provider = createAntigravitySessions({ readSummaries: () => [] });
+  await expect(provider.read('c1', tempDir)).rejects.toThrow(/无法读取/);
+});
+```
+
+- [ ] **Step 6: 运行确认失败**
+
+Run: `npx vitest run apps/server/tests/agents/antigravity/summaries.test.ts`
+Expected: FAIL
+
+- [ ] **Step 7: 实现 `sessions.ts`**
+
+`list()` 读 summaries 并映射为 `NativeSessionSummary`（`sessionId`←`conversation_id`，`summary`←标题或「未命名会话」，`lastModified`←时间，`workspaceUris` 原样带出）。`read()` 抛 `SessionError(501, 'session_not_replayable', 'Antigravity 的会话历史以私有轨迹格式保存在本机，当前无法读取；可以继续对话。')`。`mutate()`、`fork()` 抛 `unsupported_action`。
+
+- [ ] **Step 8: 运行确认通过**
+
+Run: `npx vitest run apps/server/tests/agents/antigravity`
+Expected: PASS
+
+- [ ] **Step 9: 提交**
+
+```bash
+git add -A
+git commit -m "feat(agents): 接入 Antigravity 的会话列表" -m "- 只读打开 conversation_summaries.db 取元数据
+- 历史轨迹不可读，明确返回不可回放错误而非伪造内容
+- 空标题显示占位文案"
+```
+
+## Task 8: 三个 CLI 统一的会话归属
+
+**Files:**
+- Create: `apps/server/src/sessions/ownership.ts`
+- Test: `apps/server/tests/sessions/ownership.test.ts`
+- Modify: `apps/server/src/chat/sessions.ts`（会话列表带上 `projectId`）
+
+**Interfaces:**
+- Consumes: Task 3 的 `SessionSummary`、Task 7 的 `workspaceUris`
+- Produces:
+  - `parseWorkspaceUris(raw: string): string[]`
+  - `resolveProjectId(input: { cwd?: string; workspaceUris?: string; projects: Workspace[] }): string | null`
+
+- [ ] **Step 1: 写失败测试 —— 归属裁决**
+
+```ts
+it('按 cwd 命中项目', () => {
+  expect(resolveProjectId({ cwd: 'E:\\web\\demo\\src', projects: [{ id: 'p1', dir: 'E:\\web\\demo' } as Workspace] })).toBe('p1');
+});
+
+it('按 workspace_uris 命中项目', () => {
+  expect(resolveProjectId({ workspaceUris: 'file:///E:/web/demo', projects: [{ id: 'p1', dir: 'E:\\web\\demo' } as Workspace] })).toBe('p1');
+});
+
+it('命中多个项目时取配置顺序靠前者', () => {
+  const projects = [{ id: 'p1', dir: 'E:\\web\\demo' }, { id: 'p2', dir: 'E:\\web' }] as Workspace[];
+  expect(resolveProjectId({ cwd: 'E:\\web\\demo', projects })).toBe('p1');
+});
+
+it('解析不出时为 null，不落到第一个项目', () => {
+  expect(resolveProjectId({ workspaceUris: '', projects: [{ id: 'p1', dir: 'E:\\web\\demo' } as Workspace] })).toBeNull();
+  expect(resolveProjectId({ workspaceUris: 'https://example.com/x', projects: [{ id: 'p1', dir: 'E:\\web\\demo' } as Workspace] })).toBeNull();
+});
+
+it('parseWorkspaceUris 兼容 JSON 数组、换行与单值', () => {
+  expect(parseWorkspaceUris('["file:///a","file:///b"]')).toEqual(['file:///a', 'file:///b']);
+  expect(parseWorkspaceUris('file:///a\nfile:///b')).toEqual(['file:///a', 'file:///b']);
+  expect(parseWorkspaceUris('file:///a')).toEqual(['file:///a']);
+  expect(parseWorkspaceUris('')).toEqual([]);
+});
+```
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `npx vitest run apps/server/tests/sessions/ownership.test.ts`
+Expected: FAIL —— 模块不存在。
+
+- [ ] **Step 3: 实现 `ownership.ts`**
+
+`parseWorkspaceUris`：先试 `JSON.parse`，结果是字符串数组就用；否则按换行/分号切分；再不行当单值；过滤空白。`resolveProjectId`：把 `cwd` 与每个 URI 转成规范化绝对路径（剥 `file://`、`decodeURIComponent`、`path.resolve`、Windows 盘符与分隔符统一、尾斜杠去掉），用「相等或以 `path.sep` 结尾前缀之外不相邻」的规则比较（复用现有 `sameSessionDirectory` 的语义），按 `projects` 顺序返回第一个命中。
+
+- [ ] **Step 4: 运行确认通过**
+
+Run: `npx vitest run apps/server/tests/sessions/ownership.test.ts`
+Expected: PASS
+
+- [ ] **Step 5: 接入会话列表**
+
+`chat/sessions.ts` 的 `list()` 在映射为 `SessionSummary` 时调用 `resolveProjectId`，结果写入 `projectId`（未命中为 `null`）。
+
+- [ ] **Step 6: 类型检查与全量测试**
+
+Run: `npm.cmd run typecheck && npm.cmd test`
+Expected: 通过。
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add -A
+git commit -m "feat(sessions): 三个 CLI 统一的会话归属裁决" -m "- Claude/Codex 用 cwd，Antigravity 用 workspace_uris
+- 多项目命中取配置顺序靠前者
+- 解析失败标为未归属，不塞进第一个项目"
+```
+
+## Task 9: 后端项目与会话路由
+
+**Files:**
+- Create: `apps/server/src/http/projects.routes.ts`、`apps/server/src/http/probe.routes.ts`
+- Modify: `apps/server/src/http/sessions.routes.ts`、`apps/server/src/http/workspaces.routes.ts`（改为 projects）
+- Test: `apps/server/tests/http/projects.routes.test.ts`、`apps/server/tests/http/sessions.routes.test.ts`
+
+**Interfaces:**
+- Consumes: Task 4 的 store、Task 6 的 probes、Task 8 的归属
+- Produces:
+  - `GET /api/projects` → `Workspace[]`
+  - `POST /api/projects` `{ name, dir, server?, remoteDir? }` → `Workspace`
+  - `PATCH /api/projects/:id`、`DELETE /api/projects/:id`
+  - `GET /api/projects/:id/sessions?agent=claude|codex|antigravity` → `SessionSummary[]`
+  - `GET /api/projects/:id/sessions/:agent/:sessionId` → `SessionHistory`
+  - `GET /api/agents/probes` → `AgentProbe[]`
+
+- [ ] **Step 1: 写失败测试 —— 路由契约**
+
+```ts
+it('列出项目', async () => {
+  const res = await app.inject({ method: 'GET', url: '/api/projects' });
+  expect(res.statusCode).toBe(200);
+  expect(Array.isArray(res.json())).toBe(true);
+});
+
+it('创建项目后能查到', async () => {
+  const created = await app.inject({ method: 'POST', url: '/api/projects', payload: { name: '示例项目', dir: tempDir } });
+  expect(created.statusCode).toBe(200);
+  const id = created.json().id;
+  const list = await app.inject({ method: 'GET', url: '/api/projects' });
+  expect(list.json().some((p: { id: string }) => p.id === id)).toBe(true);
+});
+
+it('非法的 agent 参数被拒绝', async () => {
+  const res = await app.inject({ method: 'GET', url: '/api/projects/x/sessions?agent=gemini' });
+  expect(res.statusCode).toBe(400);
+});
+
+it('探测接口在 M1 不触发能力目录', async () => {
+  const res = await app.inject({ method: 'GET', url: '/api/agents/probes' });
+  expect(res.statusCode).toBe(200);
+  for (const probe of res.json()) expect(['available', 'missing', 'changed', 'credential-missing']).toContain(probe.status);
+});
+```
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `npx vitest run apps/server/tests/http/projects.routes.test.ts`
+Expected: FAIL —— 路由不存在。
+
+- [ ] **Step 3: 实现路由**
+
+按上面契约实现。项目路由复用 store 的校验错误映射（400 + 字段信息）。会话路由按项目 `dir` 调用对应适配器。探测路由调用 `probeAll()`，`Cache-Control: no-store`。
+
+- [ ] **Step 4: 运行确认通过**
+
+Run: `npx vitest run apps/server/tests/http`
+Expected: PASS
+
+- [ ] **Step 5: 在 `main.ts` 注册新路由并移除旧的工作区路由**
+
+保留服务器档案、SSH、终端、资源、Slurm、远端文件的路由不动。
+
+- [ ] **Step 6: 类型检查与全量测试**
+
+Run: `npm.cmd run typecheck && npm.cmd test`
+Expected: 通过。
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add -A
+git commit -m "feat(http): 项目、会话与探测路由" -m "- /api/projects 取代旧工作区接口
+- 会话按项目列取，agent 参数受校验
+- 探测接口只返回第一层结果"
+```
+
+## Task 10: 前端外壳骨架
+
+**Files:**
+- Create: `apps/web/src/app/Sidebar.tsx`、`apps/web/src/app/SessionPane.tsx`、`apps/web/src/app/ServerDock.tsx`
+- Modify: `apps/web/src/app/App.tsx`、`TopBar.tsx`、`WorkspaceLayout.tsx`、`WorkspaceColumns.tsx`
+- Delete: `apps/web/src/app/WorkspacePanels.tsx`、`WorkspaceTools.tsx`、`WorkspacePanelFrame.tsx`、`WorkspaceArea.tsx`
+- Test: `apps/web/tests/app/Sidebar.test.tsx`
+
+**Interfaces:**
+- Consumes: Task 9 的接口
+- Produces: `<Sidebar />`、`<SessionPane />`、`<ServerDock />` 三个组件；`App` 组装为「顶栏 / 左栏 / 主区 / 右侧服务器面板」
+
+- [ ] **Step 1: 写失败测试 —— 空态与分组**
+
+```tsx
+it('没有项目时显示引导添加项目', () => {
+  render(<Sidebar projects={[]} sessionsByProject={{}} onAddProject={vi.fn()} />);
+  expect(screen.getByText('添加项目目录')).toBeInTheDocument();
+});
+
+it('按 CLI 分组显示会话并带徽标', () => {
+  render(<Sidebar projects={[project]} sessionsByProject={{ p1: [claudeSession, codexSession] }} onAddProject={vi.fn()} />);
+  expect(screen.getByText('Claude')).toBeInTheDocument();
+  expect(screen.getByText('Codex')).toBeInTheDocument();
+});
+
+it('未归属会话默认不显示', () => {
+  render(<Sidebar projects={[project]} sessionsByProject={{ p1: [orphan] }} onAddProject={vi.fn()} />);
+  expect(screen.queryByText('孤儿会话')).not.toBeInTheDocument();
+});
+```
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `npx vitest run apps/web/tests/app/Sidebar.test.tsx`
+Expected: FAIL —— 组件不存在。
+
+- [ ] **Step 3: 实现 Sidebar**
+
+项目列表 + 展开后按 `agent` 分组列会话；每条带 CLI 徽标（字母或色点）与最近活动时间；顶部「新建会话」与「添加项目」；底部「显示其他目录的会话」开关（默认关，打开后显示 `projectId === null` 的会话并按目录分组）。
+
+- [ ] **Step 4: 运行确认通过**
+
+Run: `npx vitest run apps/web/tests/app/Sidebar.test.tsx`
+Expected: PASS
+
+- [ ] **Step 5: 实现 SessionPane 与 ServerDock，重写 App 布局**
+
+三段式：左栏可收起（200–320px）、主区最小 480px、右侧服务器面板可收起。样式沿用现有 Tailwind 语义变量，浅色默认、深浅可切。
+
+- [ ] **Step 6: 视觉与样式不出现回退**
+
+Run: `npm.cmd run typecheck && npx vitest run apps/web`
+Expected: 通过。
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add -A
+git commit -m "feat(web): 重写三段式外壳与项目会话侧栏" -m "- 左栏项目树按 CLI 分组，未归属会话默认隐藏
+- 右侧改为服务器面板停靠区
+- 移除旧的工作区面板与工具组件"
+```
+
+## Task 11: 会话只读历史视图
+
+**Files:**
+- Create: `apps/web/src/features/sessions/SessionTimeline.tsx`、`SessionHeader.tsx`、`AgentBadge.tsx`、`use-sessions.ts`
+- Test: `apps/web/tests/features/sessions/SessionTimeline.test.tsx`
+
+**Interfaces:**
+- Consumes: Task 9 的会话接口、Task 7 的「不可回放」错误
+- Produces: `SessionTimeline` 渲染 `SessionHistory.events`；`SessionHeader` 显示 CLI、版本、项目路径、运行状态
+
+- [ ] **Step 1: 写失败测试 —— 只读渲染与不可回放文案**
+
+```tsx
+it('渲染用户与助手消息', () => {
+  render(<SessionTimeline events={[userEvent, assistantEvent]} />);
+  expect(screen.getByText('检查这个脚本')).toBeInTheDocument();
+  expect(screen.getByText('已检查')).toBeInTheDocument();
+});
+
+it('Antigravity 不可回放时显示说明而不是空白', () => {
+  render(<SessionTimeline events={[]} notReplayable />);
+  expect(screen.getByText(/无法读取/)).toBeInTheDocument();
+});
+
+it('空标题显示占位', () => {
+  render(<SessionHeader agent="claude" title="" version="2.1.317" projectDir="~/projects/demo" />);
+  expect(screen.getByText('未命名会话')).toBeInTheDocument();
+});
+```
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `npx vitest run apps/web/tests/features/sessions/SessionTimeline.test.tsx`
+Expected: FAIL
+
+- [ ] **Step 3: 实现组件**
+
+复用现有的 Markdown 渲染（`streamdown`）与工具卡片样式；`SessionHeader` 显示实际驱动版本（来自 probe 结果）。M1 不提供输入框，底部显示「M2 接入对话」的占位说明。
+
+- [ ] **Step 4: 运行确认通过**
+
+Run: `npx vitest run apps/web/tests/features/sessions`
+Expected: PASS
+
+- [ ] **Step 5: 接通数据层**
+
+`use-sessions.ts` 用 `@tanstack/react-query` 拉项目会话列表与单条历史；`notReplayable` 由接口返回的错误码 `session_not_replayable` 推导。
+
+- [ ] **Step 6: 全量检查**
+
+Run: `npm.cmd run typecheck && npx vitest run apps/web`
+Expected: 通过。
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add -A
+git commit -m "feat(web): 会话只读历史视图" -m "- 时间线复用既有 Markdown 与工具卡片
+- 不可回放的会话显示明确说明而非空白
+- 会话头显示实际驱动的 CLI 版本"
+```
+
+## Task 12: 收尾——文档、截图与全量门禁
+
+**Files:**
+- Modify: `README.md`、`docs/product/requirements.md`、`docs/product/ui-layout.md`、`docs/engineering/architecture.md`、`docs/roadmap.md`
+- Modify: `docs/engineering/decisions.md`（追加本轮取舍）
+- Delete: `docs/guides/ui-usability-optimization-acceptance.md` 中已失效的章节
+
+**Interfaces:**
+- Consumes: 前 11 个任务的全部产物
+- Produces: 文档与实现一致；`npm run check` 通过
+
+- [ ] **Step 1: 更新 README**
+
+功能表按新范围重写：项目与 CLI 会话、原生配置（M3 才落地，标注阶段）、服务器面板；删掉同步、版本、本地文件的相关条目与 rclone 依赖说明。
+
+- [ ] **Step 2: 更新架构与需求**
+
+`architecture.md` 的总览图与模块表按新结构改写，删除 sync/vcs/files/remote-tools/policy；`requirements.md` 按 M1 实际交付的功能与边界改写；`ui-layout.md` 按新三段式布局改写。
+
+- [ ] **Step 3: 追加决策记录**
+
+在 `decisions.md` 追加一条：本轮用「原生 CLI 会话工作台」取代「同步 + 版本」主线，记录被删能力、保留能力与替代关系，并链接设计文档。
+
+- [ ] **Step 4: 运行完整门禁**
+
+Run: `npm.cmd run check`
+Expected: typecheck、eslint、format、docs:check、jcpd、coverage 全部通过。失败就修到通过。
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add -A
+git commit -m "docs: 按原生 CLI 工作台重构文档" -m "- README、需求、界面、架构、路线图对齐 M1 实际范围
+- 决策记录追加本轮取舍与被删能力的替代关系"
+```
+
+---
+
+## 后续计划（不在本计划内）
+
+M1 完成后另行编写：
+
+- **M2 对话**：回合管理按会话持有、事件缓冲与重连挂载、三个 CLI 的流式回合、审批卡片（Claude/Codex）与权限模式条（Antigravity）、软拒提示、会话级参数。
+- **M3 配置与服务器**：原生配置编辑（用户级 + 项目级、掩码可展开）、启动环境增删改停用、服务器面板改以服务器档案为键、命令面板。
+- **M4 打磨**：目录监听实时刷新、运行状态展示、键盘操作、CLI 升级后重新探测、验收记录。
