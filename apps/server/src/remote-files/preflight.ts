@@ -47,6 +47,8 @@ export function createFilePreflights(deps: Deps) {
       (strictGeneration && deps.pool.generation(current.sshHost) !== action.context.generation)
     )
       throw new RemoteFilesError('target_changed');
+    // 受影响工作区核对已随同步域移除：affectedWorkspaces 恒为空，这里实际只剩工作区配置校验。
+    // 非严格模式因此没有可放行的项，保留参数只为调用方语义不变。
     const related = await managed(action.identity, new AbortController().signal);
     const affected = new Set(action.public.affectedWorkspaces.map((item) => item.id));
     const relevant = (id: string) => strictGeneration || affected.has(id);
@@ -71,6 +73,7 @@ export function createFilePreflights(deps: Deps) {
       const action = prepared.get(id);
       if (!action || action.public.workspaceId !== workspaceId || action.public.expiresAt < Date.now())
         throw new RemoteFilesError('preflight_expired');
+      // canSubmit 恒为 true，同步域删除后不会有「等待同步」的预检；保留判断与错误码等 shared 清理时一并移除。
       if (!action.public.canSubmit) throw new RemoteFilesError('sync_pending');
       return action;
     },

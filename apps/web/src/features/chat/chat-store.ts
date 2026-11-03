@@ -10,20 +10,12 @@ import type {
   SessionActionInput,
   SessionRef,
   ProductSettings,
-  TurnChangesRecord,
 } from '@ssh-server/shared';
 import { api, queryKeys } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
 import { connectChat, type ChatSocket, type ConnectionStatus } from '../../lib/ws';
 import { markPermissionPending, reduceChat, type ChatItem } from './chat-reducer';
 import { capabilityRestriction, selectionRestriction } from './capability-selection';
-import {
-  feedbackError,
-  messageWithFeedback,
-  type ConversationScope,
-  type LineFeedback,
-  type LineFeedbackInput,
-} from './feedback';
 
 const LAST_WORKSPACE_KEY = 'ssh-server.lastWorkspace';
 const DEFAULT_REASONING_EFFORTS: Record<AgentKind, string> = { claude: 'high', codex: 'high' };
@@ -48,10 +40,6 @@ type ChatState = {
   items: ChatItem[];
   /** 网页选择代次；原生首次返回sessionId不会重建时间线。 */
   conversationVersion: number;
-  feedback: LineFeedback[];
-  latestChanges?: TurnChangesRecord;
-  addFeedback(input: LineFeedbackInput, scope: ConversationScope): boolean;
-  removeFeedback(id: string): void;
   running: boolean;
   turnId?: string;
   pendingClientTurnId?: string;
@@ -87,8 +75,6 @@ const emptyConversation = {
   contextUsage: undefined,
   compaction: undefined,
   items: [] as ChatItem[],
-  feedback: [] as LineFeedback[],
-  latestChanges: undefined,
   running: false,
   turnId: undefined,
   pendingClientTurnId: undefined,
@@ -128,12 +114,11 @@ function cannotSend(current: ChatState, text: string): boolean {
   return (
     current.running ||
     current.loadingHistory ||
-    (!text.trim() && !current.selectedCapability && !current.feedback.length) ||
+    (!text.trim() && !current.selectedCapability) ||
     managementPending(current)
   );
 }
 function sendRestriction(current: ChatState, text: string): string | undefined {
-  if (current.selectedCapability && current.feedback.length) return '请先取消技能或命令选择，再发送待发送行内反馈';
   return selectionRestriction(current.selectedCapability, current.sessionId, text);
 }
 function nativeStatus(event: AgentEvent): { contextUsage?: ContextUsage | null; compaction?: CompactionState } {
@@ -282,26 +267,6 @@ export const useChat = create<ChatState>()((set, get) => ({
     if (capability && capabilityRestriction(capability, current.sessionId)) return;
     set({ selectedCapability: capability, initialDefaultsEligible: false });
   },
-  addFeedback(input, scope) {
-    const current = get();
-    if (
-      scope.workspaceId !== current.workspaceId ||
-      scope.agent !== current.agent ||
-      scope.conversationVersion !== current.conversationVersion
-    )
-      return false;
-    const error = feedbackError(current.feedback, input);
-    if (error) {
-      set({ banner: error });
-      return false;
-    }
-    set({
-      feedback: [...current.feedback, { ...input, comment: input.comment.trim(), id: crypto.randomUUID() }],
-      initialDefaultsEligible: false,
-    });
-    return true;
-  },
-  removeFeedback: (id) => set((current) => ({ feedback: current.feedback.filter((item) => item.id !== id) })),
   async manageSession(workspaceId, session, input) {
     const key = sessionActionKey(workspaceId, session);
     const current = get();
@@ -355,7 +320,7 @@ export const useChat = create<ChatState>()((set, get) => ({
       return false;
     }
     const clientTurnId = crypto.randomUUID();
-    const message = messageWithFeedback(text, current.feedback);
+    const message = text;
     const sent = socket.send({
       type: 'chat.send',
       workspaceId: current.workspaceId,
@@ -377,7 +342,6 @@ export const useChat = create<ChatState>()((set, get) => ({
         text: current.selectedCapability ? `/${current.selectedCapability.name}${text ? ` ${text}` : ''}` : message,
       }),
       selectedCapability: undefined,
-      feedback: [],
       // 旧轮次未确认的压缩留在历史中，新轮次不能把它重新显示为进行中。
       compaction: state.compaction?.status === 'running' ? undefined : state.compaction,
       running: true,
@@ -456,12 +420,6 @@ function onTurnFinished(msg: Msg<'turn.finished'>): void {
     turnId: undefined,
     interruptRequested: false,
     items: reduceChat(current.items, { type: 'turn_end', isError: false }),
-    ...(msg.changes &&
-    msg.changes.turnId === msg.turnId &&
-    msg.changes.agent === current.agent &&
-    msg.changes.sessionId === current.sessionId
-      ? { latestChanges: msg.changes }
-      : {}),
   });
 }
 function onError(msg: Msg<'error'>): void {

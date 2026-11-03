@@ -38,7 +38,7 @@ describe('受限子进程', () => {
   });
   it('找不到可执行文件给出明确错误', async () => {
     await expect(
-      runProcess('missing-rclone-fixture.invalid', [], { timeoutMs: 100, outputCap: 100 }),
+      runProcess('missing-fixture-executable.invalid', [], { timeoutMs: 100, outputCap: 100 }),
     ).rejects.toMatchObject({ code: 'executable_missing' });
   });
 });

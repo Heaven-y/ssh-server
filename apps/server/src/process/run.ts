@@ -49,7 +49,7 @@ export function runProcess(executable: string, args: string[], options: ProcessO
     child.once('error', () => {
       failure ??= new ProcessError('executable_missing', '无法启动程序，请检查本机安装与启动路径');
     });
-    const timer = setTimeout(() => stop('timeout', '子进程超时，已停止；请检查连接后重试'), options.timeoutMs);
+    const timer = setTimeout(() => stop('timeout', '子进程超时，已停止；请检查本机程序后重试'), options.timeoutMs);
     const abort = () => stop('aborted', '子进程已取消');
     options.signal?.addEventListener('abort', abort, { once: true });
     child.once('close', (exitCode) => {

@@ -11,24 +11,6 @@ type Field = {
   max?: number;
   step?: string;
 };
-const sync: Field[] = [
-  {
-    key: 'maxFileMiB',
-    label: '默认单文件上限（MiB）',
-    hint: '1 字节–100 MiB，大文件留在服务器。',
-    min: 1 / 1024 / 1024,
-    max: 100,
-    step: 'any',
-  },
-  { key: 'extensions', label: '默认排除扩展名', hint: '逗号分隔英文字母或数字；.git 始终排除。' },
-  {
-    key: 'syncInterval',
-    label: '自动同步间隔（秒）',
-    hint: '5–300 秒，默认 60 秒。',
-    min: 5,
-    max: 300,
-  },
-];
 const resources: Field[] = [
   { key: 'resourceInterval', label: '资源检查间隔（秒）', hint: '2–60 秒；页面隐藏时暂停。', min: 2, max: 60 },
   {
@@ -85,7 +67,6 @@ function Fields({ fields, ...props }: Props & { fields: Field[] }) {
 export function invalidSettingsCategory(draft: ProductSettingsDraft): SettingsCategory {
   const errors = draftErrors(draft);
   if (errors.defaultAgent) return 'conversation';
-  if (sync.some(({ key }) => errors[key])) return 'sync';
   return 'resources';
 }
 
@@ -94,21 +75,6 @@ export function ProductSettingsForm({
   ...props
 }: Props & { category: Exclude<SettingsCategory, 'environment'> }) {
   const id = useId();
-  if (category === 'sync')
-    return (
-      <section className="space-y-4">
-        <div className="space-y-1">
-          <h3 className="font-medium">新工作区同步默认值</h3>
-          <p className="text-sm leading-6 text-muted-foreground">
-            过滤默认值仅复制到新工作区；已有工作区的规则在各自同步面板修改。
-          </p>
-        </div>
-        <Fields fields={sync} {...props} />
-        <p className="rounded-md bg-muted p-3 text-xs leading-5 text-muted-foreground">
-          自动同步间隔适用于所有工作区；手动同步及执行、保存触发的同步保持不变。
-        </p>
-      </section>
-    );
   if (category === 'resources')
     return (
       <section className="space-y-4">

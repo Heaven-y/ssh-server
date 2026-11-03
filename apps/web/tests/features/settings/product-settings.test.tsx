@@ -83,9 +83,9 @@ it('保存发布新设置前取消旧共享GET，迟到响应不能回退偏好'
   await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
   vi.spyOn(api, 'saveProductSettings').mockResolvedValue(saved);
   render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
-  fireEvent.click(screen.getByRole('tab', { name: '文件同步' }));
-  const input = await screen.findByLabelText(/自动同步间隔/);
-  fireEvent.change(input, { target: { value: '5' } });
+  fireEvent.click(screen.getByRole('tab', { name: '服务器资源' }));
+  const input = await screen.findByLabelText(/资源检查间隔/);
+  fireEvent.change(input, { target: { value: '7' } });
   fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
   await screen.findByText('产品设置已保存到本机。');
   await act(async () => {
@@ -94,7 +94,7 @@ it('保存发布新设置前取消旧共享GET，迟到响应不能回退偏好'
   expect(queryClient.getQueryData(queryKeys.productSettings)).toEqual(saved);
 });
 
-it('四类设置只显示当前内容，跨类草稿统一保存且默认作用域清楚', async () => {
+it('三类设置只显示当前内容，跨类草稿统一保存且默认作用域清楚', async () => {
   vi.spyOn(api, 'readProductSettings').mockResolvedValue(document);
   const save = vi
     .spyOn(api, 'saveProductSettings')
@@ -103,8 +103,9 @@ it('四类设置只显示当前内容，跨类草稿统一保存且默认作用�
   const detect = vi.spyOn(api, 'detectEnvironment').mockResolvedValue({ checkedAt: 2, tools: [] });
   render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
   const agent = await screen.findByLabelText('默认 Agent');
-  expect(screen.getAllByRole('tab')).toHaveLength(4);
+  expect(screen.getAllByRole('tab')).toHaveLength(3);
   expect(screen.getByRole('tabpanel', { name: '对话与模型' })).toBeTruthy();
+  expect(screen.queryByLabelText(/资源检查间隔/)).toBeNull();
   expect(screen.queryByLabelText(/自动同步间隔/)).toBeNull();
   expect(screen.queryByRole('button', { name: '重新检测' })).toBeNull();
   expect(readEnvironment).not.toHaveBeenCalled();
@@ -118,11 +119,9 @@ it('四类设置只显示当前内容，跨类草稿统一保存且默认作用�
     expect(within(screen.getByRole('tabpanel')).queryByRole('button', { name: '修改 Claude 配置' })).toBeNull();
   }
   fireEvent.click(screen.getByRole('tab', { name: '对话与模型' }));
-  fireEvent.click(screen.getByRole('tab', { name: '文件同步' }));
-  expect(screen.queryByLabelText('默认 Agent')).toBeNull();
-  expect(screen.getByText(/已有工作区.*同步面板/)).toBeTruthy();
-  fireEvent.change(screen.getByLabelText(/默认单文件上限/), { target: { value: '8' } });
   fireEvent.click(screen.getByRole('tab', { name: '服务器资源' }));
+  expect(screen.queryByLabelText('默认 Agent')).toBeNull();
+  expect(screen.getByText(/设置所有工作区的资源检查频率/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText(/资源检查间隔/), { target: { value: '4' } });
   fireEvent.click(screen.getByRole('tab', { name: '运行环境' }));
   expect(screen.queryByLabelText(/资源检查间隔/)).toBeNull();
@@ -138,7 +137,6 @@ it('四类设置只显示当前内容，跨类草稿统一保存且默认作用�
     revision: 'missing',
     settings: {
       defaultAgent: 'codex',
-      syncDefaults: { maxFileBytes: 8388608 },
       resources: { intervalSeconds: 4 },
     },
   });
@@ -150,18 +148,18 @@ it('其他分类存在无效草稿时保存定位回错误字段，不丢弃跨�
   const save = vi.spyOn(api, 'saveProductSettings');
   render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
   await screen.findByLabelText('默认 Agent');
-  fireEvent.click(screen.getByRole('tab', { name: '文件同步' }));
-  fireEvent.change(screen.getByLabelText(/自动同步间隔/), { target: { value: '1' } });
   fireEvent.click(screen.getByRole('tab', { name: '服务器资源' }));
-  fireEvent.change(screen.getByLabelText(/资源检查间隔/), { target: { value: '6' } });
+  fireEvent.change(screen.getByLabelText(/资源检查间隔/), { target: { value: '1' } });
+  fireEvent.click(screen.getByRole('tab', { name: '对话与模型' }));
+  fireEvent.change(screen.getByLabelText('默认 Agent'), { target: { value: 'codex' } });
   fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
   expect(save).not.toHaveBeenCalled();
-  expect(screen.getByRole('tabpanel', { name: '文件同步' })).toBeTruthy();
-  const invalid = screen.getByLabelText(/自动同步间隔/);
+  expect(screen.getByRole('tabpanel', { name: '服务器资源' })).toBeTruthy();
+  const invalid = screen.getByLabelText(/资源检查间隔/);
   expect(invalid.getAttribute('aria-invalid')).toBe('true');
   await waitFor(() => expect(globalThis.document.activeElement).toBe(invalid));
-  fireEvent.click(screen.getByRole('tab', { name: '服务器资源' }));
-  expect(screen.getByLabelText<HTMLInputElement>(/资源检查间隔/).value).toBe('6');
+  fireEvent.click(screen.getByRole('tab', { name: '对话与模型' }));
+  expect(screen.getByLabelText<HTMLSelectElement>('默认 Agent').value).toBe('codex');
 });
 
 it('跨分类保存冲突保留草稿，关闭、原生视图、重读与Esc均保留未保存保护', async () => {
@@ -192,53 +190,55 @@ it('跨分类保存冲突保留草稿，关闭、原生视图、重读与Esc均�
   await waitFor(() => expect(screen.getByLabelText<HTMLSelectElement>('默认 Agent').value).toBe('claude'));
 });
 
-it('同步缺省显示60秒，保存明确15到60的修改不重置其他分类', async () => {
+it('资源采样缺省显示5秒，保存明确2到60的修改不重置其他分类', async () => {
   vi.spyOn(api, 'readProductSettings').mockResolvedValue(document);
   const save = vi.spyOn(api, 'saveProductSettings').mockImplementation(async ({ settings }) => ({
     settings,
     revision: 'c'.repeat(64),
   }));
   const view = render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
-  fireEvent.click(screen.getByRole('tab', { name: '文件同步' }));
-  expect((await screen.findByLabelText<HTMLInputElement>(/自动同步间隔/)).value).toBe('60');
+  fireEvent.click(screen.getByRole('tab', { name: '服务器资源' }));
+  expect((await screen.findByLabelText<HTMLInputElement>(/资源检查间隔/)).value).toBe('5');
   view.unmount();
   const custom: ProductSettingsDocument = {
-    settings: ProductSettingsSchema.parse({ syncIntervalSeconds: 15, defaultAgent: 'codex' }),
+    settings: ProductSettingsSchema.parse({
+      resources: { intervalSeconds: 30, timeoutSeconds: 8 },
+      defaultAgent: 'codex',
+    }),
     revision: 'b'.repeat(64),
   };
   vi.mocked(api.readProductSettings).mockResolvedValue(custom);
   render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
-  fireEvent.click(screen.getByRole('tab', { name: '文件同步' }));
-  const input = await screen.findByLabelText<HTMLInputElement>(/自动同步间隔/);
-  await waitFor(() => expect(input.value).toBe('15'));
-  fireEvent.change(input, { target: { value: '60' } });
+  fireEvent.click(screen.getByRole('tab', { name: '服务器资源' }));
+  const input = await screen.findByLabelText<HTMLInputElement>(/资源检查间隔/);
+  await waitFor(() => expect(input.value).toBe('30'));
+  fireEvent.change(input, { target: { value: '5' } });
   fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
   await screen.findByText('产品设置已保存到本机。');
   expect(save).toHaveBeenCalledExactlyOnceWith(
-    { settings: { ...custom.settings, syncIntervalSeconds: 60 }, revision: custom.revision },
+    {
+      settings: { ...custom.settings, resources: { ...custom.settings.resources, intervalSeconds: 5 } },
+      revision: custom.revision,
+    },
     expect.any(AbortSignal),
   );
 });
 
 const productDraft = {
   defaultAgent: 'codex' as const,
-  maxFileMiB: '8',
-  extensions: 'pt, h5',
-  syncInterval: '15',
   resourceInterval: '7',
   resourceTimeout: '9',
 };
 
-it('产品草稿保存只输出现行偏好，不重新注入已退休模型字段', () => {
+it('产品草稿保存只输出现行偏好，不包含同步分类字段与已退休模型字段', () => {
   const result = parseSettingsDraft(productDraft);
   expect(result.success).toBe(true);
   if (!result.success) return;
-  expect(result.data).toEqual({
+  expect(result.data).toMatchObject({
     defaultAgent: 'codex',
-    syncDefaults: { maxFileBytes: 8388608, excludedExtensions: ['h5', 'pt'] },
-    syncIntervalSeconds: 15,
     resources: { intervalSeconds: 7, timeoutSeconds: 9 },
   });
+  expect(result.data).not.toHaveProperty('defaultModels');
 });
 
 it('对话分类保留默认Agent，不再提供网页默认模型输入', () => {
