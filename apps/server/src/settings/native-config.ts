@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { parse as parseToml } from 'smol-toml';
-import type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from '@ssh-server/shared';
+import type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from '@agentdeck/shared';
 import { anonymousConfigError, NativeConfigError } from './errors';
 import {
   assertDirectoryUnchanged,
@@ -13,7 +13,7 @@ import {
   writeConfigFile,
 } from './safe-file';
 
-export type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from '@ssh-server/shared';
+export type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from '@agentdeck/shared';
 type Deps = { homeDir?: string; env?: NodeJS.ProcessEnv };
 
 function validateContent(agent: NativeConfigAgent, content: string): Buffer {

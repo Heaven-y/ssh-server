@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { Workspace } from '@ssh-server/shared';
-import { workspaceTerminalTarget } from '@ssh-server/shared';
+import type { Workspace } from '@agentdeck/shared';
+import { workspaceTerminalTarget } from '@agentdeck/shared';
 import { createTerminalBindings } from '../../src/terminal/binding';
 import { createConnectionResolver } from '../../src/ssh/connection';
 import { createBrowseBinding } from '../../src/remote-files/binding';

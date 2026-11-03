@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import Fastify from 'fastify';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { Workspace } from '@ssh-server/shared';
+import type { Workspace } from '@agentdeck/shared';
 import { createFilePreflights, type FilePreflights, type PreparedAction } from '../../src/remote-files/preflight';
 import { createFileTasks } from '../../src/remote-files/tasks';
 import { RemoteFilesError } from '../../src/remote-files/errors';

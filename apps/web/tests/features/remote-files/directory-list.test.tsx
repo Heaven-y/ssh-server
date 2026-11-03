@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { RemoteDirectory, RemoteFileActionInput, RemoteFileEntry } from '@ssh-server/shared';
+import type { RemoteDirectory, RemoteFileActionInput, RemoteFileEntry } from '@agentdeck/shared';
 import { RemoteActionToolbar } from '../../../src/features/remote-files/RemoteActionToolbar';
 import { RemoteDirectoryList } from '../../../src/features/remote-files/RemoteDirectoryList';
 

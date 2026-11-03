@@ -4,7 +4,7 @@ import {
   MAX_CUSTOM_POLICY_RULES,
   type WorkspacePolicy,
   type CustomPolicyRule,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { ChevronDown, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { buttonClass, inputClass } from '../../ui/styles';

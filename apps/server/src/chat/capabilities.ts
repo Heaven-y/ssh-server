@@ -1,4 +1,4 @@
-import type { AgentCapabilities, AgentKind, CapabilitySelection, Workspace } from '@ssh-server/shared';
+import type { AgentCapabilities, AgentKind, CapabilitySelection, Workspace } from '@agentdeck/shared';
 import type { CapabilityProvider, NativeCapabilityCatalog, NativeInvocation } from '../agents/capability-types';
 import { SessionError } from './sessions';
 

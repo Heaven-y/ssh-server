@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { RemoteFileTask, RemoteFileTaskPhase } from '@ssh-server/shared';
+import type { RemoteFileTask, RemoteFileTaskPhase } from '@agentdeck/shared';
 import { api } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
 import { ACTION_LABELS } from './RemoteActionDialog';

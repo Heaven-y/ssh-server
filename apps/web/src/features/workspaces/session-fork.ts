@@ -1,4 +1,4 @@
-import { NativeSessionIdSchema, type SessionForkInput, type SessionRef } from '@ssh-server/shared';
+import { NativeSessionIdSchema, type SessionForkInput, type SessionRef } from '@agentdeck/shared';
 import { api, queryKeys } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
 import { managementPending, sessionActionKey, useChat, type SessionOperation } from '../chat/chat-store';

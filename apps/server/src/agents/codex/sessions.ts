@@ -1,4 +1,4 @@
-import { NativeSessionIdSchema, type SessionActionInput, type SessionForkInput } from '@ssh-server/shared';
+import { NativeSessionIdSchema, type SessionActionInput, type SessionForkInput } from '@agentdeck/shared';
 import { sameSessionDirectory } from '../session-scope';
 import type { NativeSessionFork, NativeSessionRead, NativeSessionSummary } from '../types';
 import { SessionError } from '../../chat/sessions';

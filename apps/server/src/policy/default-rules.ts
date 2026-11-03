@@ -1,5 +1,5 @@
 // 默认命令黑名单规则。只防误操作，不能防有意绕过（编码、写进脚本再执行等）。
-import { DEFAULT_POLICY_RULE_REASONS, type CustomPolicyRule } from '@ssh-server/shared';
+import { DEFAULT_POLICY_RULE_REASONS, type CustomPolicyRule } from '@agentdeck/shared';
 
 export type PolicyContext = {
   /** 工作区服务器目录，如 ~/projects/demo */

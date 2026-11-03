@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { RemoteBrowseSession, RemoteBrowseTarget } from '@ssh-server/shared';
+import type { RemoteBrowseSession, RemoteBrowseTarget } from '@agentdeck/shared';
 import { ApiError, type api } from '../../../src/lib/api';
 import { createBrowseConnection } from '../../../src/features/remote-files/browse-connection';
 

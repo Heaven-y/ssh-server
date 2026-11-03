@@ -1,7 +1,7 @@
 // 读取 ~/.ssh/config：解析与匹配交给 ssh-config 库，这里只做本工具需要的取值与不支持选项提示
 import path from 'node:path';
 import SSHConfig, { LineType, type Line } from 'ssh-config';
-import type { SshHostInfo } from '@ssh-server/shared';
+import type { SshHostInfo } from '@agentdeck/shared';
 
 export type SshHostConfig = {
   alias: string;

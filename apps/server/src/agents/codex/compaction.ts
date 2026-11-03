@@ -1,4 +1,4 @@
-import type { AgentEvent, CompactionState } from '@ssh-server/shared';
+import type { AgentEvent, CompactionState } from '@agentdeck/shared';
 
 type Progress = {
   id?: string;

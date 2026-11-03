@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ProductSettingsSchema } from '@ssh-server/shared';
+import { ProductSettingsSchema } from '@agentdeck/shared';
 import type {
   AgentCapability,
   AgentKind,
@@ -7,7 +7,7 @@ import type {
   ServerMessage,
   SessionActionInput,
   SessionHistory,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 import type { ConnectionStatus } from '../../../src/lib/ws';
 
 // node 环境没有 localStorage，用内存实现

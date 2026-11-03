@@ -3,10 +3,10 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createRemoteToolsServer } from './tools';
 
-const internalUrl = process.env.SSH_SERVER_INTERNAL_URL;
-const token = process.env.SSH_SERVER_SESSION_TOKEN;
+const internalUrl = process.env.AGENTDECK_INTERNAL_URL;
+const token = process.env.AGENTDECK_SESSION_TOKEN;
 if (!internalUrl || !token) {
-  console.error('缺少环境变量 SSH_SERVER_INTERNAL_URL 或 SSH_SERVER_SESSION_TOKEN');
+  console.error('缺少环境变量 AGENTDECK_INTERNAL_URL 或 AGENTDECK_SESSION_TOKEN');
   process.exit(2);
 }
 

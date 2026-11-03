@@ -7,7 +7,7 @@ import {
   type TerminalSize,
   type TerminalClientMessage,
   type TerminalServerMessage,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 
 type Callbacks = {
   output: (bytes: Uint8Array) => void;

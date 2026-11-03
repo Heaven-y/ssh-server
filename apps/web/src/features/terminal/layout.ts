@@ -1,4 +1,4 @@
-import { TERMINAL_LIMITS } from '@ssh-server/shared';
+import { TERMINAL_LIMITS } from '@agentdeck/shared';
 
 export type TerminalLayoutNode =
   | { kind: 'pane'; paneId: string }

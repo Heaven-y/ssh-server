@@ -1,6 +1,6 @@
 import { Combobox, ComboboxItem, ComboboxPopover, useComboboxStore } from '@ariakit/react/combobox';
 import { useRef, useState } from 'react';
-import type { AgentCapability } from '@ssh-server/shared';
+import type { AgentCapability } from '@agentdeck/shared';
 import { capabilityRestriction, isInvocableCapability } from './capability-selection';
 import { useChat } from './chat-store';
 import { matchesCapability, slashCompletion } from './slash-completion';

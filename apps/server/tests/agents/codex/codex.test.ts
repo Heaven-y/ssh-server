@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AgentEvent, Workspace } from '@ssh-server/shared';
+import type { AgentEvent, Workspace } from '@agentdeck/shared';
 import type { PermissionAnswer } from '../../../src/agents/types';
 import { runCodexTurn, listCodexSessions, readCodexSession, assertCodexSession } from '../../../src/agents/codex';
 import { CodexClient } from '../../../src/agents/codex/client';
@@ -97,7 +97,7 @@ describe('Codex app-server 核心边界', () => {
       {
         workspace,
         text: '你好',
-        acquireEnv: () => ({ env: { SSH_SERVER_TOKEN: 'synthetic-private-value' }, release: () => {} }),
+        acquireEnv: () => ({ env: { AGENTDECK_TOKEN: 'synthetic-private-value' }, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: async () => ({ allow: false }),
       },
@@ -108,8 +108,8 @@ describe('Codex app-server 核心边界', () => {
     expect(start).toMatchObject({ cwd: workspace.localDir, sandbox: 'workspace-write', approvalPolicy: 'on-request' });
     expect(start?.developerInstructions).toContain('原生约束');
     expect(start?.developerInstructions).toContain('remote_exec');
-    expect(start?.config?.['mcp_servers.ssh-server']).toMatchObject({ required: true, env_vars: ['SSH_SERVER_TOKEN'] });
-    expect(start?.config?.['shell_environment_policy.set.SSH_SERVER_TOKEN']).toBe('');
+    expect(start?.config?.['mcp_servers.ssh-server']).toMatchObject({ required: true, env_vars: ['AGENTDECK_TOKEN'] });
+    expect(start?.config?.['shell_environment_policy.set.AGENTDECK_TOKEN']).toBe('');
     expect(JSON.stringify(records)).not.toContain('synthetic-private-value');
     expect(start).not.toHaveProperty('model');
     expect(start).not.toHaveProperty('modelProvider');

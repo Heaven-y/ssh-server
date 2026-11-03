@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { AgentKindSchema } from '@ssh-server/shared';
+import { AgentKindSchema } from '@agentdeck/shared';
 import type { CapabilitiesService } from '../chat/capabilities';
 import { SessionError } from '../chat/sessions';
 import type { WorkspaceStore } from '../workspaces/store';

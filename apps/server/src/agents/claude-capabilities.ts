@@ -1,4 +1,4 @@
-import type { AgentModel } from '@ssh-server/shared';
+import type { AgentModel } from '@agentdeck/shared';
 import type { ModelInfo, SlashCommand } from '@anthropic-ai/claude-agent-sdk';
 import { capabilityId, type NativeCapabilityCatalog, type NativeInvocation } from './capability-types';
 import { claudeControl, createClaudeStream, nativeClaudeQuery, type ClaudeQuery, type QueryFn } from './claude-query';

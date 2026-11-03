@@ -2,7 +2,7 @@
 import { EditorView } from '@uiw/react-codemirror';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { NativeConfigAgent, NativeConfigDocument } from '@ssh-server/shared';
+import type { NativeConfigAgent, NativeConfigDocument } from '@agentdeck/shared';
 import NativeConfigDialog from '../../../src/features/settings/NativeConfigDialog';
 import { api, ApiError } from '../../../src/lib/api';
 import { queryClient } from '../../../src/lib/query-client';

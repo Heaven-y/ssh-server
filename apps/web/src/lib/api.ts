@@ -31,9 +31,9 @@ import type {
   EnvironmentReport,
   WorkspacePolicyDocument,
   WorkspacePolicyInput,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 
-export type { SessionSummary } from '@ssh-server/shared';
+export type { SessionSummary } from '@agentdeck/shared';
 
 export type SshConnectionTarget = { sshHost: string; authMode: SshAuthMode };
 export type SshConnectInput = { sshHost: string; password?: string; savePassword?: boolean };

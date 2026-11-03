@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { RemoteFileTask, RemoteFileTaskPhase, WorkspaceRemovalBlocker } from '@ssh-server/shared';
+import type { RemoteFileTask, RemoteFileTaskPhase, WorkspaceRemovalBlocker } from '@agentdeck/shared';
 import { workspaceTarget } from '../ssh/connection';
 import { remoteFilesError, RemoteFilesError } from './errors';
 import type { RemoteExecutor } from './executor';

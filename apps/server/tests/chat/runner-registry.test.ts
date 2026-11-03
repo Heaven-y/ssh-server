@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Workspace } from '@ssh-server/shared';
+import type { Workspace } from '@agentdeck/shared';
 import { runClaudeTurn } from '../../src/agents/claude-adapter';
 import { createSessionRegistry } from '../../src/chat/registry';
 import { TurnManager } from '../../src/chat/turn-manager';

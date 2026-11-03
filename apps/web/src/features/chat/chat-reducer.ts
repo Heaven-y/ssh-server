@@ -1,5 +1,5 @@
 // 把 Agent 事件转成界面条目：实时对话和历史记录共用，纯函数，不修改入参
-import { NativeSessionIdSchema, type AgentEvent, type CompactionState } from '@ssh-server/shared';
+import { NativeSessionIdSchema, type AgentEvent, type CompactionState } from '@agentdeck/shared';
 
 export type ChatItem =
   | { kind: 'fork-point'; id: string; pointId: string }

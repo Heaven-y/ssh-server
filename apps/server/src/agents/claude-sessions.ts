@@ -7,7 +7,7 @@ import {
   renameSession,
   type SDKSessionInfo,
 } from '@anthropic-ai/claude-agent-sdk';
-import { NativeSessionIdSchema, type SessionForkInput } from '@ssh-server/shared';
+import { NativeSessionIdSchema, type SessionForkInput } from '@agentdeck/shared';
 import type { NativeSessionFork } from './types';
 import { SessionError, type SessionProvider } from '../chat/sessions';
 import { ClaudeEventMapper, claudeHistoryForkPoint } from './claude-mapper';

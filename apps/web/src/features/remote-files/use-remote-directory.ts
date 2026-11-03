@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RemoteBrowseSession, RemoteBrowseTarget, RemoteDirectory, Workspace } from '@ssh-server/shared';
+import type { RemoteBrowseSession, RemoteBrowseTarget, RemoteDirectory, Workspace } from '@agentdeck/shared';
 import { api, ApiError } from '../../lib/api';
 import { createBrowseConnection } from './browse-connection';
 

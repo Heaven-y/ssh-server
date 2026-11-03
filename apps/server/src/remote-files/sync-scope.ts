@@ -1,6 +1,6 @@
 // 同步域已删除；这里只保留远端条目「是否落在同步范围」的判定，供 RemoteFileEntry.scope 展示。
 // 工作区模型收敛为「项目目录 + 可选服务器绑定」后，Task 3 应连同 shared 的 RemoteFileScope 一起删除本文件。
-import type { SyncSettings } from '@ssh-server/shared';
+import type { SyncSettings } from '@agentdeck/shared';
 
 /** 与 rclone 过滤文件保持相同规则；任何决策路径都须先校验。 */
 export function safeRelativePath(file: string): string {

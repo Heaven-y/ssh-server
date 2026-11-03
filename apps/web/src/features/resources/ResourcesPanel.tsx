@@ -1,6 +1,6 @@
 import { RefreshCw, Server } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import type { ManagedServer, ResourceSnapshot, Workspace } from '@ssh-server/shared';
+import type { ManagedServer, ResourceSnapshot, Workspace } from '@agentdeck/shared';
 import { api, queryKeys, type SshCredentialStatus } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
 import { ResourceMetrics } from './ResourceMetrics';

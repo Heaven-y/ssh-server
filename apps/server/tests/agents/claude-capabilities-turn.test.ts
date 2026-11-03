@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AgentEvent, Workspace } from '@ssh-server/shared';
+import type { AgentEvent, Workspace } from '@agentdeck/shared';
 import type { SDKUserMessage, SDKControlGetContextUsageResponse } from '@anthropic-ai/claude-agent-sdk';
 import { runClaudeTurn, type QueryFn } from '../../src/agents/claude-adapter';
 import { CLAUDE_SUMMARY_TIMEOUT_MS, type ClaudeQuery } from '../../src/agents/claude-query';

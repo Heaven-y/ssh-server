@@ -1,7 +1,7 @@
 import { Menu, MenuButton, MenuItem, useMenuStore } from '@ariakit/react';
 import { Archive, ArchiveRestore, GitFork, Link, MoreHorizontal, Pencil, Pin, Trash2 } from 'lucide-react';
 import { useRef } from 'react';
-import type { SessionActionInput, SessionSummary } from '@ssh-server/shared';
+import type { SessionActionInput, SessionSummary } from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
 import { AGENT_LABELS } from '../chat/AgentControls';
 

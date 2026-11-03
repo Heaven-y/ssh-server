@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { terminalTargetKey, workspaceTerminalTarget, type TerminalTarget, type Workspace } from '@ssh-server/shared';
+import { terminalTargetKey, workspaceTerminalTarget, type TerminalTarget, type Workspace } from '@agentdeck/shared';
 import { workspaceTarget, type ResolvedConnection } from '../ssh/connection';
 import type { SshPool } from '../ssh/pool';
 import type { WorkspaceStore } from '../workspaces/store';

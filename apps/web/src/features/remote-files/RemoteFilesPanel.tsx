@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowUp, FolderRoot, RefreshCw, Server } from 'lucide-react';
-import type { RemoteFileActionInput, RemoteFileEntry, Workspace } from '@ssh-server/shared';
+import type { RemoteFileActionInput, RemoteFileEntry, Workspace } from '@agentdeck/shared';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { RemoteDirectoryList } from './RemoteDirectoryList';
 import { useRemoteDirectory } from './use-remote-directory';

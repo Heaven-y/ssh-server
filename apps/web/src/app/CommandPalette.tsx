@@ -1,7 +1,7 @@
 import { Command } from 'cmdk';
 import { useQueries } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { AgentKind, SessionSummary, Workspace } from '@ssh-server/shared';
+import type { AgentKind, SessionSummary, Workspace } from '@agentdeck/shared';
 import { DetailDialog } from '../ui/DetailDialog';
 import { AgentIcon } from '../ui/BrandIcons';
 import { api, queryKeys } from '../lib/api';

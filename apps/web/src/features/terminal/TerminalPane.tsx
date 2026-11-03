@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import type { TerminalTarget } from '@ssh-server/shared';
+import type { TerminalTarget } from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
 import { createTerminalRuntime, type TerminalRuntime, type TerminalPaneStatus } from './runtime';
 import { prepareTerminalPaste } from './paste';

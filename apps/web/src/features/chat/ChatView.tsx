@@ -1,6 +1,6 @@
 import { CircleAlert, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import type { Workspace } from '@ssh-server/shared';
+import type { Workspace } from '@agentdeck/shared';
 import { api, queryKeys } from '../../lib/api';
 import { useChat } from './chat-store';
 import { Composer } from './Composer';

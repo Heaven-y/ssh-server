@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
-import type { SessionSummary } from '@ssh-server/shared';
+import type { SessionSummary } from '@agentdeck/shared';
 import { api, queryKeys } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
 import { useChat } from '../chat/chat-store';

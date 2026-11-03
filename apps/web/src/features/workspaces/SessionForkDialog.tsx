@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { SessionSummary } from '@ssh-server/shared';
+import type { SessionSummary } from '@agentdeck/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { buttonClass } from '../../ui/styles';

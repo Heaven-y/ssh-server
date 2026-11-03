@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, expect, it, vi } from 'vitest';
-import { RESOURCE_LIMITS } from '@ssh-server/shared';
+import { RESOURCE_LIMITS } from '@agentdeck/shared';
 import { sampleResourceCommand } from '../../src/resources/sample';
 import { runExec, type ExecResult } from '../../src/ssh/exec';
 import type { SshPool } from '../../src/ssh/pool';

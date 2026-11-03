@@ -1,4 +1,4 @@
-import { ProductSettingsSchema, type ProductSettings } from '@ssh-server/shared';
+import { ProductSettingsSchema, type ProductSettings } from '@agentdeck/shared';
 
 export type ProductSettingsDraft = {
   defaultAgent: ProductSettings['defaultAgent'];

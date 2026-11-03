@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient, type QueryClient, type QueryCacheNotifyEvent } from '@tanstack/react-query';
-import type { ManagedServer } from '@ssh-server/shared';
+import type { ManagedServer } from '@agentdeck/shared';
 import { queryKeys } from '../../lib/api';
 
 function observation(client: QueryClient, alias: string) {

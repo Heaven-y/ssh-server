@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Workspace } from '@ssh-server/shared';
+import type { Workspace } from '@agentdeck/shared';
 import { createSessionRegistry } from '../../src/chat/registry';
 import type { ExecResult } from '../../src/ssh/exec';
 import type { SshTarget } from '../../src/ssh/connection';

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { WorkspaceInputSchema, type Workspace, type WorkspaceInput } from '@ssh-server/shared';
+import { WorkspaceInputSchema, type Workspace, type WorkspaceInput } from '@agentdeck/shared';
 
 export class WorkspaceValidationError extends Error {
   override name = 'WorkspaceValidationError';

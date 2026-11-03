@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { z } from 'zod';
-import { AgentKindSchema, NativeSessionIdSchema, type SessionRef } from '@ssh-server/shared';
+import { AgentKindSchema, NativeSessionIdSchema, type SessionRef } from '@agentdeck/shared';
 import { sessionActionKey } from '../chat/chat-store';
 
 export const SESSION_PINS_KEY = 'ssh-server.session-pins.v1';

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { SessionSummary } from '@ssh-server/shared';
+import type { SessionSummary } from '@agentdeck/shared';
 import { api, queryKeys } from '../../../src/lib/api';
 import { queryClient } from '../../../src/lib/query-client';
 import { managementPending, sessionActionKey, useChat } from '../../../src/features/chat/chat-store';

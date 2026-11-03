@@ -1,5 +1,5 @@
 import { createHmac, randomBytes } from 'node:crypto';
-import { SyncSettingsSchema, type RemoteBrowseTarget, type Workspace } from '@ssh-server/shared';
+import { SyncSettingsSchema, type RemoteBrowseTarget, type Workspace } from '@agentdeck/shared';
 import type { SshPool } from '../ssh/pool';
 import type { WorkspaceStore } from '../workspaces/store';
 import { RemoteFilesError } from './errors';

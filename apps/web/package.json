@@ -1,5 +1,5 @@
 {
-  "name": "@ssh-server/web",
+  "name": "@agentdeck/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",

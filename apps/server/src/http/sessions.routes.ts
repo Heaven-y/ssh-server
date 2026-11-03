@@ -1,7 +1,7 @@
 // 会话接口操作对应 Agent 的原生记录，不另存或转换对话。
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { AgentKindSchema, NativeSessionIdSchema, SessionActionSchema, SessionForkSchema } from '@ssh-server/shared';
+import { AgentKindSchema, NativeSessionIdSchema, SessionActionSchema, SessionForkSchema } from '@agentdeck/shared';
 import { SessionError, type SessionsService } from '../chat/sessions';
 import type { WorkspaceStore } from '../workspaces/store';
 

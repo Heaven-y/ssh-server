@@ -1,7 +1,7 @@
 // 长驻 Claude 运行时：一个原生进程承载同一会话的多轮对话，空闲超时后回收。
 import { randomUUID } from 'node:crypto';
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentEvent } from '@ssh-server/shared';
+import type { AgentEvent } from '@agentdeck/shared';
 import type { AgentTurnInput, TurnEnv, TurnHandle } from './types';
 import { claudeInvocationText } from './claude-capabilities';
 import { claudeEffort } from './claude-effort';

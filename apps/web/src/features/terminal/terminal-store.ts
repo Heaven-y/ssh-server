@@ -6,7 +6,7 @@ import {
   type Workspace,
   type TerminalTarget,
   type TerminalBinding,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 import { api, ApiError } from '../../lib/api';
 import type { TerminalPaneStatus } from './runtime';
 import { splitPane, removePane, replacePaneId, type TerminalLayoutNode } from './layout';

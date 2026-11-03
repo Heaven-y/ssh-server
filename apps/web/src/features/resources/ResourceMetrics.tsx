@@ -1,4 +1,4 @@
-import type { ResourceHost, ResourceDisk } from '@ssh-server/shared';
+import type { ResourceHost, ResourceDisk } from '@agentdeck/shared';
 import { ResourceMeter, capacityPercent } from './ResourceMeter';
 
 const decimal = (value: number | null, unit: string) => (value === null ? '不可用' : `${value.toFixed(1)}${unit}`);

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { AgentModel } from '@ssh-server/shared';
+import type { AgentModel } from '@agentdeck/shared';
 import { capabilityId, type NativeCapabilityCatalog, type NativeInvocation } from '../capability-types';
 import { sameSessionDirectory } from '../session-scope';
 import { CodexClient } from './client';

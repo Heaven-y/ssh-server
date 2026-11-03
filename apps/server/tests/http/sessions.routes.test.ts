@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SessionRef, Workspace } from '@ssh-server/shared';
+import type { SessionRef, Workspace } from '@agentdeck/shared';
 import type { WorkspaceStore } from '../../src/workspaces/store';
 import { registerSessionRoutes } from '../../src/http/sessions.routes';
 import { createClaudeSessions, type ClaudeSessionsApi } from '../../src/agents/claude-sessions';

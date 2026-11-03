@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import WebSocket from 'ws';
 import { expect, it, vi } from 'vitest';
-import { workspaceTerminalTarget, type TerminalServerMessage } from '@ssh-server/shared';
+import { workspaceTerminalTarget, type TerminalServerMessage } from '@agentdeck/shared';
 import { startTerminalFixture } from '../../../../scripts/dev/terminal-fixture';
 import { buildApp } from '../../src/http/app';
 import { registerTerminalRoutes } from '../../src/http/terminal.routes';
@@ -32,7 +32,7 @@ async function fixture() {
   });
   await app.listen({ host: '127.0.0.1', port: 0 });
   const origin = app.listeningOrigin;
-  const headers = { host: new URL(origin).host, origin, cookie: 'ssh_server_session=fixture-token' };
+  const headers = { host: new URL(origin).host, origin, cookie: 'AGENTDECK_session=fixture-token' };
   const connect = (url: string) =>
     new WebSocket(new URL(url, origin).href.replace(/^http/, 'ws'), { origin, headers: { cookie: headers.cookie } });
   return {

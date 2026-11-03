@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import ProductSettingsDialog from './ProductSettingsDialog';
-import type { NativeConfigAgent } from '@ssh-server/shared';
+import type { NativeConfigAgent } from '@agentdeck/shared';
 
 const NativeConfigDialog = lazy(() => import('./NativeConfigDialog'));
 /** 同时只挂载一个对话框；离开原生视图立即清理其敏感内容。 */

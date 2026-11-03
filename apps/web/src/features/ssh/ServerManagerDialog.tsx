@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
-import type { ManagedServer, ManualServerInput, Workspace } from '@ssh-server/shared';
+import type { ManagedServer, ManualServerInput, Workspace } from '@agentdeck/shared';
 import { api, queryKeys } from '../../lib/api';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { buttonClass } from '../../ui/styles';

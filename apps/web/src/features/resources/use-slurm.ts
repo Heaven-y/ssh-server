@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { terminalTargetKey, type SlurmSnapshot, type TerminalTarget } from '@ssh-server/shared';
+import { terminalTargetKey, type SlurmSnapshot, type TerminalTarget } from '@agentdeck/shared';
 import { api, ApiError } from '../../lib/api';
 import { useServerObservationVersion } from './use-server-observation';
 

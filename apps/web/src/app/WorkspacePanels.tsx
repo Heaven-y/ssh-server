@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { terminalTargetKey, workspaceTerminalTarget, type Workspace } from '@ssh-server/shared';
+import { terminalTargetKey, workspaceTerminalTarget, type Workspace } from '@agentdeck/shared';
 import { ResourcesPanel } from '../features/resources/ResourcesPanel';
 import { WorkspacePanelFrame } from './WorkspacePanelFrame';
 import { WorkspaceLayout } from './WorkspaceLayout';

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Server } from 'lucide-react';
 import { useState } from 'react';
-import type { Workspace } from '@ssh-server/shared';
+import type { Workspace } from '@agentdeck/shared';
 import { api, queryKeys } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
 import { DetailDialog } from '../../ui/DetailDialog';

@@ -6,7 +6,7 @@ import {
   workspaceTerminalTarget,
   type TerminalTarget,
   type TerminalBinding,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 import type { WorkspaceStore } from '../workspaces/store';
 import type { SshPool } from '../ssh/pool';
 import { TerminalError } from './errors';

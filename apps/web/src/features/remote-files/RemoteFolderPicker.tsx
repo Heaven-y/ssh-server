@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUp, Folder } from 'lucide-react';
-import type { RemoteBrowseSession, RemoteDirectory } from '@ssh-server/shared';
+import type { RemoteBrowseSession, RemoteDirectory } from '@agentdeck/shared';
 import { api } from '../../lib/api';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { RemoteDialog } from './RemoteDialog';

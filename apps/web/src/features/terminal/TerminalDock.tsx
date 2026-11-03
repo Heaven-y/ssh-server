@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Tab, TabList, TabProvider } from '@ariakit/react';
 import { Columns2, Rows2, Maximize2, Minimize2, Plus, X, ChevronDown } from 'lucide-react';
-import { TERMINAL_LIMITS, type Workspace } from '@ssh-server/shared';
+import { TERMINAL_LIMITS, type Workspace } from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { TerminalFrame } from './TerminalFrame';

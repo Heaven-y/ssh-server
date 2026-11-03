@@ -1,7 +1,7 @@
 // SSH 连接、保存凭据与同步共用认证代次；主动断开后只能显式连接恢复。
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Client, ClientChannel, SFTPWrapper } from 'ssh2';
-import type { ManagedServer, SshAuthMode, TerminalSize } from '@ssh-server/shared';
+import type { ManagedServer, SshAuthMode, TerminalSize } from '@agentdeck/shared';
 import { openGuardedSshChannel } from './channel-open';
 import { connectSshClient } from './client';
 import {

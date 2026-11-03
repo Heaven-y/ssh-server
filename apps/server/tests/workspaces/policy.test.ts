@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import Fastify from 'fastify';
 import { afterEach, expect, it } from 'vitest';
-import type { WorkspacePolicyDocument } from '@ssh-server/shared';
+import type { WorkspacePolicyDocument } from '@agentdeck/shared';
 import { createWorkspaceStore } from '../../src/workspaces/store';
 import { createWorkspacePolicy } from '../../src/workspaces/policy';
 import { registerWorkspacePolicyRoutes } from '../../src/http/workspace-policy.routes';

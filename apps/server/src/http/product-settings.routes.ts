@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { ProductSettingsInputSchema } from '@ssh-server/shared';
+import { ProductSettingsInputSchema } from '@agentdeck/shared';
 import { ProductSettingsError, type ProductSettingsStore } from '../settings/product-settings';
 import { anonymousConfigError } from '../settings/errors';
 import type { EnvironmentService } from '../settings/environment';

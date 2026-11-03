@@ -1,4 +1,4 @@
-import type { EnvironmentReport, EnvironmentTool } from '@ssh-server/shared';
+import type { EnvironmentReport, EnvironmentTool } from '@agentdeck/shared';
 import { resolveCodexCommand } from '../agents/codex/launch';
 import { runProcess, type ProcessRunner } from '../process/run';
 import { resolveClaudeExecutable } from '../agents/claude-launch';
@@ -55,7 +55,7 @@ export async function detectEnvironment(
     },
     {
       name: 'rclone',
-      command: () => ({ command: process.env.SSH_SERVER_RCLONE ?? 'rclone', args: [] }),
+      command: () => ({ command: process.env.AGENTDECK_RCLONE ?? 'rclone', args: [] }),
       args: ['version'],
       version: /^rclone v(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.]+)?)\s*$/m,
     },

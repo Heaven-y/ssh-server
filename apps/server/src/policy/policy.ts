@@ -1,6 +1,6 @@
 // 远程命令黑名单：在执行前检查 Agent 发来的命令
 import { DEFAULT_RULES, type PolicyContext, type Rule } from './default-rules';
-import { WorkspacePolicySchema, type CustomPolicyRule } from '@ssh-server/shared';
+import { WorkspacePolicySchema, type CustomPolicyRule } from '@agentdeck/shared';
 import { splitSegments } from './shell';
 
 export type { PolicyContext, Rule } from './default-rules';

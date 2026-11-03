@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { workspaceTerminalTarget, type Workspace, type TerminalBinding } from '@ssh-server/shared';
+import { workspaceTerminalTarget, type Workspace, type TerminalBinding } from '@agentdeck/shared';
 import { api, ApiError } from '../../../src/lib/api';
 import {
   activateTerminalPane,

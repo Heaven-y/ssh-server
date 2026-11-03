@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { query, type Options, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { ContextUsage } from '@ssh-server/shared';
+import type { ContextUsage } from '@agentdeck/shared';
 import { resolveClaudeExecutable } from './claude-launch';
 
 /** 固定SDK的控制契约；只收窄消息迭代内容，由映射器校验原生事件。 */

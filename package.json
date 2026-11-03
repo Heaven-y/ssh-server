@@ -1,8 +1,8 @@
 {
-  "name": "ssh-server",
+  "name": "agent-deck",
   "private": true,
   "type": "module",
-  "description": "本机网页：与本机 Claude Code / Codex 对话并操作 SSH 服务器上的项目",
+  "description": "本机桌面端：统一管理 Claude Code / Codex / Antigravity 的原生会话，并附带 SSH 服务器控制台",
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -20,8 +20,8 @@
     "docs:check": "node --import tsx scripts/dev/check-docs.ts",
     "coverage": "vitest run --coverage",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run docs:check && npm run dup && npm run coverage",
-    "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev -w @ssh-server/server\" \"npm run dev -w @ssh-server/web\"",
-    "start": "npm run build -w @ssh-server/web && npm run start -w @ssh-server/server"
+    "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev -w @agentdeck/server\" \"npm run dev -w @agentdeck/web\"",
+    "start": "npm run build -w @agentdeck/web && npm run start -w @agentdeck/server"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

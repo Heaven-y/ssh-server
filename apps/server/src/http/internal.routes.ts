@@ -1,7 +1,7 @@
 // 内部接口：只给 remote-tools MCP 子进程调用，用会话令牌鉴权
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { WorkspacePolicySchema, type Workspace } from '@ssh-server/shared';
+import { WorkspacePolicySchema, type Workspace } from '@agentdeck/shared';
 import type { SessionRegistry } from '../chat/registry';
 import { checkCommand } from '../policy/policy';
 import type { SshPool } from '../ssh/pool';

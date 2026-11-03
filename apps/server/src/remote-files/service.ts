@@ -4,7 +4,7 @@ import {
   type RemoteBrowseSession,
   type RemoteBrowseTarget,
   type Workspace,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 import { connectionIdentity, workspaceTarget } from '../ssh/connection';
 import type { SshPool } from '../ssh/pool';
 import { createSftpReader, type SftpReader } from '../ssh/sftp';

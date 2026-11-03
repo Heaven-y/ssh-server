@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { TerminalTargetSchema } from '@ssh-server/shared';
+import { TerminalTargetSchema } from '@agentdeck/shared';
 import { ResourceTargetError } from '../resources/target';
 import type { SlurmService } from '../slurm/service';
 import { requestSignal } from './remote-files.routes';

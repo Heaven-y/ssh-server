@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { type WorkspacePolicyDocument } from '@ssh-server/shared';
+import { type WorkspacePolicyDocument } from '@agentdeck/shared';
 import WorkspacePolicyDialog from '../../../src/features/workspaces/WorkspacePolicyDialog';
 import { api, ApiError } from '../../../src/lib/api';
 import { queryClient } from '../../../src/lib/query-client';

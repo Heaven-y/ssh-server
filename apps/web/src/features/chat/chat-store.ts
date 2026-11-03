@@ -10,7 +10,7 @@ import type {
   SessionActionInput,
   SessionRef,
   ProductSettings,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 import { api, queryKeys } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
 import { connectChat, type ChatSocket, type ConnectionStatus } from '../../lib/ws';

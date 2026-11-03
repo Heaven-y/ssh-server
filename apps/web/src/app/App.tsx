@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react';
-import type { Workspace } from '@ssh-server/shared';
+import type { Workspace } from '@agentdeck/shared';
 import { ChatView } from '../features/chat/ChatView';
 import { useChat } from '../features/chat/chat-store';
 import { useWorkspaceNavigation } from './use-workspace-navigation';

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import type { TerminalTarget } from '@ssh-server/shared';
+import type { TerminalTarget } from '@agentdeck/shared';
 import { createTerminalConnection } from '../../../src/features/terminal/connection';
 import { createTerminalPaste, prepareTerminalPaste } from '../../../src/features/terminal/paste';
 

@@ -1,7 +1,7 @@
 import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { TERMINAL_LIMITS, type TerminalTarget, type TerminalServerMessage } from '@ssh-server/shared';
+import { TERMINAL_LIMITS, type TerminalTarget, type TerminalServerMessage } from '@agentdeck/shared';
 import { createTerminalConnection, type TerminalConnection } from './connection';
 import { createTerminalPaste, prepareTerminalPaste } from './paste';
 import { useUiPreferences } from '../../ui/ui-preferences';

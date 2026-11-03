@@ -4,7 +4,7 @@ import {
   type Workspace,
   type WorkspacePolicyDocument,
   type WorkspacePolicyInput,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 import type { WorkspaceStore } from './store';
 
 export class WorkspacePolicyError extends Error {

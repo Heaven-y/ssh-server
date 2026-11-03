@@ -1,4 +1,4 @@
-import { RESOURCE_LIMITS } from '@ssh-server/shared';
+import { RESOURCE_LIMITS } from '@agentdeck/shared';
 import type { SshPool } from '../ssh/pool';
 import type { SshTarget } from '../ssh/connection';
 import { runExec } from '../ssh/exec';

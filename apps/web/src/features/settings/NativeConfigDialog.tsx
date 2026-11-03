@@ -1,6 +1,6 @@
 import { CheckCircle2, CircleAlert, LoaderCircle, RefreshCw, Save, Settings2, X } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import type { NativeConfigAgent, NativeConfigDocument } from '@ssh-server/shared';
+import type { NativeConfigAgent, NativeConfigDocument } from '@agentdeck/shared';
 import { api, ApiError } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
 import { CodeEditor } from '../../ui/CodeEditor';

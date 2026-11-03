@@ -13,7 +13,7 @@ async function installation() {
   const dir = await mkdtemp(path.join(tmpdir(), 'codex installation '));
   dirs.push(dir);
   const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === 'path') ?? 'PATH';
-  const env = { [pathKey]: [path.join(dir, 'missing'), dir].join(path.delimiter), SSH_SERVER_CODEX: undefined };
+  const env = { [pathKey]: [path.join(dir, 'missing'), dir].join(path.delimiter), AGENTDECK_CODEX: undefined };
   const addFile = async (...parts: string[]) => {
     const file = path.join(dir, ...parts);
     await mkdir(path.dirname(file), { recursive: true });
@@ -29,11 +29,11 @@ describe('Codex 启动发现', () => {
     const { addFile, env } = await installation();
     const js = await addFile('custom entry.mjs');
     const executable = await addFile('custom executable');
-    expect(await resolveCodexCommand({ env: { ...env, SSH_SERVER_CODEX: js } })).toEqual({
+    expect(await resolveCodexCommand({ env: { ...env, AGENTDECK_CODEX: js } })).toEqual({
       command: process.execPath,
       args: [js],
     });
-    expect(await resolveCodexCommand({ command: executable, env: { ...env, SSH_SERVER_CODEX: js } })).toEqual({
+    expect(await resolveCodexCommand({ command: executable, env: { ...env, AGENTDECK_CODEX: js } })).toEqual({
       command: executable,
       args: [],
     });

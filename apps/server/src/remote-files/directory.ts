@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { RemoteDirectory, SyncSettings } from '@ssh-server/shared';
+import type { RemoteDirectory, SyncSettings } from '@agentdeck/shared';
 import type { SftpReader } from '../ssh/sftp';
 import { compareDirectoryEntries, createDirectoryBudget } from './directory-order';
 import { directoryEntry, inside } from './paths';

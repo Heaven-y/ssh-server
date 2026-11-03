@@ -4,7 +4,7 @@ import {
   ProductSettingsInputSchema,
   type ProductSettingsDocument,
   type ProductSettingsInput,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 import { inspectDirectory, readConfigFile, writeConfigFile } from './safe-file';
 import { NativeConfigError, anonymousConfigError } from './errors';
 

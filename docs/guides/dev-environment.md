@@ -12,7 +12,7 @@
 | Git | 2.43+，本地版本恢复需要 `GIT_ATTR_SOURCE` 支持目标提交属性 |
 | Claude Code、Codex CLI | Claude通过SDK随包平台程序运行，Codex通过本机CLI；使用模型时沿用已配置的原生设置。缺少Agent不妨碍服务器管理，历史Codex真实验收版本为0.160.0 |
 | 本机 Python | 3.x，仅部分开发 skill 的脚本按需使用（用 `python` 调用，见 3.3）；网页后端不依赖 Python |
-| rclone | 本机固定 1.75.1；通过 PATH 或 `SSH_SERVER_RCLONE` 指定，服务器无需安装 |
+| rclone | 本机固定 1.75.1；通过 PATH 或 `AGENTDECK_RCLONE` 指定，服务器无需安装 |
 
 ### 1.1 代码规范
 
@@ -224,17 +224,17 @@ Windows rclone会把远端根的反斜杠转换为斜杠，产品在同步/预�
 ## 4. 开发运行与验收说明
 
 - Windows PowerShell用`npm.cmd start`构建并启动，直接打开`http://127.0.0.1:4317/`；开发热更新用`npm.cmd run dev`并打开5173端口。无需令牌链接，同源握手后才启动业务查询；后端重启后刷新重新握手。安全契约见[D37](../engineering/decisions.md#d37-本机入口与统一服务器档案2026-10-07)。
-- 设置`SSH_SERVER_RCLONE`后，真实验收用`npm.cmd run e2e:m1 -- --host my-server --remote-dir ~/projects/demo --local-dir C:\Projects\demo --report <私有报告路径>`；M2将脚本名换为`e2e:m2`。两端必须是专用空测试根；M1保留原生验收会话，M2只创建/清理自身随机子目录，均不能在已有项目上运行。
+- 设置`AGENTDECK_RCLONE`后，真实验收用`npm.cmd run e2e:m1 -- --host my-server --remote-dir ~/projects/demo --local-dir C:\Projects\demo --report <私有报告路径>`；M2将脚本名换为`e2e:m2`。两端必须是专用空测试根；M1保留原生验收会话，M2只创建/清理自身随机子目录，均不能在已有项目上运行。
 - 先在顶栏“服务器”保存连接档案并认证；SSH config只作为显式导入来源，生产工作区不直接使用未登记Host。私钥模式需要可读私钥，密码模式不回退私钥或SSH Agent；认证保存在服务器层，工作区只选目录和档案。已引用或有活动的服务器变更受保护，密码不进入工作区JSON、浏览器缓存、Agent、日志或argv。
 - 同步元数据、信任副本、缓存与临时目录在后端配置目录，`.git` 永不传输；只同步代码和小文件，排除范围变化需确认重建基线。
 - `/` 命令、压缩和资源状态按官方接口 / 服务器实际能力验证。终端测试使用服务器已有工具，不为了 `nvitop` 或监控而在服务器安装软件。
-- Codex正式启动使用`CODEX_HOME/config.toml`，`SSH_SERVER_CODEX`指定已有入口。真实模型检查须有明确授权，使用隔离配置并核对源摘要；只清理自身副本，不绕过策略拒绝。原生MCP内部令牌只经进程环境传递，轮次结束撤销。
+- Codex正式启动使用`CODEX_HOME/config.toml`，`AGENTDECK_CODEX`指定已有入口。真实模型检查须有明确授权，使用隔离配置并核对源摘要；只清理自身副本，不绕过策略拒绝。原生MCP内部令牌只经进程环境传递，轮次结束撤销。
 - 远程分析验证使用已有Python/项目环境，不为网页版安装科学计算依赖；对话、终端、资源、任务与同步的并发按实际影响范围核对，不能由独立通道成功推断所有组合。
 - 文档修改只检查链接、编号、编码、冲突表述与变更范围；代码改动再按受影响范围运行相关测试及工程检查，不重复未受影响的全量测试。
 - 远端文件验收复用授权目标的专用目录，按A20–A23核对大文件、混合目录、同名冲突、链接、跨文件系统与取消；先确认跨文件系统device确实不同。核实本机无隐式副本且不调用模型，显式下载不纳入同步/Git。终端全屏程序先等待进入与重绘再测试退出。
 - 每项能力只有当前实现。测试替身和开发脚本必须跟随必填Agent、对象SshTarget、runners注册表等正式契约，不能为旧替身恢复兼容分支。外部客户端只是可选检查工具。
 - 启动检测Node.js、Claude实际入口、Codex、Git、rclone能否执行；每项5秒、输出2KiB，命令成功但版本未知仍可用。产品设置“本机运行环境”复用报告并提供重新检测和安装指引。Git2.43+/rclone1.75.1为业务要求。
-- 默认配置目录为`%LOCALAPPDATA%\ssh-server`，`SSH_SERVER_CONFIG_DIR`可指定隔离目录；`SSH_SERVER_PORT`更改监听端口，`SSH_SERVER_HOST`仅允许本机地址。开发来源用`SSH_SERVER_DEV_ORIGIN`或`--dev-origin`显式设置；`SSH_SERVER_CODEX`和`SSH_SERVER_RCLONE`只选择已有程序。开发skills与其锁文件不属于产品启动依赖，不在启动时安装或检测。
+- 默认配置目录为`%LOCALAPPDATA%\ssh-server`，`AGENTDECK_CONFIG_DIR`可指定隔离目录；`AGENTDECK_PORT`更改监听端口，`AGENTDECK_HOST`仅允许本机地址。开发来源用`AGENTDECK_DEV_ORIGIN`或`--dev-origin`显式设置；`AGENTDECK_CODEX`和`AGENTDECK_RCLONE`只选择已有程序。开发skills与其锁文件不属于产品启动依赖，不在启动时安装或检测。
 - 仅维护新档案和工作区格式，不自动迁移。若配置不合法，保留原文并拒绝；不要用删除配置的方法掩盖错误。隔离验收使用临时目录和合成SSH，不读取或清理用户真实服务器配置。
 
 ### 4.1 原生配置与复验入口

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Group, Panel, Separator, usePanelRef } from 'react-resizable-panels';
-import type { Workspace } from '@ssh-server/shared';
+import type { Workspace } from '@agentdeck/shared';
 
 const TerminalDock = lazy(() => import('../features/terminal/TerminalDock'));
 

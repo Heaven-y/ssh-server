@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { TerminalTargetSchema } from '@ssh-server/shared';
+import { TerminalTargetSchema } from '@agentdeck/shared';
 import { ResourceTargetError, type ResourcesService } from '../resources/service';
 
 export function registerResourcesRoutes(app: FastifyInstance, resources: ResourcesService): void {

@@ -49,7 +49,7 @@ describe('remote-tools MCP 子进程', () => {
       new StdioClientTransport({
         command,
         args,
-        env: stringEnv({ SSH_SERVER_INTERNAL_URL: `http://127.0.0.1:${port}`, SSH_SERVER_SESSION_TOKEN: 'tok-1' }),
+        env: stringEnv({ AGENTDECK_INTERNAL_URL: `http://127.0.0.1:${port}`, AGENTDECK_SESSION_TOKEN: 'tok-1' }),
       }),
     );
 

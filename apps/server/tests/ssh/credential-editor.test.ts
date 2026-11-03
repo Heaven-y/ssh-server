@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ManagedServer } from '@ssh-server/shared';
+import type { ManagedServer } from '@agentdeck/shared';
 import { connectionIdentity } from '../../src/ssh/connection';
 import { credentialEditorFixture, deferred, input } from './credential-editor.fixture';
 

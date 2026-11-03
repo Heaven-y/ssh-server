@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFile as fsReadFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { SshAuthMode, Workspace } from '@ssh-server/shared';
+import type { SshAuthMode, Workspace } from '@agentdeck/shared';
 import { createCredentialVault } from './credentials';
 import { knownHostRecordsForTarget } from './known-hosts';
 import { parseSshConfig, resolveHost, type SshHostConfig } from './ssh-config';

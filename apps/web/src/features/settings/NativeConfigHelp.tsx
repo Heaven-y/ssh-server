@@ -1,4 +1,4 @@
-import type { NativeConfigAgent, NativeConfigDocument } from '@ssh-server/shared';
+import type { NativeConfigAgent, NativeConfigDocument } from '@agentdeck/shared';
 import { FilePlus2 } from 'lucide-react';
 import { buttonClass } from '../../ui/styles';
 import { nativeConfigTemplate } from './native-config-templates';

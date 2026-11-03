@@ -1,7 +1,7 @@
 import { useId } from 'react';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
-import type { ManagedServer, Workspace } from '@ssh-server/shared';
+import type { ManagedServer, Workspace } from '@agentdeck/shared';
 import { api, queryKeys, type SshCredentialStatus } from '../../lib/api';
 
 function connectionLabel(status: SshCredentialStatus) {

@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import { expect, it, vi } from 'vitest';
-import type { EnvironmentReport } from '@ssh-server/shared';
+import type { EnvironmentReport } from '@agentdeck/shared';
 import { createEnvironmentService } from '../../src/settings/environment';
 import { createProductSettings } from '../../src/settings/product-settings';
 import { registerProductSettingsRoutes } from '../../src/http/product-settings.routes';

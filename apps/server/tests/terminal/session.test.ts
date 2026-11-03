@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import type { ClientChannel, SFTPWrapper } from 'ssh2';
 import type WebSocket from 'ws';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { TerminalServerMessage, TerminalTarget, Workspace } from '@ssh-server/shared';
+import type { TerminalServerMessage, TerminalTarget, Workspace } from '@agentdeck/shared';
 import { createTerminalSession } from '../../src/terminal/session';
 import type { TerminalBindings } from '../../src/terminal/binding';
 import { createTerminalOutput } from '../../src/terminal/output';

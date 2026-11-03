@@ -2,7 +2,7 @@ import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import ssh2 from 'ssh2';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { RemoteBrowseSession, RemoteDirectory } from '@ssh-server/shared';
+import type { RemoteBrowseSession, RemoteDirectory } from '@agentdeck/shared';
 import { registerRemoteFileRoutes } from '../../src/http/remote-files.routes';
 import { createRemoteFilesService } from '../../src/remote-files/service';
 import { startRemoteSftpFixture, type RemoteSftpFixture } from '../helpers/remote-sftp';

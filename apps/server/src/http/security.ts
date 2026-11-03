@@ -2,7 +2,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 
-export const SESSION_COOKIE = 'ssh_server_session';
+export const SESSION_COOKIE = 'AGENTDECK_session';
 
 export type SecurityOptions = {
   token: string;

@@ -1,4 +1,4 @@
-import { terminalTargetKey, type SlurmSnapshot, type TerminalTarget } from '@ssh-server/shared';
+import { terminalTargetKey, type SlurmSnapshot, type TerminalTarget } from '@agentdeck/shared';
 import { createResourceTargetContext, ResourceTargetError, type ResourceTargetContext } from '../resources/target';
 import { workspaceTarget } from '../ssh/connection';
 import type { SshPool } from '../ssh/pool';

@@ -13,7 +13,7 @@ import {
   TerminalSquare,
   WifiOff,
 } from 'lucide-react';
-import type { Workspace } from '@ssh-server/shared';
+import type { Workspace } from '@agentdeck/shared';
 import { reconnectChat, useChat } from '../features/chat/chat-store';
 import { buttonClass } from '../ui/styles';
 import { useUiPreferences } from '../ui/ui-preferences';

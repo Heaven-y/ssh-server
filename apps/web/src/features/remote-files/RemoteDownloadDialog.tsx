@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { RemoteBrowseSession, RemoteFileEntry } from '@ssh-server/shared';
+import type { RemoteBrowseSession, RemoteFileEntry } from '@agentdeck/shared';
 import { api } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
 import { RemoteDialog } from './RemoteDialog';

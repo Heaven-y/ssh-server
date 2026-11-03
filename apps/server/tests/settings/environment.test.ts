@@ -4,7 +4,7 @@ import { detectEnvironment } from '../../src/settings/environment';
 import type { ProcessRunner } from '../../src/process/run';
 
 // 执行器已模拟，Codex入口也应显式隔离，不能依赖测试机是否安装CLI。
-beforeEach(() => vi.stubEnv('SSH_SERVER_CODEX', 'fixture-codex'));
+beforeEach(() => vi.stubEnv('AGENTDECK_CODEX', 'fixture-codex'));
 afterEach(() => vi.unstubAllEnvs());
 
 it('Claude检测复用实际已安装的SDK原生入口，探测只传版本参数且有界', async () => {

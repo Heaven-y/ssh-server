@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import Fastify from 'fastify';
 import { afterEach, expect, it } from 'vitest';
-import { ProductSettingsSchema, type ProductSettingsInput } from '@ssh-server/shared';
+import { ProductSettingsSchema, type ProductSettingsInput } from '@agentdeck/shared';
 import { createProductSettings } from '../../src/settings/product-settings';
 import { registerProductSettingsRoutes } from '../../src/http/product-settings.routes';
 import { createEnvironmentService } from '../../src/settings/environment';

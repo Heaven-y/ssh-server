@@ -1,6 +1,6 @@
 // 从已删除的 tests/sync/filters.test.ts 搬来的路径边界与过滤用例；只覆盖仍保留的三个纯函数。
 import { describe, expect, it } from 'vitest';
-import { SyncSettingsSchema } from '@ssh-server/shared';
+import { SyncSettingsSchema } from '@agentdeck/shared';
 import { eligibleFile, excludedPath, safeRelativePath } from '../../src/remote-files/sync-scope';
 
 const settings = SyncSettingsSchema.parse({});

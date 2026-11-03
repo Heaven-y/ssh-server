@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import ssh2 from 'ssh2';
 import type { Attributes, Connection, FileEntry, SFTPWrapper } from 'ssh2';
-import type { RemoteBrowseTarget, Workspace } from '@ssh-server/shared';
+import type { RemoteBrowseTarget, Workspace } from '@agentdeck/shared';
 import { createSshPool } from '../../src/ssh/pool';
 
 type Operation = 'READDIR' | 'REALPATH' | 'SFTP' | 'READ';

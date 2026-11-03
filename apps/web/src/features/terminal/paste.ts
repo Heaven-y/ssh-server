@@ -1,4 +1,4 @@
-import { TERMINAL_LIMITS } from '@ssh-server/shared';
+import { TERMINAL_LIMITS } from '@agentdeck/shared';
 
 export function prepareTerminalPaste(text: string): Uint8Array {
   const bytes = new TextEncoder().encode(text);

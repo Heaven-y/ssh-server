@@ -155,7 +155,7 @@ function startRuntime(executable: string, home: string, cwd: string, signal: Abo
       });
     },
     async initialize() {
-      await this.request('initialize', { clientInfo: { name: 'ssh_server_config_check', version: '1' } });
+      await this.request('initialize', { clientInfo: { name: 'AGENTDECK_config_check', version: '1' } });
       send({ method: 'initialized', params: {} });
     },
     async modelCheck(cwd: string) {

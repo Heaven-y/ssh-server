@@ -1,5 +1,5 @@
 import type WebSocket from 'ws';
-import { TERMINAL_LIMITS } from '@ssh-server/shared';
+import { TERMINAL_LIMITS } from '@agentdeck/shared';
 import type { WorkspaceStore } from '../workspaces/store';
 import type { SshPool } from '../ssh/pool';
 import type { TerminalBindings } from './binding';

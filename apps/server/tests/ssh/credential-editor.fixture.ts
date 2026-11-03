@@ -13,7 +13,7 @@ import { registerSshRoutes } from '../../src/http/ssh.routes';
 import { registerSecurity } from '../../src/http/security';
 import { registerAuthRoute } from '../../src/http/auth';
 import type { SecretProtector } from '../../src/ssh/windows-protection';
-import type { ManagedServer } from '@ssh-server/shared';
+import type { ManagedServer } from '@agentdeck/shared';
 
 export const input = {
   name: '合成服务器',

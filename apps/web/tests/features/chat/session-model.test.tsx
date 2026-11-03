@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { ProductSettingsSchema, type SessionHistory } from '@ssh-server/shared';
+import { ProductSettingsSchema, type SessionHistory } from '@agentdeck/shared';
 import { SessionList } from '../../../src/features/workspaces/SessionList';
 import { api, queryKeys } from '../../../src/lib/api';
 import { useChat } from '../../../src/features/chat/chat-store';

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AgentEvent } from '@ssh-server/shared';
+import type { AgentEvent } from '@agentdeck/shared';
 import type { AgentTurnInput, PermissionAnswer } from '../../../src/agents/types';
 import type { CodexClient } from '../../../src/agents/codex/client';
 import { CodexEventMapper } from '../../../src/agents/codex/mapper';

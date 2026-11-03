@@ -1,6 +1,6 @@
 import { GitFork } from 'lucide-react';
 import { useState } from 'react';
-import type { SessionSummary } from '@ssh-server/shared';
+import type { SessionSummary } from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
 import { managementPending, useChat } from './chat-store';
 import { SessionForkDialog } from '../workspaces/SessionForkDialog';

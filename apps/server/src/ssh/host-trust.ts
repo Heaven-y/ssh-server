@@ -3,7 +3,7 @@ import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import type { HostTrustConfirmation, HostTrustStatus } from '@ssh-server/shared';
+import type { HostTrustConfirmation, HostTrustStatus } from '@agentdeck/shared';
 import type { SshPool } from './pool';
 import { SshConnectionError } from './connection';
 import { hostKeyType, knownHostName, verifyHostKey } from './known-hosts';

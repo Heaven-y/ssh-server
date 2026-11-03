@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { AgentCapability, AgentKind, AgentModel } from '@ssh-server/shared';
+import type { AgentCapability, AgentKind, AgentModel } from '@agentdeck/shared';
 
 export type NativeInvocation =
   { kind: 'skill'; name: string; path?: string } | { kind: 'command'; name: 'compact' | 'context' };

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { workspaceTerminalTarget, type Workspace } from '@ssh-server/shared';
+import { workspaceTerminalTarget, type Workspace } from '@agentdeck/shared';
 import { createSlurmService } from '../../src/slurm/service';
 import type { ResolvedConnection } from '../../src/ssh/connection';
 import type { SshPool } from '../../src/ssh/pool';

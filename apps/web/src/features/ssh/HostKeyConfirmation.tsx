@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { HostTrustStatus } from '@ssh-server/shared';
+import type { HostTrustStatus } from '@agentdeck/shared';
 import { api } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
 

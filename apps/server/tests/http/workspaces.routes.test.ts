@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Workspace } from '@ssh-server/shared';
+import type { Workspace } from '@agentdeck/shared';
 import type { WorkspaceStore } from '../../src/workspaces/store';
 import { registerWorkspaceRoutes } from '../../src/http/workspaces.routes';
 

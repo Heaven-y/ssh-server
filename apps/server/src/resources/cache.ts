@@ -1,4 +1,4 @@
-import { RESOURCE_LIMITS, type ResourceReading, type ResourceTiming } from '@ssh-server/shared';
+import { RESOURCE_LIMITS, type ResourceReading, type ResourceTiming } from '@agentdeck/shared';
 
 type Entry<T> = {
   data: T | null;

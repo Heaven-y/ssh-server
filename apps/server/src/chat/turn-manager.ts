@@ -1,12 +1,12 @@
 // 轮次按 Agent 与原生会话隔离；耗时准备前先建立应用轮次，允许及时中断。
 import { randomUUID } from 'node:crypto';
-import type { AgentEvent, AgentKind, ClientMessage, ServerMessage, SessionRef, Workspace } from '@ssh-server/shared';
+import type { AgentEvent, AgentKind, ClientMessage, ServerMessage, SessionRef, Workspace } from '@agentdeck/shared';
 import type { AgentTurnInput, PermissionAnswer, TurnEnv, TurnHandle, TurnRunner } from '../agents/types';
 import type { SessionRegistry } from './registry';
 import { SessionError, type SessionsService } from './sessions';
 import type { CapabilitiesService } from './capabilities';
 import { WorkspaceRemovalError } from '../workspaces/activity';
-import type { TurnFileChange, TurnChangesRecord } from '@ssh-server/shared';
+import type { TurnFileChange, TurnChangesRecord } from '@agentdeck/shared';
 import { mergeChanges, toolFileChanges, withDetected } from './turn-files';
 
 export type Socket = { send(msg: ServerMessage): void; isOpen(): boolean };
@@ -185,7 +185,7 @@ export class TurnManager {
   private acquireEnv(ws: Workspace): TurnEnv {
     const token = this.deps.registry.register(ws.id);
     const lease: TurnEnv = {
-      env: { SSH_SERVER_INTERNAL_URL: this.deps.internalUrl(), SSH_SERVER_SESSION_TOKEN: token },
+      env: { AGENTDECK_INTERNAL_URL: this.deps.internalUrl(), AGENTDECK_SESSION_TOKEN: token },
       release: () => {
         this.leases.delete(lease);
         this.deps.registry.unregister(token);

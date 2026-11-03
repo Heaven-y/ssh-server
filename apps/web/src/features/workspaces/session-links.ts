@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AgentKindSchema, NativeSessionIdSchema, type SessionRef } from '@ssh-server/shared';
+import { AgentKindSchema, NativeSessionIdSchema, type SessionRef } from '@agentdeck/shared';
 
 export type SessionLocation = SessionRef & { workspaceId: string };
 const LinkSchema = z

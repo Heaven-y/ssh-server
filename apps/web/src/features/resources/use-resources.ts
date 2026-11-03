@@ -7,7 +7,7 @@ import {
   terminalTargetKey,
   type Workspace,
   type ResourceSnapshot,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 import { api, ApiError } from '../../lib/api';
 import { useProductSettings } from '../settings/use-product-settings';
 import { useChat } from '../chat/chat-store';

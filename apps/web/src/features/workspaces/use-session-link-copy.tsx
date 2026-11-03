@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { SessionRef } from '@ssh-server/shared';
+import type { SessionRef } from '@agentdeck/shared';
 import { inputClass } from '../../ui/styles';
 import { sessionLink } from './session-links';
 

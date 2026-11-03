@@ -1,4 +1,4 @@
-import type { AgentKind } from '@ssh-server/shared';
+import type { AgentKind } from '@agentdeck/shared';
 
 /**
  * Agent 品牌图标：路径数据取自 simple-icons（CC0）。

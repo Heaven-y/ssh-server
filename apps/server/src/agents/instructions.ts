@@ -1,5 +1,5 @@
 // 按会话注入给 Agent 的工作区指令（不写入工作区文件）
-import type { Workspace } from '@ssh-server/shared';
+import type { Workspace } from '@agentdeck/shared';
 
 export function buildInstructions(ws: Workspace): string {
   return [

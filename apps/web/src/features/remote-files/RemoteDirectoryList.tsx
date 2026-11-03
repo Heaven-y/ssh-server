@@ -7,7 +7,7 @@ import type {
   RemoteFileActionKind,
   RemoteFileEntry,
   RemoteFileScope,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
 import { ACTION_LABELS } from './RemoteActionDialog';
 import { isContextMenuKey, navigateFileList } from '../../ui/file-list-navigation';

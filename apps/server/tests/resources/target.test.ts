@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { expect, it, vi } from 'vitest';
-import { workspaceTerminalTarget, type Workspace } from '@ssh-server/shared';
+import { workspaceTerminalTarget, type Workspace } from '@agentdeck/shared';
 import { createResourceTargetContext } from '../../src/resources/target';
 import type { ResolvedConnection } from '../../src/ssh/connection';
 import type { SshPool } from '../../src/ssh/pool';

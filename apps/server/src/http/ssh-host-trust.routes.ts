@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { HostTrustConfirmationSchema } from '@ssh-server/shared';
+import { HostTrustConfirmationSchema } from '@agentdeck/shared';
 import { HostTrustError, type HostTrust } from '../ssh/host-trust';
 import { SshConnectionError } from '../ssh/connection';
 

@@ -1,4 +1,4 @@
-import { NativeSessionIdSchema, type AgentEvent } from '@ssh-server/shared';
+import { NativeSessionIdSchema, type AgentEvent } from '@agentdeck/shared';
 import { CodexCompaction } from './compaction';
 import { list, record, text, type RecordValue } from './types';
 

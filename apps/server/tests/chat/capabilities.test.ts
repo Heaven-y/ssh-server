@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it, vi } from 'vitest';
-import type { Workspace } from '@ssh-server/shared';
+import type { Workspace } from '@agentdeck/shared';
 import type { NativeCapabilityCatalog } from '../../src/agents/capability-types';
 import { createCapabilitiesService } from '../../src/chat/capabilities';
 

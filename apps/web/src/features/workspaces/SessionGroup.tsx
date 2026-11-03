@@ -1,6 +1,6 @@
 import type { UseQueryResult } from '@tanstack/react-query';
 import { LoaderCircle, Pin } from 'lucide-react';
-import type { AgentKind, SessionSummary } from '@ssh-server/shared';
+import type { AgentKind, SessionSummary } from '@agentdeck/shared';
 import { sessionActionKey, useChat } from '../chat/chat-store';
 import { AGENT_LABELS } from '../chat/AgentControls';
 import { AgentIcon } from '../../ui/BrandIcons';

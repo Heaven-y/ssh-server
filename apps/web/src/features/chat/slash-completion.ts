@@ -1,4 +1,4 @@
-import type { AgentCapability } from '@ssh-server/shared';
+import type { AgentCapability } from '@agentdeck/shared';
 
 /** 只补全消息开头的命令名；路径、正文和已经进入参数区的光标保持普通编辑。 */
 export function slashCompletion(text: string, start: number, end = start) {

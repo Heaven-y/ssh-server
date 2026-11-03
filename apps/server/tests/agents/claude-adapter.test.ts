@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ModelInfo } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentEvent, Workspace } from '@ssh-server/shared';
+import type { AgentEvent, Workspace } from '@agentdeck/shared';
 import { PERMISSION_TIMEOUT_MS, runClaudeTurn, type QueryFn } from '../../src/agents/claude-adapter';
 
 const ws: Workspace = {
@@ -12,7 +12,7 @@ const ws: Workspace = {
   sshHost: 'my-server',
   remoteDir: '~/projects/demo',
 };
-const mcpEnv = { SSH_SERVER_INTERNAL_URL: 'http://127.0.0.1:1', SSH_SERVER_SESSION_TOKEN: 'tok' };
+const mcpEnv = { AGENTDECK_INTERNAL_URL: 'http://127.0.0.1:1', AGENTDECK_SESSION_TOKEN: 'tok' };
 
 type CanUseTool = (
   name: string,
@@ -96,8 +96,8 @@ describe('runClaudeTurn：调用参数', () => {
     expect((o.systemPrompt as { append: string }).append).toContain('my-server');
     const mcp = (o.mcpServers as Record<string, { command: string; env: Record<string, string> }>)['ssh-server']!;
     expect(mcp.command).toBe(process.execPath);
-    expect(mcp.env.SSH_SERVER_INTERNAL_URL).toBe('http://127.0.0.1:1');
-    expect(mcp.env.SSH_SERVER_SESSION_TOKEN).toBe('tok');
+    expect(mcp.env.AGENTDECK_INTERNAL_URL).toBe('http://127.0.0.1:1');
+    expect(mcp.env.AGENTDECK_SESSION_TOKEN).toBe('tok');
     expect(mcp.env.PATH ?? mcp.env.Path).toBeTruthy();
     expect(o.allowedTools).toEqual([
       'mcp__ssh-server__remote_exec',

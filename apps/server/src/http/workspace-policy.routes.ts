@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { WorkspacePolicyInputSchema } from '@ssh-server/shared';
+import { WorkspacePolicyInputSchema } from '@agentdeck/shared';
 import { WorkspacePolicyError, type WorkspacePolicyService } from '../workspaces/policy';
 import { WorkspaceValidationError } from '../workspaces/store';
 

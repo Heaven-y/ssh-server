@@ -3,7 +3,7 @@ import { request } from 'node:http';
 import path from 'node:path';
 import os from 'node:os';
 import { expect, it, vi } from 'vitest';
-import { workspaceTerminalTarget, type SlurmSnapshot } from '@ssh-server/shared';
+import { workspaceTerminalTarget, type SlurmSnapshot } from '@agentdeck/shared';
 import { buildApp } from '../../src/http/app';
 import { registerSlurmRoutes } from '../../src/http/slurm.routes';
 import { createSlurmService } from '../../src/slurm/service';
@@ -32,7 +32,7 @@ async function fixture(result = { stdout: slurmOutput(), exitCode: 0 }) {
   const headers = {
     host: new URL(app.listeningOrigin).host,
     origin: app.listeningOrigin,
-    cookie: 'ssh_server_session=fixture-token',
+    cookie: 'AGENTDECK_session=fixture-token',
   };
   const target = workspaceTerminalTarget(ssh.workspace);
   const base = `/api/workspaces/${ssh.workspace.id}/slurm`;
@@ -155,7 +155,7 @@ it('HTTP 客户端中断传递自己的 signal，preClose 释放服务', async (
       }),
   });
   await app.listen({ host: '127.0.0.1', port: 0 });
-  const req = request(new URL(f.url, app.listeningOrigin), { headers: { cookie: 'ssh_server_session=fixture-token' } });
+  const req = request(new URL(f.url, app.listeningOrigin), { headers: { cookie: 'AGENTDECK_session=fixture-token' } });
   req.on('error', () => undefined);
   req.end();
   try {

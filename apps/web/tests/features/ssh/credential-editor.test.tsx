@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { ManagedServer } from '@ssh-server/shared';
+import type { ManagedServer } from '@agentdeck/shared';
 import { api } from '../../../src/lib/api';
 import { ServerManagerDialog } from '../../../src/features/ssh/ServerManagerDialog';
 

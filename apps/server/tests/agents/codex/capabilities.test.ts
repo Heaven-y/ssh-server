@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AgentEvent, Workspace } from '@ssh-server/shared';
+import type { AgentEvent, Workspace } from '@agentdeck/shared';
 import { discoverCodexCapabilities, runCodexTurn } from '../../../src/agents/codex';
 import { capabilityId } from '../../../src/agents/capability-types';
 import type { AgentTurnInput } from '../../../src/agents/types';

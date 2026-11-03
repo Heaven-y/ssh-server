@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { AgentCapabilities, ClientMessage, ServerMessage, Workspace } from '@ssh-server/shared';
+import type { AgentCapabilities, ClientMessage, ServerMessage, Workspace } from '@agentdeck/shared';
 import { ChatView } from '../../../src/features/chat/ChatView';
 import { Composer } from '../../../src/features/chat/Composer';
 import { ManualModelDialog } from '../../../src/features/chat/ManualModelDialog';

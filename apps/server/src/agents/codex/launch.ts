@@ -32,7 +32,7 @@ async function explicitCommand(command: string): Promise<LaunchCommand> {
   if (/\.(cmd|ps1|bat)$/i.test(command)) {
     const native = await officialNpmCommand(path.dirname(command));
     if (native) return native;
-    throw new CodexError('请将 SSH_SERVER_CODEX 指向 Codex 可执行文件或官方 JavaScript 入口。');
+    throw new CodexError('请将 AGENTDECK_CODEX 指向 Codex 可执行文件或官方 JavaScript 入口。');
   }
   return /\.[cm]?js$/i.test(command) ? { command: process.execPath, args: [command] } : { command, args: [] };
 }
@@ -41,7 +41,7 @@ async function explicitCommand(command: string): Promise<LaunchCommand> {
 export async function resolveCodexCommand(options: CodexRuntimeOptions = {}): Promise<LaunchCommand> {
   if (typeof options.command === 'object') return { ...options.command, args: options.command.args ?? [] };
   const env = { ...process.env, ...options.env };
-  const explicit = options.command ?? env.SSH_SERVER_CODEX;
+  const explicit = options.command ?? env.AGENTDECK_CODEX;
   if (explicit) return explicitCommand(explicit);
   if (process.platform !== 'win32') return { command: 'codex', args: [] };
   return windowsCommand(env);
@@ -55,5 +55,5 @@ async function windowsCommand(env: NodeJS.ProcessEnv): Promise<LaunchCommand> {
     const native = await officialNpmCommand(dir);
     if (native) return native;
   }
-  throw new CodexError('找不到 Codex，请安装官方 CLI，或设置 SSH_SERVER_CODEX。');
+  throw new CodexError('找不到 Codex，请安装官方 CLI，或设置 AGENTDECK_CODEX。');
 }

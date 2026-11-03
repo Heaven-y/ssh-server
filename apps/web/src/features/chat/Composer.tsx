@@ -4,7 +4,7 @@ import { managementPending, useChat } from './chat-store';
 import { CapabilityPicker } from './CapabilityPicker';
 import { selectionRestriction } from './capability-selection';
 import { ComposerInput } from './ComposerInput';
-import type { AgentCapability } from '@ssh-server/shared';
+import type { AgentCapability } from '@agentdeck/shared';
 import { AgentControls } from './AgentControls';
 
 function ComposerActions({ disabled }: { disabled: boolean }) {

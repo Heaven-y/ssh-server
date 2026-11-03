@@ -1,4 +1,4 @@
-import type { AgentEvent, SessionSummary, Workspace } from '@ssh-server/shared';
+import type { AgentEvent, SessionSummary, Workspace } from '@agentdeck/shared';
 import type { NativeInvocation } from './capability-types';
 
 export type PermissionAnswer = { allow: boolean; message?: string };

@@ -1,7 +1,7 @@
 import { Menu, MenuButton, MenuGroup, MenuItem, MenuProvider, MenuSeparator, useMenuStore } from '@ariakit/react';
 import { Check, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import type { AgentKind, AgentModel } from '@ssh-server/shared';
+import type { AgentKind, AgentModel } from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
 import { agentUnavailable, useEnvironment } from '../settings/use-environment';
 import { sessionActionKey, useChat } from './chat-store';

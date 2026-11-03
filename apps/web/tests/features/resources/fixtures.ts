@@ -1,4 +1,4 @@
-import { ProductSettingsSchema, type ManagedServer, type ResourceSnapshot, type Workspace } from '@ssh-server/shared';
+import { ProductSettingsSchema, type ManagedServer, type ResourceSnapshot, type Workspace } from '@agentdeck/shared';
 
 export const workspace: Workspace = {
   id: 'w1',

@@ -1,6 +1,6 @@
 import { Popover, PopoverDisclosure, usePopoverStore } from '@ariakit/react';
 import { ChevronDown } from 'lucide-react';
-import type { CompactionState, ContextUsage } from '@ssh-server/shared';
+import type { CompactionState, ContextUsage } from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
 import { useChat } from './chat-store';
 

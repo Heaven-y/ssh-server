@@ -7,7 +7,7 @@ import {
   type SessionRef,
   type SessionSummary,
   type Workspace,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 import type { NativeSessionFork, NativeSessionRead, NativeSessionSummary } from '../agents/types';
 import { sameSessionDirectory } from '../agents/session-scope';
 

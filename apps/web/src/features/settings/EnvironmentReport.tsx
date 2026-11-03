@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
-import type { EnvironmentTool } from '@ssh-server/shared';
+import type { EnvironmentTool } from '@agentdeck/shared';
 import { api, queryKeys } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
 import { useCancelableRequest } from '../../lib/use-cancelable-request';

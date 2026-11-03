@@ -1,5 +1,5 @@
 // 从原生工具事件聚合本轮文件变更；不读取工作区，也不创建 Git 对象。
-import type { AgentKind, TurnFileChange } from '@ssh-server/shared';
+import type { AgentKind, TurnFileChange } from '@agentdeck/shared';
 
 type Change = TurnFileChange;
 const MAX_DIFF_CHARS = 200_000;

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { ManualServerInput } from '@ssh-server/shared';
+import type { ManualServerInput } from '@agentdeck/shared';
 import { api, queryKeys } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
 

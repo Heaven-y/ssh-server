@@ -1,4 +1,4 @@
-import type { ManagedServer, Workspace } from '@ssh-server/shared';
+import type { ManagedServer, Workspace } from '@agentdeck/shared';
 import type { WorkspaceStore } from '../workspaces/store';
 import type { SshPool } from './pool';
 import { ServerTargetsError, serverDestination, type ServerTargets } from './targets';

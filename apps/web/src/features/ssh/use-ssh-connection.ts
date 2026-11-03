@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { WorkspaceInputSchema, type SshAuthMode } from '@ssh-server/shared';
+import { WorkspaceInputSchema, type SshAuthMode } from '@agentdeck/shared';
 import { api, ApiError, queryKeys, type SshConnectionTarget, type SshCredentialStatus } from '../../lib/api';
 
 type Phase = 'idle' | 'connecting' | 'verified' | 'error' | 'disconnecting' | 'disconnected' | 'updating';

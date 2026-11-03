@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentEvent, ServerMessage, Workspace } from '@ssh-server/shared';
+import type { AgentEvent, ServerMessage, Workspace } from '@agentdeck/shared';
 import type { AgentTurnInput } from '../../src/agents/types';
 import { createSessionRegistry } from '../../src/chat/registry';
 import { SessionError } from '../../src/chat/sessions';
@@ -202,14 +202,14 @@ describe('TurnManager', () => {
     const { fake, turns, registry } = setup();
     await turns.handle(fakeSocket().socket, send());
     const lease = fake.turns[0]!.input.acquireEnv();
-    expect(lease.env.SSH_SERVER_INTERNAL_URL).toBe('http://127.0.0.1:1');
-    expect(registry.resolve(lease.env.SSH_SERVER_SESSION_TOKEN!)).toBe('w1');
+    expect(lease.env.AGENTDECK_INTERNAL_URL).toBe('http://127.0.0.1:1');
+    expect(registry.resolve(lease.env.AGENTDECK_SESSION_TOKEN!)).toBe('w1');
     fake.turns[0]!.finish();
     await flush();
     // 长驻运行时在轮次结束后继续持有令牌，只有关闭时才释放。
-    expect(registry.resolve(lease.env.SSH_SERVER_SESSION_TOKEN!)).toBe('w1');
+    expect(registry.resolve(lease.env.AGENTDECK_SESSION_TOKEN!)).toBe('w1');
     lease.release();
-    expect(registry.resolve(lease.env.SSH_SERVER_SESSION_TOKEN!)).toBeUndefined();
+    expect(registry.resolve(lease.env.AGENTDECK_SESSION_TOKEN!)).toBeUndefined();
   });
 
   it('同一会话正在运行时拒绝再次发送', async () => {
@@ -381,8 +381,8 @@ describe('TurnManager', () => {
     await turns.handle(second.socket, send({ sessionId: 'codex-session', agent: 'codex' }));
     const claude = fake.turns[0]!;
     const native = codex.turns[0]!;
-    const token = claude.input.acquireEnv().env.SSH_SERVER_SESSION_TOKEN!;
-    const codexToken = native.input.acquireEnv().env.SSH_SERVER_SESSION_TOKEN!;
+    const token = claude.input.acquireEnv().env.AGENTDECK_SESSION_TOKEN!;
+    const codexToken = native.input.acquireEnv().env.AGENTDECK_SESSION_TOKEN!;
     let verified!: () => void;
     sessions.assertBelongs.mockImplementationOnce(
       () =>
@@ -450,7 +450,7 @@ describe('TurnManager', () => {
     const first = fake.turns[0]!;
     // 长驻运行时在构造时取得令牌，轮次结束不撤销，只有运行时关闭才释放。
     const lease = first.input.acquireEnv();
-    const token = lease.env.SSH_SERVER_SESSION_TOKEN!;
+    const token = lease.env.AGENTDECK_SESSION_TOKEN!;
     const pending = first.input.requestPermission({
       requestId: 'failed-turn-approval',
       toolName: 'command',
@@ -469,11 +469,11 @@ describe('TurnManager', () => {
     expect(sent.at(-1)).toMatchObject({ type: 'turn.finished' });
     // 两轮共用同一个长驻运行时，令牌要到运行时关闭时才被撤销。
     const secondLease = fake.turns[1]!.input.acquireEnv();
-    expect(registry.resolve(secondLease.env.SSH_SERVER_SESSION_TOKEN!)).toBe('w1');
+    expect(registry.resolve(secondLease.env.AGENTDECK_SESSION_TOKEN!)).toBe('w1');
     lease.release();
     secondLease.release();
     expect(registry.resolve(token)).toBeUndefined();
-    expect(registry.resolve(secondLease.env.SSH_SERVER_SESSION_TOKEN!)).toBeUndefined();
+    expect(registry.resolve(secondLease.env.AGENTDECK_SESSION_TOKEN!)).toBeUndefined();
   });
 });
 

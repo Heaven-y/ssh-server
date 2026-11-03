@@ -1,4 +1,4 @@
-import type { ManagedServer } from '@ssh-server/shared';
+import type { ManagedServer } from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
 import { HostKeyConfirmation } from './HostKeyConfirmation';
 import { SshPasswordField } from './SshPasswordField';

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { WorkspacePolicySchema, type WorkspacePolicy, type WorkspacePolicyDocument } from '@ssh-server/shared';
+import { WorkspacePolicySchema, type WorkspacePolicy, type WorkspacePolicyDocument } from '@agentdeck/shared';
 import { api, queryKeys } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
 

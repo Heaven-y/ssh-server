@@ -17,7 +17,7 @@ import {
   forkCodexSession,
   discoverCodexCapabilities,
 } from './agents/codex';
-import { loadConfig } from './config';
+import { legacyConfigDir, loadConfig } from './config';
 import { buildApp } from './http/app';
 import { registerInternalRoutes } from './http/internal.routes';
 import { registerSessionRoutes } from './http/sessions.routes';
@@ -47,6 +47,7 @@ import { registerHostTrustRoutes } from './http/ssh-host-trust.routes';
 import { createHostTrust } from './ssh/host-trust';
 import { createPasswordStore } from './ssh/password-store';
 import { createWorkspaceStore } from './workspaces/store';
+import { migrateLegacyConfig } from './workspaces/migrate-legacy';
 import { createWorkspacePolicy } from './workspaces/policy';
 import { registerWorkspacePolicyRoutes } from './http/workspace-policy.routes';
 import { createWorkspaceActivity } from './workspaces/activity';
@@ -72,7 +73,15 @@ function accessUrl(host: string, port: number, devOrigin?: string): string {
 
 async function main(): Promise<void> {
   const config = loadConfig(process.env, process.argv.slice(2));
+  // 改名后首次启动：把旧目录里的服务器档案与工作区搬过来，旧目录原样保留。
+  const migration = await migrateLegacyConfig({
+    legacyDir: legacyConfigDir(process.env),
+    configDir: config.configDir,
+  });
   await mkdir(config.configDir, { recursive: true });
+  for (const name of migration.copied) console.log(`已从旧数据目录迁移：${name}`);
+  for (const name of migration.keptExisting) console.log(`新数据目录已有 ${name}，保留现有文件未覆盖`);
+  for (const message of migration.errors) console.error(`数据迁移：${message}`);
   const productSettings = createProductSettings({ configDir: config.configDir });
   const environment = createEnvironmentService();
   const startupEnvironment = environment.read();

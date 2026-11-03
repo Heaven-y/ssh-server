@@ -1,4 +1,4 @@
-import type { Workspace } from '@ssh-server/shared';
+import type { Workspace } from '@agentdeck/shared';
 import { workspaceTarget } from '../ssh/connection';
 import type { SshPool, SshChannelGuard } from '../ssh/pool';
 import { createSftpReader } from '../ssh/sftp';

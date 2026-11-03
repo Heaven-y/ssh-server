@@ -7,7 +7,7 @@ import {
   type TerminalTarget,
   type ResourceTiming,
   type ProductSettings,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 import { workspaceTarget } from '../ssh/connection';
 import type { SshPool } from '../ssh/pool';
 import type { WorkspaceStore } from '../workspaces/store';

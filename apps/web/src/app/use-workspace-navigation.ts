@@ -1,5 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
-import type { Workspace } from '@ssh-server/shared';
+import type { Workspace } from '@agentdeck/shared';
 import { lastWorkspaceId, managementPending, sessionActionKey, useChat } from '../features/chat/chat-store';
 import { parseSessionLink } from '../features/workspaces/session-links';
 

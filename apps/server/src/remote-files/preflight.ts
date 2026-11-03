@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { type RemoteFileActionInput, type RemoteFilePreflight, type Workspace } from '@ssh-server/shared';
+import { type RemoteFileActionInput, type RemoteFilePreflight, type Workspace } from '@agentdeck/shared';
 import type { SshPool } from '../ssh/pool';
 import { workspaceTarget } from '../ssh/connection';
 import type { WorkspaceStore } from '../workspaces/store';

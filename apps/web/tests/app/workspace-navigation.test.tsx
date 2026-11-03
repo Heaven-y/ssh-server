@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { SessionHistory, Workspace } from '@ssh-server/shared';
+import type { SessionHistory, Workspace } from '@agentdeck/shared';
 import { useWorkspaceNavigation } from '../../src/app/use-workspace-navigation';
 import { useChat } from '../../src/features/chat/chat-store';
 import { api } from '../../src/lib/api';

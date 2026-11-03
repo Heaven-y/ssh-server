@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { FileEntryWithStats, Stats } from 'ssh2';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SyncSettingsSchema } from '@ssh-server/shared';
+import { SyncSettingsSchema } from '@agentdeck/shared';
 import type { SftpReader } from '../../src/ssh/sftp';
 import { createDirectoryCursor } from '../../src/remote-files/directory';
 import { directoryEntry, remotePath } from '../../src/remote-files/paths';

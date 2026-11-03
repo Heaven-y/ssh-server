@@ -155,7 +155,7 @@ Claude（Agent SDK `query()`）：
 
 Codex（app-server）：
 
-- `agents/codex/` 按启动解析、JSON-RPC 客户端、配置、事件转换、审批、对话和会话读取拆分。`agents/codex/runtime.ts` 按会话复用同一 app-server 进程：首次使用启动进程并完成 `initialize`、`config/read` 与 `thread/start`（续接用 `thread/resume`），后续轮次直接复用该线程；空闲 5 分钟、进程退出或后端关闭时回收并释放令牌。列表/历史仍使用短生命周期进程。正式读取原生 `CODEX_HOME/config.toml`，可用 `SSH_SERVER_CODEX` 指定已安装运行时。
+- `agents/codex/` 按启动解析、JSON-RPC 客户端、配置、事件转换、审批、对话和会话读取拆分。`agents/codex/runtime.ts` 按会话复用同一 app-server 进程：首次使用启动进程并完成 `initialize`、`config/read` 与 `thread/start`（续接用 `thread/resume`），后续轮次直接复用该线程；空闲 5 分钟、进程退出或后端关闭时回收并释放令牌。列表/历史仍使用短生命周期进程。正式读取原生 `CODEX_HOME/config.toml`，可用 `AGENTDECK_CODEX` 指定已安装运行时。
 - 先 `initialize` / `initialized`，再 `config/read(cwd)`；保留生效的 `developer_instructions` 并追加工作区约束。`thread/start` / `thread/resume` 固定当前目录、`workspace-write` 沙箱、`on-request` 审批；普通/技能消息调用 `turn/start`，手动压缩在 resume 后调用 `thread/compact/start`。
 - 默认不传`model`、`modelProvider`、`baseUrl`、`apiKey`覆盖。新thread跟随配置中的新默认模型，续接保留原生会话模型，只有显式填写模型才覆盖。推理强度使用网页选择（默认high，自动省略）；历史实际模型不转成用户覆盖值。模型或推理强度改变时新建运行时，避免沿用旧线程的启动参数；续接既有会话时沿用该线程的原生模型。
 - 通过当前轮次 `config` 添加 required 的远程 MCP，保留其他原生 MCP 配置。内部地址与短期令牌仅放子进程环境，MCP 配置只列 `env_vars` 名称；argv、配置正文与 Agent 输入均不含这些值，本地 shell 过滤这些变量，结束后撤销令牌。MCP 启动失败即拒绝该轮，项目运行保持在远程。
@@ -217,7 +217,7 @@ stdio MCP 服务，由 Claude Code / Codex 按会话启动。它不直接连 SSH
 - bisync 通过固定版本自带 combine 将实际双端根映射为 `localview:root/`、`remoteview:root/`，每次绑定实际镜像，避免完整路径进入单文件名；其他读写沿用真实 workspace backend。upstreams 按空格分隔 CSV 编码。
 - 当前状态固定 `version=1`、`signature=mirror-v1…`、`baselineLayout=combine-v1`。无基线可首次初始化；非空基线缺签名，或已有签名但布局缺失/不匹配时拒绝。初始化确认、删除批准/拒绝及文件任务恢复均不能迁移或重写旧数据。当前布局的中断恢复保留。D31的短逻辑根继续采用，其兼容升级部分已由[D36](decisions.md)替代。
 - ssh2 与 rclone 使用同一组连接参数和认证方式，均校验服务器主机密钥；仅转交运行需要的内存凭据，不写 rclone 全局配置。`rclone obscure` 只用于子进程环境转交，不视为加密保存。
-- 固定 rclone 1.75.1，通过 `SSH_SERVER_RCLONE` 指定本机程序；同步与向导共用版本检查，并发共享成功结果、失败允许重试。过滤固定排除任意深度的 `.git`，按扩展名与默认 10 MiB 上限选择小文件，符号链接或 Windows 大小写冲突停止同步。
+- 固定 rclone 1.75.1，通过 `AGENTDECK_RCLONE` 指定本机程序；同步与向导共用版本检查，并发共享成功结果、失败允许重试。过滤固定排除任意深度的 `.git`，按扩展名与默认 10 MiB 上限选择小文件，符号链接或 Windows 大小写冲突停止同步。
 - 同步和向导预览共用实际根解析：只去掉`pwd -P`的一个LF，保留目录名空格，拒绝不完整/异常路径；同步执行结果截断时拒绝采用。Windows含反斜杠的实际根在传输状态创建与凭据转交前停止，防止rclone改换目标。工具不支持不等于自动改名或替换分隔符，见[D35](decisions.md#d35-rclone-远端根的精确绑定2026-10-06)。
 - 传输使用本机 `mirror\` 中的稳定小文件副本，复制期间发现源变化则暂停；同步后仅将未被用户再次修改的文件更新到项目。双方在此期间都修改时保留冲突版本，新的本地删除留到下一次确认，不随进行中的传输传播。
 - 本地为空时可首拉并建立基线；非空初始化、目标/过滤变化和当前格式的中断状态须确认。状态读失败或非法结构不视为空，不以确认覆盖；初始化前保留同名不同内容的双方版本，不覆盖另一端同名的超限文件。

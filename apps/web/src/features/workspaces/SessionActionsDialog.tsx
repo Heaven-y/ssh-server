@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { SessionActionInput, SessionSummary } from '@ssh-server/shared';
+import type { SessionActionInput, SessionSummary } from '@agentdeck/shared';
 import { queryKeys } from '../../lib/api';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { buttonClass, inputClass } from '../../ui/styles';

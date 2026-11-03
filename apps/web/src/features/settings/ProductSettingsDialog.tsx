@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { RefreshCw, Save, Settings2, X } from 'lucide-react';
-import type { NativeConfigAgent, ProductSettingsDocument } from '@ssh-server/shared';
+import type { NativeConfigAgent, ProductSettingsDocument } from '@agentdeck/shared';
 import { api, queryKeys } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
 import { buttonClass } from '../../ui/styles';

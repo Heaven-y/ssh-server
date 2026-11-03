@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { WorkspaceInputSchema } from '@ssh-server/shared';
+import { WorkspaceInputSchema } from '@agentdeck/shared';
 import { RemoteActionPlanSchema } from './executor';
 
 const text = z.string().min(1).max(16_384);

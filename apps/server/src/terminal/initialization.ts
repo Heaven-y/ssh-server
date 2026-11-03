@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { ClientChannel } from 'ssh2';
-import { TERMINAL_LIMITS } from '@ssh-server/shared';
+import { TERMINAL_LIMITS } from '@agentdeck/shared';
 import { sq } from '../ssh/remote-command';
 import { TerminalError } from './errors';
 
