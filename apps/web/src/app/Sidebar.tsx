@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import type { AgentKind, SessionSummary, Workspace } from '@agentdeck/shared';
 import { AGENT_LABELS } from '../features/chat/AgentControls';
 import { sessionActionKey, useChat } from '../features/chat/chat-store';
+import { AgentBadge } from '../features/sessions/AgentBadge';
 import { SessionActionsDialog } from '../features/sessions/SessionActionsDialog';
 import { buttonClass } from '../ui/styles';
 import { relativeTime } from '../ui/relative-time';
@@ -30,17 +31,6 @@ const fullTime = new Intl.DateTimeFormat('zh-CN', {
   hour: '2-digit',
   minute: '2-digit',
 });
-
-function AgentBadge({ agent }: { agent: AgentKind }) {
-  return (
-    <span
-      aria-hidden
-      className="flex size-5 shrink-0 items-center justify-center rounded-md bg-muted text-[10px] font-semibold text-muted-foreground"
-    >
-      {AGENT_LABELS[agent].slice(0, 1)}
-    </span>
-  );
-}
 
 function sessionGroups(sessions: SessionSummary[]) {
   return AGENT_ORDER.map((agent) => ({

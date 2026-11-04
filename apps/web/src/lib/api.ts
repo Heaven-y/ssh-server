@@ -312,4 +312,7 @@ export const queryKeys = {
   sshCredentials: (sshHost: string) => ['ssh-credentials', sshHost] as const,
   sessions: (workspaceId: string, agent: AgentKind, archived = false) =>
     archived ? (['sessions', workspaceId, agent, 'archived'] as const) : (['sessions', workspaceId, agent] as const),
+  /** 单条原生历史：会话身份包含 CLI 与原生 id，缓存不能跨 Agent 复用。 */
+  sessionHistory: (workspaceId: string, agent: AgentKind, sessionId: string) =>
+    ['session-history', workspaceId, agent, sessionId] as const,
 };

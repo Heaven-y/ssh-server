@@ -3,8 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { buttonClass } from '../../ui/styles';
 import type { ChatItem } from './chat-reducer';
-import { MessageItem } from './MessageItem';
-import { ToolGroup } from './ToolGroup';
+import { TimelineRowView } from './TimelineRowView';
 import { projectTimeline } from './timeline-model';
 
 /** 动态测量和跟随只交给Virtuoso；展开状态留在列表外，虚拟卸载不丢选择。 */
@@ -47,25 +46,7 @@ export function ChatTimeline({ items, running }: { items: ChatItem[]; running: b
         aria-label="对话内容"
         aria-live="polite"
         aria-busy={running}
-        itemContent={(_index, row) => (
-          <div data-chat-row={row.id} className="mx-auto w-full max-w-3xl px-4 py-3 sm:px-6">
-            {row.kind === 'message' ? (
-              <MessageItem
-                item={row.item}
-                expanded={expanded.has(row.item.id)}
-                onExpandedChange={(open) => setOpen(row.item.id, open)}
-              />
-            ) : (
-              <ToolGroup
-                items={row.items}
-                expanded={expanded.has(row.id)}
-                onExpandedChange={(open) => setOpen(row.id, open)}
-                itemExpanded={(id) => expanded.has(id)}
-                setItemExpanded={setOpen}
-              />
-            )}
-          </div>
-        )}
+        itemContent={(_index, row) => <TimelineRowView row={row} expanded={expanded} setOpen={setOpen} />}
       />
       {!bottom && (
         <button
