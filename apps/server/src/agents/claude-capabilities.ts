@@ -121,7 +121,10 @@ async function readCatalog(q: ClaudeQuery, signal: AbortSignal): Promise<NativeC
 
 /** 工厂仅为控制接口测试注入；生产导出保持按工作区发现的短生命周期接口。 */
 export function createClaudeCapabilityDiscovery(queryFn: QueryFn = nativeClaudeQuery) {
-  return async (dir: string, options: { signal?: AbortSignal } = {}): Promise<NativeCapabilityCatalog> => {
+  return async (
+    dir: string,
+    options: { signal?: AbortSignal; env?: NodeJS.ProcessEnv } = {},
+  ): Promise<NativeCapabilityCatalog> => {
     if (options.signal?.aborted) throw new Error('Claude 能力读取已取消');
     const controller = new AbortController();
     const abort = () => controller.abort();
@@ -133,6 +136,7 @@ export function createClaudeCapabilityDiscovery(queryFn: QueryFn = nativeClaudeQ
         prompt: input.prompt,
         options: {
           cwd: dir,
+          ...(options.env ? { env: options.env } : {}),
           settingSources: ['user', 'project', 'local'],
           persistSession: false,
           abortController: controller,

@@ -22,7 +22,7 @@ const ABORT_FALLBACK_MS = 5_000;
 const COMPACTION_EVENTS = new Set<AgentEvent['type']>(['session', 'context', 'compaction', 'turn_end', 'error']);
 type TurnEnd = Extract<AgentEvent, { type: 'turn_end' }>;
 
-export type ClaudeTurnInput = AgentTurnInput & { queryFn?: QueryFn };
+export type ClaudeTurnInput = AgentTurnInput & { queryFn?: QueryFn; env?: NodeJS.ProcessEnv };
 
 const commandIs = (input: AgentTurnInput, name: 'context' | 'compact') =>
   input.invocation?.kind === 'command' && input.invocation.name === name;
@@ -122,6 +122,7 @@ export class ClaudeRuntime {
     const effort = claudeEffort(input.reasoningEffort);
     const options = {
       cwd: workspace.dir,
+      ...(input.env ? { env: input.env } : {}),
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code' },
       canUseTool: (toolName: string, toolInput: Record<string, unknown>, opts: { signal: AbortSignal }) =>

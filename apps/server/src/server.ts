@@ -58,6 +58,11 @@ import { createProductSettings } from './settings/product-settings';
 import { registerProductSettingsRoutes } from './http/product-settings.routes';
 import { createAgentProbes, createLocalRunner } from './agents/probe';
 import type { ProcessRunner } from './process/run';
+import { createLaunchEnvironment } from './settings/launch-environment';
+import { registerLaunchEnvironmentRoutes } from './http/launch-environment.routes';
+import { createConfiguredRunner } from './agents/configured-runner';
+import { createNativeResourcesService } from './settings/native-resources';
+import { registerNativeResourceRoutes } from './http/native-resources.routes';
 
 /** 已启动的本机服务：地址固定带尾部斜杠，close 可重复调用。 */
 export type StartedServer = { url: string; close: () => Promise<void> };
@@ -141,6 +146,7 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
   await mkdir(config.configDir, { recursive: true });
   logMigration(migration, log, logError);
   const productSettings = createProductSettings({ configDir: config.configDir });
+  const launchEnvironment = createLaunchEnvironment({ configDir: config.configDir });
   const probes = createAgentProbes({ run: options.probeRunner ?? createLocalRunner() });
   // 探测只用于启动日志，不阻塞窗口出现；接口被调用时会另行探测。
   const startupProbes = probes.probeAll();
@@ -187,8 +193,10 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
   });
   const profiles = createServerProfiles({ targets, store, pool });
   const capabilities = createCapabilitiesService({
-    claude: (dir, signal) => discoverClaudeCapabilities(dir, { signal }),
-    codex: (dir, signal) => discoverCodexCapabilities(dir, { signal }),
+    claude: async (dir, signal) =>
+      discoverClaudeCapabilities(dir, { signal, env: await launchEnvironment.resolve('claude') }),
+    codex: async (dir, signal) =>
+      discoverCodexCapabilities(dir, { signal, env: await launchEnvironment.resolve('codex') }),
     antigravity: discoverAntigravityCapabilities,
   });
   // 会话服务与轮次管理器互相引用：会话服务里的回调只在调用时读 turns，声明顺序保持原样。
@@ -211,15 +219,25 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
       projects: () => store.list(),
     },
   );
+  const runners = {
+    claude: createConfiguredRunner({
+      environment: () => launchEnvironment.resolve('claude'),
+      create: (env) => createClaudeRunner({ env }),
+    }),
+    codex: createConfiguredRunner({
+      environment: () => launchEnvironment.resolve('codex'),
+      create: (env) => createCodexRunner({ env }),
+    }),
+    antigravity: createConfiguredRunner({
+      environment: () => launchEnvironment.resolve('antigravity'),
+      create: (env) => createAntigravityRunner({ env }),
+    }),
+  };
   const turns: TurnManager = new TurnManager({
     getWorkspace: (id) => store.get(id),
     sessions,
     capabilities,
-    runners: {
-      claude: createClaudeRunner(),
-      codex: createCodexRunner(),
-      antigravity: createAntigravityRunner(),
-    },
+    runners,
     acquireWorkspace,
   });
 
@@ -237,6 +255,11 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
       registerSshTargetRoutes(a, profiles);
       registerHostTrustRoutes(a, createHostTrust({ pool }));
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
+      registerNativeResourceRoutes(a, { service: createNativeResourcesService(), store });
+      registerLaunchEnvironmentRoutes(a, {
+        service: launchEnvironment,
+        restart: (agent) => turns.withIdleAgent(agent, () => runners[agent].restart()),
+      });
       registerProductSettingsRoutes(a, productSettings, probes);
       registerRemoteFileRoutes(a, browse);
       registerRemoteFileActionRoutes(a, { preflights, tasks });

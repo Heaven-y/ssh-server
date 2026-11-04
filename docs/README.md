@@ -17,7 +17,9 @@
 | 文档 | 用途 |
 |---|---|
 | [原生对话接入](engineering/native-dialogue.md) | 三 CLI 主流程的本轮边界与接口选择 |
+| [原生配置与启动环境](engineering/native-configuration.md) | 各 CLI 配置入口、显式正文编辑和启动变量的边界 |
 | [会话管理交付记录](superpowers/plans/2026-11-04-session-management.md) | 已完成的原生管理接入、接口统一与提交锚点 |
+| [整体交付计划](superpowers/plans/2026-11-04-workbench-completion.md) | 原生配置、插件、SSH Console 和本地安装包的剩余工作 |
 
 ## 维护规则
 

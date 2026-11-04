@@ -65,6 +65,35 @@ const send = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
+it('CLI重启排斥准备期回合，重启期间不允许新回合插入', async () => {
+  let releaseProject!: (value: Workspace) => void;
+  const project = new Promise<Workspace>((resolve) => {
+    releaseProject = resolve;
+  });
+  const turns = new TurnManager({ getWorkspace: () => project, runners: {}, sessions: { assertBelongs: vi.fn() } });
+  const socket = fakeSocket();
+  const preparing = turns.handle(socket.socket, send());
+  const restart = vi.fn(async () => undefined);
+  await expect(turns.withIdleAgent('claude', restart)).rejects.toThrow('运行');
+  expect(restart).not.toHaveBeenCalled();
+  turns.socketClosed(socket.socket);
+  await preparing;
+  releaseProject(ws);
+  let releaseRestart!: () => void;
+  const restarting = turns.withIdleAgent(
+    'claude',
+    () =>
+      new Promise<void>((resolve) => {
+        releaseRestart = resolve;
+      }),
+  );
+  const second = fakeSocket();
+  await turns.handle(second.socket, send());
+  expect(second.sent).toEqual([expect.objectContaining({ type: 'error', message: expect.stringContaining('重启') })]);
+  releaseRestart();
+  await restarting;
+});
+
 it('连接关闭时中断所属运行回合，取消准备中的启动且不影响另一连接', async () => {
   const { turns, fake, sessions } = setup();
   const first = fakeSocket();

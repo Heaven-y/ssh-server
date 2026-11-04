@@ -118,7 +118,7 @@ it('--help 缺关键 flag 时为 changed 并列出缺项', async () => {
   expect(result.missing).toContain('--input-format');
 });
 
-it('启动环境缺必需变量时为 credential-missing', async () => {
+it('Antigravity 沿用原生登录，未设置 API key 不等于缺少凭据', async () => {
   const probes = createAgentProbes({
     run: fakeRun({
       'agy --version': { code: 0, stdout: '1.4.12' },
@@ -127,8 +127,9 @@ it('启动环境缺必需变量时为 credential-missing', async () => {
     env: () => ({}),
   });
   const result = await probes.probe('antigravity');
-  expect(result).toMatchObject({ status: 'credential-missing', version: '1.4.12' });
-  expect(result.message).toContain('GEMINI_API_KEY');
+  expect(result).toMatchObject({ status: 'available' });
+  expect(result.version).toBeUndefined();
+  expect(result.message).toBeUndefined();
 });
 
 it('版本号解析失败时按接口变化处理并指出 --version', async () => {
@@ -199,7 +200,7 @@ it('probeAll 保持稳定顺序，单个 CLI 失败不影响另外两个', async
   expect(results.map(({ agent, status }) => [agent, status])).toEqual([
     ['claude', 'available'],
     ['codex', 'missing'],
-    ['antigravity', 'credential-missing'],
+    ['antigravity', 'available'],
   ]);
 });
 
@@ -238,12 +239,12 @@ it('真实夹具可执行文件：三个 CLI 均可用，Codex schema 落在临�
   expect(results.map(({ agent, status, version }) => ({ agent, status, version }))).toEqual([
     { agent: 'claude', status: 'available', version: '2.1.317' },
     { agent: 'codex', status: 'available', version: '0.166.0' },
-    { agent: 'antigravity', status: 'available', version: '1.4.12' },
+    { agent: 'antigravity', status: 'available', version: undefined },
   ]);
   expect(JSON.stringify(results)).not.toContain('fixture-key');
 }, 30_000);
 
-it('真实夹具：PATH 找不到时报 missing，help 变样报 changed，缺启动变量报 credential-missing', async () => {
+it('真实夹具：PATH 缺失与协议变化分别报告，Antigravity 不猜测原生登录', async () => {
   const empty = await fixtureDirectory();
   const missingProbes = createAgentProbes({
     run: createLocalRunner(() => ({ PATH: empty })),
@@ -270,12 +271,12 @@ it('真实夹具：PATH 找不到时报 missing，help 变样报 changed，缺�
   expect(claude.status).toBe('changed');
   expect(claude.missing).toContain('--permission-prompts');
   const agy = await changedProbes.probe('antigravity');
-  expect(agy.status).toBe('credential-missing');
-  expect(agy.message).toContain('GEMINI_API_KEY');
+  expect(agy.status).toBe('available');
+  expect(agy.message).toBeUndefined();
 
   const readyEnv = () => ({ PATH: dir, GEMINI_API_KEY: 'fixture-key' });
   const ready = createAgentProbes({ run: createLocalRunner(readyEnv), env: readyEnv });
-  await expect(ready.probe('antigravity')).resolves.toMatchObject({ status: 'available', version: '1.4.12' });
+  await expect(ready.probe('antigravity')).resolves.toMatchObject({ status: 'available' });
 }, 30_000);
 
 it('帮助输出写到 stderr 时也能识别能力（agy 的实际行为）', async () => {
@@ -292,7 +293,7 @@ it('帮助输出写到 stderr 时也能识别能力（agy 的实际行为）', a
   );
   const env = () => ({ PATH: dir, GEMINI_API_KEY: 'fixture-key' });
   const probes = createAgentProbes({ run: createLocalRunner(env), env });
-  await expect(probes.probe('antigravity')).resolves.toMatchObject({ status: 'available', version: '1.4.12' });
+  await expect(probes.probe('antigravity')).resolves.toMatchObject({ status: 'available' });
 }, 30_000);
 
 it('显式指定的 Claude 可执行文件不存在时报 missing，而不是回退到 PATH', async () => {
@@ -303,4 +304,14 @@ it('显式指定的 Claude 可执行文件不存在时报 missing，而不是回
   const result = await createAgentProbes({ run: createLocalRunner(env), env }).probe('claude');
   expect(result.status).toBe('missing');
   expect(result.message).toContain('claude');
+});
+
+it('Antigravity 只运行已公布的帮助入口，不猜测版本命令或账号', async () => {
+  const calls: string[][] = [];
+  const run: ProcessRunner = async (command, args) => {
+    calls.push([command, ...args]);
+    return { stdout: Buffer.from(AGY_HELP), stderr: Buffer.alloc(0), exitCode: 0 };
+  };
+  expect(await createAgentProbes({ run }).probe('antigravity')).toEqual({ agent: 'antigravity', status: 'available' });
+  expect(calls).toEqual([['agy', '--help']]);
 });

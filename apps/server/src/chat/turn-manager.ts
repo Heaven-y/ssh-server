@@ -47,6 +47,7 @@ export class TurnManager {
   private pending = new Map<string, Pending>();
   private closed = new WeakSet<Socket>();
   private stopping = false;
+  private restarting = new Set<AgentKind>();
   private readonly runners: Partial<Record<AgentKind, TurnRunner>>;
 
   constructor(private readonly deps: TurnManagerDeps) {
@@ -56,6 +57,18 @@ export class TurnManager {
   /** 该原生会话是否正被本网页占用（运行中或正在执行原生管理操作）。 */
   isRunning(session: SessionRef): boolean {
     return this.sessions.has(sessionKey(session.agent, session.sessionId));
+  }
+
+  /** 重启边界覆盖环境解析之前的项目/归属/能力准备，并排斥同时进入的新回合。 */
+  async withIdleAgent<T>(agent: AgentKind, operation: () => Promise<T>): Promise<T> {
+    if (this.stopping || this.restarting.has(agent) || [...this.turns.values()].some((turn) => turn.agent === agent))
+      throw new SessionError(409, 'agent_busy', 'CLI 正在运行或准备，请结束后再重新启动');
+    this.restarting.add(agent);
+    try {
+      return await operation();
+    } finally {
+      this.restarting.delete(agent);
+    }
   }
 
   /** 原生管理从范围校验到写入结果全程占锁，避免与准备、运行及同步收尾交错。 */
@@ -199,8 +212,12 @@ export class TurnManager {
   }
 
   private async start(socket: Socket, msg: Send): Promise<void> {
-    if (this.stopping) {
-      this.send(socket, { type: 'error', clientTurnId: msg.clientTurnId, message: '后端正在关闭，请稍后重试' });
+    if (this.stopping || this.restarting.has(msg.agent)) {
+      this.send(socket, {
+        type: 'error',
+        clientTurnId: msg.clientTurnId,
+        message: this.stopping ? '后端正在关闭，请稍后重试' : 'CLI 正在重启，请稍后重试',
+      });
       return;
     }
     const agent = msg.agent;

@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { RefreshCw, Save, Settings2, X } from 'lucide-react';
-import type { NativeConfigAgent, ProductSettingsDocument } from '@agentdeck/shared';
+import type { AgentKind, ProductSettingsDocument } from '@agentdeck/shared';
 import { api, queryKeys } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
 import { buttonClass } from '../../ui/styles';
@@ -8,6 +8,7 @@ import { ProductSettingsForm, invalidSettingsCategory } from './ProductSettingsF
 import { EnvironmentReport } from './EnvironmentReport';
 import { parseSettingsDraft, settingsDraft, type ProductSettingsDraft } from './product-settings-draft';
 import { SettingsCategories, type SettingsCategory } from './SettingsCategories';
+import { nativeAgentNames } from './native-resource-labels';
 
 type Phase = 'loading' | 'ready' | 'saving' | 'error';
 const errorMessage = (error: unknown, fallback: string) => (error instanceof Error ? error.message : fallback);
@@ -22,17 +23,46 @@ function SettingsFeedback({ phase, message }: { phase: Phase; message: string })
     </p>
   );
 }
+
+function EnvironmentSettings({ disabled, open }: { disabled: boolean; open?: (agent: AgentKind) => void }) {
+  return (
+    <>
+      <EnvironmentReport disabled={disabled} />
+      {open && (
+        <section aria-label="CLI 启动环境" className="space-y-3 rounded-lg border border-border p-3">
+          <h3 className="text-sm font-medium">CLI 启动环境</h3>
+          <p className="text-sm leading-6 text-muted-foreground">
+            按需设置额外端点与认证变量。已有配置值只显示来源状态。
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {(['claude', 'codex', 'antigravity'] as const).map((agent) => (
+              <button
+                key={agent}
+                type="button"
+                className={buttonClass('outline')}
+                disabled={disabled}
+                onClick={() => open(agent)}
+              >
+                {nativeAgentNames[agent]} 启动环境
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+    </>
+  );
+}
 function focusInvalidField(dialog: HTMLDialogElement | null) {
   const field = dialog?.querySelector<HTMLElement>('[aria-invalid="true"]');
   field?.focus();
   return !!field;
 }
-function NativeConfigEntries({ disabled, open }: { disabled: boolean; open(agent: NativeConfigAgent): void }) {
+function NativeConfigEntries({ disabled, open }: { disabled: boolean; open(agent: AgentKind): void }) {
   return (
     <section aria-label="原生 Agent 配置" className="space-y-2 rounded-lg border border-border p-3">
       <p className="text-sm font-medium">原生 Agent 配置</p>
       <p className="text-xs leading-5 text-muted-foreground">
-        只编辑所选 Agent 的本机配置文件，保存时校验语法；模型默认值仍由原生配置管理。
+        按所选 CLI 的实际作用域浏览配置、规则、Skills、MCP 和原生插件；模型默认值仍由原生配置管理。
       </p>
       <div className="flex flex-wrap gap-2">
         <button type="button" className={buttonClass('outline')} disabled={disabled} onClick={() => open('claude')}>
@@ -40,6 +70,14 @@ function NativeConfigEntries({ disabled, open }: { disabled: boolean; open(agent
         </button>
         <button type="button" className={buttonClass('outline')} disabled={disabled} onClick={() => open('codex')}>
           修改 Codex 配置
+        </button>
+        <button
+          type="button"
+          className={buttonClass('outline')}
+          disabled={disabled}
+          onClick={() => open('antigravity')}
+        >
+          修改 Antigravity 配置
         </button>
       </div>
     </section>
@@ -49,9 +87,11 @@ function NativeConfigEntries({ disabled, open }: { disabled: boolean; open(agent
 export default function ProductSettingsDialog({
   onClose,
   onNative,
+  onLaunchEnvironment,
 }: {
   onClose(): void;
-  onNative(agent: NativeConfigAgent): void;
+  onNative(agent: AgentKind): void;
+  onLaunchEnvironment?(agent: AgentKind): void;
 }) {
   const id = useId();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -174,7 +214,10 @@ export default function ProductSettingsDialog({
         <div className="space-y-5 overflow-y-auto p-5">
           <SettingsCategories category={category} select={setCategory}>
             {category === 'environment' ? (
-              <EnvironmentReport disabled={phase === 'saving'} />
+              <EnvironmentSettings
+                disabled={phase === 'saving'}
+                open={(agent) => leave(() => onLaunchEnvironment?.(agent))}
+              />
             ) : phase === 'loading' ? (
               <p role="status" className="py-8 text-center text-sm text-muted-foreground">
                 正在读取产品设置…
