@@ -165,6 +165,18 @@ describe('createWorkspaceStore', () => {
     expect(await store.get(ws.id)).toEqual(updated);
   });
 
+  it('目录暂时离线时仍能改名和解绑，不能变成只能手改文件的死条目', async () => {
+    const ws = await make().create(input());
+    // 移动硬盘没插：目录查不到存在，但记录还在。
+    const offline = make({ dirExists: false });
+    expect(await offline.update(ws.id, { name: '改名' })).toMatchObject({ name: '改名' });
+    expect(await offline.update(ws.id, { server: undefined, remoteDir: undefined })).not.toHaveProperty('server');
+    // 但真正换到一个不存在的目录仍要被拦住。
+    await expect(offline.update(ws.id, { dir: path.join(projectDir, 'missing') })).rejects.toMatchObject({
+      field: 'dir',
+    });
+  });
+
   it('update / remove 不存在的 id', async () => {
     const store = make();
     expect(await store.update('nope', { name: 'x' })).toBeUndefined();

@@ -187,7 +187,7 @@ describe('会话接口', () => {
     ).toBe(400);
   });
 
-  it('列出项目本地文件夹下的会话', async () => {
+  it('列出项目本地文件夹下的会话；没有 cwd 的老会话归为未归属', async () => {
     const { app, api } = setup();
     const r = await app.inject({ method: 'GET', url: '/api/projects/w1/sessions?agent=claude' });
     expect(r.statusCode).toBe(200);
@@ -195,7 +195,8 @@ describe('会话接口', () => {
       {
         agent: 'claude',
         sessionId: 's1',
-        projectId: 'w1',
+        // 列表行没带 cwd，不能拿「当前查的是 w1」兜底——否则同一条会话在每个项目下都出现。
+        projectId: null,
         title: '调参',
         updatedAt: '1970-01-01T00:00:00.100Z',
         running: false,
@@ -204,7 +205,7 @@ describe('会话接口', () => {
     expect(api.list).toHaveBeenCalledWith(ws.dir);
   });
 
-  it('Antigravity 按 workspace_uris 归属，并按项目裁掉其他项目与未归属的会话', async () => {
+  it('Antigravity 按 workspace_uris 归属，未归属的行放行给「其他目录」', async () => {
     const { app } = setup();
     const mine = await app.inject({ method: 'GET', url: '/api/projects/w1/sessions?agent=antigravity' });
     expect(mine.statusCode).toBe(200);
@@ -212,14 +213,21 @@ describe('会话接口', () => {
       mine
         .json()
         .map((session: { sessionId: string; projectId: string | null }) => [session.sessionId, session.projectId]),
-    ).toEqual([['a1', 'w1']]);
-    // 同一个全局列表在另一个项目下只返回归属它自己的行。
+    ).toEqual([
+      ['a1', 'w1'],
+      // projectId 为 null 的行必须放行：前端只能按项目取数，裁掉它「其他目录的会话」就永远没有数据。
+      ['a3', null],
+    ]);
+    // 归属别的项目的行仍然被裁掉，不会漏进当前项目。
     const theirs = await app.inject({ method: 'GET', url: '/api/projects/w2/sessions?agent=antigravity' });
     expect(
       theirs
         .json()
         .map((session: { sessionId: string; projectId: string | null }) => [session.sessionId, session.projectId]),
-    ).toEqual([['a2', 'w2']]);
+    ).toEqual([
+      ['a2', 'w2'],
+      ['a3', null],
+    ]);
   });
 
   it('适配器未接入时按 agent_unavailable 拒绝，不静默当成别的 CLI', async () => {
@@ -328,7 +336,7 @@ describe('会话接口', () => {
       {
         agent: 'codex',
         sessionId: 's1',
-        projectId: 'w1',
+        projectId: null,
         title: 'Codex 调参',
         updatedAt: '1970-01-01T00:00:00.200Z',
         running: false,

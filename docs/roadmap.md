@@ -12,26 +12,28 @@
 
 | 期 | 内容 | 状态 |
 |---|---|---|
-| M1 只读工作台 | 删除三个域与旧向导；项目模型与两层旧数据迁移；三个 CLI 的本机探测、会话枚举与归属裁决；三段式外壳；项目添加；只读会话历史 | **已完成** |
-| M1.5 桌面壳 | `apps/desktop` 加入 Electron 主进程与 preload；`electron-vite` 开发循环；单实例与退出编排 | 未开始 |
+| M1 只读工作台 | 删除三个域与旧向导；项目模型与两层旧数据迁移；三个 CLI 的本机探测、会话枚举与归属裁决；三段式外壳；项目添加与移除、项目绑定服务器；只读会话历史；Electron 桌面壳 | **已完成** |
 | M2 对话 | 输入框与流式回合、工具卡片实时更新、Claude/Codex 审批、Antigravity 软拒提示、中断、会话级参数、分叉与删除 | 未开始 |
 | M3 配置与服务器 | 原生配置完整编辑（用户级 + 项目级）、启动环境注入、服务器面板改以服务器档案为键、命令面板补齐 | 未开始 |
 | M4 打磨 | 目录监听实时刷新、键盘操作、空态与错误态、CLI 升级后重新探测、安装包与自动更新、验收记录 | 未开始 |
 
+> Electron 桌面壳原计划作为 M1.5 单独一步，实际随 M1 一起交付。
+
 ### M1 实际交付
 
-- 项目：`{ id, name, dir, server?, remoteDir? }`，目录必填且必须存在，服务器与默认目录同进同退；`GET/POST /api/projects`、`PATCH/DELETE /api/projects/:id`；旧目录复制与旧字段改写两层迁移。界面只接入「添加项目」，改名、移除与绑定服务器还没有表单。
-- 会话：Claude 走 Agent SDK 会话接口，Codex 走 `app-server` 的 `thread/*`，Antigravity 读本机 SQLite 摘要表；统一按 `cwd` / `workspace_uris` 裁决归属，解析不出即 `null`，界面默认隐藏。
+- 项目：`{ id, name, dir, server?, remoteDir? }`，目录必填且为绝对路径，服务器与默认目录同进同退；`GET/POST /api/projects`、`PATCH/DELETE /api/projects/:id`；旧目录复制与旧字段改写两层迁移。界面有「添加项目」与项目行的「绑定服务器 / 移除项目」；目录暂时离线的项目照样能改名、解绑与移除。改名仍只有接口。
+- 会话：Claude 走 Agent SDK 会话接口，Codex 走 `app-server` 的 `thread/*`，Antigravity 读本机 SQLite 摘要表；统一按 `cwd` / `workspace_uris` 裁决归属，解析不出即 `null`，界面归到「其他目录的会话」并默认隐藏。
 - 历史：`GET /api/projects/:id/sessions/:agent/:sessionId` 只读渲染；Antigravity 返回 501 `session_not_replayable` 并显示说明页。
 - 探测：`GET /api/agents/probes` 按 `--version`、`--help` 与 Codex schema 生成判断四态，不比较版本号。
-- 界面：三段式外壳、左栏项目树与会话分组、主区历史、右侧服务器面板（终端 / 资源 / 文件）、`Ctrl+K` 命令面板、深浅主题与有界尺寸记忆。服务器面板要求项目已绑定服务器，而 M1 界面还不能新建绑定，所以只有迁移过来的已绑定项目能用它；文件视图不含下载入口。
-- 验证：`npm run check` 覆盖类型、ESLint、格式、文档一致性、重复率与覆盖率；关键路径有单元与模块集成测试。
+- 界面：三段式外壳、左栏项目树与会话分组、主区历史、右侧服务器面板（终端 / 资源 / 文件）、`Ctrl+K` 命令面板、深浅主题与有界尺寸记忆。文件视图不含下载入口。
+- 桌面：`apps/desktop` 的 Electron 壳，`npm run dev:desktop` 打开窗口；主进程先起本机服务再加载，单实例、关窗即退出。
+- 验证：`npm run check` 覆盖类型、ESLint、格式、文档一致性、重复率与覆盖率；关键路径有单元与模块集成测试；桌面壳有真实开窗与进程退出验证。
 
 ### M1 未交付（不要当成已完成）
 
-- 项目改名、移除与服务器绑定没有界面表单，只有接口；界面新建的项目无法绑定服务器。
+- 项目改名没有界面表单，只有接口。
 - 原生配置只覆盖 Claude `settings.json` 与 Codex `config.toml` 两个文件，项目级配置与 Antigravity 配置未实现。
-- 启动环境注入、服务器面板以档案为键、目录监听、Electron 壳、输入框与流式回合都未开始。
+- 启动环境注入、服务器面板以档案为键、目录监听、安装包、输入框与流式回合都未开始。
 
 每期结束都要 `npm run check` 通过，并同步更新 `docs/` 下的需求、界面、架构与决策记录。
 

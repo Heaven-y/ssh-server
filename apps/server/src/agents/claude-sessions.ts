@@ -82,7 +82,13 @@ export function createClaudeSessions(api: ClaudeSessionsApi = nativeApi): Sessio
       );
       return records
         .filter((_, index) => scoped[index])
-        .map(({ sessionId, summary, lastModified }) => ({ sessionId, summary, lastModified }));
+        .map(({ sessionId, summary, lastModified, cwd }) => ({
+          sessionId,
+          summary,
+          lastModified,
+          // 老会话可能没有 cwd；带出来让上层判为未归属，而不是拿当前项目目录兜底。
+          ...(cwd ? { cwd } : {}),
+        }));
     },
     async read(id, dir) {
       const record = await info(id, dir);

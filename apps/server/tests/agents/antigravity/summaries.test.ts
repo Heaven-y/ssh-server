@@ -224,6 +224,20 @@ describe('Antigravity 会话提供方', () => {
     expect(item?.lastModified).toBe(0);
   });
 
+  it.each([
+    ['秒级整数时间戳', '1762000000', 1762000000000],
+    ['毫秒级整数时间戳', '1762000000000', 1762000000000],
+  ])('%s 也能解析，不至于整列显示 1970', async (_label, stored, expected) => {
+    // 列声明是 datetime，但 SQLite 类型宽松；真存成数字时不能拼 Z 直接变 NaN。
+    const provider = createAntigravitySessions({
+      readSummaries: () => [
+        { conversationId: 'c1', title: '示例会话', workspaceUris: '', lastModified: stored, preview: '' },
+      ],
+    });
+    const [item] = await provider.list(dir);
+    expect(item?.lastModified).toBe(expected);
+  });
+
   it('汇总读取抛错时列表仍然为空', async () => {
     const provider = createAntigravitySessions({
       readSummaries: () => {

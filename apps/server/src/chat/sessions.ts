@@ -8,7 +8,7 @@ import {
   type SessionSummary,
   type Workspace,
 } from '@agentdeck/shared';
-import type { NativeSessionFork, NativeSessionRead, NativeSessionSummary } from '../agents/types';
+import type { NativeSessionFork, NativeSessionRead, NativeSessionRow } from '../agents/types';
 import { sameSessionDirectory } from '../agents/session-scope';
 import { resolveProjectId } from '../sessions/ownership';
 
@@ -19,7 +19,7 @@ const AGENT_LABELS: Record<AgentKind, string> = {
 };
 
 export type SessionProvider = {
-  list(dir: string, signal?: AbortSignal, archived?: boolean): Promise<NativeSessionSummary[]>;
+  list(dir: string, signal?: AbortSignal, archived?: boolean): Promise<NativeSessionRow[]>;
   read(id: string, dir: string, signal?: AbortSignal): Promise<NativeSessionRead>;
   assertBelongs(id: string, dir: string, signal?: AbortSignal): Promise<void>;
   mutate(id: string, dir: string, input: SessionActionInput): Promise<void>;
@@ -79,9 +79,12 @@ export function createSessionsService(
           agent,
           sessionId: session.sessionId,
           projectId: resolveProjectId({
-            // Claude/Codex 的 list 已按目录过滤，返回行必然属于 ws.dir；
-            // Antigravity 的列表不随目录变化，只能按 workspaceUris 裁决，不能用 ws.dir 兜底。
-            ...(agent === 'antigravity' ? {} : { cwd: ws.dir }),
+            // 按会话自己记录的 cwd 裁决，不能用「当前查的是哪个项目」的目录兜底。
+            // 老 Claude 会话可能没有 cwd，兜底会让同一条会话在每个项目下都出现且都能打开，
+            // 违反「一个会话只属于一个项目」；判不出来就是未归属（null），
+            // 由界面放进「其他目录的会话」，用户仍能打开并加为项目。
+            // Antigravity 的列表不随目录变化，只能按 workspaceUris 裁决。
+            ...(agent === 'antigravity' ? {} : { cwd: session.cwd }),
             workspaceUris: session.workspaceUris,
             projects,
           }),

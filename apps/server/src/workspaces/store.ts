@@ -105,12 +105,18 @@ export function createWorkspaceStore(deps: WorkspaceStoreDeps): WorkspaceStore {
     );
   }
 
-  /** 目录必须是绝对路径且存在；服务器绑定可选，但 server 与 remoteDir 必须成对出现。 */
-  async function validate(input: WorkspaceInput): Promise<WorkspaceInput> {
+  /**
+   * 目录必须是绝对路径；服务器绑定可选，但 server 与 remoteDir 必须成对出现。
+   *
+   * 「目录必须存在」只在新增项目或换目录时检查。已有的项目目录可能只是**暂时离线**
+   * （移动硬盘没插、网络盘没挂），此时用户仍然必须能改名、解绑服务器、或把目录改到别处——
+   * 否则那条记录就成了只能手改 JSON 的死条目。
+   */
+  async function validate(input: WorkspaceInput, checkExists = true): Promise<WorkspaceInput> {
     const value = parseInput(input);
     if (!path.isAbsolute(value.dir)) throw new WorkspaceValidationError('dir', '项目目录必须是绝对路径');
     const dir = path.resolve(value.dir);
-    if (!(await deps.dirExists(dir))) throw new WorkspaceValidationError('dir', '项目目录不存在');
+    if (checkExists && !(await deps.dirExists(dir))) throw new WorkspaceValidationError('dir', '项目目录不存在');
     if (value.server !== undefined && !(await deps.knownHosts()).includes(value.server)) {
       throw new WorkspaceValidationError('server', '服务器未登记，请先保存服务器档案');
     }
@@ -142,7 +148,9 @@ export function createWorkspaceStore(deps: WorkspaceStoreDeps): WorkspaceStore {
         const idx = list.findIndex((w) => w.id === id);
         if (idx === -1) return undefined;
         const { id: _id, ...current } = list[idx]!;
-        const next: Workspace = { ...(await validate({ ...current, ...patch })), id };
+        // 只有真的换了目录才重新要求目录存在；否则目录暂时离线时连改名都做不了。
+        const dirChanged = patch.dir !== undefined && path.resolve(patch.dir) !== current.dir;
+        const next: Workspace = { ...(await validate({ ...current, ...patch }, dirChanged)), id };
         await beforePersist?.(list[idx]!);
         list[idx] = next;
         await save(list);

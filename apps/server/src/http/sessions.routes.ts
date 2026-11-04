@@ -1,9 +1,9 @@
 // 会话接口：读取按项目路径组织（项目 id + agent + 原生会话 id），直接读各 CLI 的原生记录，
 // 不另存或转换对话。
 //
-// 兼容期说明：M1 前端仍调用 /api/workspaces/:id/sessions 与 .../:sessionId/events 这两个旧读取
-// 路径，Task 10 重写外壳后才切到新路径。这里保留它们作为转发别名（返回同样的结果），不保留第二套
-// 读取实现；动作与分叉仍是旧前缀，随 Task 10 一并迁移。
+// 兼容期说明：`/api/workspaces/:id/sessions` 与 `.../:sessionId/events` 是上一轮的前缀，保留为
+// 转发别名（与项目路径同一份实现）。前端已全部改走 `/api/projects`，这两个别名目前没有客户端；
+// 动作与分叉仍在旧前缀下。
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AgentKindSchema, NativeSessionIdSchema, SessionActionSchema, SessionForkSchema } from '@agentdeck/shared';
@@ -48,7 +48,11 @@ export function registerSessionRoutes(app: FastifyInstance, deps: Deps): void {
       const sessions = await deps.sessions.list(ws, query.data.agent, watch.signal, query.data.archived === 'true');
       // Antigravity 的 list() 不按目录过滤，Claude/Codex 的行也可能归给别的项目（例如配置顺序更靠前的
       // 父目录）；统一按投影出来的 projectId 裁掉不属于本项目的会话，不能把整批原生会话塞进当前项目。
-      return sessions.filter((session) => session.projectId === ws.id);
+      //
+      // 但 projectId === null（归属不了任何项目）必须放行：否则前端只能按项目取数，
+      // 这类会话就永远出不了服务端，「显示其他目录的会话」与「加为项目」都拿不到数据。
+      // 未归属的行对每个项目都一样，由前端按 agent + sessionId 去重。
+      return sessions.filter((session) => session.projectId === ws.id || session.projectId === null);
     } catch (error) {
       return sendFailure(reply, error, '原生会话读取失败');
     } finally {

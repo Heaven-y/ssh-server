@@ -1,6 +1,6 @@
 import { NativeSessionIdSchema, type SessionActionInput, type SessionForkInput } from '@agentdeck/shared';
 import { sameSessionDirectory } from '../session-scope';
-import type { NativeSessionFork, NativeSessionRead, NativeSessionSummary } from '../types';
+import type { NativeSessionFork, NativeSessionRead, NativeSessionRow, NativeSessionSummary } from '../types';
 import { SessionError } from '../../chat/sessions';
 import { CodexClient } from './client';
 import { CodexEventMapper, codexForkPoint } from './mapper';
@@ -24,6 +24,15 @@ function summary(thread: RecordValue): NativeSessionSummary {
     lastModified: typeof thread.updatedAt === 'number' ? thread.updatedAt * 1_000 : 0,
     ...(text(thread.model).trim() ? { nativeModel: text(thread.model).trim() } : {}),
   };
+}
+
+/**
+ * 列表行：多带一个会话自己的 cwd，供上层按它裁决归属。
+ * 不能并进 `summary()`——read 对外返回的 session 也用那份，形状不能变。
+ */
+function row(thread: RecordValue): NativeSessionRow {
+  const cwd = text(thread.cwd).trim();
+  return { ...summary(thread), ...(cwd ? { cwd } : {}) };
 }
 
 export async function checkedThread(
@@ -77,12 +86,12 @@ export async function readCodexSession(
   });
 }
 
-async function matchingSummaries(data: unknown[], dir: string): Promise<NativeSessionSummary[]> {
-  const result: NativeSessionSummary[] = [];
+async function matchingSummaries(data: unknown[], dir: string): Promise<NativeSessionRow[]> {
+  const result: NativeSessionRow[] = [];
   for (const value of data) {
     const thread = record(value);
     if (thread.parentThreadId || typeof thread.source === 'object') continue;
-    if (text(thread.id) && (await sameSessionDirectory(text(thread.cwd), dir))) result.push(summary(thread));
+    if (text(thread.id) && (await sameSessionDirectory(text(thread.cwd), dir))) result.push(row(thread));
   }
   return result;
 }
@@ -90,7 +99,7 @@ async function matchingSummaries(data: unknown[], dir: string): Promise<NativeSe
 export async function listCodexSessions(
   dir: string,
   options: CodexRuntimeOptions & { archived?: boolean } = {},
-): Promise<NativeSessionSummary[]> {
+): Promise<NativeSessionRow[]> {
   const archived = options.archived ?? false;
   return withClient(dir, options, async (client) => {
     const sessions = new Map<string, NativeSessionSummary>();

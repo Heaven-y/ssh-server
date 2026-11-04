@@ -16,6 +16,10 @@ export type AntigravitySessionsApi = {
 function epochMs(value: string): number {
   const trimmed = value.trim();
   if (!trimmed) return 0;
+  // 列声明是 datetime，但 SQLite 类型宽松：若哪天存成整数秒或毫秒，直接拼 Z 会得到 NaN，
+  // 于是所有行都显示 1970。先按「纯数字＝时间戳」处理，再退回文本解析。
+  if (/^\d{10}$/.test(trimmed)) return Number(trimmed) * 1_000;
+  if (/^\d{13}$/.test(trimmed)) return Number(trimmed);
   // SQLite 的 datetime 不带时区时按 UTC 解读，避免同一份库在不同时区显示成不同时间。
   const hasZone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed);
   const normalized = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(trimmed) ? trimmed.replace(' ', 'T') : trimmed;

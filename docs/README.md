@@ -17,7 +17,7 @@
 
 ## 适用规则
 
-- 目标形态是本机 Windows 桌面应用（Electron 壳），当前交付形态是跑在本机的网页；三段式布局：左栏项目与会话、主区会话历史、右侧服务器面板。见[设计文档 §1.1](superpowers/specs/2026-11-03-native-cli-workbench-design.md#11-形态桌面应用不是浏览器网页)与[路线图](roadmap.md)。
+- 产品形态是本机 Windows 桌面应用（Electron 壳），已在 M1 交付；三段式布局：左栏项目与会话、主区会话历史、右侧服务器面板。见[设计文档 §1.1](superpowers/specs/2026-11-03-native-cli-workbench-design.md#11-形态桌面应用不是浏览器网页)与[路线图](roadmap.md)。
 - 参数归属：产品可见阈值与验收条件写在[需求](product/requirements.md)，交互与呈现写在[界面布局](product/ui-layout.md)，实现预算、协议与模块约束写在[架构](engineering/architecture.md)，取舍理由与替代关系写在[设计决策](engineering/decisions.md)；同一数值只在一处定义，其余引用。
 - 只维护一种正式业务路径和数据格式；上一代产品的测试数字、截图与验收范围只在[上一代验收](guides/ui-usability-optimization-acceptance.md)中按实际运行记录，不并入当前结论；决策只保留仍约束当前产品的条目，历史决策通过提交锚点追溯。
 - [D1](engineering/decisions.md#d1-产品转向本机原生-cli-会话工作台2026-11-03) 记录本轮产品转向，取代上一代关于同步、版本、本地文件与网页形态的取舍；被删能力不再恢复，相关旧文档条款按历史记录看待。

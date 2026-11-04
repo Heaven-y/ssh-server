@@ -84,3 +84,15 @@ it('还没有登记服务器时说明先去添加', async () => {
   mount();
   expect(await screen.findByText(/还没有登记服务器/)).toBeTruthy();
 });
+
+it('目录离线时也能把项目从列表移除，不必手改配置文件', async () => {
+  vi.spyOn(api, 'listSshHosts').mockResolvedValue([server]);
+  const remove = vi.spyOn(api, 'deleteProject').mockResolvedValue(undefined);
+  const close = mount();
+  fireEvent.click(screen.getByRole('button', { name: /从列表移除这个项目/ }));
+  // 移除不可撤销，必须先确认，且要说清不动磁盘目录。
+  expect(screen.getByText(/不动磁盘上的目录/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '移除' }));
+  await waitFor(() => expect(remove).toHaveBeenCalledWith('p1'));
+  expect(close).toHaveBeenCalled();
+});

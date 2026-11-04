@@ -22,6 +22,14 @@ export type NativeSessionSummary = Omit<SessionRecord, 'agent'> & {
   /** Antigravity 摘要里记录的工作区 URI；其它 CLI 通常没有。 */
   workspaceUris?: string;
 };
+/**
+ * 列表行比 `NativeSessionSummary` 多一个可选 `cwd`，只用于归属裁决，不进入对外契约。
+ *
+ * 为什么不并进 `NativeSessionSummary`：`read()` 返回的 `session` 用的也是那个类型，
+ * 并进去就会改变只读会话的对外形状。Claude 的老会话可能没有 cwd，这类行无法判断属于
+ * 哪个项目，必须判为未归属，而不是拿「当前查的是哪个项目」的目录兜底。
+ */
+export type NativeSessionRow = NativeSessionSummary & { cwd?: string };
 export type NativeSessionRead = {
   session: NativeSessionSummary;
   cwd: string;

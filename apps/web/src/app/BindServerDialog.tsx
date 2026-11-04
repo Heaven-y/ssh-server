@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link2, Unlink } from 'lucide-react';
+import { Link2, Trash2, Unlink } from 'lucide-react';
 import type { Workspace } from '@agentdeck/shared';
 import { api, queryKeys } from '../lib/api';
 import { DetailDialog } from '../ui/DetailDialog';
@@ -112,7 +112,64 @@ export function BindServerDialog({ project, onClose }: { project: Workspace; onC
           </button>
         </div>
       </form>
+      <RemoveProject project={project} onClose={onClose} />
     </DetailDialog>
+  );
+}
+
+/**
+ * 移除项目：只删本工具的配置，不碰磁盘目录。
+ * 目录离线（移动硬盘没插、网络盘没挂）的项目也必须能这样移除，
+ * 否则它只会永远留在列表里、连改名都不让改，用户只能去手改 workspaces.json。
+ */
+function RemoveProject({ project, onClose }: { project: Workspace; onClose(): void }) {
+  const client = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const remove = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.deleteProject(project.id);
+      await client.invalidateQueries({ queryKey: queryKeys.workspaces });
+      onClose();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '移除失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!confirming)
+    return (
+      <div className="mt-3 border-t border-border pt-3">
+        <button type="button" className={buttonClass('ghost')} onClick={() => setConfirming(true)}>
+          <Trash2 aria-hidden className="size-3.5" />
+          从列表移除这个项目
+        </button>
+      </div>
+    );
+  return (
+    <div className="mt-3 space-y-2 border-t border-border pt-3">
+      <p className="text-sm leading-6">
+        确定移除“{project.name}”？只删本工具里的这条配置，
+        <strong>不动磁盘上的目录</strong>，也不动 CLI 的原生会话。
+      </p>
+      {error && (
+        <p role="alert" className="text-sm text-destructive-foreground">
+          {error}
+        </p>
+      )}
+      <div className="flex justify-end gap-2">
+        <button type="button" className={buttonClass('ghost')} disabled={busy} onClick={() => setConfirming(false)}>
+          取消
+        </button>
+        <button type="button" className={buttonClass('danger')} disabled={busy} onClick={() => void remove()}>
+          移除
+        </button>
+      </div>
+    </div>
   );
 }
 

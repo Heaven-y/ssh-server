@@ -6,7 +6,7 @@
 
 ```text
 ┌────────────────────── 本机（AgentDeck）──────────────────────┐
-│ 浏览器界面 apps/web（React + Vite；Electron 壳属 M1.5）        │
+│ 界面 apps/web（React + Vite），由 apps/desktop 的 Electron 窗口加载 │
 │   │ HTTP + WebSocket /ws                                        │
 │ 后端 apps/server（Fastify，只监听回环地址）                     │
 │   ├─ projects     项目存储、旧字段导入、目录迁移、活动计数        │
@@ -67,8 +67,8 @@
 
 - 请求路径上不跑阻塞命令。子进程由 `runProcess` 异步执行，带超时、输出上限与取消信号；SSH 操作同样带本机截止时间。
 - 同一会话同一时刻只允许一轮：`TurnManager` 用 `${agent}:${sessionId}` 记占用，重复发送立刻回错误，不同会话互不阻塞。
-- 改名、删除、归档与分叉由 `withIdleSession` 占用同一把会话锁，忙时返回 409；M1 界面没有这些入口，但接口和测试仍在。
-- 轮次启动前向 `workspaces/activity` 取活动计数，结束释放；文件任务也复用同一计数。旧「移除工作区前必须清空租约」的链条已删除，计数只用于活动登记。
+- 改名、删除、归档与分叉由 `withIdleSession` 占用同一把会话锁，忙时返回 409；M1 界面只接了改名，删除、归档与分叉仍只有接口和测试。
+- 轮次启动前向 `workspaces/activity` 取活动计数，结束释放；文件任务也复用同一计数。旧「移除工作区前必须清空租约」的链条已删除，现在这个计数只写不读——保留是为了让接回「有活动任务时拒绝改动」时有现成挂点，或在确认无用后一并删除。
 - 回合事件只发给发起该轮的 WebSocket；连接断开时，待审批请求按拒绝收尾，不做服务端缓冲或跨连接续传（设计要求按会话缓冲，尚未实现）。
 - SSH 连接按 alias 复用，exec、SFTP、PTY 各自独占通道；单通道失败只释放自己，不断开共享连接。
 - 资源与 Slurm 共用固定目标上下文，同身份的并发读取合并为一次采样；认证代次或连接 `cacheKey` 变化后，旧结果不能回填新身份。
@@ -91,7 +91,7 @@ agentdeck/
 │  │  │  ├─ chat/                 # 3 个：turn-manager、sessions、capabilities
 │  │  │  ├─ http/                 # 19 个：路由、访问控制、终端升级
 │  │  │  ├─ process/              # 1 个：run.ts
-│  │  │  ├─ remote-files/         # 15 个 TypeScript + remote-helper.py
+│  │  │  ├─ remote-files/         # 14 个 TypeScript + remote-helper.py
 │  │  │  ├─ resources/            # 6 个：采样命令、解析、缓存、目标与服务
 │  │  │  ├─ sessions/             # 1 个：ownership.ts（归属裁决）
 │  │  │  ├─ settings/             # 4 个：safe-file、native-config、product-settings、errors
@@ -221,7 +221,7 @@ M1 的公开接口面：
 
 | 模块 | 接口 | 状态 |
 |---|---|---|
-| 会话读取别名 | `GET /api/workspaces/:id/sessions`、`GET /api/workspaces/:id/sessions/:sessionId/events?agent=` | 与项目路径同实现，前端 M1 仍走别名 |
+| 会话读取别名 | `GET /api/workspaces/:id/sessions`、`GET /api/workspaces/:id/sessions/:sessionId/events?agent=` | 与项目路径同实现；前端已全部改走 `/api/projects`，当前无客户端 |
 | 会话动作 | `POST /api/workspaces/:id/sessions/:sessionId/actions`、`POST .../fork` | 接口可用，M1 界面不使用 |
 | 能力目录 | `GET /api/workspaces/:id/agent-capabilities` | M2 的「刷新能力」使用 |
 | 产品设置与环境 | `GET/PUT /api/settings/product`、`GET/POST /api/settings/environment` | 部分设置界面使用 |
@@ -277,11 +277,11 @@ M1 的公开接口面：
 - 左栏：`Sidebar` 展示项目树、三个 CLI 分组、当前选择与「显示其他目录的会话」；`NewSessionMenu` 与行内管理入口仍在，但 M1 不承担发送与会话管理验收。
 - 状态：zustand 的 `chat-store` 管连接、当前项目、Agent、会话选择与历史状态；react-query 管项目、会话、历史、设置、资源与 Slurm；partysocket 负责 `/ws` 重连（1 秒起翻倍，上限 15 秒，禁用发送缓冲）。
 - 命令面板：`Ctrl+K`，包含新会话、打开终端、查看资源、设置、主题、侧栏与项目/会话搜索。
-- 当前完成度：三段式外壳、项目添加、会话列表与只读历史已接入；服务器面板的终端、资源、文件三视图可用，但要求项目绑定服务器，而界面还没有绑定表单，因此只有迁移过来的已绑定项目能打开它们。原生配置界面只覆盖两个文件，启动环境与服务器面板档案化尚未开始。
+- 当前完成度：三段式外壳、项目添加与移除、项目绑定服务器、会话列表与只读历史已接入；服务器面板的终端、资源、文件三视图在绑定后可用。原生配置界面只覆盖两个文件，启动环境与服务器面板档案化尚未开始。
 
-### 5.13 desktop：桌面壳（待新增，M1.5）
+### 5.13 desktop：桌面壳
 
-计划在 `apps/desktop` 放 Electron 主进程与 preload：主进程拉起本机 Fastify 服务后创建窗口加载其地址，preload 只经 `contextBridge` 暴露少量系统能力，关窗与退出时一并结束后端。开发循环用 `electron-vite`，安装包与签名留到 M4。目录尚未创建，当前入口仍只有浏览器。
+`apps/desktop` 放 Electron 主进程与 preload。主进程先 `startServer()` 拉起本机 Fastify（端口用 `0` 让系统分配，避开开发服务），再创建窗口加载实际地址；preload 只经 `contextBridge` 暴露 `platform`，渲染层保持 `nodeIntegration: false`、`contextIsolation: true`。单实例锁避免开第二个窗口；`window-all-closed` 与 `before-quit` 都调用后端的 `close()`，不留下孤儿进程。开发循环用 `electron-vite`，安装包与签名留到 M4。后端仍可单独用 `npm run dev` 起在 4317，浏览器访问是调试入口。
 
 ### 5.14 错误文案与日志
 
@@ -313,7 +313,7 @@ M1 的公开接口面：
 
 ### 6.4 服务器面板
 
-面板入口在左栏与顶栏：只有同时有 `server` 与 `remoteDir` 的项目才算绑定（`boundWorkspace()`）。打开终端时用项目与绑定目录生成目标，复验 SSH 身份与信任记录后建立 PTY；资源与文件同样按项目 id 取目标。M1 没有绑定表单，新建项目一律未绑定；改成以服务器档案为身份是 M3。
+面板入口在左栏与顶栏：只有同时有 `server` 与 `remoteDir` 的项目才算绑定（`boundWorkspace()`）。打开终端时用项目与绑定目录生成目标，复验 SSH 身份与信任记录后建立 PTY；资源与文件同样按项目 id 取目标。绑定在左栏项目行进入，`BindServerDialog` 通过 `PATCH /api/projects/:id` 成对写入或一次清除两半；改成以服务器档案为身份是 M3。
 
 ### 6.5 启动与退出
 
@@ -334,8 +334,8 @@ M1 的公开接口面：
 ## 8. 验证依据与边界
 
 - M1 验收编号 A1–A14 见[需求](../product/requirements.md)，是条件而不是现状；代码存在不等于条目通过。
-- M1 已交付并有测试或真实运行记录的部分：项目存储与两层旧数据迁移、三个 CLI 的归属裁决、Claude/Codex/Antigravity 会话枚举与读取、四态本机探测、三段式外壳、项目添加、只读历史、服务器面板三视图（仅对已绑定服务器的项目可用）。
-- 明确未完成：Electron 桌面壳（M1.5）；输入框、流式回合与审批（M2）；原生配置完整编辑、启动环境注入、服务器面板以档案为键（M3）；目录监听、安装包与自动更新（M4）。
+- M1 已交付并有测试或真实运行记录的部分：项目存储与两层旧数据迁移、三个 CLI 的归属裁决、Claude/Codex/Antigravity 会话枚举与读取、四态本机探测、三段式外壳、项目添加与移除、项目绑定服务器、只读历史、服务器面板三视图、Electron 桌面壳（真实开窗验证过）。
+- 明确未完成：输入框、流式回合与审批（M2）；原生配置完整编辑、启动环境注入、服务器面板以档案为键（M3）；目录监听、安装包与自动更新（M4）。
 - 测试在各包 `tests/` 下按模块镜像；真实链路用 `scripts/dev/e2e-*.ts` 与 `ssh-smoke.ts`；没有 Playwright 端到端测试。
 - 未验证项：真实 Antigravity 摘要库上的会话枚举（现有证据来自夹具与单元测试）、真实集群上的 Slurm 成功输出、操作系统输入法、安装包与自动更新。Antigravity 的历史正文不是「待验证」，它按设计不可读（D36）。
 - 浏览器访问同一地址仍可用，但按设计它不是最终产品入口；桌面壳落地前不应把它写成已交付形态。
