@@ -378,6 +378,7 @@ describe('会话接口', () => {
         sessionId: 's1',
         projectId: 'w1',
         title: '本项目',
+        directory: ws.dir,
         updatedAt: '1970-01-01T00:00:00.100Z',
         running: false,
       },

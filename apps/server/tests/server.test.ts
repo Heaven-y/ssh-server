@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ProcessRunner } from '../src/process/run';
 import { startServer, type StartedServer } from '../src/server';
 
@@ -29,7 +29,13 @@ async function fixture(): Promise<{ configDir: string; legacyDir: string }> {
 async function launch(configDir: string, legacyDir: string): Promise<StartedServer> {
   const server = await startServer(
     { port: 0, host: '127.0.0.1', configDir, token: 'test-token' },
-    { legacyDir, probeRunner: inertRunner, log: () => undefined, logError: () => undefined },
+    {
+      legacyDir,
+      probeRunner: inertRunner,
+      sessionChanges: { read: () => ({ revision: 0, watching: false }), dispose: () => undefined },
+      log: () => undefined,
+      logError: () => undefined,
+    },
   );
   cleanups.push(() => server.close());
   return server;
@@ -48,6 +54,30 @@ function portIsOpen(port: number): Promise<boolean> {
 }
 
 describe('startServer', () => {
+  it('监听端口占用时清理已创建的会话目录监听，保留原始启动错误', async () => {
+    const { configDir, legacyDir } = await fixture();
+    const occupied = net.createServer();
+    await new Promise<void>((resolve) => occupied.listen(0, '127.0.0.1', resolve));
+    cleanups.push(() => new Promise<void>((resolve) => occupied.close(() => resolve())));
+    const address = occupied.address();
+    if (!address || typeof address === 'string') throw new Error('夹具没有监听端口');
+    const dispose = vi.fn(() => {
+      throw new Error('synthetic cleanup failure');
+    });
+    await expect(
+      startServer(
+        { port: address.port, host: '127.0.0.1', configDir, token: 'test-token' },
+        {
+          legacyDir,
+          probeRunner: inertRunner,
+          sessionChanges: { read: () => ({ revision: 0, watching: false }), dispose },
+          log: () => undefined,
+          logError: () => undefined,
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'EADDRINUSE' });
+    expect(dispose).toHaveBeenCalled();
+  });
   it('返回可访问的本机地址，close 后端口不再监听', async () => {
     const { configDir, legacyDir } = await fixture();
     const server = await launch(configDir, legacyDir);

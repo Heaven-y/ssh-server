@@ -13,6 +13,7 @@ export default tseslint.config(
       '**/dist/**',
       '**/out/**',
       '**/coverage/**',
+      'release/**',
       '.agents/**',
       '.claude/**',
       '.pi/**',

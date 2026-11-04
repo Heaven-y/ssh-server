@@ -1,5 +1,5 @@
 // 桌面壳构建配置：主进程把后端源码一起打包，preload 单独打成 CJS。
-// 第三方依赖保持外部（运行时从仓库根的 node_modules 解析），本仓库源码一律打进产物，
+// 第三方依赖保持外部（安装包按 desktop 的生产依赖收集），本仓库源码一律打进产物，
 // 包括走 workspace 软链的 @agentdeck/shared —— 它是 TS 源码，必须由打包器处理。
 import { copyFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';

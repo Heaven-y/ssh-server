@@ -1,5 +1,6 @@
 import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { SearchAddon } from '@xterm/addon-search';
 import '@xterm/xterm/css/xterm.css';
 import { useUiPreferences } from '../../ui/ui-preferences';
 import { prepareTerminalPaste } from '../terminal/paste';
@@ -34,7 +35,9 @@ export function createConsoleTerminalRuntime(options: {
     theme: themes[useUiPreferences.getState().theme],
   });
   const fit = new FitAddon();
+  const search = new SearchAddon();
   terminal.loadAddon(fit);
+  terminal.loadAddon(search);
   terminal.open(options.host);
   let visible = false;
   let disposed = false;
@@ -110,6 +113,14 @@ export function createConsoleTerminalRuntime(options: {
       if (value) schedule();
     },
     focus: () => terminal.focus(),
+    search(text: string, backwards = false) {
+      if (!text) {
+        search.clearDecorations();
+        terminal.clearSelection();
+        return false;
+      }
+      return backwards ? search.findPrevious(text) : search.findNext(text);
+    },
     async copy() {
       try {
         const text = terminal.getSelection();

@@ -7,6 +7,7 @@ import type { AgentProbes } from '../../src/agents/probe';
 import { registerProjectRoutes } from '../../src/http/projects.routes';
 import { registerProbeRoutes } from '../../src/http/probe.routes';
 import { createWorkspaceStore } from '../../src/workspaces/store';
+import { createWorkspaceActivity } from '../../src/workspaces/activity';
 
 const apps: FastifyInstance[] = [];
 const tempRoots: string[] = [];
@@ -31,8 +32,9 @@ async function setup() {
   });
   const app = Fastify();
   apps.push(app);
-  registerProjectRoutes(app, { store });
-  return { app, store, configDir };
+  const activity = createWorkspaceActivity();
+  registerProjectRoutes(app, { store, activity });
+  return { app, store, configDir, activity };
 }
 
 const create = (app: FastifyInstance, payload: Record<string, unknown>) =>
@@ -44,6 +46,21 @@ afterEach(async () => {
 });
 
 describe('项目接口', () => {
+  it('已有活动时拒绝换目录与移除，改名仍保留原目录与记录', async () => {
+    const { app, store, activity } = await setup();
+    const dir = await tempDir('agentdeck-busy-project-');
+    const project = await store.create({ name: '示例', dir });
+    const release = activity.acquire(project.id);
+    expect(
+      (await app.inject({ method: 'PATCH', url: `/api/projects/${project.id}`, payload: { dir } })).statusCode,
+    ).toBe(409);
+    expect((await app.inject({ method: 'DELETE', url: `/api/projects/${project.id}` })).statusCode).toBe(409);
+    expect(
+      (await app.inject({ method: 'PATCH', url: `/api/projects/${project.id}`, payload: { name: '改名' } })).statusCode,
+    ).toBe(200);
+    expect((await store.get(project.id))?.dir).toBe(dir);
+    release();
+  });
   it('列出项目：空配置返回空数组且禁止缓存', async () => {
     const { app } = await setup();
     const response = await app.inject('/api/projects');

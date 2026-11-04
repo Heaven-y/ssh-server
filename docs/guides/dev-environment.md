@@ -1,6 +1,6 @@
 # 开发指南
 
-更新于 2026-11-04。按当前工程组织环境、质量、Git 和验证规则。产品优先级见[路线图](../roadmap.md)，本轮三 CLI 主流程见[原生对话接入](../engineering/native-dialogue.md)；旧验收数据及已退役问题通过 `c686ef2` 查询。
+更新于 2026-11-04。按当前工程组织环境、质量、Git 和验证规则。产品优先级见[路线图](../roadmap.md)，协议边界见[原生对话接入](../engineering/native-dialogue.md)，本地成包见[安装指南](local-installation.md)；旧验收数据及已退役问题通过 `c686ef2` 查询。
 
 ## 1. 本机环境
 
@@ -22,13 +22,13 @@ Windows 10/11、Node.js 22+ 与 Git 是开发基础。按需安装 `claude`、`c
 | 功能 | 当前选择 | 主要理由 |
 |---|---|---|
 | 后端与协议 | Fastify、WebSocket、zod、TypeScript | 协调 CLI 与 SSH，复用前后端类型，见[技术选择](../engineering/decisions.md#d2-electron-加壳沿用-node-与-react) |
-| 桌面 | Electron、electron-vite | 现有 Node 业务直接复用，开发与桌面共用服务 |
+| 桌面 | Electron、electron-vite、electron-builder | 业务服务保持一份实现；本地构建 NSIS/portable，不执行发布 |
 | CLI | Claude Agent SDK、Codex app-server、Antigravity 本机接口 | 保留原生会话与行为，不重建模型引擎 |
 | SSH | ssh2、ssh-config | 连接/PTY/SFTP 与 OpenSSH Host 解析；known_hosts 小型校验保留本地实现，覆盖哈希和吊销条目 |
 | 数据与连接 | TanStack Query、zustand、partysocket | 分离服务缓存和交互状态；关闭 WS 发送缓冲避免重发 |
 | 消息 | streamdown、react-virtuoso | 流式 Markdown、动态高度列表和滚动跟随 |
 | 配置 | CodeMirror 6、smol-toml | 高亮和语法校验，保存原文保留未知字段与格式 |
-| 终端 | xterm.js、addon-fit | ANSI、全屏程序和尺寸同步；不复制 GPL 终端实现 |
+| 终端 | xterm.js、addon-fit、addon-search | 处理真实 PTY 画面、尺寸和本机回滚查找，不自造终端解析器 |
 | 交互 | Ariakit、cmdk、react-resizable-panels | 弹层、补全、命令面板与分栏的键盘行为 |
 | 图标与字体 | lucide-react、fontsource | 随包分发，避免外部字体请求 |
 | 质量 | ESLint/typescript-eslint/sonarjs、Prettier、jscpd、Vitest | 类型/复杂度、格式、精确重复和行为测试；sonarjs 仅开发期使用 |
@@ -57,7 +57,7 @@ Windows 10/11、Node.js 22+ 与 Git 是开发基础。按需安装 `claude`、`c
 
 ### 1.4 进度与证据
 
-M1 桌面、项目和只读历史是基线；M2 三 CLI 核心接线已完成受控验证，真实模型和剩余能力仍按路线图跟踪。功能条件见[需求验收](../product/requirements.md#4-验收与证据)，不存在“有组件或有接口就已交付”的推断。
+三 CLI 对话、原生资源设置和工作台插件已有实现，项目管理、目录变化刷新、终端查找及本地打包在当前交付中接线。功能条件见[需求验收](../product/requirements.md#4-验收与证据)，实际通过范围仍以路线图中的证据为准；有组件或包文件不代表真实环境验收完成。
 
 分别记录类型检查、受控子进程、界面行为、真实模型、真实 SSH 与系统交互。不能从单个模型服务可用推断所有服务兼容，也不能从模拟消息推断真实 Antigravity 协议完整。
 
@@ -117,10 +117,16 @@ powershell -ExecutionPolicy Bypass -File scripts\dev\install-skills.ps1
 | 本机静态托管 | `npm.cmd start` |
 | 指定关联测试 | `npm.cmd test -- apps/server/tests/chat/turn-manager.test.ts` |
 | 终端受控夹具 | `node --import tsx scripts/dev/e2e-terminal.ts` |
+| Windows 本地包 | `npm.cmd run package:desktop` |
+| 解包目录与冒烟 | `npm.cmd run package:desktop:dir`，再按本地安装指南运行冒烟检查 |
 
 开发服务地址和环境覆盖项统一见[启动配置](../engineering/architecture.md#53-启动配置)。前端先同源握手，服务重启后需重新取得会话。不要把测试页面指向正在使用的真实配置。
 
 原生配置接线脚本为 `e2e-claude-config.ts` 与 `e2e-agent-config.ts`。Codex 可通过 `--config` 与 `--codex` 指定隔离来源；只有已授权真实模型验证才追加 `--with-model`。复制认证材料必须明确指定、核对源摘要，清理只触及自身副本，不绕过策略拒绝。
+
+原生资源、插件与独立控制台的组件和服务测试使用临时目录、合成运行器或假 SSH 通道。浏览器验证覆盖真实组件布局和键盘操作；终端搜索用本机输出缓冲，不需要连接真实服务器。外部静态插件的样例与权限边界见[插件契约](../engineering/workbench-plugins.md)。
+
+打包命令只生成本地 Windows x64 产物，不签名或推送版本。CLI 仍由用户自行安装，工作台数据不进入包；安装、卸载与配置保留按[本地安装指南](local-installation.md)逐项验收。包内服务可启动、安装器生成和安装操作是不同证据，不能互相替代。
 
 SSH 验证使用专用授权目录或合成服务；真实写操作先预检。服务器文件取消不代表回滚，断开后结果不明先读源与目标核对，不自动重发。现有主机/凭据行为不得因测试方便而跳过。
 

@@ -1,6 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import type { Workspace } from '@agentdeck/shared';
-import { parseWorkspaceUris, resolveProjectId } from '../../src/sessions/ownership';
+import { nativeSessionDirectory, parseWorkspaceUris, resolveProjectId } from '../../src/sessions/ownership';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+it('添加项目只提供唯一可解析的本机目录，不接受远程地址与多目录歧义', () => {
+  const directory = path.resolve('fixtures', 'demo');
+  expect(nativeSessionDirectory({ cwd: directory })).toBe(directory);
+  expect(nativeSessionDirectory({ workspaceUris: pathToFileURL(directory).href })).toBe(directory);
+  expect(nativeSessionDirectory({ workspaceUris: 'https://example.com' })).toBeUndefined();
+  expect(nativeSessionDirectory({ workspaceUris: 'file://remote-server/share' })).toBeUndefined();
+  expect(nativeSessionDirectory({ cwd: '//my-server/share/demo' })).toBeUndefined();
+  if (process.platform === 'win32') expect(nativeSessionDirectory({ cwd: '/demo' })).toBeUndefined();
+  expect(
+    nativeSessionDirectory({
+      workspaceUris: JSON.stringify([pathToFileURL(directory).href, 'file://my-server/share/demo']),
+    }),
+  ).toBeUndefined();
+  expect(
+    nativeSessionDirectory({
+      workspaceUris: JSON.stringify([
+        pathToFileURL(directory).href,
+        pathToFileURL(path.resolve('fixtures', 'other')).href,
+      ]),
+    }),
+  ).toBeUndefined();
+});
 
 const project = (id: string, dir: string): Workspace => ({ id, name: id, dir });
 

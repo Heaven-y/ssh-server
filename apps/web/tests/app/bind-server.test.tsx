@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
+import path from 'node:path';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ManagedServer, Workspace } from '@agentdeck/shared';
 import { BindServerDialog } from '../../src/app/BindServerDialog';
 import { api } from '../../src/lib/api';
+import { useChat } from '../../src/features/chat/chat-store';
 
-const project: Workspace = { id: 'p1', name: '示例项目', dir: 'E:\\web\\demo' };
+const project: Workspace = { id: 'p1', name: '示例项目', dir: path.resolve('fixtures', 'demo') };
 const server = {
   alias: 'managed-ssh-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
   name: 'my-server',
@@ -19,6 +21,7 @@ const server = {
 let client: QueryClient;
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  useChat.setState(useChat.getInitialState(), true);
   HTMLDialogElement.prototype.showModal = function () {
     this.open = true;
   };
@@ -63,6 +66,7 @@ it('解绑一次清掉两半，避免留下打不开面板的半绑定态', asyn
   vi.spyOn(api, 'listSshHosts').mockResolvedValue([server]);
   const update = vi.spyOn(api, 'updateProject').mockResolvedValue(project);
   mount({ ...project, server: server.alias, remoteDir: '~/x' });
+  expect(screen.queryByText(/缺少另一半/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '解绑' }));
   await waitFor(() => expect(update).toHaveBeenCalledWith('p1', { server: null, remoteDir: null }));
 });
@@ -79,20 +83,16 @@ it('手工改坏成半绑定时明确报错，而不是悄悄留着', () => {
   expect(screen.getByRole('alert').textContent).toContain('缺少另一半');
 });
 
+it('半绑定只剩远端目录时选择不绑定会一次清除两项', async () => {
+  vi.spyOn(api, 'listSshHosts').mockResolvedValue([server]);
+  const update = vi.spyOn(api, 'updateProject').mockResolvedValue(project);
+  mount({ ...project, remoteDir: '~/projects/demo' });
+  fireEvent.click(screen.getByRole('button', { name: '保存' }));
+  await waitFor(() => expect(update).toHaveBeenCalledWith(project.id, { server: null, remoteDir: null }));
+});
+
 it('还没有登记服务器时说明先去添加', async () => {
   vi.spyOn(api, 'listSshHosts').mockResolvedValue([]);
   mount();
   expect(await screen.findByText(/还没有登记服务器/)).toBeTruthy();
-});
-
-it('目录离线时也能把项目从列表移除，不必手改配置文件', async () => {
-  vi.spyOn(api, 'listSshHosts').mockResolvedValue([server]);
-  const remove = vi.spyOn(api, 'deleteProject').mockResolvedValue(undefined);
-  const close = mount();
-  fireEvent.click(screen.getByRole('button', { name: /从列表移除这个项目/ }));
-  // 移除不可撤销，必须先确认，且要说清不动磁盘目录。
-  expect(screen.getByText(/不动磁盘上的目录/)).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: '移除' }));
-  await waitFor(() => expect(remove).toHaveBeenCalledWith('p1'));
-  expect(close).toHaveBeenCalled();
 });

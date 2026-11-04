@@ -6,11 +6,14 @@ import { app, BrowserWindow, dialog, shell } from 'electron';
 import { loadConfig } from '../../server/src/config';
 import { startServer, type StartedServer } from '../../server/src/server';
 import { acquireSingleInstance, createShutdown, resolveWindowUrl } from './lifecycle';
+import { desktopPaths, externalWebLink, navigationAllowed, rendererAddress } from './paths';
 
-/** 前端构建产物：apps/web/dist，由 npm run dev:desktop 先构建。
- *  以下两个路径按打包产物 apps/desktop/out/main/main.js 计算，源码不单独运行。 */
-const WEB_DIST = path.join(import.meta.dirname, '../../../web/dist');
-const PRELOAD = path.join(import.meta.dirname, '../preload/preload.cjs');
+/** 安装版页面跟随 resources 分发，开发版沿用工作区构建目录。 */
+const paths = desktopPaths({
+  packaged: app.isPackaged,
+  resourcesPath: process.resourcesPath,
+  mainDirectory: import.meta.dirname,
+});
 /** 释放后端的最长等待：超时也退出，端口随进程结束由系统回收，不留后台进程。 */
 const CLOSE_TIMEOUT_MS = 8_000;
 
@@ -35,7 +38,7 @@ function createMainWindow(url: string): BrowserWindow {
     backgroundColor: '#f5f6f8',
     title: 'AgentDeck',
     webPreferences: {
-      preload: PRELOAD,
+      preload: paths.preload,
       // 渲染层不开 Node：页面只经 HTTP 与后端通信。
       nodeIntegration: false,
       contextIsolation: true,
@@ -48,34 +51,33 @@ function createMainWindow(url: string): BrowserWindow {
   });
   // 外链交给系统浏览器；窗口自身只加载本机服务。
   window.webContents.setWindowOpenHandler(({ url: target }) => {
-    void shell.openExternal(target);
+    if (externalWebLink(target)) void shell.openExternal(target);
     return { action: 'deny' };
+  });
+  window.webContents.on('will-navigate', (event, target) => {
+    if (navigationAllowed(url, target)) return;
+    event.preventDefault();
+    if (externalWebLink(target)) void shell.openExternal(target);
   });
   void window.loadURL(url);
   return window;
 }
 
-/** 开发期的渲染器地址只在本机回环上，取其来源交给后端做 Origin 校验。 */
-function devOriginOf(rendererUrl: string | undefined): string | undefined {
-  if (!rendererUrl) return undefined;
-  try {
-    return new URL(rendererUrl).origin;
-  } catch {
-    return undefined;
-  }
-}
-
 async function startDesktop(): Promise<void> {
   const config = loadConfig(process.env, process.argv.slice(2));
-  const rendererUrl = process.env.ELECTRON_RENDERER_URL;
+  const rendererUrl = rendererAddress(app.isPackaged, process.env.ELECTRON_RENDERER_URL);
   // 没有渲染器地址时必须已有前端构建产物，否则窗口只会看到 404。
-  if (!rendererUrl && !existsSync(path.join(WEB_DIST, 'index.html'))) {
-    throw new Error('缺少前端构建产物 apps/web/dist，请先运行 npm run build -w @agentdeck/web');
+  if (!rendererUrl && !existsSync(path.join(paths.web, 'index.html'))) {
+    throw new Error(
+      app.isPackaged
+        ? '安装文件不完整，缺少页面资源，请重新解压或安装 AgentDeck'
+        : '缺少前端构建产物 apps/web/dist，请先运行 npm run build -w @agentdeck/web',
+    );
   }
   // 端口固定用 0：由系统分配，避免和正在运行的开发服务抢端口。
   const started = await startServer(
-    { ...config, port: 0, devOrigin: devOriginOf(rendererUrl) ?? config.devOrigin },
-    { webDir: WEB_DIST },
+    { ...config, port: 0, devOrigin: rendererUrl ? new URL(rendererUrl).origin : config.devOrigin },
+    { webDir: paths.web },
   );
   server = started;
   mainWindow = createMainWindow(resolveWindowUrl(started.url, rendererUrl));

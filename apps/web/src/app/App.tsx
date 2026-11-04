@@ -19,6 +19,8 @@ import { useProjectSessions } from './use-project-sessions';
 import { useServerDock } from './use-server-dock';
 import { AddProjectDialog } from './AddProjectDialog';
 import { BindServerDialog } from './BindServerDialog';
+import { ProjectManageDialog } from './ProjectManageDialog';
+import type { ProjectDraft, ProjectManageAction } from './project-management';
 import { PluginNavigation } from '../features/plugins/PluginNavigation';
 import { PluginWorkspace } from '../features/plugins/PluginWorkspace';
 import { usePluginPages } from '../features/plugins/use-plugin-pages';
@@ -87,6 +89,30 @@ function OpenSettings({ opened, project, close }: { opened: boolean; project?: W
   );
 }
 
+function ProjectDialogs({
+  adding,
+  binding,
+  managing,
+  closeAdd,
+  closeBind,
+  closeManage,
+}: {
+  adding?: ProjectDraft;
+  binding?: Workspace;
+  managing?: { project: Workspace; action: ProjectManageAction };
+  closeAdd(): void;
+  closeBind(): void;
+  closeManage(): void;
+}) {
+  return (
+    <>
+      {adding && <AddProjectDialog initialDir={adding.dir} initialName={adding.name} onClose={closeAdd} />}
+      {binding && <BindServerDialog project={binding} onClose={closeBind} />}
+      {managing && <ProjectManageDialog {...managing} onClose={closeManage} />}
+    </>
+  );
+}
+
 /** 三段式外壳：顶栏 / 左栏项目与会话 / 主区会话 / 右侧服务器面板。 */
 export function App() {
   const palette = useCommandPalette();
@@ -103,7 +129,8 @@ export function App() {
   const plugins = usePluginPages();
   const activePlugin = plugins.active;
   const [serversOpen, setServersOpen] = useState(false);
-  const [addProjectOpen, setAddProjectOpen] = useState(false);
+  const [addingProject, setAddingProject] = useState<ProjectDraft>();
+  const [managingProject, setManagingProject] = useState<{ project: Workspace; action: ProjectManageAction }>();
   // 绑定服务器要拿到具体的项目对象，不能只记一个开关。
   const [bindingProject, setBindingProject] = useState<Workspace | undefined>(undefined);
   const dock = useServerDock();
@@ -146,8 +173,14 @@ export function App() {
       <EnvironmentSummary onOpenSettings={() => setSettingsOpen(true)} />
       {serversOpen && <ServerManagerDialog onClose={() => setServersOpen(false)} />}
       <OpenPluginManager opened={plugins.managerOpen} close={() => plugins.setManagerOpen(false)} />
-      {addProjectOpen && <AddProjectDialog onClose={() => setAddProjectOpen(false)} />}
-      {bindingProject && <BindServerDialog project={bindingProject} onClose={() => setBindingProject(undefined)} />}
+      <ProjectDialogs
+        adding={addingProject}
+        binding={bindingProject}
+        managing={managingProject}
+        closeAdd={() => setAddingProject(undefined)}
+        closeBind={() => setBindingProject(undefined)}
+        closeManage={() => setManagingProject(undefined)}
+      />
       <OpenPalette
         opened={palette.opened}
         workspace={current}
@@ -204,7 +237,8 @@ export function App() {
             sessionsByProject={sessionsByProject}
             loadingSessions={sessionsLoading}
             currentProjectId={current?.id}
-            onAddProject={() => setAddProjectOpen(true)}
+            onAddProject={(initial) => setAddingProject(initial ?? {})}
+            onManageProject={(project, action) => setManagingProject({ project, action })}
             onNewSession={startSession}
             onSelectProject={(id) => useChat.getState().selectWorkspace(id)}
             onSelectSession={openSession}
@@ -215,12 +249,16 @@ export function App() {
         }
       >
         <div className="h-full min-h-0 min-w-0 w-full flex-1">
-          <div hidden={!!activePlugin} inert={!!activePlugin} className="h-full min-h-0">
+          <div
+            hidden={!!activePlugin}
+            inert={!!activePlugin}
+            className={activePlugin ? 'hidden' : 'flex h-full min-h-0 flex-col'}
+          >
             <SessionPane
               project={current}
               pending={projects.isPending}
               error={projects.error}
-              onAddProject={() => setAddProjectOpen(true)}
+              onAddProject={() => setAddingProject({})}
             />
           </div>
           <PluginWorkspace

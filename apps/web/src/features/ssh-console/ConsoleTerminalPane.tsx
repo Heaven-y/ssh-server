@@ -3,6 +3,7 @@ import { buttonClass } from '../../ui/styles';
 import { TerminalPasteDialog } from '../terminal/TerminalDialogs';
 import { prepareTerminalPaste } from '../terminal/paste';
 import { createConsoleTerminalRuntime } from './terminal-runtime';
+import { ConsoleTerminalSearch } from './ConsoleTerminalSearch';
 
 export function ConsoleTerminalPane({
   serverId,
@@ -19,6 +20,12 @@ export function ConsoleTerminalPane({
   const runtime = useRef<ReturnType<typeof createConsoleTerminalRuntime> | undefined>(undefined);
   const [status, setStatus] = useState('正在恢复终端…');
   const [paste, setPaste] = useState<string>();
+  const [searching, setSearching] = useState(false);
+  const closeSearch = () => {
+    runtime.current?.search('');
+    setSearching(false);
+    runtime.current?.focus();
+  };
   useEffect(() => {
     const instance = createConsoleTerminalRuntime({
       host: host.current!,
@@ -50,11 +57,25 @@ export function ConsoleTerminalPane({
       hidden={!visible}
       aria-label={`终端 ${terminalId}`}
       className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded border border-border bg-background"
+      onKeyDownCapture={(event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f' && !event.nativeEvent.isComposing) {
+          event.preventDefault();
+          event.stopPropagation();
+          setSearching(true);
+        }
+      }}
     >
       <header className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1 text-xs">
         <p role="status" className="min-w-0 flex-1 truncate text-muted-foreground" title={status}>
           {status}
         </p>
+        <button
+          type="button"
+          className={buttonClass('ghost')}
+          onClick={() => (searching ? closeSearch() : setSearching(true))}
+        >
+          查找
+        </button>
         <button type="button" className={buttonClass('ghost')} onClick={() => void runtime.current?.copy()}>
           复制
         </button>
@@ -62,6 +83,12 @@ export function ConsoleTerminalPane({
           粘贴
         </button>
       </header>
+      {searching && (
+        <ConsoleTerminalSearch
+          find={(text, backwards) => runtime.current?.search(text, backwards) ?? false}
+          close={closeSearch}
+        />
+      )}
       <div ref={host} className="min-h-0 min-w-0 flex-1 overflow-hidden px-1 pt-1" />
       {visible && paste !== undefined && (
         <TerminalPasteDialog

@@ -4,6 +4,7 @@
 // 绝对路径 + 分隔符统一 + Windows 大小写不敏感。这里不调用它，
 // 因为归属裁决必须是同步纯函数，而 sameSessionDirectory 会 realpath 访问磁盘。
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Workspace } from '@agentdeck/shared';
 
 /** 归一后的绝对路径；separator 用于判断「父目录 + 分隔符」前缀，避免 demo 匹配到 demo-2。 */
@@ -86,6 +87,35 @@ export function parseWorkspaceUris(raw: string): string[] {
     .split(/[\r\n;]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+/** 只提供唯一的本机目录候选，不从不可解析信息或网络地址生成项目路径。 */
+export function nativeSessionDirectory(input: { cwd?: string; workspaceUris?: string }): string | undefined {
+  const candidates = input.cwd
+    ? [input.cwd]
+    : parseWorkspaceUris(input.workspaceUris ?? '').map(directoryCandidateFromUri);
+  const paths = new Map<string, string>();
+  for (const value of candidates) {
+    if (!value || !isLocalAbsoluteDirectory(value)) return undefined;
+    const resolved = path.resolve(value);
+    paths.set(process.platform === 'win32' ? resolved.toLowerCase() : resolved, resolved);
+  }
+  return paths.size === 1 ? [...paths.values()][0] : undefined;
+}
+
+function directoryCandidateFromUri(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'file:' || (url.hostname && url.hostname !== 'localhost')) return undefined;
+    return fileURLToPath(url);
+  } catch {
+    return undefined;
+  }
+}
+function isLocalAbsoluteDirectory(value: string): boolean {
+  if (/[\r\n\0]/.test(value) || value.startsWith('\\\\') || value.startsWith('//')) return false;
+  // Windows 的 /demo 是当前盘符根路径；不能猜测用户原会话的盘符。
+  return process.platform === 'win32' ? WINDOWS_DRIVE.test(value) : path.isAbsolute(value);
 }
 
 /**

@@ -22,20 +22,26 @@ const API_PREFIXES = ['/api/', '/internal', '/ws', '/auth'];
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({ logger: false, bodyLimit: 1024 * 1024 });
-  await app.register(fastifyWebsocket, { options: { maxPayload: 1024 * 1024 } });
+  try {
+    await app.register(fastifyWebsocket, { options: { maxPayload: 1024 * 1024 } });
 
-  registerSecurity(app, { token: deps.token, port: deps.port, devOrigin: deps.devOrigin });
-  registerAuthRoute(app, deps.token);
-  await deps.routes?.(app);
+    registerSecurity(app, { token: deps.token, port: deps.port, devOrigin: deps.devOrigin });
+    registerAuthRoute(app, deps.token);
+    await deps.routes?.(app);
 
-  if (deps.webDir && existsSync(deps.webDir)) {
-    await app.register(fastifyStatic, { root: deps.webDir });
-    // 前端路由回退到 index.html；接口路径保持 404
-    app.setNotFoundHandler((req, reply) => {
-      const path = req.url.split('?', 1)[0]!;
-      if (req.method === 'GET' && !API_PREFIXES.some((p) => path.startsWith(p))) return reply.sendFile('index.html');
-      return reply.code(404).send({ message: '未找到' });
-    });
+    if (deps.webDir && existsSync(deps.webDir)) {
+      await app.register(fastifyStatic, { root: deps.webDir });
+      // 前端路由回退到 index.html；接口路径保持 404
+      app.setNotFoundHandler((req, reply) => {
+        const path = req.url.split('?', 1)[0]!;
+        if (req.method === 'GET' && !API_PREFIXES.some((p) => path.startsWith(p))) return reply.sendFile('index.html');
+        return reply.code(404).send({ message: '未找到' });
+      });
+    }
+    return app;
+  } catch (error) {
+    // 构造阶段还没有把实例交给调用方；必须在这里触发已注册资源的关闭钩子。
+    await app.close().catch(() => undefined);
+    throw error;
   }
-  return app;
 }
