@@ -1,5 +1,5 @@
 import { Menu, MenuButton, MenuItem, useMenuStore } from '@ariakit/react';
-import { ChevronRight, FolderPlus, LoaderCircle, MoreHorizontal, Plus } from 'lucide-react';
+import { ChevronRight, FolderPlus, Link2, LoaderCircle, MoreHorizontal, Plus, Server } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { AgentKind, SessionSummary, Workspace } from '@agentdeck/shared';
 import { AGENT_LABELS } from '../features/chat/AgentControls';
@@ -17,6 +17,8 @@ export type SidebarProps = {
   onNewSession?(projectId: string, agent: AgentKind): void;
   onSelectProject?(projectId: string): void;
   onSelectSession?(projectId: string, session: SessionSummary): void;
+  /** 绑定或修改服务器；不传时不显示绑定入口。 */
+  onBindServer?(project: Workspace): void;
   /** 会话仍在读取时不要显示「暂无会话」，否则会把加载中误报成空列表。 */
   loadingSessions?: boolean;
   /** 测试与外部导航使用；不传时按 zustand 里的当前项目高亮。 */
@@ -159,6 +161,7 @@ function ProjectItem({
   toggle,
   selectSession,
   manageSession,
+  onBindServer,
 }: {
   project: Workspace;
   sessions: SessionSummary[];
@@ -169,6 +172,7 @@ function ProjectItem({
   toggle(): void;
   selectSession?: (session: SessionSummary) => void;
   manageSession?: (session: SessionSummary) => void;
+  onBindServer?(project: Workspace): void;
 }) {
   const groups = sessionGroups(sessions);
   return (
@@ -186,11 +190,32 @@ function ProjectItem({
           className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`}
         />
         <span className="min-w-0 flex-1 truncate font-medium">{project.name}</span>
+        {project.server && (
+          <span className="shrink-0" title={`已绑定服务器 ${project.server}`}>
+            <Server aria-hidden className="size-3 text-accent" />
+          </span>
+        )}
         <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{sessions.length}</span>
       </button>
-      <p className="truncate pl-7 font-mono text-[10px] leading-4 text-muted-foreground/80" title={project.dir}>
-        {project.dir}
-      </p>
+      <div className="flex min-w-0 items-center gap-1 pl-7">
+        <p
+          className="min-w-0 flex-1 truncate font-mono text-[10px] leading-4 text-muted-foreground/80"
+          title={project.dir}
+        >
+          {project.dir}
+        </p>
+        {onBindServer && (
+          <button
+            type="button"
+            aria-label={project.server ? `修改“${project.name}”的服务器绑定` : `给“${project.name}”绑定服务器`}
+            title={project.server ? '修改服务器绑定' : '绑定服务器'}
+            className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={() => onBindServer(project)}
+          >
+            <Link2 aria-hidden className="size-3" />
+          </button>
+        )}
+      </div>
       {expanded && (
         <div className="mt-1 mb-2 space-y-1 pl-2">
           {groups.length === 0 ? (
@@ -306,6 +331,7 @@ export function Sidebar({
   onNewSession,
   onSelectProject,
   onSelectSession,
+  onBindServer,
   loadingSessions = false,
   currentProjectId,
 }: SidebarProps) {
@@ -396,6 +422,7 @@ export function Sidebar({
                 toggle={() => toggle(project.id)}
                 selectSession={onSelectSession ? (session) => onSelectSession(project.id, session) : undefined}
                 manageSession={setManaging}
+                onBindServer={onBindServer}
               />
             ))}
           </ul>
