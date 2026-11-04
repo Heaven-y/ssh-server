@@ -6,8 +6,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'electron-vite';
 import type { Plugin } from 'vite';
+import webConfig from '../web/vite.config';
 
 const projectRoot = fileURLToPath(new URL('.', import.meta.url));
+const webRoot = path.resolve(projectRoot, '../web');
 
 /** 运行时依赖：与 apps/server 的 package.json 保持一致，另加 Electron 自身。 */
 const MAIN_EXTERNALS = [
@@ -25,20 +27,22 @@ const MAIN_EXTERNALS = [
 
 /** 后端在模块加载时读取 remote-helper.py，打包后要放到与主进程入口同级的目录。 */
 function copyRemoteHelper(): Plugin {
+  const source = path.resolve(projectRoot, '../server/src/remote-files/remote-helper.py');
   return {
     name: 'agentdeck-copy-remote-helper',
-    async closeBundle() {
+    buildStart() {
+      this.addWatchFile(source);
+    },
+    async writeBundle() {
       const target = path.join(projectRoot, 'out/main');
       await mkdir(target, { recursive: true });
-      await copyFile(
-        path.resolve(projectRoot, '../server/src/remote-files/remote-helper.py'),
-        path.join(target, 'remote-helper.py'),
-      );
+      // 在 closeBundle 触发 Electron 重启前完成复制。
+      await copyFile(source, path.join(target, 'remote-helper.py'));
     },
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   main: {
     build: {
       rollupOptions: {
@@ -58,4 +62,13 @@ export default defineConfig({
       },
     },
   },
-});
+  // 开发窗口直接读取 Vite 源码服务；正式网页仍由 web workspace 单独构建和打包。
+  renderer:
+    command === 'serve'
+      ? {
+          ...webConfig,
+          root: webRoot,
+          build: { rolldownOptions: { input: path.join(webRoot, 'index.html') } },
+        }
+      : undefined,
+}));

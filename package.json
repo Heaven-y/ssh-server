@@ -26,7 +26,7 @@
     "record:desktop": "node --import tsx scripts/packaging/record.ts",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run docs:check && npm run dup && npm run build:desktop && npm run coverage",
     "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev -w @agentdeck/server\" \"npm run dev -w @agentdeck/web\"",
-    "dev:desktop": "npm run build -w @agentdeck/web && npm run dev -w @agentdeck/desktop",
+    "dev:desktop": "npm run dev -w @agentdeck/desktop",
     "start": "npm run build -w @agentdeck/web && npm run start -w @agentdeck/server"
   },
   "devDependencies": {

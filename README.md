@@ -27,7 +27,7 @@ npm.cmd ci
 npm.cmd run dev:desktop
 ```
 
-桌面开发入口会先构建前端，再打开 Electron 窗口。浏览器开发可运行 `npm.cmd run dev`，生产式本机服务可运行 `npm.cmd start`。本地打包、安装与卸载说明见[本地安装指南](docs/guides/local-installation.md)，环境变量和隔离验证方式见[开发指南](docs/guides/dev-environment.md)。
+桌面开发入口直接加载 Vite 页面，界面和样式保存后热更新；后端或桌面主进程变化会自动重启应用。浏览器开发可运行 `npm.cmd run dev`，生产式本机服务可运行 `npm.cmd start`。本地打包、安装与卸载说明见[本地安装指南](docs/guides/local-installation.md)，环境变量和隔离验证方式见[开发指南](docs/guides/dev-environment.md)。
 
 ## 使用边界
 

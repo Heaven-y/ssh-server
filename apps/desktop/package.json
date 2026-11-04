@@ -7,7 +7,7 @@
   "author": "AgentDeck contributors",
   "main": "out/main/main.js",
   "scripts": {
-    "dev": "node ../../node_modules/electron/install.js && electron-vite dev",
+    "dev": "node ../../node_modules/electron/install.js && electron-vite dev --watch",
     "build": "electron-vite build",
     "start": "node ../../node_modules/electron/install.js && electron-vite preview",
     "package": "node ../../node_modules/electron/install.js && electron-builder --config electron-builder.yml --win nsis portable --x64 --publish never",
