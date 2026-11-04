@@ -1,13 +1,15 @@
 import { Menu, MenuButton, MenuItem, useMenuStore } from '@ariakit/react';
-import { ChevronRight, FolderPlus, Link2, LoaderCircle, MoreHorizontal, Plus, Server } from 'lucide-react';
+import { ChevronRight, FolderPlus, Link2, Plus, Server } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { AgentKind, SessionSummary, Workspace } from '@agentdeck/shared';
 import { AGENT_LABELS } from '../features/chat/AgentControls';
 import { sessionActionKey, useChat } from '../features/chat/chat-store';
 import { AgentBadge } from '../features/sessions/AgentBadge';
-import { SessionActionsDialog } from '../features/sessions/SessionActionsDialog';
+import { ProjectSessionRow as SessionRow } from '../features/sessions/ProjectSessionRow';
+import { ProjectSessionArchive } from '../features/sessions/ProjectSessionArchive';
+import { ProjectSessionDialog, type ProjectSessionSelection } from '../features/sessions/ProjectSessionDialog';
+import type { SessionDialogAction } from '../features/sessions/SessionMenu';
 import { buttonClass } from '../ui/styles';
-import { relativeTime } from '../ui/relative-time';
 
 export type SidebarProps = {
   projects: Workspace[];
@@ -26,14 +28,6 @@ export type SidebarProps = {
 };
 
 const AGENT_ORDER: AgentKind[] = ['claude', 'codex', 'antigravity'];
-const fullTime = new Intl.DateTimeFormat('zh-CN', {
-  year: 'numeric',
-  month: 'numeric',
-  day: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-});
-
 function sessionGroups(sessions: SessionSummary[]) {
   return AGENT_ORDER.map((agent) => ({
     agent,
@@ -43,91 +37,20 @@ function sessionGroups(sessions: SessionSummary[]) {
   })).filter((group) => group.sessions.length > 0);
 }
 
-function SessionRow({
-  session,
-  active,
-  select,
-  manage,
-}: {
-  session: SessionSummary;
-  active: boolean;
-  select?: () => void;
-  manage?: () => void;
-}) {
-  const updated = new Date(session.updatedAt);
-  const valid = !Number.isNaN(updated.getTime());
-  const time = valid ? relativeTime(updated.getTime()) : '';
-  const title = session.title || '未命名会话';
-  const label = `${title} · ${AGENT_LABELS[session.agent]}${time ? ` · ${time}` : ''}${session.running ? ' · 运行中' : ''}`;
-  const content = (
-    <>
-      {session.running && (
-        <LoaderCircle aria-hidden className="size-3.5 shrink-0 motion-safe:animate-spin text-accent" />
-      )}
-      <span className="min-w-0 flex-1 truncate leading-5">{title}</span>
-      {time && (
-        <span
-          className="shrink-0 text-[11px] tabular-nums text-muted-foreground group-hover:hidden group-focus-within:hidden"
-          title={fullTime.format(updated)}
-        >
-          {time}
-        </span>
-      )}
-    </>
-  );
-  const className =
-    'flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md border-l-2 border-transparent px-2 py-1 text-left text-[13px] text-muted-foreground transition-colors aria-[current]:border-accent aria-[current]:bg-muted aria-[current]:text-foreground';
-  // 管理按钮不能嵌在会话按钮里（HTML 不允许按钮套按钮），所以两者是同一行里的兄弟节点。
-  const manageButton = manage && (
-    <button
-      type="button"
-      aria-label={`管理会话：${title}`}
-      title="管理会话"
-      className="absolute top-1/2 right-1 hidden -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground group-hover:block group-focus-within:block"
-      onClick={(event) => {
-        event.stopPropagation();
-        manage();
-      }}
-    >
-      <MoreHorizontal aria-hidden className="size-3.5" />
-    </button>
-  );
-  if (!select)
-    return (
-      <li className={`${className} cursor-default`} title={label}>
-        {content}
-        {manageButton}
-      </li>
-    );
-  return (
-    <li className="group relative">
-      <button
-        type="button"
-        aria-current={active ? 'true' : undefined}
-        aria-label={label}
-        title={label}
-        className={`${className} hover:bg-muted/60 hover:text-foreground`}
-        onClick={select}
-      >
-        {content}
-      </button>
-      {manageButton}
-    </li>
-  );
-}
-
 function SessionGroup({
   agent,
+  workspaceId,
   sessions,
   activeKey,
   select,
   manage,
 }: {
   agent: AgentKind;
+  workspaceId: string;
   sessions: SessionSummary[];
   activeKey: string;
   select?: (session: SessionSummary) => void;
-  manage?: (session: SessionSummary) => void;
+  manage?: (session: SessionSummary, action: SessionDialogAction, archived: boolean) => void;
 }) {
   return (
     <section aria-label={`${AGENT_LABELS[agent]} 会话`} className="space-y-0.5">
@@ -141,9 +64,10 @@ function SessionGroup({
           <SessionRow
             key={session.sessionId}
             session={session}
+            workspaceId={workspaceId}
             active={activeKey === sessionActionKey(session.projectId ?? '', session)}
             select={select ? () => select(session) : undefined}
-            manage={manage ? () => manage(session) : undefined}
+            manage={manage ? (action) => manage(session, action, false) : undefined}
           />
         ))}
       </ul>
@@ -171,7 +95,7 @@ function ProjectItem({
   activeKey: string;
   toggle(): void;
   selectSession?: (session: SessionSummary) => void;
-  manageSession?: (session: SessionSummary) => void;
+  manageSession: (session: SessionSummary, action: SessionDialogAction, archived: boolean) => void;
   onBindServer?(project: Workspace): void;
 }) {
   const groups = sessionGroups(sessions);
@@ -225,6 +149,7 @@ function ProjectItem({
               <SessionGroup
                 key={group.agent}
                 agent={group.agent}
+                workspaceId={project.id}
                 sessions={group.sessions}
                 activeKey={activeKey}
                 select={selectSession}
@@ -232,6 +157,7 @@ function ProjectItem({
               />
             ))
           )}
+          <ProjectSessionArchive workspaceId={project.id} projectName={project.name} manage={manageSession} />
         </div>
       )}
     </li>
@@ -344,8 +270,8 @@ export function Sidebar({
   const defaultExpanded = selectedProject ?? projects[0]?.id;
   const isExpanded = (projectId: string) => toggled[projectId] ?? projectId === defaultExpanded;
   const [showOtherSessions, setShowOtherSessions] = useState(false);
-  // 会话管理（重命名/置顶/分叉/删除）复用既有的动作对话框，不另写一套。
-  const [managing, setManaging] = useState<SessionSummary | undefined>(undefined);
+  // 原生管理的项目身份固定取自被点击的行，界面选择变化不改写目标。
+  const [managing, setManaging] = useState<ProjectSessionSelection | undefined>(undefined);
   const activeKey = useMemo(
     () =>
       chatSessionId && chatProjectId
@@ -421,7 +347,9 @@ export function Sidebar({
                 activeKey={activeKey}
                 toggle={() => toggle(project.id)}
                 selectSession={onSelectSession ? (session) => onSelectSession(project.id, session) : undefined}
-                manageSession={setManaging}
+                manageSession={(session, action, archived) =>
+                  setManaging({ workspaceId: project.id, session, action, archived })
+                }
                 onBindServer={onBindServer}
               />
             ))}
@@ -444,13 +372,16 @@ export function Sidebar({
         </label>
       </footer>
       {managing && (
-        <SessionActionsDialog
-          workspaceId={managing.projectId ?? ''}
-          session={managing}
-          archived={false}
-          action="rename"
-          onClose={() => setManaging(undefined)}
-          onCompleted={() => setManaging(undefined)}
+        <ProjectSessionDialog
+          key={JSON.stringify([
+            managing.workspaceId,
+            managing.session.agent,
+            managing.session.sessionId,
+            managing.action,
+          ])}
+          selected={managing}
+          sessions={projectSessions[managing.workspaceId] ?? []}
+          close={() => setManaging(undefined)}
         />
       )}
     </nav>

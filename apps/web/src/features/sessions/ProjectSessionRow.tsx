@@ -1,0 +1,113 @@
+import { LoaderCircle } from 'lucide-react';
+import type { SessionSummary } from '@agentdeck/shared';
+import { AGENT_LABELS } from '../chat/AgentControls';
+import { relativeTime } from '../../ui/relative-time';
+import { SessionMenu, type SessionDialogAction } from './SessionMenu';
+import { useSessionBusy } from './use-session-busy';
+
+const fullTime = new Intl.DateTimeFormat('zh-CN', {
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+function rowDetails(session: SessionSummary, running: boolean) {
+  const updated = new Date(session.updatedAt);
+  const time = Number.isNaN(updated.getTime()) ? '' : relativeTime(updated.getTime());
+  const title = session.title || '未命名会话';
+  return {
+    updated,
+    time,
+    title,
+    label: `${title} · ${AGENT_LABELS[session.agent]}${time ? ` · ${time}` : ''}${running ? ' · 运行中' : ''}`,
+  };
+}
+
+function Management({
+  session,
+  archived,
+  disabled,
+  choose,
+}: {
+  session: SessionSummary;
+  archived: boolean;
+  disabled: boolean;
+  choose(action: SessionDialogAction): void;
+}) {
+  return (
+    <SessionMenu
+      session={session}
+      archived={archived}
+      pinned={false}
+      localActions={false}
+      disabled={disabled}
+      choose={(action) => {
+        if (action !== 'pin' && action !== 'copy') choose(action);
+      }}
+    />
+  );
+}
+
+function RowContent({ session, running }: { session: SessionSummary; running: boolean }) {
+  const { updated, time, title } = rowDetails(session, running);
+  return (
+    <>
+      {running && <LoaderCircle aria-hidden className="size-3.5 shrink-0 motion-safe:animate-spin text-accent" />}
+      <span className="min-w-0 flex-1 truncate leading-5">{title}</span>
+      {time && (
+        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground" title={fullTime.format(updated)}>
+          {time}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** 普通和归档行复用原生身份；未归属会话只展示摘要，没有写入口。 */
+export function ProjectSessionRow({
+  session,
+  workspaceId,
+  active,
+  archived = false,
+  select,
+  manage,
+}: {
+  session: SessionSummary;
+  workspaceId?: string;
+  active: boolean;
+  archived?: boolean;
+  select?: () => void;
+  manage?(action: SessionDialogAction): void;
+}) {
+  const { pending, running } = useSessionBusy(workspaceId ?? '', session);
+  const { label } = rowDetails(session, running);
+  const content = <RowContent session={session} running={running} />;
+  const className =
+    'flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md border-l-2 border-transparent px-2 py-1 text-left text-[13px] text-muted-foreground transition-colors aria-[current]:border-accent aria-[current]:bg-muted aria-[current]:text-foreground';
+  return (
+    <li className="flex min-w-0 items-center gap-0.5">
+      {select && !archived ? (
+        <button
+          type="button"
+          aria-current={active ? 'true' : undefined}
+          aria-label={label}
+          title={label}
+          className={`${className} hover:bg-muted/60 hover:text-foreground`}
+          disabled={pending}
+          onClick={select}
+        >
+          {content}
+        </button>
+      ) : (
+        <div className={className} title={archived ? `${label} · 已归档，恢复后继续` : label}>
+          {content}
+        </div>
+      )}
+      {workspaceId && manage && (
+        <Management session={session} archived={archived} disabled={pending || running} choose={manage} />
+      )}
+    </li>
+  );
+}

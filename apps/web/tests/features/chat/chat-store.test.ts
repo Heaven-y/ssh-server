@@ -249,10 +249,14 @@ describe('原生会话管理状态', () => {
   });
 
   it.each(removeActions)('$action 成功时清空仍匹配的当前对话并刷新来源列表', async (input) => {
+    useChat.getState().setModel('old-model');
+    useChat.getState().setReasoningEffort('high');
     vi.spyOn(api, 'sessionAction').mockResolvedValue(undefined);
     await expect(useChat.getState().manageSession('w1', session, input)).resolves.toBe(true);
     expect(useChat.getState()).toMatchObject({ workspaceId: 'w1', agent: 'codex', sessionId: undefined, items: [] });
     expect(useChat.getState().sessionOperations[key]).toBeUndefined();
+    expect(useChat.getState().modelOverrides.codex).toBe('');
+    expect(useChat.getState().reasoningEfforts.codex).toBe('');
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.sessions('w1', 'codex') });
   });
 

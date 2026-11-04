@@ -7,6 +7,7 @@ import { buttonClass, inputClass } from '../../ui/styles';
 import { AGENT_LABELS } from '../chat/AgentControls';
 import { sessionActionKey, useChat } from '../chat/chat-store';
 import { useSessionModel } from '../chat/use-session-model';
+import { useSessionBusy } from './use-session-busy';
 
 type Action = SessionActionInput['action'];
 const ACTION_LABELS: Record<Action | 'fork', string> = {
@@ -159,13 +160,7 @@ export function SessionActionsDialog({ workspaceId, session, archived, action, o
   const { description } = useSessionModel(workspaceId, session);
   const operation = useChat((state) => state.sessionOperations[key]);
   const manage = useChat((state) => state.manageSession);
-  const running = useChat(
-    (state) =>
-      state.workspaceId === workspaceId &&
-      state.agent === session.agent &&
-      state.sessionId === session.sessionId &&
-      state.running,
-  );
+  const { running } = useSessionBusy(workspaceId, session);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;

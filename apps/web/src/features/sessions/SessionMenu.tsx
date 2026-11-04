@@ -24,19 +24,27 @@ export function SessionMenu({
   pinned,
   disabled,
   choose,
+  localActions = true,
 }: {
   session: SessionSummary;
   archived: boolean;
   pinned: boolean;
   disabled: boolean;
   choose(action: SessionMenuAction): void;
+  /** 旧会话页可保留本地操作；项目侧栏只提供原生动作。 */
+  localActions?: boolean;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useMenuStore({ placement: 'bottom-start' });
   const visible: SessionMenuAction[] = [];
-  if (!archived) visible.push('rename', 'pin', 'copy', 'fork');
+  if (!archived) {
+    visible.push('rename');
+    if (localActions) visible.push('pin', 'copy');
+    visible.push('fork');
+  }
   if (session.agent === 'codex') visible.push(archived ? 'unarchive' : 'archive');
   visible.push('delete');
+  if (session.agent === 'antigravity') return null;
   return (
     <>
       <MenuButton

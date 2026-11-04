@@ -142,6 +142,9 @@ function sameSession(current: ChatState, workspaceId: string, session: SessionRe
     current.workspaceId === workspaceId && current.agent === session.agent && current.sessionId === session.sessionId
   );
 }
+function isSessionRunning(current: ChatState, workspaceId: string, session: SessionRef): boolean {
+  return sameSession(current, workspaceId, session) && (current.running || !!current.pendingClientTurnId);
+}
 export function managementPending(current: ChatState): boolean {
   if (!current.workspaceId || !current.sessionId) return false;
   return (
@@ -330,7 +333,7 @@ export const useChat = create<ChatState>()((set, get) => ({
     const key = sessionActionKey(workspaceId, session);
     const current = get();
     if (current.sessionOperations[key]?.pending) return false;
-    if (sameSession(current, workspaceId, session) && current.running) {
+    if (isSessionRunning(current, workspaceId, session)) {
       set({
         sessionOperations: {
           ...current.sessionOperations,
@@ -344,7 +347,12 @@ export const useChat = create<ChatState>()((set, get) => ({
       await api.sessionAction(workspaceId, session.sessionId, session.agent, input);
       if ((input.action === 'delete' || input.action === 'archive') && sameSession(get(), workspaceId, session)) {
         const conversationVersion = changeSelection();
-        set({ ...emptyConversation, conversationVersion });
+        set({
+          ...emptyConversation,
+          modelOverrides: { ...EMPTY_MODEL_OVERRIDES },
+          reasoningEfforts: { ...DEFAULT_REASONING_EFFORTS },
+          conversationVersion,
+        });
       }
       const operations = { ...get().sessionOperations };
       delete operations[key];

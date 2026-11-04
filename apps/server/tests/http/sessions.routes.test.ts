@@ -1,3 +1,4 @@
+import { request } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -121,7 +122,7 @@ describe('会话接口', () => {
     { method: 'GET' as const, url: '/api/projects/w1/sessions/gemini/s1' },
     {
       method: 'POST' as const,
-      url: '/api/workspaces/w1/sessions/s1/actions',
+      url: '/api/projects/w1/sessions/unknown/s1/actions',
       payload: { action: 'rename', title: '新名称' },
     },
   ])('缺Agent或Agent非法时拒绝 $method $url，不能默认为Claude', async (request) => {
@@ -136,7 +137,7 @@ describe('会话接口', () => {
 
   it('会话管理校验确认与名称，并按原生身份加锁', async () => {
     const { app, codex, withIdleSession } = setup();
-    const url = '/api/workspaces/w1/sessions/s1/actions?agent=codex';
+    const url = '/api/projects/w1/sessions/codex/s1/actions';
     for (const payload of [
       { action: 'delete' },
       { action: 'delete', confirmed: false },
@@ -154,11 +155,58 @@ describe('会话接口', () => {
     );
   });
 
+  it.each([
+    { method: 'GET' as const, url: '/api/projects/w1/sessions?agent=claude&extra=true' },
+    { method: 'GET' as const, url: '/api/projects/w1/sessions/claude/s1?agent=codex' },
+    {
+      method: 'POST' as const,
+      url: '/api/projects/w1/sessions/claude/s1/actions?agent=codex',
+      payload: { action: 'rename', title: '新名称' },
+    },
+  ])('未知查询参数在原生访问前被拒绝且禁止缓存 $url', async (input) => {
+    const { app, api, codex, withIdleSession } = setup();
+    const response = await app.inject(input);
+    expect(response.statusCode).toBe(400);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(api.list).not.toHaveBeenCalled();
+    expect(api.messages).not.toHaveBeenCalled();
+    expect(api.rename).not.toHaveBeenCalled();
+    expect(codex.mutate).not.toHaveBeenCalled();
+    expect(withIdleSession).not.toHaveBeenCalled();
+  });
+
+  it.each(['{"action":', ''])('动作 JSON 无法解析时仍禁止缓存，不触发原生写入：%j', async (payload) => {
+    const { app, api, withIdleSession } = setup();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/w1/sessions/claude/s1/actions',
+      headers: { 'content-type': 'application/json' },
+      payload,
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(api.info).not.toHaveBeenCalled();
+    expect(withIdleSession).not.toHaveBeenCalled();
+  });
+
+  it('管理操作使用路径中的项目目录，跨项目删除被原生归属校验拒绝', async () => {
+    const { app, api } = setup();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/w2/sessions/claude/s1/actions',
+      payload: { action: 'delete', confirmed: true },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(api.info).toHaveBeenCalledWith('s1', other.dir);
+    expect(api.delete).not.toHaveBeenCalled();
+  });
+
   it('运行冲突返回409，原生异常匿名返回且不会误报管理成功', async () => {
     const { app, codex, withIdleSession } = setup();
     const request = {
       method: 'POST' as const,
-      url: '/api/workspaces/w1/sessions/s1/actions?agent=codex',
+      url: '/api/projects/w1/sessions/codex/s1/actions',
       payload: { action: 'archive' },
     };
     withIdleSession.mockRejectedValueOnce(new SessionError(409, 'session_busy', '会话正在运行'));
@@ -180,7 +228,7 @@ describe('会话接口', () => {
       (
         await app.inject({
           method: 'POST',
-          url: '/api/workspaces/w1/sessions/s1/actions?agent=claude',
+          url: '/api/projects/w1/sessions/claude/s1/actions',
           payload: { action: 'archive' },
         })
       ).statusCode,
@@ -264,26 +312,58 @@ describe('会话接口', () => {
     expect(replay.headers['cache-control']).toBe('no-store');
   });
 
-  it('保留旧读取路径作为转发别名，结果与项目路径一致', async () => {
-    const { app, api } = setup();
-    const listViaOld = await app.inject('/api/workspaces/w1/sessions?agent=claude');
-    expect(listViaOld.statusCode).toBe(200);
-    expect(listViaOld.headers['cache-control']).toBe('no-store');
-    expect(listViaOld.json()).toEqual((await app.inject('/api/projects/w1/sessions?agent=claude')).json());
-    expect(api.list).toHaveBeenCalledWith(ws.dir);
-
-    const historyViaOld = await app.inject('/api/workspaces/w1/sessions/s1/events?agent=claude');
-    expect(historyViaOld.statusCode).toBe(200);
-    expect(historyViaOld.json().session).toMatchObject({ agent: 'claude', sessionId: 's1' });
-    expect((await app.inject('/api/workspaces/w1/sessions/s1/events?agent=gemini')).statusCode).toBe(400);
+  it('旧会话读取、动作和分叉路径全部删除，不保留兼容别名', async () => {
+    const { app, api, codex } = setup();
+    const requests = [
+      { method: 'GET' as const, url: '/api/workspaces/w1/sessions?agent=claude' },
+      { method: 'GET' as const, url: '/api/workspaces/w1/sessions/s1/events?agent=claude' },
+      {
+        method: 'POST' as const,
+        url: '/api/workspaces/w1/sessions/s1/actions?agent=codex',
+        payload: { action: 'delete', confirmed: true },
+      },
+      { method: 'POST' as const, url: '/api/workspaces/w1/sessions/s1/fork?agent=claude', payload: {} },
+    ];
+    for (const request of requests) expect((await app.inject(request)).statusCode).toBe(404);
+    expect(api.list).not.toHaveBeenCalled();
+    expect(api.messages).not.toHaveBeenCalled();
+    expect(api.fork).not.toHaveBeenCalled();
+    expect(codex.mutate).not.toHaveBeenCalled();
   });
 
   it('项目不存在 404，会话 id 与 agent 不合法 400', async () => {
     const { app } = setup();
     expect((await app.inject({ method: 'GET', url: '/api/projects/nope/sessions?agent=claude' })).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: '/api/projects/nope/sessions/claude/s1' })).statusCode).toBe(404);
-    expect((await app.inject({ method: 'GET', url: '/api/projects/w1/sessions/claude/a.b' })).statusCode).toBe(400);
+    const invalid = await app.inject({ method: 'GET', url: '/api/projects/w1/sessions/claude/a.b' });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.headers['cache-control']).toBe('no-store');
     expect((await app.inject('/api/projects/w1/sessions?agent=unknown')).statusCode).toBe(400);
+  });
+
+  it.each(['list', 'read'] as const)('读取 %s 时 HTTP 断开会取消原生读取', async (operation) => {
+    const { app, codex } = setup();
+    let nativeSignal: AbortSignal | undefined;
+    const waitUntilAbort = (signal?: AbortSignal) => {
+      nativeSignal = signal;
+      return new Promise<never>((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(new Error('fixture-cancelled')), { once: true });
+      });
+    };
+    if (operation === 'list') vi.mocked(codex.list).mockImplementationOnce((_dir, signal) => waitUntilAbort(signal));
+    else vi.mocked(codex.read).mockImplementationOnce((_id, _dir, signal) => waitUntilAbort(signal));
+    const origin = await app.listen({ host: '127.0.0.1', port: 0 });
+    const url = operation === 'list' ? '/api/projects/w1/sessions?agent=codex' : '/api/projects/w1/sessions/codex/s1';
+    const client = request(`${origin}${url}`);
+    client.on('error', () => undefined);
+    client.end();
+    try {
+      await vi.waitFor(() => expect(nativeSignal).toBeDefined());
+      client.destroy();
+      await vi.waitFor(() => expect(nativeSignal?.aborted).toBe(true));
+    } finally {
+      client.destroy();
+    }
   });
 
   it('原生列表过滤其他工作区，历史显示最后实际模型，续接校验拒绝错误身份', async () => {

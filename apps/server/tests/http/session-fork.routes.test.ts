@@ -90,7 +90,7 @@ function setup() {
   const post = (agent: AgentKind, payload: unknown = {}) =>
     app.inject({
       method: 'POST',
-      url: `/api/workspaces/w1/sessions/${sourceId}/fork?agent=${agent}`,
+      url: `/api/projects/w1/sessions/${agent}/${sourceId}/fork`,
       payload: JSON.stringify(payload),
       headers: { 'content-type': 'application/json' },
     });
@@ -146,7 +146,7 @@ describe('原生会话分叉 HTTP 契约', () => {
     const { app, codex, api } = setup();
     const response = await app.inject({
       method: 'POST',
-      url: `/api/workspaces/w1/sessions/${sourceId}/fork?agent=codex`,
+      url: `/api/projects/w1/sessions/codex/${sourceId}/fork`,
       headers: { 'content-type': 'application/json' },
       payload,
     });
@@ -157,11 +157,11 @@ describe('原生会话分叉 HTTP 契约', () => {
   });
 
   it.each([
-    `/api/workspaces/w1/sessions/${sourceId}/fork`,
-    `/api/workspaces/w1/sessions/${sourceId}/fork?agent=unknown`,
-    `/api/workspaces/w1/sessions/${sourceId}/fork?agent=codex&path=elsewhere`,
-    '/api/workspaces/w1/sessions/a.b/fork?agent=claude',
-  ])('拒绝缺失 Agent 或非法路由参数 %s', async (url) => {
+    `/api/projects/w1/sessions/claude/${sourceId}/fork?agent=codex`,
+    `/api/projects/w1/sessions/unknown/${sourceId}/fork`,
+    `/api/projects/w1/sessions/codex/${sourceId}/fork?path=elsewhere`,
+    '/api/projects/w1/sessions/claude/a.b/fork',
+  ])('拒绝非法路径或额外查询参数 %s', async (url) => {
     const { app, codex, api } = setup();
     const response = await app.inject({ method: 'POST', url, payload: {} });
     expect(response.statusCode).toBe(400);
@@ -174,7 +174,7 @@ describe('原生会话分叉 HTTP 契约', () => {
     const { app, codex, api } = setup();
     const response = await app.inject({
       method: 'POST',
-      url: `/api/workspaces/missing/sessions/${sourceId}/fork?agent=claude`,
+      url: `/api/projects/missing/sessions/claude/${sourceId}/fork`,
       payload: {},
     });
     expect(response.statusCode).toBe(404);
@@ -266,7 +266,7 @@ describe('原生会话分叉 HTTP 契约', () => {
     codex.fork.mockImplementationOnce(() => gate.promise);
     const origin = await app.listen({ host: '127.0.0.1', port: 0 });
     const closed = deferred<void>();
-    const client = request(`${origin}/api/workspaces/w1/sessions/${sourceId}/fork?agent=codex`, {
+    const client = request(`${origin}/api/projects/w1/sessions/codex/${sourceId}/fork`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
     });

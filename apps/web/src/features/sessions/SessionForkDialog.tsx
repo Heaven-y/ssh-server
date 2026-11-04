@@ -7,11 +7,12 @@ import { queryKeys } from '../../lib/api';
 import { sessionActionKey, useChat } from '../chat/chat-store';
 import { AGENT_LABELS } from '../chat/AgentControls';
 import { forkSession } from './session-fork';
+import { useSessionBusy } from './use-session-busy';
 
 type Props = {
   workspaceId: string;
   /** 分叉只需要原生身份与展示标题，列表行与会话头都能直接传。 */
-  session: SessionRef & { title: string };
+  session: SessionRef & { title: string; running?: boolean };
   pointId?: string;
   onClose(): void;
 };
@@ -19,13 +20,7 @@ export function SessionForkDialog({ workspaceId, session, pointId, onClose }: Pr
   const client = useQueryClient();
   const key = sessionActionKey(workspaceId, session);
   const operation = useChat((state) => state.sessionOperations[key]);
-  const running = useChat(
-    (state) =>
-      state.workspaceId === workspaceId &&
-      state.agent === session.agent &&
-      state.sessionId === session.sessionId &&
-      state.running,
-  );
+  const { running } = useSessionBusy(workspaceId, session);
   const busy = operation?.pending === true;
   const mounted = useRef(true);
   useEffect(() => {
@@ -49,7 +44,9 @@ export function SessionForkDialog({ workspaceId, session, pointId, onClose }: Pr
         <p className="text-sm leading-6">
           {pointId ? '保留截至所选位置的对话历史，创建独立会话。' : '从会话末尾创建独立会话。'}
         </p>
-        <p className="text-xs leading-6 text-muted-foreground">源会话保持不变；分叉后的对话继续使用当前项目目录。</p>
+        <p className="text-xs leading-6 text-muted-foreground">
+          源会话保持不变；分叉后的对话继续使用源会话所属项目目录。
+        </p>
         {pointId && <p className="text-xs break-all text-muted-foreground">原生分叉点：{pointId}</p>}
         {running && (
           <p role="status" className="text-sm text-warning">

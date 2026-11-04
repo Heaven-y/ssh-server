@@ -43,7 +43,7 @@ it('指定位置原生分叉仅发一次请求，复用操作锁，成功刷新�
   );
   expect(api.sessionAction).not.toHaveBeenCalled();
   expect(fetch).toHaveBeenCalledExactlyOnceWith(
-    '/api/workspaces/workspace/sessions/source/fork?agent=codex',
+    '/api/projects/workspace/sessions/codex/source/fork',
     expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ pointId: 'native-turn-1' }),
