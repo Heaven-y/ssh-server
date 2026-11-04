@@ -122,6 +122,8 @@ powershell -ExecutionPolicy Bypass -File scripts\dev\install-skills.ps1
 
 开发服务地址和环境覆盖项统一见[启动配置](../engineering/architecture.md#53-启动配置)。前端先同源握手，服务重启后需重新取得会话。不要把测试页面指向正在使用的真实配置。
 
+桌面 `dev` 和 `start` 在运行 electron-vite 前执行 Electron 官方安装器：文件完整时立即返回，缺失时从缓存恢复或下载锁定版本。仅安装 npm 包不一定已包含桌面运行文件，跳过安装脚本或下载中断会使 electron-vite 报 `Electron uninstall`。已有依赖时可在仓库根目录运行 `node node_modules/electron/install.js` 修复，再执行 `npm.cmd run dev:desktop`；无需删除整套 node_modules。首次下载需要网络，未完成下载不能只创建 path.txt 充当成功。
+
 原生配置接线脚本为 `e2e-claude-config.ts` 与 `e2e-agent-config.ts`。Codex 可通过 `--config` 与 `--codex` 指定隔离来源；只有已授权真实模型验证才追加 `--with-model`。复制认证材料必须明确指定、核对源摘要，清理只触及自身副本，不绕过策略拒绝。
 
 原生资源、插件与独立控制台的组件和服务测试使用临时目录、合成运行器或假 SSH 通道。浏览器验证覆盖真实组件布局和键盘操作；终端搜索用本机输出缓冲，不需要连接真实服务器。外部静态插件的样例与权限边界见[插件契约](../engineering/workbench-plugins.md)。
