@@ -17,7 +17,7 @@
 | 文档 | 用途 |
 |---|---|
 | [原生对话接入](engineering/native-dialogue.md) | 三 CLI 主流程的本轮边界与接口选择 |
-| [会话管理计划](superpowers/plans/2026-11-04-session-management.md) | 接通原生管理入口与统一项目会话接口 |
+| [会话管理交付记录](superpowers/plans/2026-11-04-session-management.md) | 已完成的原生管理接入、接口统一与提交锚点 |
 
 ## 维护规则
 
