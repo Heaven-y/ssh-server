@@ -24,13 +24,12 @@
 - 会话：Claude 走 Agent SDK 会话接口，Codex 走 `app-server` 的 `thread/*`，Antigravity 读本机 SQLite 摘要表；统一按 `cwd` / `workspace_uris` 裁决归属，解析不出即 `null`，界面默认隐藏。
 - 历史：`GET /api/projects/:id/sessions/:agent/:sessionId` 只读渲染；Antigravity 返回 501 `session_not_replayable` 并显示说明页。
 - 探测：`GET /api/agents/probes` 按 `--version`、`--help` 与 Codex schema 生成判断四态，不比较版本号。
-- 界面：三段式外壳、左栏项目树与会话分组、主区历史、右侧服务器面板（终端 / 资源 / 文件）、`Ctrl+K` 命令面板、深浅主题与有界尺寸记忆。服务器面板要求项目已绑定服务器，而 M1 界面还不能新建绑定，所以只有迁移过来的已绑定项目能用它。
+- 界面：三段式外壳、左栏项目树与会话分组、主区历史、右侧服务器面板（终端 / 资源 / 文件）、`Ctrl+K` 命令面板、深浅主题与有界尺寸记忆。服务器面板要求项目已绑定服务器，而 M1 界面还不能新建绑定，所以只有迁移过来的已绑定项目能用它；文件视图不含下载入口。
 - 验证：`npm run check` 覆盖类型、ESLint、格式、文档一致性、重复率与覆盖率；关键路径有单元与模块集成测试。
 
 ### M1 未交付（不要当成已完成）
 
 - 项目改名、移除与服务器绑定没有界面表单，只有接口；界面新建的项目无法绑定服务器。
-- 服务器文件下载的移除仍在计划里，代码与界面暂保留该入口。
 - 原生配置只覆盖 Claude `settings.json` 与 Codex `config.toml` 两个文件，项目级配置与 Antigravity 配置未实现。
 - 启动环境注入、服务器面板以档案为键、目录监听、Electron 壳、输入框与流式回合都未开始。
 

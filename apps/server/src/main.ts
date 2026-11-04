@@ -31,7 +31,6 @@ import { registerRemoteFileActionRoutes } from './http/remote-file-actions.route
 import { createRemoteExecutor } from './remote-files/executor';
 import { createFilePreflights } from './remote-files/preflight';
 import { createFileTasks } from './remote-files/tasks';
-import { createFileDownloads } from './remote-files/downloads';
 import { createRemoteFilesService } from './remote-files/service';
 import { registerWsRoutes } from './http/ws.routes';
 import { registerTerminalRoutes } from './http/terminal.routes';
@@ -201,7 +200,7 @@ async function main(): Promise<void> {
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
       registerProductSettingsRoutes(a, productSettings, probes);
       registerRemoteFileRoutes(a, browse);
-      registerRemoteFileActionRoutes(a, { preflights, tasks, downloads: createFileDownloads({ pool, browse }) });
+      registerRemoteFileActionRoutes(a, { preflights, tasks });
       registerWsRoutes(a, { turns });
       registerTerminalRoutes(a, { terminals, bindings: terminalBindings });
       registerResourcesRoutes(a, resources);

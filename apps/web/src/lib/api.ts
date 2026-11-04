@@ -139,8 +139,6 @@ export const api = {
       `/api/workspaces/${encodeURIComponent(id)}/remote-files/tasks/${encodeURIComponent(taskId)}/${action}`,
       { method: 'POST', body: '{}' },
     ),
-  remoteFileDownloadUrl: (id: string, sessionId: string, path: string) =>
-    `${remoteSessionsUrl(id)}/${encodeURIComponent(sessionId)}/download?${new URLSearchParams({ path })}`,
   bindRemoteBrowseTarget: (id: string, target: RemoteBrowseTarget) =>
     request<{ binding: string }>(`/api/workspaces/${encodeURIComponent(id)}/remote-files/bindings`, {
       method: 'POST',

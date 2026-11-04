@@ -20,7 +20,7 @@ function entry(filename: string, mode = 0o100644, size = 12): FileEntry {
 }
 
 /** 真实 ssh2 协议替身，只提供内存元数据；不访问远端或开发机项目文件。 */
-export async function startRemoteSftpFixture(options: { downloads?: boolean } = {}) {
+export async function startRemoteSftpFixture() {
   const home = REMOTE_HOME;
   const root = path.posix.join(home, 'projects', 'demo');
   const outside = path.posix.join(home, 'datasets');
@@ -44,12 +44,7 @@ export async function startRemoteSftpFixture(options: { downloads?: boolean } = 
     Array.from({ length: 237 }, (_, index) => entry(`sample-${String(index).padStart(3, '0')}.bin`)),
   );
   nodes.set(slow, [entry('delayed.py')]);
-  const bodies = options.downloads
-    ? new Map([
-        [path.posix.join(root, 'train.py'), Buffer.from('print(1)\nabc')],
-        [path.posix.join(root, 'weights.bin'), Buffer.alloc(4 * 1024 ** 2, 42)],
-      ])
-    : new Map<string, Buffer>();
+  const bodies = new Map<string, Buffer>();
   const peers = new Set<Connection>();
   const channels = new Set<SFTPWrapper>();
   const handles = new Set<string>();
