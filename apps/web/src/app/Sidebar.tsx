@@ -1,6 +1,6 @@
 import { Menu, MenuButton, MenuItem, useMenuStore } from '@ariakit/react';
 import { ChevronRight, FolderPlus, Link2, Plus, Server } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import type { AgentKind, SessionSummary, Workspace } from '@agentdeck/shared';
 import { AGENT_LABELS } from '../features/chat/AgentControls';
 import { sessionActionKey, useChat } from '../features/chat/chat-store';
@@ -12,6 +12,7 @@ import type { SessionDialogAction } from '../features/sessions/SessionMenu';
 import { buttonClass } from '../ui/styles';
 
 export type SidebarProps = {
+  pages?: ReactNode;
   projects: Workspace[];
   /** 按项目 id 归集的会话；未归属会话（projectId === null）可以混在其中，由侧栏裁决。 */
   sessionsByProject: Record<string, SessionSummary[]>;
@@ -251,6 +252,7 @@ function OtherSessions({
 
 /** 左栏只负责展示与选择；项目与会话数据由外壳读取后传入，未归属会话默认隐藏。 */
 export function Sidebar({
+  pages,
   projects,
   sessionsByProject,
   onAddProject,
@@ -311,6 +313,7 @@ export function Sidebar({
   };
   return (
     <nav aria-label="项目与会话" className="flex h-full min-h-0 flex-col bg-card text-foreground">
+      {pages}
       <header className="flex shrink-0 items-center gap-1 border-b border-border/70 px-2 py-2">
         <h2 className="min-w-0 flex-1 truncate px-1 text-xs font-semibold tracking-wide text-muted-foreground">项目</h2>
         <NewSessionMenu projects={projects} currentProjectId={selectedProject} onNewSession={onNewSession} />

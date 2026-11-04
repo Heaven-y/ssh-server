@@ -61,7 +61,7 @@ export function registerSecurity(app: FastifyInstance, opts: SecurityOptions): v
 
   app.addHook('onRequest', async (req, reply) => {
     reply.header('X-Frame-Options', 'DENY');
-    reply.header('Content-Security-Policy', "frame-ancestors 'none'");
+    reply.header('Content-Security-Policy', "frame-ancestors 'none'; frame-src 'self'");
     // 1. Host必须匹配本机监听端口或显式开发来源，拒绝URL解析归一化旁路。
     if (!isLoopbackHost(req.headers.host)) {
       return reply.code(403).send({ message: '拒绝访问：Host 不是本机地址' });

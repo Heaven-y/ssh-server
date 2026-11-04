@@ -5,6 +5,7 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  Puzzle,
   RefreshCw,
   Settings2,
   Server,
@@ -87,6 +88,7 @@ export function TopBar({
   workspace,
   onOpenSettings,
   onOpenServers,
+  onOpenPlugins,
   onOpenTerminal,
   terminalOpen,
   onOpenCommands,
@@ -94,6 +96,7 @@ export function TopBar({
   workspace?: Workspace;
   onOpenSettings(): void;
   onOpenServers(): void;
+  onOpenPlugins?(): void;
   onOpenTerminal(): void;
   terminalOpen: boolean;
   onOpenCommands(): void;
@@ -157,6 +160,12 @@ export function TopBar({
           <Settings2 aria-hidden className="size-4" />
           设置
         </button>
+        {onOpenPlugins && (
+          <button type="button" className={buttonClass('ghost')} onClick={onOpenPlugins} aria-haspopup="dialog">
+            <Puzzle aria-hidden className="size-4" />
+            插件
+          </button>
+        )}
         <BackendConnectionStatus />
       </div>
     </header>

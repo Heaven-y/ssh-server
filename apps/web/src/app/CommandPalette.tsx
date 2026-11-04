@@ -9,6 +9,8 @@ import { sessionActionKey, useChat } from '../features/chat/chat-store';
 import { useUiPreferences } from '../ui/ui-preferences';
 
 export type PaletteActions = {
+  conversation?(): boolean;
+  plugins?: Array<{ id: string; label: string; run(): boolean }>;
   terminal(): boolean;
   settings(): boolean;
   resources(id: string): boolean;
@@ -18,11 +20,13 @@ const itemClass =
   'flex cursor-pointer items-center justify-between gap-3 rounded-md px-3 py-2.5 text-sm data-[selected=true]:bg-muted data-[selected=true]:text-foreground data-[disabled=true]:opacity-45';
 function commonActions(actions: PaletteActions, id: string): Action[] {
   return [
+    ...(actions.plugins ?? []),
     {
       id: 'new',
       label: '新会话',
       workspace: true,
       run: () => {
+        if (actions.conversation?.() === false) return false;
         useChat.getState().newSession();
         return true;
       },
@@ -66,7 +70,7 @@ function SessionSource({
       heading={
         <span className="flex items-center gap-1.5">
           <AgentIcon agent={agent} className="size-3.5" />
-          {agent === 'claude' ? 'Claude' : 'Codex'} 会话
+          {{ claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' }[agent]} 会话
         </span>
       }
     >
@@ -88,7 +92,7 @@ function SessionSource({
 }
 function PaletteSessions({ workspace, choose }: { workspace?: Workspace; choose(session: SessionSummary): void }) {
   const sources = useQueries({
-    queries: (['claude', 'codex'] as const).map((agent) => ({
+    queries: (['claude', 'codex', 'antigravity'] as const).map((agent) => ({
       queryKey: queryKeys.sessions(workspace?.id ?? '', agent),
       queryFn: ({ signal }: { signal: AbortSignal }) => api.listSessions(workspace!.id, agent, false, signal),
       enabled: !!workspace,
@@ -99,7 +103,7 @@ function PaletteSessions({ workspace, choose }: { workspace?: Workspace; choose(
   return (
     <>
       {sources.map((query, index) => {
-        const agent = index === 0 ? 'claude' : 'codex';
+        const agent = (['claude', 'codex', 'antigravity'] as const)[index]!;
         return (
           <div key={agent}>
             {query.isLoading && (
@@ -156,6 +160,7 @@ export default function CommandPalette({
       label: session.title,
       workspace: true,
       run: () => {
+        if (actions.conversation?.() === false) return false;
         void useChat.getState().openSession(session);
         return true;
       },
@@ -188,6 +193,7 @@ export default function CommandPalette({
                     setError('项目已移除。');
                     return;
                   }
+                  if (actions.conversation?.() === false) return;
                   useChat.getState().selectWorkspace(target.id);
                   close();
                 }}
