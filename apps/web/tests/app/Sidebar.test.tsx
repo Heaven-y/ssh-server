@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import path from 'node:path';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render as renderView, screen, waitFor, within } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { SessionSummary, Workspace } from '@agentdeck/shared';
 import { Sidebar } from '../../src/app/Sidebar';
@@ -35,9 +36,12 @@ const orphan: SessionSummary = {
   projectId: null,
   title: '孤儿会话',
 };
+const render = (element: ReactElement) =>
+  renderView(<QueryClientProvider client={queryClient}>{element}</QueryClientProvider>);
 
 beforeEach(() => {
   useChat.setState(useChat.getInitialState(), true);
+  vi.spyOn(api, 'sessionChanges').mockResolvedValue({ revision: 1, watching: true });
   // jsdom 不实现 showModal；动作对话框用它，这里按项目既有做法打桩。
   HTMLDialogElement.prototype.showModal = function () {
     this.open = true;
@@ -88,6 +92,39 @@ it('打开“显示其他目录的会话”后才列出未归属会话', () => {
   fireEvent.click(screen.getByRole('switch', { name: '显示其他目录的会话' }));
   expect(screen.getByText('其他目录')).toBeTruthy();
   expect(screen.getByText('孤儿会话')).toBeTruthy();
+});
+
+it('其他目录只对有可信directory的会话提供预填项目入口', () => {
+  const add = vi.fn();
+  const directory = path.resolve('fixtures', 'native-folder');
+  render(
+    <Sidebar
+      projects={[project]}
+      sessionsByProject={{ p1: [orphan, { ...orphan, sessionId: 'known-directory', title: '有目录', directory }] }}
+      onAddProject={add}
+    />,
+  );
+  fireEvent.click(screen.getByRole('switch', { name: '显示其他目录的会话' }));
+  const region = within(screen.getByRole('region', { name: '其他目录的会话' }));
+  expect(region.getAllByRole('button', { name: /加为项目/ })).toHaveLength(1);
+  fireEvent.click(region.getByRole('button', { name: /加为项目/ }));
+  expect(add).toHaveBeenCalledWith({ dir: directory, name: 'native-folder' });
+});
+
+it('项目菜单独立于服务器绑定，运行准备中连已打开的菜单也禁用', async () => {
+  const manage = vi.fn();
+  render(
+    <Sidebar projects={[project]} sessionsByProject={{ p1: [] }} onAddProject={vi.fn()} onManageProject={manage} />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: '管理项目“示例项目”' }));
+  const rename = await screen.findByRole('menuitem', { name: '重命名项目' });
+  act(() => useChat.setState({ pendingClientTurnId: 'pending' }));
+  expect(rename.getAttribute('aria-disabled')).toBe('true');
+  fireEvent.click(rename);
+  expect(manage).not.toHaveBeenCalled();
+  act(() => useChat.setState({ pendingClientTurnId: undefined }));
+  fireEvent.click(rename);
+  expect(manage).toHaveBeenCalledWith(project, 'rename');
 });
 
 it('点项目行切换项目，点会话行把它交给调用方', () => {

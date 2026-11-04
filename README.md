@@ -2,31 +2,32 @@
 
 Windows 本机桌面工作台，按项目集中使用 Claude Code、Codex 和 Antigravity 的原生会话。整体交互参考 DSH；各 CLI 保留自己的会话、配置、工具与权限语义，工作台扩展采用 AgentDeck 自有插件接口。
 
-**当前优先完成原生对话主流程，再补配置，最后接入插件。** 插件方向已经确定，但不兼容或直接安装 DSH 插件包。
+主流程包含原生对话、配置与项目管理；工作台插件用于增加独立工具页面。插件使用自己的接口，不直接安装 DSH 插件包。
 
 ## 功能与进度
 
-| 部分 | 当前基础与下一步 |
+| 部分 | 当前能力 |
 |---|---|
-| 桌面与项目 | Electron 窗口、单实例和退出清理已具备；项目按本地目录组织，移除列表记录不删除目录或原生会话 |
-| 会话历史 | 三个 CLI 可发现会话；Claude/Codex 可读历史；Antigravity 仅有摘要，私有轨迹无法回放 |
+| 桌面与项目 | Electron 窗口、单实例和退出清理；项目可添加、改名、更换目录及移除，原生目录明确的其他会话可预填为项目 |
+| 会话历史 | 三个 CLI 可发现会话；Claude/Codex 可读历史和执行已接入的管理动作；Antigravity 仅有摘要，私有轨迹无法回放；目录变动触发列表更新 |
 | 原生对话 | 三个 CLI 的新建、续接、流式事件和中断已接线；Claude/Codex 接原生审批，Antigravity 提示软拒；受控验证通过，真实模型回合待验证 |
-| 原生配置 | 已有 Claude `settings.json` 与 Codex `config.toml` 的编辑基础；后续逐项核实各 CLI 支持的作用域和入口 |
-| SSH | 现有项目绑定式终端、资源、Slurm 与服务器文件能力暂保留；后续按 SSH Console 的实际体验接入插件 |
-| 插件 | M4 扩展方向：自己的插件接口；SSH Console 是首个业务插件，尚未作为插件交付 |
+| 原生配置 | 按各 CLI 的真实作用域浏览配置、规则、Skills、MCP 和原生插件入口；显式打开原文编辑，另有受控启动环境设置 |
+| SSH | 内置 SSH Console 独立页面、多服务器、资源与进程、只读文件、多终端和分屏；旧面板继续提供 Slurm 等兼容工具 |
+| 插件 | 本地安装静态页面插件，按声明权限使用自己的设置、项目摘要和命令；支持启停和卸载外部安装副本 |
+| 本地分发 | Windows x64 安装版与便携版已生成并隔离验收；当前未签名、不发布，也未接自动更新 |
 
 完成状态和验证边界统一记录在[路线图](docs/roadmap.md)。旧同步、版本快照、本地文件镜像及 Agent→SSH 桥已经移除。
 
 ## 启动
 
-需要 Windows 10/11、Node.js 22+。按需安装对应 CLI，服务器使用已有 SSH 与运行环境。
+本地安装版和便携版直接运行，使用方法见[安装指南](docs/guides/local-installation.md)。源码开发需要 Windows 10/11、Node.js 22+。按需安装对应 CLI，服务器使用已有 SSH 与运行环境。
 
 ```powershell
 npm.cmd ci
 npm.cmd run dev:desktop
 ```
 
-桌面开发入口会先构建前端，再打开 Electron 窗口。当前还没有安装包；浏览器开发可运行 `npm.cmd run dev`，生产式本机服务可运行 `npm.cmd start`。环境变量和隔离验证方式见[开发指南](docs/guides/dev-environment.md)。
+桌面开发入口会先构建前端，再打开 Electron 窗口。浏览器开发可运行 `npm.cmd run dev`，生产式本机服务可运行 `npm.cmd start`。本地打包、安装与卸载说明见[本地安装指南](docs/guides/local-installation.md)，环境变量和隔离验证方式见[开发指南](docs/guides/dev-environment.md)。
 
 ## 使用边界
 
@@ -35,6 +36,7 @@ npm.cmd run dev:desktop
 - CLI 支持什么能力、配置放在哪个作用域，以该 CLI 的实际接口为准。不同 CLI 的差异会明确展示。
 - 后端仅监听回环地址，并校验会话与请求来源；SSH 凭据不进入项目配置或模型输入。
 - AgentDeck 插件扩展工作台；CLI 原生 Skills、MCP 和插件仍由各 CLI 解释执行。
+- 会话刷新只检查原生目录版本，终端查找只使用本机回滚缓冲，两者都不发送模型消息。真实模型、真实 SSH 和桌面安装验收各自记录，不能由受控夹具推定通过。
 
 ## 文档与开发
 

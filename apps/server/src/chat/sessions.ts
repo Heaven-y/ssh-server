@@ -10,7 +10,7 @@ import {
 } from '@agentdeck/shared';
 import type { NativeSessionFork, NativeSessionRead, NativeSessionRow } from '../agents/types';
 import { sameSessionDirectory } from '../agents/session-scope';
-import { resolveProjectId } from '../sessions/ownership';
+import { nativeSessionDirectory, resolveProjectId } from '../sessions/ownership';
 
 const AGENT_LABELS: Record<AgentKind, string> = {
   claude: 'Claude Code',
@@ -91,6 +91,10 @@ export function createSessionsService(
           title: session.summary,
           updatedAt: new Date(session.lastModified).toISOString(),
           running: operations.isRunning?.({ agent, sessionId: session.sessionId }) ?? false,
+          directory: nativeSessionDirectory({
+            ...(agent === 'antigravity' ? {} : { cwd: session.cwd }),
+            workspaceUris: session.workspaceUris,
+          }),
         }));
       });
     },

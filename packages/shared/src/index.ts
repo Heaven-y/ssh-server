@@ -87,6 +87,7 @@ export type { ManualServerInput, ManagedServer, HostTrustStatus, HostTrustConfir
 export type { AgentKind, SessionActionInput, SessionForkInput } from './agents';
 export { AgentProbeSchema, ProbeStatusSchema, SessionSummarySchema } from './session';
 export type { AgentProbe, ProbeStatus, SessionHistory, SessionRecord, SessionRef, SessionSummary } from './session';
+export type { SessionChangesSnapshot } from './session-changes';
 export { CapabilitySelectionSchema } from './capabilities';
 export type {
   CapabilitySelection,

@@ -1,10 +1,9 @@
-// 项目接口：项目 = 本地目录 + 可选的服务器绑定；会话归属与服务器面板都以项目 id 为身份。
-// 旧的 /api/workspaces 列表由这里取代。文件末尾保留一个只读兼容别名，等 Task 10 把前端切到
-// /api/projects 之后删除——不保留第二套创建/修改/删除实现。
+// 项目接口：项目 = 本地目录 + 可选的服务器默认值；管理本地记录，不修改目录和原生会话。
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { WorkspaceInput } from '@agentdeck/shared';
 import { WorkspaceStorageError, WorkspaceValidationError, type WorkspaceStore } from '../workspaces/store';
+import { WorkspaceBusyError, type WorkspaceActivity } from '../workspaces/activity';
 
 const Params = z.object({ id: z.string().min(1) });
 // JSON 里没有 undefined：null 表示「清除这个字段」，没传的键表示「不要动它」。
@@ -19,6 +18,7 @@ type PatchInput = z.infer<typeof PatchBody>;
 
 export type ProjectRoutesDeps = {
   store: WorkspaceStore;
+  activity?: WorkspaceActivity;
 };
 
 /** 把 store 的字段级校验错误映射成 400 + field，存储损坏统一按 503 上报。 */
@@ -27,6 +27,8 @@ async function respond(reply: FastifyReply, operation: () => Promise<unknown>) {
   try {
     return await operation();
   } catch (error) {
+    if (error instanceof WorkspaceBusyError)
+      return reply.code(409).send({ code: 'project_busy', message: error.message });
     if (error instanceof WorkspaceValidationError)
       return reply.code(400).send({ code: 'invalid_project', message: error.message, field: error.field });
     if (error instanceof WorkspaceStorageError)
@@ -61,6 +63,8 @@ function toPatch(body: PatchInput): Partial<WorkspaceInput> {
 
 export function registerProjectRoutes(app: FastifyInstance, deps: ProjectRoutesDeps): void {
   const listProjects = () => deps.store.list();
+  const withIdle = <T>(id: string, operation: () => Promise<T>) =>
+    deps.activity ? deps.activity.withIdle(id, operation) : operation();
 
   app.get('/api/projects', (_req, reply) => respond(reply, listProjects));
 
@@ -76,7 +80,8 @@ export function registerProjectRoutes(app: FastifyInstance, deps: ProjectRoutesD
     const body = PatchBody.safeParse(req.body);
     if (!params.success || !body.success) return invalid(reply, '项目修改格式不正确');
     return respond(reply, async () => {
-      const updated = await deps.store.update(params.data.id, toPatch(body.data));
+      const update = () => deps.store.update(params.data.id, toPatch(body.data));
+      const updated = body.data.dir === undefined ? await update() : await withIdle(params.data.id, update);
       return updated ?? missing(reply);
     });
   });
@@ -86,7 +91,7 @@ export function registerProjectRoutes(app: FastifyInstance, deps: ProjectRoutesD
     if (!params.success) return invalid(reply, '项目请求格式不正确');
     return respond(reply, async () => {
       // 删除只移除本工具的配置，不碰项目目录；已打开的终端与面板不会因此被关闭。
-      if (!(await deps.store.remove(params.data.id))) return missing(reply);
+      if (!(await withIdle(params.data.id, () => deps.store.remove(params.data.id)))) return missing(reply);
       return reply.code(204).send();
     });
   });

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import path from 'node:path';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AddProjectDialog } from '../../src/app/AddProjectDialog';
@@ -23,18 +24,18 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mount() {
+function mount(initialDir?: string) {
   const close = vi.fn();
   render(
     <QueryClientProvider client={client}>
-      <AddProjectDialog onClose={close} />
+      <AddProjectDialog initialDir={initialDir} onClose={close} />
     </QueryClientProvider>,
   );
   return close;
 }
 
 it('项目目录必填，名称留空时取目录最后一段并选中新项目', async () => {
-  const created = { id: 'p1', name: 'demo', dir: 'E:\\web\\demo' };
+  const created = { id: 'p1', name: 'demo', dir: path.resolve('fixtures', 'demo') };
   const create = vi.spyOn(api, 'createProject').mockResolvedValue(created);
   client.setQueryData(queryKeys.workspaces, []);
   const close = mount();
@@ -54,10 +55,28 @@ it('后端拒绝时保留输入并把原因写在原处', async () => {
   const create = vi.spyOn(api, 'createProject').mockRejectedValue(new Error('项目目录不存在'));
   const close = mount();
   const dialog = screen.getByRole('dialog', { name: '添加项目目录' });
-  fireEvent.change(within(dialog).getByLabelText('项目目录'), { target: { value: 'E:\\web\\missing' } });
+  const missing = path.resolve('fixtures', 'missing');
+  fireEvent.change(within(dialog).getByLabelText('项目目录'), { target: { value: missing } });
   fireEvent.click(within(dialog).getByRole('button', { name: '添加项目' }));
   expect(await within(dialog).findByRole('alert')).toHaveProperty('textContent', '项目目录不存在');
-  expect(within(dialog).getByLabelText<HTMLInputElement>('项目目录').value).toBe('E:\\web\\missing');
+  expect(within(dialog).getByLabelText<HTMLInputElement>('项目目录').value).toBe(missing);
   expect(create).toHaveBeenCalledTimes(1);
   expect(close).not.toHaveBeenCalled();
+});
+
+it('原生会话目录预填后可直接添加，迟到成功保留用户后来选择的项目', async () => {
+  const dir = path.resolve('fixtures', 'session-project');
+  let resolve!: (value: { id: string; name: string; dir: string }) => void;
+  vi.spyOn(api, 'createProject').mockImplementation(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  mount(dir);
+  expect(screen.getByLabelText<HTMLInputElement>('项目目录').value).toBe(dir);
+  fireEvent.click(screen.getByRole('button', { name: '添加项目' }));
+  act(() => useChat.getState().selectWorkspace('new-choice'));
+  await act(async () => resolve({ id: 'created', name: 'session-project', dir }));
+  expect(useChat.getState().workspaceId).toBe('new-choice');
 });

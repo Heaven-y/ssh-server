@@ -1,10 +1,11 @@
 import { useId, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link2, Trash2, Unlink } from 'lucide-react';
+import { Link2, Unlink } from 'lucide-react';
 import type { Workspace } from '@agentdeck/shared';
 import { api, queryKeys } from '../lib/api';
 import { DetailDialog } from '../ui/DetailDialog';
 import { buttonClass, inputClass } from '../ui/styles';
+import { projectIsBusy, useProjectBusy } from './project-management';
 
 /**
  * 绑定服务器：选一台已登记的服务器 + 一个默认浏览目录。
@@ -13,9 +14,9 @@ import { buttonClass, inputClass } from '../ui/styles';
  * 打不开任何服务器面板，却仍占着「服务器被引用」的名额，属纯负面状态。
  * 所以这里要么提交成对的值，要么整体解绑，不提供「只改一半」的入口。
  */
-export function BindServerDialog({ project, onClose }: { project: Workspace; onClose(): void }) {
+function useServerBinding({ project, onClose }: { project: Workspace; onClose(): void }) {
   const client = useQueryClient();
-  const ids = useId();
+  const blocked = useProjectBusy(project.id);
   const servers = useQuery({ queryKey: queryKeys.sshHosts, queryFn: ({ signal }) => api.listSshHosts(signal) });
   const [alias, setAlias] = useState(project.server ?? '');
   const [remoteDir, setRemoteDir] = useState(project.remoteDir ?? '');
@@ -24,7 +25,7 @@ export function BindServerDialog({ project, onClose }: { project: Workspace; onC
   const bound = project.server !== undefined && project.remoteDir !== undefined;
 
   const run = async (patch: Parameters<typeof api.updateProject>[1]) => {
-    if (busy) return;
+    if (busy || projectIsBusy(client, project.id)) return;
     setBusy(true);
     setError('');
     try {
@@ -40,13 +41,21 @@ export function BindServerDialog({ project, onClose }: { project: Workspace; onC
 
   const unbind = () => run({ server: null, remoteDir: null });
 
+  return { servers, alias, setAlias, remoteDir, setRemoteDir, busy, blocked, error, bound, run, unbind };
+}
+
+export function BindServerDialog({ project, onClose }: { project: Workspace; onClose(): void }) {
+  const ids = useId();
+  const state = useServerBinding({ project, onClose });
+  const { servers, alias, setAlias, remoteDir, setRemoteDir, busy, blocked, error, bound, run } = state;
+  const disabled = busy || blocked;
   return (
     <DetailDialog title={bound ? '服务器绑定' : '绑定服务器'} busy={busy} onClose={onClose}>
       <form
         className="space-y-4"
         onSubmit={(event) => {
           event.preventDefault();
-          void run({ server: alias || null, remoteDir: remoteDir.trim() || null });
+          void run({ server: alias || null, remoteDir: alias ? remoteDir.trim() : null });
         }}
       >
         <p className="text-xs leading-5 text-muted-foreground">
@@ -61,7 +70,7 @@ export function BindServerDialog({ project, onClose }: { project: Workspace; onC
             value={alias}
             onChange={(event) => setAlias(event.target.value)}
             className={inputClass}
-            disabled={servers.isLoading}
+            disabled={servers.isLoading || busy || blocked}
           >
             <option value="">不绑定</option>
             {(servers.data ?? []).map((server) => (
@@ -84,6 +93,7 @@ export function BindServerDialog({ project, onClose }: { project: Workspace; onC
             onChange={(event) => setRemoteDir(event.target.value)}
             placeholder="~/projects/demo"
             className={`${inputClass} font-mono text-xs`}
+            disabled={disabled}
           />
           <p className="text-xs text-muted-foreground">
             以 / 或 ~ 开头。绑定服务器时必填；不绑定时会连同服务器一起清除。
@@ -96,89 +106,41 @@ export function BindServerDialog({ project, onClose }: { project: Workspace; onC
             {error}
           </p>
         )}
-        <div className="flex justify-end gap-2 border-t border-border pt-4">
-          {bound && (
-            <button type="button" className={buttonClass('ghost')} disabled={busy} onClick={() => void unbind()}>
-              <Unlink aria-hidden className="size-4" />
-              解绑
-            </button>
-          )}
-          <button type="button" className={buttonClass('ghost')} disabled={busy} onClick={onClose}>
-            取消
-          </button>
-          <button type="submit" className={buttonClass('primary')} disabled={busy}>
-            <Link2 aria-hidden className="size-4" />
-            保存
-          </button>
-        </div>
+        <BindingFooter state={state} close={onClose} />
       </form>
-      <RemoveProject project={project} onClose={onClose} />
     </DetailDialog>
   );
 }
 
-/**
- * 移除项目：只删本工具的配置，不碰磁盘目录。
- * 目录离线（移动硬盘没插、网络盘没挂）的项目也必须能这样移除，
- * 否则它只会永远留在列表里、连改名都不让改，用户只能去手改 workspaces.json。
- */
-function RemoveProject({ project, onClose }: { project: Workspace; onClose(): void }) {
-  const client = useQueryClient();
-  const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const remove = async () => {
-    if (busy) return;
-    setBusy(true);
-    setError('');
-    try {
-      await api.deleteProject(project.id);
-      await client.invalidateQueries({ queryKey: queryKeys.workspaces });
-      onClose();
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : '移除失败');
-    } finally {
-      setBusy(false);
-    }
-  };
-  if (!confirming)
-    return (
-      <div className="mt-3 border-t border-border pt-3">
-        <button type="button" className={buttonClass('ghost')} onClick={() => setConfirming(true)}>
-          <Trash2 aria-hidden className="size-3.5" />
-          从列表移除这个项目
-        </button>
-      </div>
-    );
-  return (
-    <div className="mt-3 space-y-2 border-t border-border pt-3">
-      <p className="text-sm leading-6">
-        确定移除“{project.name}”？只删本工具里的这条配置，
-        <strong>不动磁盘上的目录</strong>，也不动 CLI 的原生会话。
-      </p>
-      {error && (
-        <p role="alert" className="text-sm text-destructive-foreground">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
-        <button type="button" className={buttonClass('ghost')} disabled={busy} onClick={() => setConfirming(false)}>
-          取消
-        </button>
-        <button type="button" className={buttonClass('danger')} disabled={busy} onClick={() => void remove()}>
-          移除
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function HalfBound({ project }: { project: Workspace }) {
+  if ((project.server !== undefined) === (project.remoteDir !== undefined)) return null;
   const only = project.server !== undefined ? 'server' : project.remoteDir !== undefined ? 'remoteDir' : undefined;
   if (!only) return null;
   return (
     <p role="alert" className="text-sm leading-6 text-destructive-foreground">
       当前配置只有 {only}、缺少另一半，属无效状态（可能被手工改过）。请补齐两项，或选择「不绑定」后保存。
     </p>
+  );
+}
+
+function BindingFooter({ state, close }: { state: ReturnType<typeof useServerBinding>; close(): void }) {
+  const { bound, busy, blocked, alias, remoteDir, unbind } = state;
+  const disabled = busy || blocked;
+  return (
+    <div className="flex justify-end gap-2 border-t border-border pt-4">
+      {bound && (
+        <button type="button" className={buttonClass('ghost')} disabled={disabled} onClick={() => void unbind()}>
+          <Unlink aria-hidden className="size-4" />
+          解绑
+        </button>
+      )}
+      <button type="button" className={buttonClass('ghost')} disabled={busy} onClick={close}>
+        取消
+      </button>
+      <button type="submit" className={buttonClass('primary')} disabled={disabled || (!!alias && !remoteDir.trim())}>
+        <Link2 aria-hidden className="size-4" />
+        保存
+      </button>
+    </div>
   );
 }

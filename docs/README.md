@@ -6,7 +6,7 @@
 |---|---|---|
 | 1 | [项目入口](../README.md) | 产品定位、当前基础、启动入口 |
 | 2 | [产品需求](product/requirements.md) | 功能范围、行为边界和验收条件 |
-| 3 | [界面与交互](product/ui-layout.md) | 会话主区、导航、状态、配置与未来插件呈现 |
+| 3 | [界面与交互](product/ui-layout.md) | 会话主区、导航、状态、原生配置与插件页面 |
 | 4 | [架构](engineering/architecture.md) | 模块、协议、生命周期与实现预算 |
 | 5 | [现行决策](engineering/decisions.md) | 仍有效的选择、理由、约束和替代关系 |
 | 6 | [开发指南](guides/dev-environment.md) | 环境、代码规范、分支、技能和验证方法 |
@@ -19,13 +19,13 @@
 | [原生对话接入](engineering/native-dialogue.md) | 三 CLI 主流程的本轮边界与接口选择 |
 | [原生配置与启动环境](engineering/native-configuration.md) | 各 CLI 配置入口、显式正文编辑和启动变量的边界 |
 | [工作台插件接口](engineering/workbench-plugins.md) | 自有 v1 插件格式、宿主接口、SSH Console 与兼容边界 |
-| [会话管理交付记录](superpowers/plans/2026-11-04-session-management.md) | 已完成的原生管理接入、接口统一与提交锚点 |
+| [本地安装与打包](guides/local-installation.md) | 安装版、便携版、数据保存、构建和隔离验收 |
 | [整体交付计划](superpowers/plans/2026-11-04-workbench-completion.md) | 原生配置、插件、SSH Console 和本地安装包的剩余工作 |
 
 ## 维护规则
 
 - 功能做什么写进需求；界面怎么呈现写进交互；技术怎么运行写进架构；为什么这样取舍写进决策。具体数值只在负责该参数的文件定义，其他文件引用。
-- 当前顺序为原生对话、原生配置、自有插件、打磨分发。先把主流程完成，不因扩展方向已确认就把插件标成现有能力。
+- 迭代始终优先保证对话主流程；扩展接口按真实交付版本记录，不提前承诺尚未实现的宿主能力。
 - 每个 CLI 的原生配置和权限按实际支持接入。工作台插件与 CLI 原生扩展各自说明，不要求三种 CLI 使用相同层级。
 - 已实现、待实现、受控验证、真实验证分别记录。删除过时材料不改变过去的通过、失败或未验证结论。
 - 阶段计划只保留当前仍执行的版本；完成或被替代的计划归入 Git 记录，避免持续维护两份产品规范。
@@ -37,3 +37,5 @@
 完整路径与读取命令见[历史追溯](engineering/decisions.md#历史追溯)。
 
 三 CLI 对话核心接线计划已经完成，原始步骤与验证记录在 `6e33803:docs/superpowers/plans/2026-11-04-native-dialogue.md`。其仍有效的运行边界继续保留在原生对话接入说明中。
+
+会话管理实施计划已归档，完成版本为 `68e4ce1:docs/superpowers/plans/2026-11-04-session-management.md`；实现和整合提交分别为 `bd503b1`、`a3e29ab`。管理入口及并发规则继续由需求、架构和接入说明维护。

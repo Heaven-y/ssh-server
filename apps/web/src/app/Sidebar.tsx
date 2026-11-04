@@ -10,13 +10,22 @@ import { ProjectSessionArchive } from '../features/sessions/ProjectSessionArchiv
 import { ProjectSessionDialog, type ProjectSessionSelection } from '../features/sessions/ProjectSessionDialog';
 import type { SessionDialogAction } from '../features/sessions/SessionMenu';
 import { buttonClass } from '../ui/styles';
+import { ProjectMenu } from './ProjectMenu';
+import { SessionRefreshControl } from '../features/sessions/SessionRefreshControl';
+import {
+  projectFolderName,
+  useProjectChatBusy,
+  type ProjectDraft,
+  type ProjectManageAction,
+} from './project-management';
 
 export type SidebarProps = {
   pages?: ReactNode;
   projects: Workspace[];
   /** 按项目 id 归集的会话；未归属会话（projectId === null）可以混在其中，由侧栏裁决。 */
   sessionsByProject: Record<string, SessionSummary[]>;
-  onAddProject(): void;
+  onAddProject(initial?: ProjectDraft): void;
+  onManageProject?(project: Workspace, action: ProjectManageAction): void;
   onNewSession?(projectId: string, agent: AgentKind): void;
   onSelectProject?(projectId: string): void;
   onSelectSession?(projectId: string, session: SessionSummary): void;
@@ -87,6 +96,7 @@ function ProjectItem({
   selectSession,
   manageSession,
   onBindServer,
+  onManageProject,
 }: {
   project: Workspace;
   sessions: SessionSummary[];
@@ -98,6 +108,7 @@ function ProjectItem({
   selectSession?: (session: SessionSummary) => void;
   manageSession: (session: SessionSummary, action: SessionDialogAction, archived: boolean) => void;
   onBindServer?(project: Workspace): void;
+  onManageProject?(project: Workspace, action: ProjectManageAction): void;
 }) {
   const groups = sessionGroups(sessions);
   return (
@@ -122,25 +133,12 @@ function ProjectItem({
         )}
         <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{sessions.length}</span>
       </button>
-      <div className="flex min-w-0 items-center gap-1 pl-7">
-        <p
-          className="min-w-0 flex-1 truncate font-mono text-[10px] leading-4 text-muted-foreground/80"
-          title={project.dir}
-        >
-          {project.dir}
-        </p>
-        {onBindServer && (
-          <button
-            type="button"
-            aria-label={project.server ? `修改“${project.name}”的服务器绑定` : `给“${project.name}”绑定服务器`}
-            title={project.server ? '修改服务器绑定' : '绑定服务器'}
-            className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-            onClick={() => onBindServer(project)}
-          >
-            <Link2 aria-hidden className="size-3" />
-          </button>
-        )}
-      </div>
+      <ProjectMetadata
+        project={project}
+        running={sessions.some((session) => session.running)}
+        onBindServer={onBindServer}
+        onManageProject={onManageProject}
+      />
       {expanded && (
         <div className="mt-1 mb-2 space-y-1 pl-2">
           {groups.length === 0 ? (
@@ -165,6 +163,43 @@ function ProjectItem({
   );
 }
 
+function ProjectMetadata({
+  project,
+  running,
+  onBindServer,
+  onManageProject,
+}: {
+  project: Workspace;
+  running: boolean;
+  onBindServer?: SidebarProps['onBindServer'];
+  onManageProject?: SidebarProps['onManageProject'];
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-1 pl-7">
+      <p
+        className="min-w-0 flex-1 truncate font-mono text-[10px] leading-4 text-muted-foreground/80"
+        title={project.dir}
+      >
+        {project.dir}
+      </p>
+      {onManageProject && (
+        <ProjectMenu project={project} running={running} choose={(action) => onManageProject(project, action)} />
+      )}
+      {onBindServer && (
+        <button
+          type="button"
+          aria-label={project.server ? `修改“${project.name}”的服务器绑定` : `给“${project.name}”绑定服务器`}
+          title={project.server ? '修改服务器绑定' : '绑定服务器'}
+          className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          onClick={() => onBindServer(project)}
+        >
+          <Link2 aria-hidden className="size-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function NewSessionMenu({
   projects,
   currentProjectId,
@@ -174,7 +209,7 @@ function NewSessionMenu({
   const target = projects.find((project) => project.id === currentProjectId) ?? projects[0];
   if (!target)
     return (
-      <button type="button" className={buttonClass('ghost')} disabled title="先添加项目目录">
+      <button type="button" className={`${buttonClass('ghost')} min-h-8 gap-1.5 px-2`} disabled title="先添加项目目录">
         <Plus aria-hidden className="size-4" />
         新建会话
       </button>
@@ -184,7 +219,7 @@ function NewSessionMenu({
       <MenuButton
         store={menu}
         render={<button type="button" />}
-        className={buttonClass('ghost')}
+        className={`${buttonClass('ghost')} min-h-8 gap-1.5 px-2`}
         aria-label="新建会话"
         title="选择 CLI 后开始新会话"
       >
@@ -225,25 +260,42 @@ function OtherSessions({
 }: {
   sessions: SessionSummary[];
   activeKey: string;
-  addProject(): void;
+  addProject(initial?: ProjectDraft): void;
 }) {
+  const busy = useProjectChatBusy();
   return (
     <section aria-label="其他目录的会话" className="border-t border-border/70 pt-2">
       <div className="flex items-center gap-1.5 px-2 py-1">
         <h3 className="min-w-0 flex-1 text-[11px] font-semibold text-muted-foreground">
           其他目录 <span className="font-normal tabular-nums">{sessions.length}</span>
         </h3>
-        <button type="button" className={`${buttonClass('ghost')} min-h-7 px-2 text-[11px]`} onClick={addProject}>
-          加为项目
-        </button>
       </div>
       <ul className="flex flex-col gap-0.5">
         {sessions.map((session) => (
-          <SessionRow
-            key={`${session.agent}:${session.sessionId}`}
-            session={session}
-            active={activeKey === sessionActionKey(session.projectId ?? '', session)}
-          />
+          <li key={`${session.agent}:${session.sessionId}`} className="min-w-0">
+            <ul>
+              <SessionRow session={session} active={activeKey === sessionActionKey(session.projectId ?? '', session)} />
+            </ul>
+            {session.directory && (
+              <div className="flex min-w-0 items-center gap-1 pl-2">
+                <p
+                  className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted-foreground"
+                  title={session.directory}
+                >
+                  {session.directory}
+                </p>
+                <button
+                  type="button"
+                  className={`${buttonClass('ghost')} min-h-7 shrink-0 px-2 text-[11px]`}
+                  disabled={busy || session.running}
+                  aria-label={`将“${session.title || '未命名会话'}”所在目录加为项目`}
+                  onClick={() => addProject({ dir: session.directory, name: projectFolderName(session.directory!) })}
+                >
+                  加为项目
+                </button>
+              </div>
+            )}
+          </li>
         ))}
       </ul>
     </section>
@@ -260,6 +312,7 @@ export function Sidebar({
   onSelectProject,
   onSelectSession,
   onBindServer,
+  onManageProject,
   loadingSessions = false,
   currentProjectId,
 }: SidebarProps) {
@@ -314,15 +367,16 @@ export function Sidebar({
   return (
     <nav aria-label="项目与会话" className="flex h-full min-h-0 flex-col bg-card text-foreground">
       {pages}
-      <header className="flex shrink-0 items-center gap-1 border-b border-border/70 px-2 py-2">
-        <h2 className="min-w-0 flex-1 truncate px-1 text-xs font-semibold tracking-wide text-muted-foreground">项目</h2>
+      <header className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border/70 px-2 py-2">
+        <h2 className="mr-auto shrink-0 px-1 text-xs font-semibold tracking-wide text-muted-foreground">项目</h2>
+        <SessionRefreshControl />
         <NewSessionMenu projects={projects} currentProjectId={selectedProject} onNewSession={onNewSession} />
         <button
           type="button"
-          className={buttonClass('ghost')}
+          className={`${buttonClass('ghost')} min-h-8 px-2`}
           aria-label="添加项目"
           title="添加项目目录"
-          onClick={onAddProject}
+          onClick={() => onAddProject()}
         >
           <FolderPlus aria-hidden className="size-4" />
         </button>
@@ -332,7 +386,7 @@ export function Sidebar({
           <FolderPlus aria-hidden className="size-8 text-muted-foreground" />
           <p className="text-sm font-medium">还没有项目</p>
           <p className="text-xs leading-5 text-muted-foreground">添加一个本地项目目录，按 CLI 查看本机会话。</p>
-          <button type="button" className={buttonClass('outline')} onClick={onAddProject}>
+          <button type="button" className={buttonClass('outline')} onClick={() => onAddProject()}>
             添加项目目录
           </button>
         </div>
@@ -354,6 +408,7 @@ export function Sidebar({
                   setManaging({ workspaceId: project.id, session, action, archived })
                 }
                 onBindServer={onBindServer}
+                onManageProject={onManageProject}
               />
             ))}
           </ul>

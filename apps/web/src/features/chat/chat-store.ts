@@ -58,6 +58,7 @@ type ChatState = {
   manageSession(workspaceId: string, session: SessionRef, input: SessionActionInput): Promise<boolean>;
   selectWorkspace(id?: string): void;
   removeWorkspace(id: string, nextId?: string): void;
+  resetWorkspaceConversation(id: string, expectedVersion: number): void;
   newSession(agent?: AgentKind): void;
   setAgent(agent: AgentKind): void;
   openSession(session: SessionRef, options?: { preserveDraft?: boolean }): Promise<void>;
@@ -235,6 +236,14 @@ export const useChat = create<ChatState>()((set, get) => ({
     if (!allowConversationNavigation()) return;
     const conversationVersion = changeSelection();
     set({ ...emptyConversation, ...newDefaults(get()), agent, initialDefaultsEligible: false, conversationVersion });
+  },
+  resetWorkspaceConversation(id, expectedVersion) {
+    const prefix = JSON.stringify([id]).slice(0, -1) + ',';
+    set({
+      sessionModels: Object.fromEntries(Object.entries(get().sessionModels).filter(([key]) => !key.startsWith(prefix))),
+    });
+    // 迟到的改目录结果只清理来源项目，不能抢走用户的新选择。
+    if (get().workspaceId === id && get().conversationVersion === expectedVersion) get().newSession(get().agent);
   },
   setAgent(agent) {
     const current = get();

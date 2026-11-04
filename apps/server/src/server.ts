@@ -1,6 +1,7 @@
 // 可编程启动：读取配置、组装依赖、只在本机地址上启动，并返回关闭函数。
 // CLI（main.ts）与 Electron 桌面壳共用这里，业务路由与清理路径保持原样。
 import { mkdir, stat } from 'node:fs/promises';
+import type { FastifyInstance } from 'fastify';
 import type { AgentProbe } from '@agentdeck/shared';
 import { TurnManager } from './chat/turn-manager';
 import { createSessionsService } from './chat/sessions';
@@ -67,6 +68,8 @@ import { createWorkbenchPlugins } from './plugins/service';
 import { registerPluginRoutes } from './http/plugins.routes';
 import { createSshConsoleService } from './ssh-console/service';
 import { registerSshConsoleRoutes } from './http/ssh-console.routes';
+import { createSessionChanges, type SessionChangesService } from './sessions/changes';
+import { registerSessionChangesRoutes } from './http/session-changes.routes';
 
 /** 已启动的本机服务：地址固定带尾部斜杠，close 可重复调用。 */
 export type StartedServer = { url: string; close: () => Promise<void> };
@@ -78,6 +81,8 @@ export type StartServerOptions = {
   legacyDir?: string;
   /** Agent 探测执行器；测试注入假执行器，避免启动本机真实 CLI */
   probeRunner?: ProcessRunner;
+  /** 目录变更服务；测试注入隔离来源，避免监听用户的原生会话目录。 */
+  sessionChanges?: SessionChangesService;
   /** 启动日志；默认写控制台 */
   log?: (message: string) => void;
   logError?: (message: string) => void;
@@ -253,57 +258,23 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
     acquireWorkspace,
   });
 
-  const app = await buildApp({
-    token: config.token,
-    port: config.port,
-    devOrigin: config.devOrigin,
-    webDir: options.webDir,
-    routes: (a) => {
-      registerProjectRoutes(a, { store });
-      registerPluginRoutes(a, { service: plugins });
-      registerSshConsoleRoutes(a, sshConsole);
-      registerProbeRoutes(a, { probes });
-      registerSessionRoutes(a, { store, sessions });
-      registerCapabilityRoutes(a, { store, capabilities });
-      registerSshRoutes(a, { pool, profiles });
-      registerSshTargetRoutes(a, profiles);
-      registerHostTrustRoutes(a, createHostTrust({ pool }));
-      registerAgentConfigRoutes(a, { service: createNativeConfigService() });
-      registerNativeResourceRoutes(a, { service: createNativeResourcesService(), store });
-      registerLaunchEnvironmentRoutes(a, {
-        service: launchEnvironment,
-        restart: (agent) => turns.withIdleAgent(agent, () => runners[agent].restart()),
-      });
-      registerProductSettingsRoutes(a, productSettings, probes);
-      registerRemoteFileRoutes(a, browse);
-      registerRemoteFileActionRoutes(a, { preflights, tasks });
-      registerWsRoutes(a, { turns });
-      registerTerminalRoutes(a, { terminals, bindings: terminalBindings });
-      registerResourcesRoutes(a, resources);
-      registerSlurmRoutes(a, slurm);
-    },
-  });
-
-  await app.listen({ host: config.host, port: config.port });
-  const addr = app.server.address();
-  const port = addr && typeof addr === 'object' ? addr.port : config.port;
-  log(`AgentDeck 已启动，只监听 ${config.host}:${port}`);
-  log(`访问地址：${accessUrl(config.host, port, config.devOrigin)}`);
-
-  void startupProbes.then((report) => {
-    for (const probe of report) logProbe(probe, log);
-    log('本机探测只运行 --version、--help 与 Codex 的 schema 生成，不检查账号、不请求模型端点，也未安装或升级软件。');
-  });
-
+  const sessionChanges = options.sessionChanges ?? createSessionChanges();
+  let app: FastifyInstance | undefined;
   let closing: Promise<void> | undefined;
   const close = (): Promise<void> => {
     closing ??= (async () => {
-      sshConsole.dispose();
-      terminals.dispose();
-      resources.dispose();
-      slurm.dispose();
-      pool.dispose();
-      // 启动探测最多跑 5 秒；先等它收尾，避免关窗后还有子进程在跑。
+      // 每个资源独立释放；一个关闭失败不能阻止其余通道和目录监听清理。
+      await Promise.allSettled(
+        [
+          () => sessionChanges.dispose(),
+          () => sshConsole.dispose(),
+          () => terminals.dispose(),
+          () => resources.dispose(),
+          () => slurm.dispose(),
+          () => pool.dispose(),
+        ].map((dispose) => Promise.resolve().then(dispose)),
+      );
+      // 启动探测最多跑 5 秒；关闭保持原有有界等待。
       await Promise.race([
         startupProbes,
         new Promise<void>((resolve) => {
@@ -313,11 +284,59 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
       try {
         await turns.dispose();
       } finally {
-        await app.close();
+        await app?.close();
       }
     })();
     return closing;
   };
 
-  return { url: accessUrl(config.host, port, config.devOrigin), close };
+  try {
+    app = await buildApp({
+      token: config.token,
+      port: config.port,
+      devOrigin: config.devOrigin,
+      webDir: options.webDir,
+      routes: (a) => {
+        registerProjectRoutes(a, { store, activity });
+        registerPluginRoutes(a, { service: plugins });
+        registerSshConsoleRoutes(a, sshConsole);
+        registerProbeRoutes(a, { probes });
+        registerSessionRoutes(a, { store, sessions, activity });
+        registerSessionChangesRoutes(a, sessionChanges);
+        registerCapabilityRoutes(a, { store, capabilities });
+        registerSshRoutes(a, { pool, profiles });
+        registerSshTargetRoutes(a, profiles);
+        registerHostTrustRoutes(a, createHostTrust({ pool }));
+        registerAgentConfigRoutes(a, { service: createNativeConfigService() });
+        registerNativeResourceRoutes(a, { service: createNativeResourcesService(), store });
+        registerLaunchEnvironmentRoutes(a, {
+          service: launchEnvironment,
+          restart: (agent) => turns.withIdleAgent(agent, () => runners[agent].restart()),
+        });
+        registerProductSettingsRoutes(a, productSettings, probes);
+        registerRemoteFileRoutes(a, browse);
+        registerRemoteFileActionRoutes(a, { preflights, tasks });
+        registerWsRoutes(a, { turns });
+        registerTerminalRoutes(a, { terminals, bindings: terminalBindings });
+        registerResourcesRoutes(a, resources);
+        registerSlurmRoutes(a, slurm);
+      },
+    });
+
+    await app.listen({ host: config.host, port: config.port });
+    const addr = app.server.address();
+    const port = addr && typeof addr === 'object' ? addr.port : config.port;
+    log(`AgentDeck 已启动，只监听 ${config.host}:${port}`);
+    log(`访问地址：${accessUrl(config.host, port, config.devOrigin)}`);
+
+    void startupProbes.then((report) => {
+      for (const probe of report) logProbe(probe, log);
+      log('本机探测只运行 --version、--help 与 Codex 的 schema 生成，不检查账号、不请求模型端点，也未安装或升级软件。');
+    });
+
+    return { url: accessUrl(config.host, port, config.devOrigin), close };
+  } catch (error) {
+    await close().catch(() => undefined);
+    throw error;
+  }
 }

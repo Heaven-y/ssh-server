@@ -1,6 +1,6 @@
 # 架构
 
-更新于 2026-11-04。本文记录稳定技术基础、正在实施的 M2 接线以及仍在使用的 SSH 模块约束。原生对话的本轮设计见[接入说明](native-dialogue.md)，完成情况见[路线图](../roadmap.md)。重整前的实现说明保存在 `c686ef2:docs/engineering/architecture.md`。
+更新于 2026-11-04。本文记录原生 CLI 工作台、配置、插件和桌面交付的实现边界。会话协议见[接入说明](native-dialogue.md)，验收范围见[路线图](../roadmap.md)。重整前的实现说明保存在 `c686ef2:docs/engineering/architecture.md`。
 
 ## 1. 分层与职责
 
@@ -9,29 +9,30 @@ Electron 主进程（apps/desktop）
   └─ 本机 Fastify（apps/server）
        ├─ HTTP + WebSocket → React 页面（apps/web）
        ├─ 项目、原生会话、CLI 适配、配置与能力目录
-       └─ 现有 SSH 池、终端、资源、Slurm、服务器文件
+       ├─ 工作台插件注册、权限与静态页面服务
+       └─ SSH Console 与兼容工具共享 SSH 池、信任和凭据
 共享协议与校验（packages/shared）
 ```
 
 Electron 只负责入口和生命周期；业务服务与浏览器调试共用一份实现。CLI 在本地项目目录执行，模型请求由 CLI 发起。服务器操作经 SSH 由用户触发，服务器不运行 Agent 或本产品常驻服务。
 
-当前会话主线和 SSH 工具分别工作。工作台插件是 M4 目标，尚无可安装的插件宿主；不得把现有模块化目录等同于插件系统，也不建立 DSH 插件兼容层。
+会话和工具各自持有运行状态。自有插件宿主管理内置 SSH Console 与本地安装的静态页面插件；外部插件只通过声明权限的固定接口访问宿主，没有通用 Node 执行能力。包和消息契约见[工作台插件接口](workbench-plugins.md)，不包含 DSH 兼容层。
 
 ## 2. 技术栈
 
 | 层 | 当前选型与职责 |
 |---|---|
 | 运行环境 | Node.js 22+、TypeScript 5.9，开发服务使用 tsx |
-| 桌面 | Electron、electron-vite；前端页面保持隔离的渲染进程 |
+| 桌面 | Electron、electron-vite、electron-builder；隔离渲染进程与本地 Windows 打包 |
 | 后端 | Fastify 5、WebSocket、zod 参数和配置校验 |
 | Claude | Agent SDK 作为协议客户端；本机可执行程序作为驱动目标 |
 | Codex | 本机 `codex app-server`，stdio JSON-RPC |
-| Antigravity | 本机 `agy`，摘要库使用 Node 内置 SQLite；M2 增加流式子进程适配 |
+| Antigravity | 本机 `agy` 的流式子进程；Node 内置 SQLite 只读原生摘要 |
 | SSH | `ssh2`，exec、SFTP 和远端 PTY 共用连接但独占通道 |
 | 前端 | React 19、Vite 8、Tailwind 4、Ariakit、cmdk、react-resizable-panels |
 | 状态与通信 | zustand、TanStack Query、partysocket |
 | 消息与编辑 | streamdown、react-virtuoso、CodeMirror 6 |
-| 终端与字体 | xterm.js/fit、随包分发的 IBM Plex Sans 与 JetBrains Mono |
+| 终端与字体 | xterm.js/fit/search、随包分发的 IBM Plex Sans 与 JetBrains Mono |
 
 精确依赖版本由各 `package.json` 和锁文件维护，选用理由见[现行决策](decisions.md)。不因服务器使用 Python 而改写本地后端；涉及统计或分析时使用服务器已有环境，不自动安装依赖。
 
@@ -43,6 +44,7 @@ Electron 只负责入口和生命周期；业务服务与浏览器调试共用�
 | `apps/server/src/agents` | 本机程序探测、各 CLI 协议映射、会话读取与运行时 |
 | `apps/server/src/chat`、`sessions` | 回合、能力缓存、原生会话管理与归属 |
 | `apps/server/src/workspaces`、`settings` | 项目、迁移、产品偏好、原生配置 |
+| `apps/server/src/plugins`、`ssh-console` | 插件注册及隔离接口、独立服务器控制台与后端 PTY 注册表 |
 | `apps/server/src/http`、`process` | 访问控制、路由、子进程通用执行 |
 | `apps/server/src/ssh`、`terminal` | SSH 档案、信任、凭据、通道与 PTY 生命周期 |
 | `apps/server/src/resources`、`slurm`、`remote-files` | 当前资源采样、作业查询及服务器文件业务 |
@@ -52,6 +54,7 @@ Electron 只负责入口和生命周期；业务服务与浏览器调试共用�
 | `packages/shared/src` | 前后端消息、模型和 zod schema |
 | `apps/*/tests`、`packages/*/tests` | 按功能镜像的单元与组件/模块测试 |
 | `scripts/dev` | 文档检查、受控夹具和显式真实链路验证入口 |
+| `scripts/packaging` | 本地成包检查与隔离桌面启动冒烟 |
 
 按功能划分模块，通用能力才进入公共目录；不额外增加控制器/仓储等重复层。旧同步、版本、本地镜像、MCP 桥和命令黑名单目录已删除。
 
@@ -65,12 +68,14 @@ Electron 只负责入口和生命周期；业务服务与浏览器调试共用�
 
 会话列表先读取 provider，再投影 `projectId`，路由保留当前项目和无归属条目；前端按 CLI+原生 id 去重无归属记录。单条读取或操作再次验证目录和身份，避免仅靠列表筛选保护正文。
 
+会话摘要可携带经原生字段解析的单一本机 `directory`，用于添加项目预填；该字段不作为授权依据。目录变更与项目移除和活动回合/文件任务互斥，锁内修改防止检查后又开始新操作。前端成功变更目录后清该项目的会话与能力缓存、取消旧历史，并按选择身份决定是否重置当前主区。
+
 ### 4.2 CLI 接入
 
-| CLI | 稳定基础 | M2 实施重点 |
+| CLI | 原生来源 | 已接入运行路径 |
 |---|---|---|
-| Claude | SDK 会话列表、历史、改名/删除/分叉与既有回合适配 | 探测和驱动共用本机程序；SDK 不再静默选择平台附带程序；接通界面控制 |
-| Codex | app-server 原生会话、工具与审批适配 | 使用原生默认，能力发现改成显式刷新，保持正确身份和回合终态 |
+| Claude | SDK 会话列表、历史、改名/删除/分叉 | 探测与回合共同定位本机程序；SDK 仅作为协议客户端，界面承接原生审批 |
+| Codex | app-server 原生会话、工具与审批 | 省略未选择的参数，显式刷新能力，回合和管理均绑定原生身份 |
 | Antigravity | SQLite 摘要、时间和 `workspace_uris`，历史不可回放 | 新建、`--conversation` 续接、流式事件、中断及软拒提示 |
 
 探测运行本地版本/帮助命令，Codex 另检查生成的协议 schema；每个 CLI 单次探测超时为 5 秒，输出有独立上限。stdout 与 stderr 一起核对，四态结果不意味着登录成功或真实模型请求已通过。
@@ -83,7 +88,7 @@ Electron 只负责入口和生命周期；业务服务与浏览器调试共用�
 
 本轮前端在运行期间阻止切项目、切会话和新建，保持停止/审批控制可达；后端保留会话隔离基础，但不把后台多会话界面当成本轮交付。断线按本轮设计中断所属回合，不自动重发；跨连接事件续传尚未承诺。
 
-Claude/Codex 的既有运行时按会话复用，空闲回收预算为 5 分钟。缓存身份含项目、原生 id 与启动参数；关键输入变化后重新启动，崩溃实例不得再次复用，关闭应用统一 dispose。Antigravity 的具体进程实现以本轮适配器为准，不套用未经核实的相同生命周期。
+Claude/Codex 的既有运行时按会话复用，空闲回收预算为 5 分钟。缓存身份含项目、原生 id 与启动参数；关键输入变化后重新启动，崩溃实例不得再次复用，关闭应用统一 dispose。Antigravity 每轮关闭 stdin 并结束进程，下一轮用原生 id 续接；已有会话的启动环境快照独立保留，显式重启后刷新。
 
 模型/强度未选则省略参数。原生权限配置决定是否请求审批，宿主只承接答复。Antigravity 没有同等审批通道，软拒输出独立显示。能力 GET 仅返回缓存，显式 POST 刷新；发送普通文字不依赖目录，调用 slash 使用已刷新能力。
 
@@ -95,11 +100,13 @@ zustand 持有当前项目、CLI、会话和回合状态，TanStack Query 管项
 
 partysocket 退避从 1 秒到 15 秒，关闭发送缓冲，防止断开时积压消息在重连后发送。历史与事件只在前端/进程内暂存，服务器没有正文数据库。
 
+会话自动更新只观察固定的 CLI 存储根：每个来源一个主监听和一个父目录哨兵，不扫描正文。文件事件按 1 秒有界合并为 revision；缺失监听每 30 秒重试，并跟随父目录重建。页面可见时每 5 秒读取版本，有变化才失效会话列表；手动刷新也只更新列表，不重读主区正文或能力目录。
+
 ## 5. 存储与配置
 
 ### 5.1 工作台数据
 
-默认目录为 `%LOCALAPPDATA%\AgentDeck`，可由 `AGENTDECK_CONFIG_DIR` 指定。非 Windows 的默认位置回退到用户 `.local/share`。现有文件包括项目 `workspaces.json`、服务器档案 `servers.json`、产品偏好 `product-settings.json`、`credentials/` 密文与 `remote-file-tasks/` 任务记录。
+默认目录为 `%LOCALAPPDATA%\AgentDeck`，可由 `AGENTDECK_CONFIG_DIR` 指定。非 Windows 的默认位置回退到用户 `.local/share`。项目、服务器档案、产品偏好、加密凭据、插件注册与安装副本、启动环境和旧文件任务均属于工作台数据；CLI 原生会话及配置保持原位置。
 
 迁移先复制旧 `ssh-server` 目录的配置，再转换 `localDir`/`sshHost` 等旧字段。新目录已有文件不覆盖；转换前保留 `.bak`，旧目录不删，异常明确报告。当前格式只保留有效业务字段，不恢复同步与策略域。
 
@@ -107,9 +114,11 @@ partysocket 退避从 1 秒到 15 秒，关闭发送缓冲，防止断开时积�
 
 ### 5.2 原生配置
 
-当前编辑器覆盖 `CLAUDE_CONFIG_DIR/settings.json` 与 `CODEX_HOME/config.toml`，缺省从对应用户目录读取。`safe-file.ts` 检查路径逐层身份，拒绝符号链接和非常规文件；UTF-8 内容上限 256 KiB，revision 使用 SHA-256，保存校验冲突和语法并在同目录原子替换。当前未实现自动备份目录。
+资源目录由各 CLI 的已知文件和有界扫描生成，浏览器只提交服务端资源 id 和可选项目 id，不提交任意绝对路径。Claude 区分用户、共享项目与个人项目；Codex 配置、规则、共享 Skills 保留各自位置；Antigravity 不补造项目 settings。具体入口见[原生配置说明](native-configuration.md)。
 
-M3 按 CLI 实际支持补齐作用域和入口，不预定义统一用户/项目配置树；原生文件内容编辑与启动密钥状态接口分开。原生历史、规则和认证文件不并入工作台数据迁移。
+`safe-file.ts` 逐层核对目录和文件身份；内容按 UTF-8 读取，revision 使用 SHA-256，同目录原子替换前再次校验。JSON/TOML 检查语法，其余规则原文留给 CLI 解释。目录 GET 只返回元数据，显式 POST open 才读取完整正文，保存响应不回显内容；旧两文件接口与资源接口共用按路径串行队列。扫描、文件大小与创建约束由原生配置说明维护，当前没有自动备份目录。
+
+启动环境对每种 CLI 单独限定变量，所有显式值使用系统加密，不修改本机服务的全局 `process.env`。新运行器持有启动快照，保存不终止现有会话；显式重启仅在空闲时释放该 CLI 运行器，使后续发送重新启动。状态响应不包含旧值，原生文件编辑器则仅在显式打开期间持有正文。
 
 ### 5.3 启动配置
 
@@ -122,13 +131,13 @@ M3 按 CLI 实际支持补齐作用域和入口，不预定义统一用户/项�
 | `AGENTDECK_CODEX`、`CLAUDE_CODE_EXECUTABLE` | 选择本机已有 CLI 程序 |
 | `CLAUDE_CONFIG_DIR`、`CODEX_HOME` | 原生数据和配置根；不把文件复制到工作台 |
 
-可执行文件覆盖口用于寻找已有程序，不自动安装或升级 CLI。新增 Antigravity 覆盖项应由适配器与开发指南同步说明。
+可执行文件覆盖口用于寻找已有程序，不自动安装或升级 CLI。Antigravity 当前从启动环境的 PATH 解析 `agy`，没有单独的可执行文件覆盖变量。
 
 ## 6. HTTP、安全与桌面生命周期
 
 启动拒绝非回环 host。前端先调用 `POST /api/local-session`，校验本机 Host、精确允许的 Origin 与 Fetch Metadata 后获得 `AGENTDECK_session` Cookie；HttpOnly、SameSite=Strict，秘密比较使用常量时间。业务组件在握手成功后才挂载，握手等待上限 10 秒。
 
-API 和 WebSocket 继续校验会话及来源；禁止 iframe 嵌入，开发来源必须显式放行。HTTP body 和对话 WS 载荷上限均为 1 MiB。日志只输出必要状态与版本，原生诊断按上下文清理，避免泄露凭据或完整用户配置。
+API 和 WebSocket 继续校验会话及来源；主应用禁止被 iframe 嵌入，开发来源必须显式放行。外部插件页面运行在无同源权限的受控 iframe 中，不能继承这些会话权限。普通 HTTP body 与对话 WS 上限为 1 MiB；原生文件等有独立预算的路由显式覆盖限制。日志只输出必要状态与版本，诊断避免携带完整配置或凭据。
 
 | 接口域 | 当前路径与作用 |
 |---|---|
@@ -136,18 +145,21 @@ API 和 WebSocket 继续校验会话及来源；禁止 iframe 嵌入，开发来
 | 会话 | `/api/projects/:id/sessions` 与 `/:agent/:sessionId`，原生读取 |
 | 原生管理 | `/api/projects/:id/sessions/:agent/:sessionId/actions`、`/fork`，来源及项目均在路径中 |
 | 探测与能力 | `/api/agents/probes`；项目下 `agent-capabilities` 缓存与显式刷新 |
-| 设置 | `/api/settings/product`、`/environment`、`/api/agent-config/:agent` |
+| 会话变化 | `/api/session-changes`，只返回目录 revision 与监听状态 |
+| 设置 | `/api/settings/product`、`/environment`、`/launch-environment/:agent`，原生文件由 `/api/native-resources/:agent` 提供 |
+| 插件 | `/api/plugins/*`，安装注册、启停、静态页面与权限内的设置存储 |
 | 对话 | `/ws`，发送、停止、审批答复及回合事件 |
 | SSH 档案 | `/api/ssh-targets`、`/api/ssh/*`，档案、认证、信任 |
+| SSH Console | `/api/ssh-console/:serverId/*`，alias 定位资源、进程、只读文件和终端 |
 | 现有服务器工具 | `/api/workspaces/:id/terminal*`、`/resources`、`/slurm`、`/remote-files/*` |
 
 会话读写只使用项目路径；旧工作区会话别名返回 404，服务器工具路径暂时保持。会话接口在进入解析前设置 no-store，写入确认和原生会话锁仍由服务层维护。前端构建由 Fastify 托管，接口路径不回退为 HTML。
 
 Electron 主进程用端口 0 启动服务后加载实际地址；preload 仅暴露窄系统信息，`nodeIntegration: false`、`contextIsolation: true`。单实例锁让第二次启动聚焦已有窗口，关窗和退出都先释放服务，最长关闭等待 8 秒。后端清理终端、资源/Slurm、SSH、轮次和 HTTP；进程退出不留下后台业务实例。
 
-## 7. 现有 SSH 模块约束
+## 7. SSH 基础与兼容模块约束
 
-本节约束当前仍在用的实现。它是 M1 保留的服务，不代表 M4 插件的最终契约；本轮对话接入不修改这些业务。
+档案、信任和凭据由独立控制台与旧面板共享。本节的项目绑定终端、资源和文件任务约束仍适用于兼容入口；新的 alias 控制台约束见第 8 节。
 
 ### 7.1 档案、连接与凭据
 
@@ -181,8 +193,16 @@ Slurm 单一路径为 `LC_ALL=C squeue --noheader --user="$(id -un)" --format=..
 
 任务记录原子落盘后派发；损坏记录保留并阻断，重启不自动重放。派发后断线或取消可能已改变远端，结果不确定用 `needs_check`，读取核对后处理，不能把取消写成回滚。`sync-scope.ts` 仅为当前文件列表过滤，不恢复已删除同步域。
 
-## 8. 扩展演进和验证
+## 8. 工作台插件与独立控制台
 
-M3 先核实各 CLI 原生配置面，再实现编辑和启动环境。M4 再划定工作台插件生命周期与展示入口，SSH Console 迁移要明确现有档案、凭据、Slurm 和文件写能力的去留；未经该阶段设计不删除用户数据。
+插件注册表与自身设置采用 revision 校验。外部静态包复制入工作台目录，安装不执行脚本；启用后只可通过声明权限访问自己的 JSON 设置、当前项目摘要和命令通知。页面校验入口摘要，sandbox 不给予同源、任意网络或 Node 权限；关闭页面与停用/卸载各有独立处理。详细配额和消息边界见工作台插件接口。
 
-架构测试分单元、组件、受控进程和真实链路。M2 当前实施，真实模型调用、Antigravity 协议完整性、真实集群 Slurm、系统输入法和安装包都不能用模拟结果替代。代码存在与文档目标均不构成已通过证明，阶段状态统一在路线图维护。
+SSH Console 只以服务器 alias 定位，不伪造 Workspace。overview、processes 只对当前可见目标请求；只读文件使用 SFTP。后端 PTY registry 保存通道和有界输出，HTTP 读返回 base64 原始字节与 `nextSeq`，前端消费后才推进游标；读取被裁剪的旧区间时明确 reset。隐藏暂停浏览器读取但不结束 shell，重新打开先取终端列表；关闭单终端才释放其通道。插件停用回收自身资源，保留共享连接及兼容工具。
+
+xterm 按需加载，复制、粘贴和回滚查找在当前窗格内执行；输出字节直接写入，避免逐块 UTF-8 解码损坏字符。查找依赖 SearchAddon，不向服务器发送命令。插件页面关闭时 SSH 页面保持挂载并暂停观察，外部 iframe 则卸载。
+
+## 9. 本地打包与验证
+
+electron-builder 定义 Windows x64 NSIS 和 portable 目标，默认禁止签名和发布。桌面主进程及业务依赖随包提供，静态前端置于 resources/web；用户 CLI、原生认证及工作台数据不打入程序。包内路径按 `process.resourcesPath` 解析，程序安装位置与配置目录分离。构建和卸载规则详见[本地安装指南](../guides/local-installation.md)。
+
+验证区分模块行为、受控进程、浏览器、包内启动与真实链路。三 CLI 账号与模型、真实 SSH/Slurm、输入法以及安装卸载均需各自证据；安装包生成不代表签名、发布或自动更新完成。阶段结果仅在路线图登记，历史失败不会因文档刷新转为通过。

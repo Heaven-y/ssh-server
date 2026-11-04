@@ -27,6 +27,8 @@ export const SessionSummarySchema = z.object({
   title: z.string(),
   updatedAt: z.string().min(1),
   running: z.boolean(),
+  /** 原生元数据中可确定的本机绝对目录，供用户显式添加项目；未知或多目录不填写。 */
+  directory: z.string().min(1).optional(),
 });
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
 
