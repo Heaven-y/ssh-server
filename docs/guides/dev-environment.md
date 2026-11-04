@@ -112,7 +112,7 @@ powershell -ExecutionPolicy Bypass -File scripts\dev\install-skills.ps1
 
 | 场景 | 命令 |
 |---|---|
-| 桌面开发 | `npm.cmd run dev:desktop` |
+| 桌面开发与热更新 | `npm.cmd run dev:desktop` |
 | 浏览器热更新 | `npm.cmd run dev` |
 | 本机静态托管 | `npm.cmd start` |
 | 指定关联测试 | `npm.cmd test -- apps/server/tests/chat/turn-manager.test.ts` |
@@ -123,6 +123,19 @@ powershell -ExecutionPolicy Bypass -File scripts\dev\install-skills.ps1
 开发服务地址和环境覆盖项统一见[启动配置](../engineering/architecture.md#53-启动配置)。前端先同源握手，服务重启后需重新取得会话。不要把测试页面指向正在使用的真实配置。
 
 桌面 `dev` 和 `start` 在运行 electron-vite 前执行 Electron 官方安装器：文件完整时立即返回，缺失时从缓存恢复或下载锁定版本。仅安装 npm 包不一定已包含桌面运行文件，跳过安装脚本或下载中断会使 electron-vite 报 `Electron uninstall`。已有依赖时可在仓库根目录运行 `node node_modules/electron/install.js` 修复，再执行 `npm.cmd run dev:desktop`；无需删除整套 node_modules。首次下载需要网络，未完成下载不能只创建 path.txt 充当成功。
+
+桌面开发使用 electron-vite 的 renderer 服务和监听构建。前端入口复用 web 的 Vite/React/Tailwind 配置，默认页面地址为 `http://127.0.0.1:5173`，API 与 WebSocket 代理到本机后端；Host、Origin、Cookie 和插件 iframe 限制继续生效。
+
+| 保存的内容 | 开发窗口行为 |
+|---|---|
+| React 页面、组件与 CSS | Vite HMR/Fast Refresh，通常保持当前页面与可保留的组件状态；不重启后端 |
+| Electron preload | 重新构建并刷新页面，页面内临时状态可能重置 |
+| 后端、桌面主进程及其共享源码、远端辅助脚本 | 重新构建并自动启动新 Electron 进程 |
+| 依赖或启动/构建配置 | 按变更安装依赖后停止并重新执行开发命令 |
+
+后端重启会中断本次运行中的模型回合、SSH 通道和终端。不要在真实任务运行时编辑会触发重启的文件；原生历史与工作台已保存数据继续按各自存储规则保留。热更新只适用于源码开发，已生成的安装包和便携包不会随源码变化。
+
+开发代理要求固定后端端口，使用 `AGENTDECK_HOST` 和 `AGENTDECK_PORT`，默认回环端口 4317；桌面热更新不接受端口 0。5173 被占用时明确启动失败，不自动连接其他开发服务，因此不要同时运行浏览器开发与桌面开发。安装版和静态预览仍使用系统分配的端口。
 
 原生配置接线脚本为 `e2e-claude-config.ts` 与 `e2e-agent-config.ts`。Codex 可通过 `--config` 与 `--codex` 指定隔离来源；只有已授权真实模型验证才追加 `--with-model`。复制认证材料必须明确指定、核对源摘要，清理只触及自身副本，不绕过策略拒绝。
 

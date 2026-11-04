@@ -155,7 +155,9 @@ API 和 WebSocket 继续校验会话及来源；主应用禁止被 iframe 嵌入
 
 会话读写只使用项目路径；旧工作区会话别名返回 404，服务器工具路径暂时保持。会话接口在进入解析前设置 no-store，写入确认和原生会话锁仍由服务层维护。前端构建由 Fastify 托管，接口路径不回退为 HTML。
 
-Electron 主进程用端口 0 启动服务后加载实际地址；preload 仅暴露窄系统信息，`nodeIntegration: false`、`contextIsolation: true`。单实例锁让第二次启动聚焦已有窗口，关窗和退出都先释放服务，最长关闭等待 8 秒。后端清理终端、资源/Slurm、SSH、轮次和 HTTP；进程退出不留下后台业务实例。
+安装版与静态预览的 Electron 主进程用端口 0 启动服务后加载实际地址；preload 仅暴露窄系统信息，`nodeIntegration: false`、`contextIsolation: true`。单实例锁让第二次启动聚焦已有窗口，关窗和退出都先释放服务，最长关闭等待 8 秒。后端清理终端、资源/Slurm、SSH、轮次和 HTTP；进程退出不留下后台业务实例。
+
+桌面开发通过 Vite 加载源码页面，后端使用固定端口接受同源代理。React/CSS 采用热更新，preload 重建触发整页刷新，主进程及后端源码重建触发应用重启；这是开发工作流，不提供在途模型任务无中断迁移。开发监听范围和使用方式见[开发指南](../guides/dev-environment.md#3-启动与隔离验证)。
 
 ## 7. SSH 基础与兼容模块约束
 

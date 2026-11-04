@@ -74,9 +74,15 @@ async function startDesktop(): Promise<void> {
         : '缺少前端构建产物 apps/web/dist，请先运行 npm run build -w @agentdeck/web',
     );
   }
-  // 端口固定用 0：由系统分配，避免和正在运行的开发服务抢端口。
+  // Vite 开发代理需要固定端口；安装版和静态预览仍由系统分配空闲端口。
+  if (rendererUrl && config.port === 0)
+    throw new Error('桌面热更新需要固定后端端口，请将 AGENTDECK_PORT 设置为 1–65535。');
   const started = await startServer(
-    { ...config, port: 0, devOrigin: rendererUrl ? new URL(rendererUrl).origin : config.devOrigin },
+    {
+      ...config,
+      port: rendererUrl ? config.port : 0,
+      devOrigin: rendererUrl ? new URL(rendererUrl).origin : config.devOrigin,
+    },
     { webDir: paths.web },
   );
   server = started;
