@@ -26,6 +26,23 @@ afterEach(async () => {
 });
 
 describe('原生 Agent 配置', () => {
+  it('保存成功后通知运行器，读取与冲突不触发配置生效通知', async () => {
+    const { homeDir } = await fixture();
+    const saved: NativeConfigAgent[] = [];
+    const service = createNativeConfigService({
+      homeDir,
+      env: {},
+      onSaved: (agent) => {
+        saved.push(agent);
+      },
+    });
+    await service.read('codex');
+    await service.save('codex', { content: '# 修改配置\n', revision: 'missing' });
+    await expect(service.save('codex', { content: '', revision: 'missing' })).rejects.toMatchObject({
+      code: 'revision_conflict',
+    });
+    expect(saved).toEqual(['codex']);
+  });
   it.each([
     ['claude', 'settings.json', '\uFEFF{\n  "unknown": { "enabled": true },\n  "env": {}\n}\n'],
     ['codex', 'config.toml', '# 保留注释\r\nmodel = "example"\r\n[unknown]\r\nenabled = true\r\n'],

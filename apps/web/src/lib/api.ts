@@ -10,6 +10,13 @@ import type {
   NativeConfigAgent,
   NativeConfigDocument,
   NativeConfigInput,
+  NativeResourceCatalog,
+  NativeResourceDocument,
+  NativeResourceSaveInput,
+  NativeResourceCreateInput,
+  NativeResourceSaved,
+  LaunchEnvironmentDocument,
+  LaunchEnvironmentInput,
   RemoteBrowseTarget,
   RemoteBrowseSession,
   RemoteDirectory,
@@ -90,8 +97,53 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 const remoteSessionsUrl = (id: string) => `/api/workspaces/${encodeURIComponent(id)}/remote-files/sessions`;
+export type NativeResourceContext = { agent: AgentKind; projectId?: string };
+function nativeResourceUrl(context: NativeResourceContext, suffix = '') {
+  const query = context.projectId ? `?${new URLSearchParams({ projectId: context.projectId })}` : '';
+  return `/api/native-resources/${context.agent}${suffix}${query}`;
+}
 
 export const api = {
+  listNativeResources: (context: NativeResourceContext, signal?: AbortSignal) =>
+    request<NativeResourceCatalog>(nativeResourceUrl(context), { signal, cache: 'no-store' }),
+  /** 正文只在用户显式打开时获取，不能放入查询缓存。 */
+  openNativeResource: (context: NativeResourceContext, id: string, signal?: AbortSignal) =>
+    request<NativeResourceDocument>(nativeResourceUrl(context, `/${encodeURIComponent(id)}/open`), {
+      method: 'POST',
+      body: '{}',
+      signal,
+      cache: 'no-store',
+    }),
+  saveNativeResource: (
+    context: NativeResourceContext,
+    id: string,
+    input: NativeResourceSaveInput,
+    signal?: AbortSignal,
+  ) =>
+    request<NativeResourceSaved>(nativeResourceUrl(context, `/${encodeURIComponent(id)}`), {
+      method: 'PUT',
+      body: JSON.stringify(input),
+      signal,
+      cache: 'no-store',
+    }),
+  createNativeResource: (context: NativeResourceContext, input: NativeResourceCreateInput, signal?: AbortSignal) =>
+    request<NativeResourceSaved>(nativeResourceUrl(context), {
+      method: 'POST',
+      body: JSON.stringify(input),
+      signal,
+      cache: 'no-store',
+    }),
+  readLaunchEnvironment: (agent: AgentKind, signal?: AbortSignal) =>
+    request<LaunchEnvironmentDocument>(`/api/settings/launch-environment/${agent}`, { signal, cache: 'no-store' }),
+  saveLaunchEnvironment: (agent: AgentKind, input: LaunchEnvironmentInput, signal?: AbortSignal) =>
+    request<LaunchEnvironmentDocument>(`/api/settings/launch-environment/${agent}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+      signal,
+      cache: 'no-store',
+    }),
+  restartAgentRuntime: (agent: AgentKind, signal?: AbortSignal) =>
+    request<void>(`/api/settings/launch-environment/${agent}/restart`, { method: 'POST', body: '{}', signal }),
   readProductSettings: (signal?: AbortSignal) =>
     request<ProductSettingsDocument>('/api/settings/product', { signal, cache: 'no-store' }),
   saveProductSettings: (input: ProductSettingsInput, signal?: AbortSignal) =>

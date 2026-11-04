@@ -16,11 +16,9 @@ const AGENT_ORDER: AgentKind[] = ['claude', 'codex', 'antigravity'];
 type AgentSpec = {
   agent: AgentKind;
   executable: string;
-  version: RegExp;
+  version?: RegExp;
   /** --help 里必须出现的选项或子命令；缺一项即视为接口变化。 */
   requiredHelp: string[];
-  /** 启动环境里必须存在的变量；只判断本进程继承的结果，不推断登录态。 */
-  envKeys: string[];
   /** Codex 用 app-server generate-json-schema 验证 RPC 协议，必须生成有效 JSON。 */
   schema?: boolean;
 };
@@ -31,22 +29,18 @@ const SPECS: Record<AgentKind, AgentSpec> = {
     executable: 'claude',
     version: /^(\d+\.\d+\.\d+)\s+\(Claude Code\)/m,
     requiredHelp: ['--print', '--input-format', '--output-format', '--permission-prompts'],
-    envKeys: [],
   },
   codex: {
     agent: 'codex',
     executable: 'codex',
     version: /codex-cli (\d+\.\d+\.\d+)/,
     requiredHelp: ['app-server'],
-    envKeys: [],
     schema: true,
   },
   antigravity: {
     agent: 'antigravity',
     executable: 'agy',
-    version: /^(\d+\.\d+\.\d+)/m,
     requiredHelp: ['--print', '--input-format', '--output-format', '--conversation'],
-    envKeys: ['GEMINI_API_KEY'],
   },
 };
 
@@ -54,7 +48,7 @@ type MissingReason = 'not-found' | 'timeout' | 'aborted';
 type MissingStep = { kind: 'missing'; reason: MissingReason };
 type ChangedStep = { kind: 'changed'; missing: string[]; detail: string };
 type StepFailure = MissingStep | ChangedStep;
-type VersionStep = { kind: 'ok'; version: string } | StepFailure;
+type VersionStep = { kind: 'ok'; version?: string } | StepFailure;
 type OutputStep = { kind: 'ok'; stdout: string; stderr: string } | StepFailure;
 type SchemaStep = { kind: 'ok' } | StepFailure;
 
@@ -63,11 +57,6 @@ const MISSING_HINTS: Record<MissingReason, string> = {
   timeout: '探测超时（5 秒）',
   aborted: '探测已取消',
 };
-
-function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
-  const entry = Object.entries(env).find(([key]) => key.toLowerCase() === name.toLowerCase());
-  return entry?.[1];
-}
 
 /** 固定探测目标，界面显示的版本就是这里实际运行的程序版本。 */
 export function createLocalRunner(env: () => NodeJS.ProcessEnv = () => process.env): ProcessRunner {
@@ -111,6 +100,8 @@ async function attempt(run: ProcessRunner, options: AttemptOptions): Promise<Out
 }
 
 async function readVersion(spec: AgentSpec, run: ProcessRunner): Promise<VersionStep> {
+  // agy 未公开版本入口；仅核对已公布的 --help，不把版本缺失等同协议变化。
+  if (!spec.version) return { kind: 'ok' };
   const step = await attempt(run, {
     command: spec.executable,
     args: ['--version'],
@@ -219,7 +210,6 @@ export type AgentProbeDeps = { run: ProcessRunner; env?: () => NodeJS.ProcessEnv
 
 export function createAgentProbes(deps: AgentProbeDeps): AgentProbes {
   const run = deps.run;
-  const env = deps.env ?? (() => process.env);
 
   async function probe(agent: AgentKind): Promise<AgentProbe> {
     const spec = SPECS[agent];
@@ -247,17 +237,7 @@ export function createAgentProbes(deps: AgentProbeDeps): AgentProbes {
       if (schemaStep.kind === 'changed') return changedProbe(spec, version, schemaStep);
     }
 
-    const currentEnv = env();
-    const absentEnv = spec.envKeys.filter((key) => (envValue(currentEnv, key) ?? '').trim() === '');
-    if (absentEnv.length > 0) {
-      return {
-        agent,
-        status: 'credential-missing',
-        version,
-        message: `${spec.executable} 已安装（版本 ${version}），但启动环境缺少 ${absentEnv.join('、')}；配置后重新检测。`,
-      };
-    }
-    return { agent, status: 'available', version };
+    return { agent, status: 'available', ...(version ? { version } : {}) };
   }
 
   async function probeAll(): Promise<AgentProbe[]> {

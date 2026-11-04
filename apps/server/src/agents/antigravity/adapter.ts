@@ -8,13 +8,14 @@ export type AntigravityProcess = Pick<
   ChildProcessWithoutNullStreams,
   'stdin' | 'stdout' | 'stderr' | 'kill' | 'on' | 'once'
 >;
-type LaunchInput = { cwd: string; args: string[] };
-type Options = { launch?: (input: LaunchInput) => AntigravityProcess };
+type LaunchInput = { cwd: string; args: string[]; env?: NodeJS.ProcessEnv };
+type Options = { launch?: (input: LaunchInput) => AntigravityProcess; env?: NodeJS.ProcessEnv };
 
 function launch(input: LaunchInput): AntigravityProcess {
-  const executable = resolveLocalCommand('agy', process.env);
+  const executable = resolveLocalCommand('agy', input.env ?? process.env);
   return spawn(executable.command, [...executable.args, ...input.args], {
     cwd: input.cwd,
+    env: input.env,
     shell: false,
     windowsHide: true,
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -162,7 +163,9 @@ class AntigravityTurn {
 export function createAntigravityRunner(options: Options = {}): TurnRunner {
   const active = new Set<AntigravityTurn>();
   const runner: TurnRunner = (input): TurnHandle => {
-    const turn = new AntigravityTurn(input, options.launch ?? launch);
+    const turn = new AntigravityTurn(input, (request) =>
+      (options.launch ?? launch)({ ...request, ...(options.env ? { env: options.env } : {}) }),
+    );
     active.add(turn);
     return { interrupt: () => turn.interrupt(), done: turn.done.finally(() => active.delete(turn)) };
   };

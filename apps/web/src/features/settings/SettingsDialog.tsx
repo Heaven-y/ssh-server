@@ -1,12 +1,15 @@
 import { lazy, Suspense, useState } from 'react';
 import ProductSettingsDialog from './ProductSettingsDialog';
-import type { NativeConfigAgent } from '@agentdeck/shared';
+import type { AgentKind, Workspace } from '@agentdeck/shared';
 
-const NativeConfigDialog = lazy(() => import('./NativeConfigDialog'));
+const NativeResourcesDialog = lazy(() => import('./NativeResourcesDialog'));
+const LaunchEnvironmentPanel = lazy(() => import('./LaunchEnvironmentPanel'));
 /** 同时只挂载一个对话框；离开原生视图立即清理其敏感内容。 */
-export default function SettingsDialog({ onClose }: { onClose(): void }) {
-  const [native, setNative] = useState<NativeConfigAgent | null>(null);
-  if (!native) return <ProductSettingsDialog onClose={onClose} onNative={setNative} />;
+export default function SettingsDialog({ onClose, project }: { onClose(): void; project?: Workspace }) {
+  const [native, setNative] = useState<AgentKind | null>(null);
+  const [launch, setLaunch] = useState<AgentKind | null>(null);
+  if (!native && !launch)
+    return <ProductSettingsDialog onClose={onClose} onNative={setNative} onLaunchEnvironment={setLaunch} />;
   return (
     <Suspense
       fallback={
@@ -15,7 +18,11 @@ export default function SettingsDialog({ onClose }: { onClose(): void }) {
         </p>
       }
     >
-      <NativeConfigDialog agent={native} onClose={onClose} onBack={() => setNative(null)} />
+      {native ? (
+        <NativeResourcesDialog agent={native} project={project} onClose={onClose} onBack={() => setNative(null)} />
+      ) : (
+        launch && <LaunchEnvironmentPanel agent={launch} onClose={onClose} onBack={() => setLaunch(null)} />
+      )}
     </Suspense>
   );
 }

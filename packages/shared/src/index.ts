@@ -55,6 +55,21 @@ export type {
   RemoteFileTask,
 } from './remote-files';
 export type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from './settings';
+export type {
+  NativeResource,
+  NativeResourceKind,
+  NativeResourceScope,
+  NativeResourceFormat,
+  NativeResourceRoot,
+  NativeResourceGuidance,
+  NativeResourceCatalog,
+  NativeResourceDocument,
+  NativeResourceSaveInput,
+  NativeResourceCreateInput,
+  NativeResourceSaved,
+} from './native-resources';
+export { LaunchEnvironmentInputSchema, LaunchVariableModeSchema } from './launch-environment';
+export type { LaunchEnvironmentInput, LaunchEnvironmentDocument, LaunchVariableMode } from './launch-environment';
 export { ProductSettingsSchema, ProductSettingsInputSchema, resourceTiming } from './product-settings';
 export type {
   ProductSettings,

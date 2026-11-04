@@ -57,6 +57,22 @@ function OpenPalette({
   );
 }
 
+function OpenSettings({ opened, project, close }: { opened: boolean; project?: Workspace; close(): void }) {
+  return (
+    opened && (
+      <Suspense
+        fallback={
+          <p role="status" className="absolute right-4 top-14 z-50 rounded-md border border-border bg-card p-3 text-sm">
+            正在打开设置…
+          </p>
+        }
+      >
+        <SettingsDialog key={project?.id ?? 'none'} project={project} onClose={close} />
+      </Suspense>
+    )
+  );
+}
+
 /** 三段式外壳：顶栏 / 左栏项目与会话 / 主区会话 / 右侧服务器面板。 */
 export function App() {
   const palette = useCommandPalette();
@@ -130,20 +146,7 @@ export function App() {
           },
         }}
       />
-      {settingsOpen && (
-        <Suspense
-          fallback={
-            <p
-              role="status"
-              className="absolute right-4 top-14 z-50 rounded-md border border-border bg-card p-3 text-sm"
-            >
-              正在打开设置…
-            </p>
-          }
-        >
-          <SettingsDialog onClose={() => setSettingsOpen(false)} />
-        </Suspense>
-      )}
+      <OpenSettings opened={settingsOpen} project={current} close={() => setSettingsOpen(false)} />
       <WorkspaceLayout
         dockOpen={dock.open}
         dock={
