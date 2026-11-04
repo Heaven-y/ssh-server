@@ -21,7 +21,7 @@
 | 已确认的设计决策与取舍 | `docs/engineering/decisions.md` |
 | 开发环境、代码规范、项目 skill、已知问题 | `docs/guides/dev-environment.md` |
 | 里程碑与进度 | `docs/roadmap.md` |
-| 最新交付验收与精选截图 | `docs/guides/ui-usability-optimization-acceptance.md` |
+| 上一代产品验收记录（历史，不适用于本轮） | `docs/guides/ui-usability-optimization-acceptance.md` |
 
 实现与文档不一致时，先更新文档或向用户确认。
 
