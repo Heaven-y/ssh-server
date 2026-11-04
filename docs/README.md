@@ -12,7 +12,7 @@
 | 6 | [开发指南](guides/dev-environment.md) | 环境、代码规范、分支、技能和验证方法 |
 | 7 | [路线图](roadmap.md) | 已交付基础、当前主线、后续顺序与证据边界 |
 
-## 当前实施
+## 接入与使用
 
 | 文档 | 用途 |
 |---|---|
@@ -20,7 +20,6 @@
 | [原生配置与启动环境](engineering/native-configuration.md) | 各 CLI 配置入口、显式正文编辑和启动变量的边界 |
 | [工作台插件接口](engineering/workbench-plugins.md) | 自有 v1 插件格式、宿主接口、SSH Console 与兼容边界 |
 | [本地安装与打包](guides/local-installation.md) | 安装版、便携版、数据保存、构建和隔离验收 |
-| [整体交付计划](superpowers/plans/2026-11-04-workbench-completion.md) | 原生配置、插件、SSH Console 和本地安装包的剩余工作 |
 
 ## 维护规则
 
@@ -39,3 +38,5 @@
 三 CLI 对话核心接线计划已经完成，原始步骤与验证记录在 `6e33803:docs/superpowers/plans/2026-11-04-native-dialogue.md`。其仍有效的运行边界继续保留在原生对话接入说明中。
 
 会话管理实施计划已归档，完成版本为 `68e4ce1:docs/superpowers/plans/2026-11-04-session-management.md`；实现和整合提交分别为 `bd503b1`、`a3e29ab`。管理入口及并发规则继续由需求、架构和接入说明维护。
+
+整体交付计划的实现与验收已完成，步骤记录保存于 `33ffd9d:docs/superpowers/plans/2026-11-04-workbench-completion.md`。原生配置、工作台插件、本地包分别见上表的长期说明；阶段提交及未验证边界集中在路线图，不再保留并行维护的已完成计划。

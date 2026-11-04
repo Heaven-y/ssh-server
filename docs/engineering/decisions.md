@@ -167,6 +167,8 @@
 | 本次重整前的 M1 实现、需求、完整 D1–D36、设计与计划 | `c686ef2` 下的 `README.md` 和 `docs/` |
 | 上一代同步工作台的 D01–D45 与取舍 | `ec33148:docs/engineering/decisions.md` |
 | 已移除的停靠界面验收、旧截图与 HTML | `c686ef2:docs/guides/ui-usability-optimization-acceptance.md` 与该提交的 `docs/assets/ui-usability-optimization/` |
+| 会话管理完成后的实施记录 | `68e4ce1:docs/superpowers/plans/2026-11-04-session-management.md` |
+| 原生配置、工作台插件与本地分发的整体实施记录 | `33ffd9d:docs/superpowers/plans/2026-11-04-workbench-completion.md` |
 
 ```powershell
 git show c686ef2:docs/engineering/decisions.md
