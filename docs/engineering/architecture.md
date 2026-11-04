@@ -1,6 +1,6 @@
 # 架构
 
-更新日期：2026-11-04。本文按当前工作树描述 AgentDeck（原 `ssh-server`）的真实分层。产品已从「本地改代码、rclone 同步、服务器上运行」转向「本机统一管理 Claude Code / Codex / Antigravity 的原生会话」；同步、版本、本地文件镜像、旧工作区向导、命令黑名单与 MCP 桥都已从代码中删除。M1 是网页形态的只读工作台，Electron 壳尚未创建（M1.5）。需求见[需求](../product/requirements.md)，取舍见[设计](../superpowers/specs/2026-11-03-native-cli-workbench-design.md)与[设计决策](decisions.md)，进度见[路线图](../roadmap.md)。
+更新日期：2026-11-04。本文按当前工作树描述 AgentDeck（原 `ssh-server`）的真实分层。产品已从「本地改代码、rclone 同步、服务器上运行」转向「本机统一管理 Claude Code / Codex / Antigravity 的原生会话」；同步、版本、本地文件镜像、旧工作区向导、命令黑名单与 MCP 桥都已从代码中删除。M1 是本机的只读工作台，入口是 `apps/desktop` 的 Electron 壳，浏览器访问同一地址保留为调试手段。需求见[需求](../product/requirements.md)，取舍见[设计](../superpowers/specs/2026-11-03-native-cli-workbench-design.md)与[设计决策](decisions.md)，进度见[路线图](../roadmap.md)。
 
 ## 1. 总览
 
@@ -222,7 +222,7 @@ M1 的公开接口面：
 | 模块 | 接口 | 状态 |
 |---|---|---|
 | 会话读取别名 | `GET /api/workspaces/:id/sessions`、`GET /api/workspaces/:id/sessions/:sessionId/events?agent=` | 与项目路径同实现；前端已全部改走 `/api/projects`，当前无客户端 |
-| 会话动作 | `POST /api/workspaces/:id/sessions/:sessionId/actions`、`POST .../fork` | 接口可用，M1 界面不使用 |
+| 会话动作 | `POST /api/workspaces/:id/sessions/:sessionId/actions`、`POST .../fork` | 改名已接入左栏行内管理按钮；删除、归档（仅 Codex）与分叉仍只有接口 |
 | 能力目录 | `GET /api/workspaces/:id/agent-capabilities` | M2 的「刷新能力」使用 |
 | 产品设置与环境 | `GET/PUT /api/settings/product`、`GET/POST /api/settings/environment` | 部分设置界面使用 |
 | 原生配置 | `GET/PUT /api/agent-config/:agent` | 仅 Claude/Codex 两个文件 |
