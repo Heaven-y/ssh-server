@@ -1,5 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SessionRef, Workspace } from '@agentdeck/shared';
@@ -15,6 +16,7 @@ const ws: Workspace = {
   server: 'my-server',
   remoteDir: '~',
 };
+const other: Workspace = { id: 'w2', name: 'other', dir: path.join(os.tmpdir(), 'agentdeck-fixture', 'other') };
 const store = { get: async (id: string) => (id === 'w1' ? ws : undefined) } as unknown as WorkspaceStore;
 
 const apps: FastifyInstance[] = [];
@@ -65,14 +67,46 @@ function setup() {
       cwd: ws.dir,
     })),
   };
+  const antigravity: SessionProvider = {
+    // Antigravity 的列表不按目录过滤，归属只能靠 workspaceUris。
+    list: vi.fn(async () => [
+      {
+        sessionId: 'a1',
+        summary: '本项目的 Antigravity 会话',
+        lastModified: 300,
+        workspaceUris: pathToFileURL(ws.dir).href,
+      },
+      {
+        sessionId: 'a2',
+        summary: '其他项目的 Antigravity 会话',
+        lastModified: 400,
+        workspaceUris: pathToFileURL(other.dir).href,
+      },
+      {
+        sessionId: 'a3',
+        summary: '未归属的 Antigravity 会话',
+        lastModified: 500,
+        workspaceUris: 'https://example.com/x',
+      },
+    ]),
+    read: vi.fn(async () => {
+      throw new SessionError(501, 'session_not_replayable', '不可回放');
+    }),
+    assertBelongs: vi.fn(async () => undefined),
+    mutate: vi.fn(async () => undefined),
+    fork: vi.fn(async () => {
+      throw new SessionError(400, 'unsupported_action', '不支持分叉');
+    }),
+  };
   const withIdleSession = vi.fn(async (_session: SessionRef) => undefined);
   const sessions = createSessionsService(
-    { claude: createClaudeSessions(api), codex },
+    { claude: createClaudeSessions(api), codex, antigravity },
     {
       withIdleSession: async (session, operation) => {
         await withIdleSession(session);
         return operation();
       },
+      projects: async () => [ws, other],
     },
   );
   registerSessionRoutes(app, { store, sessions });
@@ -159,13 +193,28 @@ describe('会话接口', () => {
       {
         agent: 'claude',
         sessionId: 's1',
-        projectId: null,
+        projectId: 'w1',
         title: '调参',
         updatedAt: '1970-01-01T00:00:00.100Z',
         running: false,
       },
     ]);
     expect(api.list).toHaveBeenCalledWith(ws.dir);
+  });
+
+  it('Antigravity 按 workspace_uris 归属，解析不出时标为未归属', async () => {
+    const { app } = setup();
+    const r = await app.inject({ method: 'GET', url: '/api/workspaces/w1/sessions?agent=antigravity' });
+    expect(r.statusCode).toBe(200);
+    expect(
+      r
+        .json()
+        .map((session: { sessionId: string; projectId: string | null }) => [session.sessionId, session.projectId]),
+    ).toEqual([
+      ['a1', 'w1'],
+      ['a2', 'w2'],
+      ['a3', null],
+    ]);
   });
 
   it('返回会话历史对应的事件', async () => {
@@ -200,7 +249,7 @@ describe('会话接口', () => {
       {
         agent: 'claude',
         sessionId: 's1',
-        projectId: null,
+        projectId: 'w1',
         title: '本项目',
         updatedAt: '1970-01-01T00:00:00.100Z',
         running: false,
@@ -242,7 +291,7 @@ describe('会话接口', () => {
       {
         agent: 'codex',
         sessionId: 's1',
-        projectId: null,
+        projectId: 'w1',
         title: 'Codex 调参',
         updatedAt: '1970-01-01T00:00:00.200Z',
         running: false,

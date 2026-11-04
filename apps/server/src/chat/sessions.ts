@@ -10,6 +10,7 @@ import {
 } from '@agentdeck/shared';
 import type { NativeSessionFork, NativeSessionRead, NativeSessionSummary } from '../agents/types';
 import { sameSessionDirectory } from '../agents/session-scope';
+import { resolveProjectId } from '../sessions/ownership';
 
 const AGENT_LABELS: Record<AgentKind, string> = {
   claude: 'Claude Code',
@@ -28,6 +29,8 @@ type SessionOperations = {
   withIdleSession<T>(session: SessionRef, operation: () => Promise<T>): Promise<T>;
   /** 该原生会话是否正被本网页驱动；未接入时按未运行上报。 */
   isRunning?(session: SessionRef): boolean;
+  /** 已配置项目列表，用于把原生会话归属到项目；省略时只按当前工作区判定。 */
+  projects?(): Promise<Workspace[]>;
 };
 
 export class SessionError extends Error {
@@ -70,11 +73,18 @@ export function createSessionsService(
         const provider = providerOf(providers, agent);
         if (archived && agent !== 'codex')
           throw new SessionError(400, 'unsupported_action', `${AGENT_LABELS[agent]} 不支持归档会话`);
-        return (await provider.list(ws.dir, signal, archived)).map((session) => ({
+        const sessions = await provider.list(ws.dir, signal, archived);
+        const projects = operations.projects ? await operations.projects() : [ws];
+        return sessions.map((session) => ({
           agent,
           sessionId: session.sessionId,
-          // 项目归属裁决在后续任务接入；此前一律按「未归属」上报，不猜测。
-          projectId: null,
+          projectId: resolveProjectId({
+            // Claude/Codex 的 list 已按目录过滤，返回行必然属于 ws.dir；
+            // Antigravity 的列表不随目录变化，只能按 workspaceUris 裁决，不能用 ws.dir 兜底。
+            ...(agent === 'antigravity' ? {} : { cwd: ws.dir }),
+            workspaceUris: session.workspaceUris,
+            projects,
+          }),
           title: session.summary,
           updatedAt: new Date(session.lastModified).toISOString(),
           running: operations.isRunning?.({ agent, sessionId: session.sessionId }) ?? false,

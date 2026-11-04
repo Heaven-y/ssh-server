@@ -171,6 +171,8 @@ async function main(): Promise<void> {
     {
       withIdleSession: (session, operation) => turns.withIdleSession(session, operation),
       isRunning: (s) => turns.isRunning(s),
+      // 归属裁决要比较全部项目目录，不能只看当前项目。
+      projects: () => store.list(),
     },
   );
   const turns: TurnManager = new TurnManager({
