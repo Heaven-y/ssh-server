@@ -148,7 +148,7 @@ function WorkspaceSessions({ workspaceId }: { workspaceId: string }) {
   );
 }
 
-/** 两类来源独立读取；工作区切换关闭详情，但不撤销已发出的原生操作。 */
+/** 两类来源独立读取；项目切换关闭详情，但不撤销已发出的原生操作。 */
 export function SessionList({ workspaceId }: { workspaceId: string }) {
   return <WorkspaceSessions key={workspaceId} workspaceId={workspaceId} />;
 }

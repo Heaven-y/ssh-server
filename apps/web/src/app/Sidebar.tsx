@@ -1,0 +1,391 @@
+import { Menu, MenuButton, MenuItem, useMenuStore } from '@ariakit/react';
+import { ChevronRight, FolderPlus, LoaderCircle, Plus } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import type { AgentKind, SessionSummary, Workspace } from '@agentdeck/shared';
+import { AGENT_LABELS } from '../features/chat/AgentControls';
+import { sessionActionKey, useChat } from '../features/chat/chat-store';
+import { buttonClass } from '../ui/styles';
+import { relativeTime } from '../ui/relative-time';
+
+export type SidebarProps = {
+  projects: Workspace[];
+  /** 按项目 id 归集的会话；未归属会话（projectId === null）可以混在其中，由侧栏裁决。 */
+  sessionsByProject: Record<string, SessionSummary[]>;
+  onAddProject(): void;
+  onNewSession?(projectId: string, agent: AgentKind): void;
+  onSelectProject?(projectId: string): void;
+  onSelectSession?(projectId: string, session: SessionSummary): void;
+  /** 会话仍在读取时不要显示「暂无会话」，否则会把加载中误报成空列表。 */
+  loadingSessions?: boolean;
+  /** 测试与外部导航使用；不传时按 zustand 里的当前项目高亮。 */
+  currentProjectId?: string;
+};
+
+const AGENT_ORDER: AgentKind[] = ['claude', 'codex', 'antigravity'];
+const fullTime = new Intl.DateTimeFormat('zh-CN', {
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+function AgentBadge({ agent }: { agent: AgentKind }) {
+  return (
+    <span
+      aria-hidden
+      className="flex size-5 shrink-0 items-center justify-center rounded-md bg-muted text-[10px] font-semibold text-muted-foreground"
+    >
+      {AGENT_LABELS[agent].slice(0, 1)}
+    </span>
+  );
+}
+
+function sessionGroups(sessions: SessionSummary[]) {
+  return AGENT_ORDER.map((agent) => ({
+    agent,
+    sessions: sessions
+      .filter((session) => session.agent === agent)
+      .toSorted((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
+  })).filter((group) => group.sessions.length > 0);
+}
+
+function SessionRow({ session, active, select }: { session: SessionSummary; active: boolean; select?: () => void }) {
+  const updated = new Date(session.updatedAt);
+  const valid = !Number.isNaN(updated.getTime());
+  const time = valid ? relativeTime(updated.getTime()) : '';
+  const title = session.title || '未命名会话';
+  const label = `${title} · ${AGENT_LABELS[session.agent]}${time ? ` · ${time}` : ''}${session.running ? ' · 运行中' : ''}`;
+  const content = (
+    <>
+      {session.running && (
+        <LoaderCircle aria-hidden className="size-3.5 shrink-0 motion-safe:animate-spin text-accent" />
+      )}
+      <span className="min-w-0 flex-1 truncate leading-5">{title}</span>
+      {time && (
+        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground" title={fullTime.format(updated)}>
+          {time}
+        </span>
+      )}
+    </>
+  );
+  const className =
+    'flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md border-l-2 border-transparent px-2 py-1 text-left text-[13px] text-muted-foreground transition-colors aria-[current]:border-accent aria-[current]:bg-muted aria-[current]:text-foreground';
+  if (!select)
+    return (
+      <li className={`${className} cursor-default`} title={label}>
+        {content}
+      </li>
+    );
+  return (
+    <li>
+      <button
+        type="button"
+        aria-current={active ? 'true' : undefined}
+        aria-label={label}
+        title={label}
+        className={`${className} hover:bg-muted/60 hover:text-foreground`}
+        onClick={select}
+      >
+        {content}
+      </button>
+    </li>
+  );
+}
+
+function SessionGroup({
+  agent,
+  sessions,
+  activeKey,
+  select,
+}: {
+  agent: AgentKind;
+  sessions: SessionSummary[];
+  activeKey: string;
+  select?: (session: SessionSummary) => void;
+}) {
+  return (
+    <section aria-label={`${AGENT_LABELS[agent]} 会话`} className="space-y-0.5">
+      <h3 className="flex items-center gap-1.5 px-2 pt-2 pb-1 text-[11px] font-semibold text-muted-foreground">
+        <AgentBadge agent={agent} />
+        <span>{AGENT_LABELS[agent]}</span>
+        <span className="font-normal tabular-nums">{sessions.length}</span>
+      </h3>
+      <ul className="flex flex-col gap-0.5">
+        {sessions.map((session) => (
+          <SessionRow
+            key={session.sessionId}
+            session={session}
+            active={activeKey === sessionActionKey(session.projectId ?? '', session)}
+            select={select ? () => select(session) : undefined}
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ProjectItem({
+  project,
+  sessions,
+  expanded,
+  current,
+  loading,
+  activeKey,
+  toggle,
+  selectSession,
+}: {
+  project: Workspace;
+  sessions: SessionSummary[];
+  expanded: boolean;
+  current: boolean;
+  loading: boolean;
+  activeKey: string;
+  toggle(): void;
+  selectSession?: (session: SessionSummary) => void;
+}) {
+  const groups = sessionGroups(sessions);
+  return (
+    <li className="min-w-0">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-current={current ? 'true' : undefined}
+        title={project.dir}
+        className="group flex min-h-9 w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] text-foreground hover:bg-muted/60 aria-[current]:bg-muted"
+        onClick={toggle}
+      >
+        <ChevronRight
+          aria-hidden
+          className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`}
+        />
+        <span className="min-w-0 flex-1 truncate font-medium">{project.name}</span>
+        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{sessions.length}</span>
+      </button>
+      <p className="truncate pl-7 font-mono text-[10px] leading-4 text-muted-foreground/80" title={project.dir}>
+        {project.dir}
+      </p>
+      {expanded && (
+        <div className="mt-1 mb-2 space-y-1 pl-2">
+          {groups.length === 0 ? (
+            <p className="px-2 py-1 text-xs text-muted-foreground">{loading ? '正在读取会话…' : '暂无会话'}</p>
+          ) : (
+            groups.map((group) => (
+              <SessionGroup
+                key={group.agent}
+                agent={group.agent}
+                sessions={group.sessions}
+                activeKey={activeKey}
+                select={selectSession}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function NewSessionMenu({
+  projects,
+  currentProjectId,
+  onNewSession,
+}: Pick<SidebarProps, 'projects' | 'onNewSession'> & { currentProjectId?: string }) {
+  const menu = useMenuStore({ placement: 'bottom-start' });
+  const target = projects.find((project) => project.id === currentProjectId) ?? projects[0];
+  if (!target)
+    return (
+      <button type="button" className={buttonClass('ghost')} disabled title="先添加项目目录">
+        <Plus aria-hidden className="size-4" />
+        新建会话
+      </button>
+    );
+  return (
+    <>
+      <MenuButton
+        store={menu}
+        render={<button type="button" />}
+        className={buttonClass('ghost')}
+        aria-label="新建会话"
+        title="选择 CLI 后开始新会话"
+      >
+        <Plus aria-hidden className="size-4" />
+        新建会话
+      </MenuButton>
+      <Menu
+        store={menu}
+        portal
+        unmountOnHide
+        gutter={6}
+        aria-label="选择 CLI"
+        className="z-50 min-w-44 rounded-xl border border-border-strong bg-card p-1.5 text-foreground shadow-xl"
+      >
+        <p className="px-3 py-1.5 text-xs text-muted-foreground">在 {target.name} 新建</p>
+        {(['claude', 'codex'] as const).map((agent) => (
+          <MenuItem
+            key={agent}
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none data-active-item:bg-muted data-active-item:ring-1 data-active-item:ring-accent"
+            onClick={() => {
+              menu.hide();
+              onNewSession?.(target.id, agent);
+            }}
+          >
+            <AgentBadge agent={agent} />
+            {AGENT_LABELS[agent]}
+          </MenuItem>
+        ))}
+      </Menu>
+    </>
+  );
+}
+
+function OtherSessions({
+  sessions,
+  activeKey,
+  addProject,
+}: {
+  sessions: SessionSummary[];
+  activeKey: string;
+  addProject(): void;
+}) {
+  return (
+    <section aria-label="其他目录的会话" className="border-t border-border/70 pt-2">
+      <div className="flex items-center gap-1.5 px-2 py-1">
+        <h3 className="min-w-0 flex-1 text-[11px] font-semibold text-muted-foreground">
+          其他目录 <span className="font-normal tabular-nums">{sessions.length}</span>
+        </h3>
+        <button type="button" className={`${buttonClass('ghost')} min-h-7 px-2 text-[11px]`} onClick={addProject}>
+          加为项目
+        </button>
+      </div>
+      <ul className="flex flex-col gap-0.5">
+        {sessions.map((session) => (
+          <SessionRow
+            key={`${session.agent}:${session.sessionId}`}
+            session={session}
+            active={activeKey === sessionActionKey(session.projectId ?? '', session)}
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** 左栏只负责展示与选择；项目与会话数据由外壳读取后传入，未归属会话默认隐藏。 */
+export function Sidebar({
+  projects,
+  sessionsByProject,
+  onAddProject,
+  onNewSession,
+  onSelectProject,
+  onSelectSession,
+  loadingSessions = false,
+  currentProjectId,
+}: SidebarProps) {
+  const chatProjectId = useChat((state) => state.workspaceId);
+  const chatAgent = useChat((state) => state.agent);
+  const chatSessionId = useChat((state) => state.sessionId);
+  const selectedProject = currentProjectId ?? chatProjectId;
+  // 展开状态只记用户显式切换过的项目：当前项目与首个项目默认展开，切换项目时自动跟上。
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  const defaultExpanded = selectedProject ?? projects[0]?.id;
+  const isExpanded = (projectId: string) => toggled[projectId] ?? projectId === defaultExpanded;
+  const [showOtherSessions, setShowOtherSessions] = useState(false);
+  const activeKey = useMemo(
+    () =>
+      chatSessionId && chatProjectId
+        ? sessionActionKey(chatProjectId, { agent: chatAgent, sessionId: chatSessionId })
+        : '',
+    [chatAgent, chatProjectId, chatSessionId],
+  );
+  const projectSessions = useMemo(
+    () =>
+      Object.fromEntries(
+        projects.map((project) => [
+          project.id,
+          (sessionsByProject[project.id] ?? []).filter((session) => session.projectId === project.id),
+        ]),
+      ) as Record<string, SessionSummary[]>,
+    [projects, sessionsByProject],
+  );
+  const otherSessions = useMemo(() => {
+    const seen = new Set<string>();
+    return Object.values(sessionsByProject)
+      .flat()
+      .filter((session) => {
+        if (session.projectId !== null) return false;
+        const key = `${session.agent}:${session.sessionId}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .toSorted((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+  }, [sessionsByProject]);
+  // 点未选中的项目＝切过去并展开；再点当前项目才收起，避免展开动作顺手清掉对话。
+  const toggle = (projectId: string) => {
+    const expanded = isExpanded(projectId);
+    const isCurrent = projectId === selectedProject;
+    if (!isCurrent) onSelectProject?.(projectId);
+    setToggled((previous) => ({ ...previous, [projectId]: !(isCurrent && expanded) }));
+  };
+  return (
+    <nav aria-label="项目与会话" className="flex h-full min-h-0 flex-col bg-card text-foreground">
+      <header className="flex shrink-0 items-center gap-1 border-b border-border/70 px-2 py-2">
+        <h2 className="min-w-0 flex-1 truncate px-1 text-xs font-semibold tracking-wide text-muted-foreground">项目</h2>
+        <NewSessionMenu projects={projects} currentProjectId={selectedProject} onNewSession={onNewSession} />
+        <button
+          type="button"
+          className={buttonClass('ghost')}
+          aria-label="添加项目"
+          title="添加项目目录"
+          onClick={onAddProject}
+        >
+          <FolderPlus aria-hidden className="size-4" />
+        </button>
+      </header>
+      {projects.length === 0 ? (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-5 text-center">
+          <FolderPlus aria-hidden className="size-8 text-muted-foreground" />
+          <p className="text-sm font-medium">还没有项目</p>
+          <p className="text-xs leading-5 text-muted-foreground">添加一个本地项目目录，按 CLI 查看本机会话。</p>
+          <button type="button" className={buttonClass('outline')} onClick={onAddProject}>
+            添加项目目录
+          </button>
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+          <ul className="flex flex-col gap-1">
+            {projects.map((project) => (
+              <ProjectItem
+                key={project.id}
+                project={project}
+                sessions={projectSessions[project.id] ?? []}
+                expanded={isExpanded(project.id)}
+                current={selectedProject === project.id}
+                loading={loadingSessions}
+                activeKey={activeKey}
+                toggle={() => toggle(project.id)}
+                selectSession={onSelectSession ? (session) => onSelectSession(project.id, session) : undefined}
+              />
+            ))}
+          </ul>
+          {showOtherSessions && otherSessions.length > 0 && (
+            <OtherSessions sessions={otherSessions} activeKey={activeKey} addProject={onAddProject} />
+          )}
+        </div>
+      )}
+      <footer className="flex shrink-0 items-center border-t border-border/70 px-3 py-2">
+        <label className="flex min-h-7 cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={showOtherSessions}
+            onChange={(event) => setShowOtherSessions(event.target.checked)}
+            className="size-3.5 accent-accent"
+          />
+          显示其他目录的会话
+        </label>
+      </footer>
+    </nav>
+  );
+}

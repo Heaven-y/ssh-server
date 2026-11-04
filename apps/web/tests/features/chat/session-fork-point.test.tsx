@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { MessageItem } from '../../../src/features/chat/MessageItem';
 import { useChat } from '../../../src/features/chat/chat-store';
-import * as operations from '../../../src/features/workspaces/session-fork';
+import * as operations from '../../../src/features/sessions/session-fork';
 
 let client: QueryClient;
 beforeEach(() => {

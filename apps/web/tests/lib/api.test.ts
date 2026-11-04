@@ -82,6 +82,7 @@ describe('api', () => {
   it('接口错误保留字段名、分类及部分恢复路径', async () => {
     respond(400, { field: 'dir', message: '项目目录不存在' });
     const err = await api.listWorkspaces().catch((e: unknown) => e);
+    expect(vi.mocked(fetch).mock.calls[0]![0]).toBe('/api/projects');
     expect(err).toBeInstanceOf(ApiError);
     expect(err).toMatchObject({ status: 400, field: 'dir', message: '项目目录不存在' });
     respond(500, { code: 'partial_restore', message: '部分文件恢复失败', affectedPaths: ['main.py'] });
@@ -103,16 +104,16 @@ describe('api', () => {
   it('会话请求和缓存按 Agent 隔离，历史读取传递取消信号', async () => {
     respond(200, []);
     await api.sessionEvents('w/1', 's 1', 'claude');
-    expect(vi.mocked(fetch).mock.calls[0]![0]).toBe('/api/workspaces/w%2F1/sessions/s%201/events?agent=claude');
+    expect(vi.mocked(fetch).mock.calls[0]![0]).toBe('/api/projects/w%2F1/sessions/claude/s%201');
     await api.listSessions('w/1', 'codex');
     expect(vi.mocked(fetch).mock.calls[1]).toEqual([
-      '/api/workspaces/w%2F1/sessions?agent=codex',
+      '/api/projects/w%2F1/sessions?agent=codex',
       expect.objectContaining({ cache: 'no-store' }),
     ]);
     const controller = new AbortController();
     await api.sessionEvents('w/1', 's 1', 'codex', controller.signal);
     expect(vi.mocked(fetch).mock.calls[2]).toEqual([
-      '/api/workspaces/w%2F1/sessions/s%201/events?agent=codex',
+      '/api/projects/w%2F1/sessions/codex/s%201',
       expect.objectContaining({ cache: 'no-store', signal: controller.signal }),
     ]);
     expect(queryKeys.sessions('w/1', 'claude')).not.toEqual(queryKeys.sessions('w/1', 'codex'));
@@ -123,8 +124,8 @@ describe('api', () => {
     await api.listSessions('w/1', 'claude');
     await api.listSessions('w/1', 'codex', true);
     expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual([
-      '/api/workspaces/w%2F1/sessions?agent=claude',
-      '/api/workspaces/w%2F1/sessions?agent=codex&archived=true',
+      '/api/projects/w%2F1/sessions?agent=claude',
+      '/api/projects/w%2F1/sessions?agent=codex&archived=true',
     ]);
     expect(queryKeys.sessions('w/1', 'codex')).toEqual(['sessions', 'w/1', 'codex']);
     expect(queryKeys.sessions('w/1', 'codex', true)).toEqual(['sessions', 'w/1', 'codex', 'archived']);

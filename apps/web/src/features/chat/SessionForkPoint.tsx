@@ -3,7 +3,7 @@ import { useState } from 'react';
 import type { SessionRef } from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
 import { managementPending, useChat } from './chat-store';
-import { SessionForkDialog } from '../workspaces/SessionForkDialog';
+import { SessionForkDialog } from '../sessions/SessionForkDialog';
 
 export function SessionForkPoint({ pointId }: { pointId: string }) {
   const [selected, setSelected] = useState<{ workspaceId: string; session: SessionRef & { title: string } }>();

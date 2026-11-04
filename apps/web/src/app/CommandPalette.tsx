@@ -141,7 +141,7 @@ export default function CommandPalette({
   const [error, setError] = useState<string>();
   const run = (action: Action) => {
     if (action.workspace && (!workspace || useChat.getState().workspaceId !== workspace.id)) {
-      setError('工作区已改变，请重新打开搜索与操作。');
+      setError('项目已改变，请重新打开搜索与操作。');
       return;
     }
     if (!action.run()) {
@@ -162,10 +162,10 @@ export default function CommandPalette({
     });
   return (
     <DetailDialog title="搜索与操作" onClose={close}>
-      <Command label="工作区、会话和常用操作" loop>
+      <Command label="项目、会话和常用操作" loop>
         <Command.Input
           autoFocus
-          placeholder="搜索工作区、会话或操作…"
+          placeholder="搜索项目、会话或操作…"
           aria-label="搜索命令"
           className="w-full rounded-md border border-border-strong bg-background px-3 py-2 text-sm"
         />
@@ -176,7 +176,7 @@ export default function CommandPalette({
         )}
         <Command.List className="mt-3 max-h-[50vh] overflow-y-auto">
           <Command.Empty className="px-3 py-6 text-sm text-muted-foreground">没有匹配结果。</Command.Empty>
-          <Command.Group heading="工作区">
+          <Command.Group heading="项目">
             {workspaces.map((target) => (
               <Command.Item
                 key={target.id}
@@ -185,7 +185,7 @@ export default function CommandPalette({
                 className={itemClass}
                 onSelect={() => {
                   if (!workspaces.some((item) => item.id === target.id)) {
-                    setError('工作区已移除。');
+                    setError('项目已移除。');
                     return;
                   }
                   useChat.getState().selectWorkspace(target.id);
@@ -193,7 +193,7 @@ export default function CommandPalette({
                 }}
               >
                 {target.name}
-                <span className="text-xs text-muted-foreground">切换工作区</span>
+                <span className="text-xs text-muted-foreground">切换项目</span>
               </Command.Item>
             ))}
           </Command.Group>

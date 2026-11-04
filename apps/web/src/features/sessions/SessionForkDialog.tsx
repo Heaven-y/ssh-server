@@ -49,7 +49,7 @@ export function SessionForkDialog({ workspaceId, session, pointId, onClose }: Pr
         <p className="text-sm leading-6">
           {pointId ? '保留截至所选位置的对话历史，创建独立会话。' : '从会话末尾创建独立会话。'}
         </p>
-        <p className="text-xs leading-6 text-muted-foreground">源会话保持不变；分叉后的对话继续使用当前工作区文件。</p>
+        <p className="text-xs leading-6 text-muted-foreground">源会话保持不变；分叉后的对话继续使用当前项目目录。</p>
         {pointId && <p className="text-xs break-all text-muted-foreground">原生分叉点：{pointId}</p>}
         {running && (
           <p role="status" className="text-sm text-warning">

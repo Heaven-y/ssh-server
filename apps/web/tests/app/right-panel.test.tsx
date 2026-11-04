@@ -72,7 +72,8 @@ beforeEach(() => {
     connection: 'open',
     agent: 'claude',
   });
-  useUiPreferences.setState({ sidebarCollapsed: false });
+  // 右侧面板的展开状态是持久偏好：每个用例从「还没表过态」开始，才按窗口宽度决定首屏。
+  useUiPreferences.setState({ sidebarCollapsed: false, dockCollapsed: null });
   vi.spyOn(api, 'listWorkspaces').mockResolvedValue([workspace, other]);
   vi.spyOn(api, 'readProductSettings').mockResolvedValue(settings);
   vi.spyOn(api, 'readEnvironment').mockResolvedValue({ checkedAt: 1, tools: [] });
@@ -109,74 +110,103 @@ function mount() {
 function top() {
   return within(screen.getByRole('button', { name: '搜索与操作' }).closest('header')!);
 }
+function dock() {
+  return screen.getByRole('complementary', { name: '服务器面板' });
+}
 
-it('资源面板独立开关，收起后再打开仍是原节点', async () => {
+it('服务器面板独立开关，收起后再打开仍是原节点', async () => {
   mount();
-  const resources = await screen.findByRole('complementary', { name: '资源面板' });
-  const toolbar = top();
-  const trigger = toolbar.getByRole('button', { name: '资源' });
-  expect(within(resources).getByRole('region', { name: '服务器资源' })).toBeTruthy();
+  const panel = await screen.findByRole('complementary', { name: '服务器面板' });
+  const trigger = top().getByRole('button', { name: '终端' });
+  await within(panel).findByRole('region', { name: '服务器资源' });
   await waitFor(() => expect(api.readResources).toHaveBeenCalled());
-  expect(trigger.getAttribute('aria-expanded')).toBe('true');
-  fireEvent.click(within(resources).getByRole('button', { name: '收起资源面板' }));
-  expect(resources.hidden).toBe(true);
+  expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(within(panel).getByRole('button', { name: '收起服务器面板' }));
+  expect(document.getElementById('server-dock')!.closest('[hidden]')).not.toBeNull();
   fireEvent.click(trigger);
-  expect(screen.getByRole('complementary', { name: '资源面板' })).toBe(resources);
+  expect(screen.getByRole('complementary', { name: '服务器面板' })).toBe(panel);
+  expect(trigger.getAttribute('aria-expanded')).toBe('true');
 });
 
-it('本地文件面板随镜像域一起删除，顶栏不再提供文件入口', async () => {
+it('顶栏不再提供资源与文件入口，也没有本地文件面板', async () => {
   mount();
   await screen.findByText('从一条消息开始');
+  expect(top().queryByRole('button', { name: '资源' })).toBeNull();
   expect(top().queryByRole('button', { name: '文件' })).toBeNull();
   expect(screen.queryByRole('complementary', { name: '文件面板' })).toBeNull();
 });
 
-it('窄窗初始收起，Escape只收起焦点所在面板并返回触发器', async () => {
+it('窄窗首屏不展开服务器面板，点终端按钮后才出现', async () => {
   wide = false;
   mount();
   await screen.findByText('从一条消息开始');
-  expect(screen.queryByRole('complementary', { name: '资源面板' })).toBeNull();
-  const trigger = top().getByRole('button', { name: '资源' });
+  expect(screen.queryByRole('complementary', { name: '服务器面板' })).toBeNull();
+  fireEvent.click(top().getByRole('button', { name: '终端' }));
+  const panel = await screen.findByRole('complementary', { name: '服务器面板' });
+  expect(within(panel).getByRole('tab', { name: '终端' }).getAttribute('aria-selected')).toBe('true');
+});
+
+it('窄窗主动展开左栏时服务器面板让位，折叠左栏后按记忆恢复', async () => {
+  wide = false;
+  mount();
+  await screen.findByText('从一条消息开始');
+  fireEvent.click(top().getByRole('button', { name: '终端' }));
+  const panel = await screen.findByRole('complementary', { name: '服务器面板' });
+  expect(panel.closest('[hidden]')).toBeNull();
+  fireEvent.click(top().getByRole('button', { name: '展开侧栏' }));
+  expect(screen.getByRole('navigation', { name: '项目与会话' })).toBeTruthy();
+  expect(document.getElementById('server-dock')!.closest('[hidden]')).not.toBeNull();
+  fireEvent.click(top().getByRole('button', { name: '折叠侧栏' }));
+  expect(document.getElementById('server-dock')!.closest('[hidden]')).toBeNull();
+});
+
+it('Escape 收起整个服务器面板并把焦点还给顶栏入口', async () => {
+  mount();
+  await screen.findByText('从一条消息开始');
+  const trigger = top().getByRole('button', { name: '终端' });
   trigger.focus();
   fireEvent.click(trigger);
-  const resources = await screen.findByRole('complementary', { name: '资源面板' });
-  const handle = within(resources).getByRole('button', { name: '收起资源面板' });
-  handle.focus();
-  fireEvent.keyDown(handle, { key: 'Escape' });
-  expect(screen.queryByRole('complementary', { name: '资源面板' })).toBeNull();
+  const panel = await screen.findByRole('complementary', { name: '服务器面板' });
+  const tab = within(panel).getByRole('tab', { name: '资源' });
+  tab.focus();
+  fireEvent.keyDown(tab, { key: 'Escape' });
+  expect(document.getElementById('server-dock')!.closest('[hidden]')).not.toBeNull();
   expect(document.activeElement).toBe(trigger);
 });
 
-it('嵌套设置弹窗取消时Escape不收起资源面板', async () => {
+it('嵌套设置弹窗取消时 Escape 不收起服务器面板', async () => {
   mount();
   await screen.findByText('从一条消息开始');
-  const toolbar = top();
-  const parent = document.getElementById('workspace-resources-panel')!;
-  fireEvent.click(toolbar.getByRole('button', { name: '设置' }));
+  const panel = document.getElementById('server-dock')!;
+  fireEvent.click(top().getByRole('button', { name: '设置' }));
   const settingsDialog = await screen.findByRole<HTMLDialogElement>('dialog', { name: '产品设置' });
   fireEvent.keyDown(settingsDialog, { key: 'Escape' });
   fireEvent(settingsDialog, new Event('cancel', { cancelable: true }));
-  expect(parent.hidden).toBe(false);
-  fireEvent.keyDown(within(parent).getByRole('button', { name: '收起资源面板' }), { key: 'Escape' });
-  expect(parent.hidden).toBe(true);
+  expect(panel.closest('[hidden]')).toBeNull();
+  fireEvent.keyDown(within(panel).getByRole('tab', { name: '资源' }), { key: 'Escape' });
+  expect(panel.closest('[hidden]')).not.toBeNull();
 });
 
-it('切换工作区时资源面板保持同一节点，项目列表暂为占位', async () => {
+it('切换项目时服务器面板与左栏保持同一节点', async () => {
   const errors = vi.spyOn(console, 'error');
   mount();
   await screen.findByText('从一条消息开始');
-  const resources = screen.getByRole('complementary', { name: '资源面板' });
-  expect(screen.getByRole('navigation', { name: '项目列表' }).textContent).toContain('项目列表将在后续任务接入');
+  const panel = dock();
+  const sidebar = screen.getByRole('navigation', { name: '项目与会话' });
+  expect(within(sidebar).getByText(workspace.name)).toBeTruthy();
   act(() => useChat.getState().selectWorkspace(other.id));
-  expect(screen.getByRole('complementary', { name: '资源面板' })).toBe(resources);
+  expect(screen.getByRole('complementary', { name: '服务器面板' })).toBe(panel);
+  expect(screen.getByRole('navigation', { name: '项目与会话' })).toBe(sidebar);
   expect(errors.mock.calls.flat().filter((value) => typeof value === 'string' && value.includes('same key'))).toEqual(
     [],
   );
 });
 
-it('顶栏显示当前工作区SSH，正常本机连接不常驻，断线仍可见并可重连', async () => {
+it('顶栏显示当前项目与 SSH 状态，正常本机连接不常驻，断线仍可见并可重连', async () => {
   mount();
   await screen.findByText('从一条消息开始');
+  expect(top().getByText(workspace.name)).toBeTruthy();
+  expect(top().getByText(workspace.dir)).toBeTruthy();
   expect(top().getByRole('button', { name: 'SSH 连接详情' })).toBeTruthy();
   expect(screen.queryByText('本机服务已连接')).toBeNull();
   act(() => useChat.setState({ connection: 'closed' }));

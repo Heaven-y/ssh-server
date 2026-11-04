@@ -19,6 +19,7 @@ import type {
   SshAuthMode,
   SshHostInfo,
   Workspace,
+  WorkspaceInput,
   TerminalTarget,
   TerminalBinding,
   HostTrustStatus,
@@ -181,7 +182,10 @@ export const api = {
       cache: 'no-store',
       body: JSON.stringify({ content: input.content, revision: input.revision }),
     }),
-  listWorkspaces: (signal?: AbortSignal) => request<Workspace[]>('/api/workspaces', { signal }),
+  /** 项目列表：接口名沿用旧称，路径已切到 /api/projects（/api/workspaces 是待删的兼容别名）。 */
+  listWorkspaces: (signal?: AbortSignal) => request<Workspace[]>('/api/projects', { signal }),
+  createProject: (input: WorkspaceInput, signal?: AbortSignal) =>
+    request<Workspace>('/api/projects', { method: 'POST', body: JSON.stringify(input), signal }),
   listSshHosts: (signal?: AbortSignal) => request<ManagedServer[]>('/api/ssh-targets', { signal, cache: 'no-store' }),
   sshImportOptions: (signal?: AbortSignal) =>
     request<Array<SshHostInfo & { keyFile?: string }>>('/api/ssh-targets/import-options', { signal }),
@@ -267,13 +271,15 @@ export const api = {
     request<void>('/api/ssh/disconnect', { method: 'POST', signal, body: JSON.stringify({ sshHost }) }),
   listSessions: (workspaceId: string, agent: AgentKind, archived = false, signal?: AbortSignal) =>
     request<SessionSummary[]>(
-      `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions?agent=${agent}${archived ? '&archived=true' : ''}`,
+      `/api/projects/${encodeURIComponent(workspaceId)}/sessions?agent=${agent}${archived ? '&archived=true' : ''}`,
       {
         cache: 'no-store',
         signal,
       },
     ),
   /** 原生管理请求不因面板关闭而取消；结果以运行时响应和重新读取为准。 */
+  // 动作与分叉目前仍只有 /api/workspaces/:id/... 前缀（Task 9 只迁了两个 GET），
+  // 前端先保持可用；等后端补 /api/projects 前缀后一并切换并删除旧别名。
   sessionAction: (workspaceId: string, sessionId: string, agent: AgentKind, input: SessionActionInput) =>
     request<void>(
       `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/actions?agent=${agent}`,
@@ -290,7 +296,7 @@ export const api = {
     ),
   sessionEvents: (workspaceId: string, sessionId: string, agent: AgentKind, signal?: AbortSignal) =>
     request<SessionHistory>(
-      `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/events?agent=${agent}`,
+      `/api/projects/${encodeURIComponent(workspaceId)}/sessions/${agent}/${encodeURIComponent(sessionId)}`,
       { signal, cache: 'no-store' },
     ),
 };

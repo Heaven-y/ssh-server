@@ -102,3 +102,11 @@ it('旧偏好缺少停靠字段时补默认值，窄屏自动折叠不写入用�
   store.getState().setSidebarAutoCollapsed(true);
   expect((await preferences()).getState().sidebarCollapsed).toBe(false);
 });
+it('右侧服务器面板的展开状态可记忆；没表过态时为 null，由窗口宽度决定首屏', async () => {
+  const store = await preferences();
+  expect(store.getState().dockCollapsed).toBeNull();
+  store.getState().setDockCollapsed(true);
+  expect((await preferences()).getState().dockCollapsed).toBe(true);
+  store.getState().setDockCollapsed(false);
+  expect((await preferences()).getState().dockCollapsed).toBe(false);
+});
