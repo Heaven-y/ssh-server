@@ -95,28 +95,21 @@ function parseItems(raw: string): unknown[] | undefined {
   }
 }
 
-async function dirExists(p: string): Promise<boolean> {
-  try {
-    return (await stat(p)).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
 /**
  * 单条转换：坏数据只跳过这一条。
- * - 目录不是绝对路径或已不存在：跳过，不猜用户想指向哪里。
+ * - 目录不是绝对路径：跳过，这是结构性错误，不猜用户想指向哪里。
+ * - 目录是绝对路径但当前不存在：**保留**。落盘只要求绝对路径（见 store.ts 的 StoredWorkspacesSchema），
+ *   列表本来就容忍目录离线；这里若把条目丢掉，用户那条项目会在升级后无声消失，
+ *   连服务器绑定一起没了——比留着一条「目录不存在」的可见提示糟得多。
  * - server 与 remoteDir 只出现一半：跳过，不替用户补默认目录，那会凭空造出他没配过的路径。
  * - id 重复：只保留第一条，否则整份配置过不了唯一性校验。
  */
-async function convertOne(entry: unknown, seen: Set<string>): Promise<Workspace | undefined> {
+function convertOne(entry: unknown, seen: Set<string>): Workspace | undefined {
   const workspace = storedWorkspace(entry);
   if (workspace === undefined) return undefined;
-  const dir = path.resolve(workspace.dir);
-  if (!(await dirExists(dir))) return undefined;
   if (seen.has(workspace.id)) return undefined;
   seen.add(workspace.id);
-  return { ...workspace, dir };
+  return { ...workspace, dir: path.resolve(workspace.dir) };
 }
 
 /** 与 store.ts 的 save() 相同的原子写法：临时文件写完再 rename。 */
@@ -171,7 +164,7 @@ export async function importLegacyWorkspaces(deps: ImportDeps): Promise<ImportRe
   const seen = new Set<string>();
   let skipped = 0;
   for (const item of items) {
-    const workspace = await convertOne(item, seen);
+    const workspace = convertOne(item, seen);
     if (workspace === undefined) {
       skipped += 1;
       continue;
