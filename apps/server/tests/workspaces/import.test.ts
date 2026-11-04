@@ -74,7 +74,7 @@ describe('importLegacyWorkspaces', () => {
     await expect(readFile(configFile(), 'utf8')).resolves.not.toContain('policy');
   });
 
-  it('目录已不存在的旧项目跳过并计数', async () => {
+  it('目录当前不存在的旧项目照样保留，不静默丢掉用户的项目', async () => {
     await writeFile(
       configFile(),
       JSON.stringify([
@@ -90,9 +90,12 @@ describe('importLegacyWorkspaces', () => {
 
     const report = await importLegacyWorkspaces({ configDir, store });
 
-    expect(report.imported).toBe(0);
-    expect(report.skipped).toBe(1);
-    expect(await store.list()).toEqual([]);
+    // 落盘只要求绝对路径、列表本来就容忍目录离线；导入时丢掉条目会让用户的项目
+    // 连同服务器绑定一起无声消失，比留着一条「目录不存在」的可见状态糟得多。
+    expect(report).toMatchObject({ imported: 1, skipped: 0 });
+    expect(await store.list()).toMatchObject([
+      { id: 'w2', name: '已删项目', server: 'my-server', remoteDir: '~/projects/demo' },
+    ]);
   });
 
   it('没有旧文件时什么都不做', async () => {
@@ -116,7 +119,7 @@ describe('importLegacyWorkspaces', () => {
     expect(await readdir(configDir)).toEqual(['workspaces.json']);
   });
 
-  it('非绝对路径或目录已不存在的条目跳过，不中断同批的好条目', async () => {
+  it('非绝对路径的条目跳过，不中断同批的好条目；目录离线的照常保留', async () => {
     await writeFile(
       configFile(),
       JSON.stringify([
@@ -128,8 +131,9 @@ describe('importLegacyWorkspaces', () => {
 
     const report = await importLegacyWorkspaces({ configDir, store });
 
-    expect(report).toMatchObject({ imported: 1, skipped: 2 });
-    expect((await store.list()).map((item) => item.id)).toEqual(['w4']);
+    // 只有结构性错误（相对路径）被跳过；目录不存在是可恢复状态，条目必须留下。
+    expect(report).toMatchObject({ imported: 2, skipped: 1 });
+    expect((await store.list()).map((item) => item.id)).toEqual(['w4', 'w5']);
   });
 
   it.each([
