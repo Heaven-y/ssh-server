@@ -11,7 +11,12 @@ export function useEnvironment() {
     retry: false,
   });
 }
+/** 环境报告用界面名称，AgentKind 用小写 id，两边只在这一次转换。 */
+const AGENT_TOOLS: Record<AgentKind, string> = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+  antigravity: 'Antigravity',
+};
 export function agentUnavailable(report: EnvironmentReport | undefined, agent: AgentKind) {
-  const name = agent === 'claude' ? 'Claude Code' : 'Codex';
-  return report?.tools.find((tool) => tool.name === name)?.available === false;
+  return report?.tools.find((tool) => tool.name === AGENT_TOOLS[agent])?.available === false;
 }

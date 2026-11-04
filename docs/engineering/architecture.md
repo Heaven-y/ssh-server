@@ -12,9 +12,9 @@
 │   │ HTTP 接口 + WebSocket（对话 /ws、终端）                     │
 │ 后端 apps/server（Fastify，只监听回环地址）                     │
 │   ├─ chat        TurnManager、会话服务、能力目录                 │
-│   ├─ agents      Claude（Agent SDK）· Codex（app-server）       │
+│   ├─ agents      Claude · Codex 适配器与本机探测               │
 │   ├─ workspaces  工作区存储、旧数据迁移、活动租约                 │
-│   ├─ settings    原生配置、产品偏好、环境探测                    │
+│   ├─ settings    原生配置与产品偏好                              │
 │   ├─ process     中立子进程运行器                              │
 │   ├─ ssh         档案、连接池、主机信任、SFTP、执行               │
 │   ├─ terminal    服务器 SSH 的 PTY 通道                        │
@@ -161,12 +161,14 @@ agentdeck/
 | `AGENTDECK_TOKEN` | 覆盖进程内会话秘密，默认启动随机生成 |
 | `AGENTDECK_DEV_ORIGIN` / `--dev-origin` | 允许的 Vite 开发来源 |
 | `AGENTDECK_CODEX` | Codex 可执行文件或官方 JS 入口 |
-| `AGENTDECK_RCLONE` | 仅环境探测残留，随同步域删除 |
+| `AGENTDECK_RCLONE` | 已无读取方，随同步域一并清理 |
 | `AGENTDECK_INTERNAL_URL`、`AGENTDECK_SESSION_TOKEN` | 注入 MCP 子进程的内部地址与短期令牌（待移除） |
 
 ## 5. 模块设计
 
 ### 5.1 agents：Agent 适配器
+
+`agents/probe.ts` 是第一层本机探测（`createAgentProbes({ run, env? })` 提供 `probe(agent)` 与 `probeAll()`）。每个 Agent 声明可执行文件名、版本号正则、`--help` 里必须具备的选项与必需的环境变量；Codex 另加 `app-server generate-json-schema`，因为只有它能验证 RPC 方法名。判定顺序为：找不到可执行文件 → `missing`；版本号解析不出来 → `changed` 且 `missing: ['--version']`；关键选项缺失 → `changed` 并列出缺项；必需环境变量缺失 → `credential-missing`；否则 `available`。全程只用 `--version`、`--help` 与本地 schema 生成，5 秒超时、输出有上限，**不读能力目录、不检查登录态、不向模型端点发请求**。`createLocalRunner()` 负责把 `claude`/`codex`/`agy` 解析成本机真实程序：优先显式环境变量（`CLAUDE_CODE_EXECUTABLE`、`AGENTDECK_CODEX`），其次 PATH（Windows 上解析 `.cmd`/`.ps1` 包装脚本指向的真实 `.exe` 或 `.js` 入口），Antigravity 另认 `%LOCALAPPDATA%\agy\bin\agy.exe`。`missing` 的文案一律带可执行文件名，界面据此提示 PATH 继承问题。
 
 `agents/types.ts` 定义适配器契约：`AgentTurnInput`（工作区、会话 id、模型、推理强度、正文、能力调用、环境租约、事件投递、权限请求）、`TurnHandle`（`interrupt()` 与 `done`）、`TurnRunner`（可选 `dispose()`），以及 `NativeSessionSummary`、`NativeSessionRead`、`NativeSessionFork`。统一事件类型在 `packages/shared/src/events.ts`，含文本增量、思考、工具调用与结果、审批请求与结果、上下文用量、压缩状态、轮次结束与错误。
 
@@ -206,7 +208,7 @@ Antigravity：尚未接入。代码里没有对应的目录、`AgentKind`、事�
 
 `runProcess(executable, args, options)` 返回 `{ stdout, stderr, exitCode }`。`shell: false`、`windowsHide: true`，支持 stdin 输入、独立环境、超时、输出总上限与 `AbortSignal`；超限、超时、取消与启动失败统一抛 `ProcessError`，`code` 为 `output_limit`、`timeout`、`aborted` 或 `executable_missing`，错误信息不含参数与原始 stderr。
 
-依赖它的只有 `settings/environment.ts`（版本探测）与 `ssh/windows-protection.ts`（DPAPI 脚本）。CLI 适配器自己管理长驻管道，不走这条路径。
+依赖它的只有 `agents/probe.ts`（本机 CLI 探测）与 `ssh/windows-protection.ts`（DPAPI 脚本）。CLI 适配器自己管理长驻管道，不走这条路径。
 
 ### 5.4 workspaces：存储、活动与迁移
 
@@ -224,7 +226,7 @@ Antigravity：尚未接入。代码里没有对应的目录、`AgentKind`、事�
 - 需求里的 `CLAUDE.md`、`AGENTS.md`、项目级配置与 Antigravity 配置都还没有实现，接口只接受 `claude` 与 `codex` 两个固定 Agent。
 - `product-settings.ts`：字段为 `defaultAgent`、`syncDefaults`、`syncIntervalSeconds`、`resources.{intervalSeconds,timeoutSeconds}`；读取时定点剔除已退休的 `defaultModels`，其他未知字段仍拒绝；坏文件返回 503，版本冲突按 409 语义处理。
 - `syncDefaults` 与 `syncIntervalSeconds` 是同步域残留，随 `shared/sync.ts` 一起删除。
-- `environment.ts`：并行探测 Node.js（当前进程）、Claude Code、Codex、git、rclone，每项 5 秒、2 KiB，只提取版本号；共享一份报告，并发刷新返回 409。git 与 rclone 属遗留，Antigravity 尚未纳入。
+- 环境报告的探测已迁到 `agents/probe.ts`（见 5.1），`settings/` 下不再有独立的环境探测模块。
 
 ### 5.6 http：访问控制与路由
 
@@ -320,7 +322,7 @@ stdio MCP 服务，由 Claude 与 Codex 按会话启动，只转发到后端内�
 ### 5.14 错误文案与日志
 
 - 对外错误只给分类与可操作提示（如「工作区不存在」「会话正在运行」「主机密钥已变化」），原始 stderr、绝对路径、凭据与协议诊断留在后端。
-- 启动日志只有数据迁移结果、监听地址与环境探测摘要；环境探测只提取版本号，不回显工具输出。
+- 启动日志只有数据迁移结果、监听地址与三个 CLI 的探测摘要；探测只报四态与版本号，不回显工具输出、路径或凭据。
 - 原生配置的错误固定在 `settings/errors.ts`：格式或 Agent 不合法为 400，超限为 413，路径不安全与 revision 冲突为 409，读写失败为 500，未知异常统一折算成 500 的通用文案。产品设置文件损坏返回 503，工作区规则不可用同样返回 503。
 - 迁移与文件任务的异常不会中止启动，但会逐条打印，便于用户自行核对旧目录。
 
@@ -362,7 +364,7 @@ stdio MCP 服务，由 Claude 与 Codex 按会话启动，只转发到后端内�
 
 ### 6.5 启动与旧数据迁移
 
-`main` 依次执行：读取配置（拒绝非回环监听与非法端口）→ 迁移旧数据目录 → 创建数据目录 → 组装工作区存储、服务器档案、连接池、终端、资源、Slurm、文件服务与轮次管理 → 构建 Fastify 并注册路由 → 监听 → 打印访问地址与环境探测结果。收到 SIGINT 或 SIGTERM 时依次释放终端、资源、Slurm、连接池，再停止轮次并关闭 HTTP。
+`main` 依次执行：读取配置（拒绝非回环监听与非法端口）→ 迁移旧数据目录 → 创建数据目录 → 组装工作区存储、服务器档案、连接池、终端、资源、Slurm、文件服务与轮次管理 → 构建 Fastify 并注册路由 → 监听 → 打印访问地址与三个 CLI 的探测结果。收到 SIGINT 或 SIGTERM 时依次释放终端、资源、Slurm、连接池，再停止轮次并关闭 HTTP。
 
 ## 7. 设计决策
 
@@ -379,7 +381,7 @@ stdio MCP 服务，由 Claude 与 Codex 按会话启动，只转发到后端内�
 
 - 验收编号 A1–A29 见[需求](../product/requirements.md)，是条件而不是现状；代码存在不等于条目通过。
 - 当前明确未满足的部分：桌面壳、Antigravity 接入、项目列表与新建入口、服务器面板以档案为键、原生配置覆盖面、启动环境注入、下载移除、会话实时监听。
-- 已有实现并有测试覆盖的部分：两个适配器的会话读取与轮次协议、审批、工作区与设置存储、SSH 档案与凭据、主机信任、终端、资源采样、Slurm 文本查询、服务器文件操作、环境探测。
+- 已有实现并有测试覆盖的部分：两个适配器的会话读取与轮次协议、审批、工作区与设置存储、SSH 档案与凭据、主机信任、终端、资源采样、Slurm 文本查询、服务器文件操作、三个 CLI 的本机探测。
 - 测试在各包 `tests/` 下按模块镜像；真实链路用 `scripts/dev/e2e-*.ts`；没有 Playwright 端到端测试。
 - 浏览器访问同一地址仍然可用，但按设计它不是产品入口；桌面壳落地前不应把它写成已交付形态。
 - 未验证项：真实 Antigravity 会话、真实集群上的 Slurm 成功输出、操作系统输入法、安装包与自动更新。
