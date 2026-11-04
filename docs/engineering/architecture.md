@@ -231,7 +231,7 @@ M1 的公开接口面：
 | 连接与凭据 | `POST /api/ssh/connect`、`GET/PUT /api/ssh/credentials`、`POST /api/ssh/disconnect` | |
 | 终端 | `POST /api/workspaces/:id/terminal-binding`、`GET /api/workspaces/:id/terminal`（WebSocket） | 按项目绑定目标 |
 | 资源与作业 | `GET /api/workspaces/:id/resources`、`GET /api/workspaces/:id/slurm` | 按项目绑定目标 |
-| 服务器文件 | `/api/workspaces/:id/remote-files/` 下的 bindings、sessions、preflights、tasks 与 download | 下载仍在，移除未落地 |
+| 服务器文件 | `/api/workspaces/:id/remote-files/` 下的 bindings、sessions、preflights、tasks | 按项目绑定目标；不含下载 |
 | 对话 | `GET /ws`（WebSocket） | M2 使用 |
 
 ### 5.8 ssh：档案、连接与信任
@@ -266,8 +266,8 @@ M1 的公开接口面：
 - `service.ts` + `directory.ts`：浏览会话每项目最多 32 个、空闲 15 分钟过期；按层读取元数据，单层 10000 项或 4 MiB，每页 200 项；排序在 `directory-order.ts`（目录、文件、链接、其他，中文数字序，同序用原文兜底）。
 - 操作：`preflight.ts` 生成两分钟有效的方案，`tasks.ts` 先把记录原子落盘再派发，`executor.ts` 用服务器已有 Python 标准库与 `renameat2(RENAME_NOREPLACE)` 执行，不覆盖、不跟随链接；`path-locks.ts` 按同身份相交路径排队，最多四项并行。
 - 任务记录：`remote-file-tasks/<uuid>.json` 原子写入；损坏记录保留并阻断；后端重启不重放；派发后断线或取消标 `needs_check`。
-- 下载（`downloads.ts` 与前端 `RemoteDownloadDialog.tsx`）仍在代码里，已决定移除但尚未落地；删除后接口与界面才不再有下载入口。
-- `sync-scope.ts` 仍为条目的 `scope` 字段提供展示判定，是同步域遗留；它不参与会话主路径，随工作区模型彻底收敛一并删除。
+- 不提供文件下载：后端没有下载路由，前端没有保存对话框；浏览只读元数据，增删改移在服务器上执行。
+- `sync-scope.ts` 提供 `RemoteFileFilter` 的默认值与条目的 `scope` 展示判定，是文件浏览「包括/排除」列的数据源，不属于已删除的同步域。
 
 ### 5.12 web：界面与状态
 
@@ -335,7 +335,7 @@ M1 的公开接口面：
 
 - M1 验收编号 A1–A14 见[需求](../product/requirements.md)，是条件而不是现状；代码存在不等于条目通过。
 - M1 已交付并有测试或真实运行记录的部分：项目存储与两层旧数据迁移、三个 CLI 的归属裁决、Claude/Codex/Antigravity 会话枚举与读取、四态本机探测、三段式外壳、项目添加、只读历史、服务器面板三视图（仅对已绑定服务器的项目可用）。
-- 明确未完成：Electron 桌面壳（M1.5）；输入框、流式回合与审批（M2）；原生配置完整编辑、启动环境注入、服务器面板以档案为键（M3）；目录监听、安装包与自动更新（M4）；服务器文件下载移除。
+- 明确未完成：Electron 桌面壳（M1.5）；输入框、流式回合与审批（M2）；原生配置完整编辑、启动环境注入、服务器面板以档案为键（M3）；目录监听、安装包与自动更新（M4）。
 - 测试在各包 `tests/` 下按模块镜像；真实链路用 `scripts/dev/e2e-*.ts` 与 `ssh-smoke.ts`；没有 Playwright 端到端测试。
 - 未验证项：真实 Antigravity 摘要库上的会话枚举（现有证据来自夹具与单元测试）、真实集群上的 Slurm 成功输出、操作系统输入法、安装包与自动更新。Antigravity 的历史正文不是「待验证」，它按设计不可读（D36）。
 - 浏览器访问同一地址仍可用，但按设计它不是最终产品入口；桌面壳落地前不应把它写成已交付形态。

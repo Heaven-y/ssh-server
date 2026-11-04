@@ -11,7 +11,6 @@ import { RemoteFilesError } from '../../src/remote-files/errors';
 import type { RemoteExecutor } from '../../src/remote-files/executor';
 import type { SshPool } from '../../src/ssh/pool';
 import { registerRemoteFileActionRoutes } from '../../src/http/remote-file-actions.routes';
-import type { FileDownloads } from '../../src/remote-files/downloads';
 import { createWorkspaceActivity } from '../../src/workspaces/activity';
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -445,7 +444,6 @@ it('HTTP 提交必须绑定确认预检，未知字段拒绝执行，查询与�
   registerRemoteFileActionRoutes(app, {
     tasks: fixture.tasks,
     preflights: fixture.preflights,
-    downloads: {} as FileDownloads,
   });
   const base = `/api/workspaces/${ws.id}/remote-files/tasks`;
   for (const payload of [

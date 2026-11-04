@@ -50,7 +50,6 @@ export function RemoteDirectoryList({
   selectedPath,
   select,
   action,
-  download,
   sessionId,
 }: {
   directory: RemoteDirectory;
@@ -59,7 +58,6 @@ export function RemoteDirectoryList({
   selectedPath?: string;
   select(path?: string): void;
   action(input: RemoteFileActionInput): void;
-  download(entry: RemoteFileEntry): void;
   sessionId: string;
 }) {
   const menu = useMenuStore({ placement: 'bottom-start' });
@@ -188,7 +186,6 @@ export function RemoteDirectoryList({
           loading={loading}
           request={request}
           navigate={navigate}
-          download={download}
           details={setDetailsPath}
           hide={() => menu.hide()}
         />
@@ -202,7 +199,6 @@ function RemoteMenuItems({
   loading,
   request,
   navigate,
-  download,
   details,
   hide,
 }: {
@@ -210,7 +206,6 @@ function RemoteMenuItems({
   loading: boolean;
   request(kind: RemoteFileActionKind, entry?: RemoteFileEntry): void;
   navigate(path: string): void;
-  download(entry: RemoteFileEntry): void;
   details(path: string): void;
   hide(): void;
 }) {
@@ -255,18 +250,6 @@ function RemoteMenuItems({
           {ACTION_LABELS[kind]}
         </MenuItem>
       ))}
-      {entry.type === 'file' && (
-        <MenuItem
-          disabled={loading}
-          className={itemClass}
-          onClick={() => {
-            hide();
-            download(entry);
-          }}
-        >
-          下载…
-        </MenuItem>
-      )}
       <MenuItem
         className={itemClass}
         onClick={() => {
