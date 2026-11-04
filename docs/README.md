@@ -1,23 +1,34 @@
 # 文档导航
 
-更新日期：2026-11-04。
+更新于 2026-11-04。按产品、实现、开发和进度组织当前资料；旧方案与历史验收通过 Git 查询，避免与现行规则并列。
+
+| 阅读顺序 | 文档 | 负责说明 |
+|---|---|---|
+| 1 | [项目入口](../README.md) | 产品定位、当前基础、启动入口 |
+| 2 | [产品需求](product/requirements.md) | 功能范围、行为边界和验收条件 |
+| 3 | [界面与交互](product/ui-layout.md) | 会话主区、导航、状态、配置与未来插件呈现 |
+| 4 | [架构](engineering/architecture.md) | 模块、协议、生命周期与实现预算 |
+| 5 | [现行决策](engineering/decisions.md) | 仍有效的选择、理由、约束和替代关系 |
+| 6 | [开发指南](guides/dev-environment.md) | 环境、代码规范、分支、技能和验证方法 |
+| 7 | [路线图](roadmap.md) | 已交付基础、当前主线、后续顺序与证据边界 |
+
+## 当前实施
 
 | 文档 | 用途 |
 |---|---|
-| [项目入口](../README.md) | 功能、启动和安全边界 |
-| [需求](product/requirements.md) | 产品功能、边界及 M1 验收条件 |
-| [界面布局](product/ui-layout.md) | 三段式布局、面板和交互 |
-| [架构](engineering/architecture.md) | 技术栈、接口、数据流和生命周期 |
-| [设计决策](engineering/decisions.md) | 仍约束当前代码的取舍、原因与替代关系；上一代产品的决策通过[Git 锚点](engineering/decisions.md#决策追溯与保留规则)追溯 |
-| [开发环境](guides/dev-environment.md) | 运行、操作注意事项、代码规范和质量门禁 |
-| [路线图](roadmap.md) | 里程碑状态与运行边界 |
-| [设计文档](superpowers/specs/2026-11-03-native-cli-workbench-design.md) | 本轮产品转向的设计依据、关键决策与风险 |
-| [M1 实施计划](superpowers/plans/2026-11-03-native-cli-workbench-m1.md) | 逐任务实施步骤 |
-| [上一代验收](guides/ui-usability-optimization-acceptance.md) | 上一代停靠工作台阶段的质量门禁与浏览器检查结果，含 4 张代表图（**仅作历史记录，本轮不适用**） |
+| [原生对话接入](engineering/native-dialogue.md) | 三 CLI 主流程的本轮边界与接口选择 |
+| [M2 实施计划](superpowers/plans/2026-11-04-native-dialogue.md) | 按任务执行和验证的当前计划 |
 
-## 适用规则
+## 维护规则
 
-- 产品形态是本机 Windows 桌面应用（Electron 壳），已在 M1 交付；三段式布局：左栏项目与会话、主区会话历史、右侧服务器面板。见[设计文档 §1.1](superpowers/specs/2026-11-03-native-cli-workbench-design.md#11-形态桌面应用不是浏览器网页)与[路线图](roadmap.md)。
-- 参数归属：产品可见阈值与验收条件写在[需求](product/requirements.md)，交互与呈现写在[界面布局](product/ui-layout.md)，实现预算、协议与模块约束写在[架构](engineering/architecture.md)，取舍理由与替代关系写在[设计决策](engineering/decisions.md)；同一数值只在一处定义，其余引用。
-- 只维护一种正式业务路径和数据格式；上一代产品的测试数字、截图与验收范围只在[上一代验收](guides/ui-usability-optimization-acceptance.md)中按实际运行记录，不并入当前结论；决策只保留仍约束当前产品的条目，历史决策通过提交锚点追溯。
-- [D1](engineering/decisions.md#d1-产品转向本机原生-cli-会话工作台2026-11-03) 记录本轮产品转向，取代上一代关于同步、版本、本地文件与网页形态的取舍；被删能力不再恢复，相关旧文档条款按历史记录看待。
+- 功能做什么写进需求；界面怎么呈现写进交互；技术怎么运行写进架构；为什么这样取舍写进决策。具体数值只在负责该参数的文件定义，其他文件引用。
+- 当前顺序为原生对话、原生配置、自有插件、打磨分发。先把主流程完成，不因扩展方向已确认就把插件标成现有能力。
+- 每个 CLI 的原生配置和权限按实际支持接入。工作台插件与 CLI 原生扩展各自说明，不要求三种 CLI 使用相同层级。
+- 已实现、待实现、受控验证、真实验证分别记录。删除过时材料不改变过去的通过、失败或未验证结论。
+- 阶段计划只保留当前仍执行的版本；完成或被替代的计划归入 Git 记录，避免持续维护两份产品规范。
+
+## 已退出的资料
+
+2026-11-03 的原生 CLI 设计及 M1 实施计划、上一代停靠工作台验收和配套图片已从当前资料集移除。仍适用的理由和约束迁入现行文档，旧原文在 `c686ef2` 中可查；更早决策的锚点为 `ec33148`。
+
+完整路径与读取命令见[历史追溯](engineering/decisions.md#历史追溯)。

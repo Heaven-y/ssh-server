@@ -1,10 +1,10 @@
 // 文档一致性检查：坏链/坏锚点、跨文档重复长句、docs 导航完整性，以及单文档行数软预警。
 // 用法：node --import tsx scripts/dev/check-docs.ts
-// 只检查 git 跟踪的 Markdown；第三方 skill 与本地执行记录（.agents/、.superpowers/）不在范围内。
+// 检查现有跟踪文件与未忽略的新 Markdown；第三方 skill 与本地执行记录不在范围内。
 // 门槛说明见 docs/guides/dev-environment.md 1.3。
-import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { markdownFiles } from './docs-files';
 
 /** 单文档行数软阈值：超过只提示不失败，避免为压行数做坏拆分。 */
 const SOFT_LINE_LIMIT = 600;
@@ -19,15 +19,6 @@ const FENCE = /^```/;
 
 type Doc = { path: string; text: string };
 type Problem = { file: string; detail: string };
-
-/** 取 git 跟踪的 Markdown 路径（正斜杠，与平台无关）。 */
-function trackedDocs(): string[] {
-  const out = execFileSync('git', ['ls-files', '*.md'], { encoding: 'utf8' });
-  return out
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
 
 /** 去掉围栏代码块，只保留正文行，避免把示例代码当成链接或句子。 */
 function proseLines(text: string): string[] {
@@ -158,11 +149,11 @@ function lineWarnings(docs: Doc[]): string[] {
     .map((item) => `${item.path} 共 ${item.lines} 行，超过软阈值 ${SOFT_LINE_LIMIT}；先确认重复与过程流水，再考虑拆分`);
 }
 
-const docs = trackedDocs().map((path) => ({ path, text: readFileSync(path, 'utf8') }));
+const docs = markdownFiles().map((path) => ({ path, text: readFileSync(path, 'utf8') }));
 const failures = [...checkLinks(docs), ...checkDuplicates(docs), ...checkDocsIndex(docs)];
 const warnings = lineWarnings(docs);
 
-console.log(`检查 ${docs.length} 个受版本控制的 Markdown 文档`);
+console.log(`检查 ${docs.length} 个工作树 Markdown 文档（含未暂存新文件）`);
 for (const warning of warnings) console.log(`预警：${warning}`);
 for (const failure of failures) console.error(`失败：${failure.file}：${failure.detail}`);
 if (failures.length > 0) {
