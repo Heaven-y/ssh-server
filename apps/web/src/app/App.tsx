@@ -18,6 +18,7 @@ import { useProjectNavigation } from './use-project-navigation';
 import { useProjectSessions } from './use-project-sessions';
 import { useServerDock } from './use-server-dock';
 import { AddProjectDialog } from './AddProjectDialog';
+import { BindServerDialog } from './BindServerDialog';
 
 const SettingsDialog = lazy(() => import('../features/settings/SettingsDialog'));
 const CommandPalette = lazy(() => import('./CommandPalette'));
@@ -71,6 +72,8 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [serversOpen, setServersOpen] = useState(false);
   const [addProjectOpen, setAddProjectOpen] = useState(false);
+  // 绑定服务器要拿到具体的项目对象，不能只记一个开关。
+  const [bindingProject, setBindingProject] = useState<Workspace | undefined>(undefined);
   const dock = useServerDock();
   const projects = useQuery({
     queryKey: queryKeys.workspaces,
@@ -103,6 +106,7 @@ export function App() {
       <EnvironmentSummary onOpenSettings={() => setSettingsOpen(true)} />
       {serversOpen && <ServerManagerDialog onClose={() => setServersOpen(false)} />}
       {addProjectOpen && <AddProjectDialog onClose={() => setAddProjectOpen(false)} />}
+      {bindingProject && <BindServerDialog project={bindingProject} onClose={() => setBindingProject(undefined)} />}
       <OpenPalette
         opened={palette.opened}
         workspace={current}
@@ -160,6 +164,7 @@ export function App() {
             onNewSession={startSession}
             onSelectProject={(id) => useChat.getState().selectWorkspace(id)}
             onSelectSession={openSession}
+            onBindServer={setBindingProject}
           />
         }
       >
