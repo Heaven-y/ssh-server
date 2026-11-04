@@ -46,6 +46,7 @@ import { createHostTrust } from './ssh/host-trust';
 import { createPasswordStore } from './ssh/password-store';
 import { createWorkspaceStore } from './workspaces/store';
 import { migrateLegacyConfig } from './workspaces/migrate-legacy';
+import { importLegacyWorkspaces, type ImportReport } from './workspaces/import';
 import { createWorkspaceActivity } from './workspaces/activity';
 import { createNativeConfigService } from './settings/native-config';
 import { createProductSettings } from './settings/product-settings';
@@ -65,6 +66,18 @@ const hostForUrl = (host: string) => (host === '::1' ? '[::1]' : '127.0.0.1');
 
 function accessUrl(host: string, port: number, devOrigin?: string): string {
   return `${devOrigin ?? `http://${hostForUrl(host)}:${port}`}/`;
+}
+
+/** 启动日志只报数量与是否有备份，不打印项目清单。 */
+function logLegacyImport(report: ImportReport): void {
+  if (report.imported > 0 || report.skipped > 0) {
+    console.log(
+      `旧工作区配置导入：导入 ${report.imported} 条，跳过 ${report.skipped} 条${
+        report.backupFiles.length > 0 ? '；原文件已备份为 .bak' : ''
+      }`,
+    );
+  }
+  if (report.message) console.warn(`旧工作区配置导入：${report.message}`);
 }
 
 async function main(): Promise<void> {
@@ -88,6 +101,9 @@ async function main(): Promise<void> {
     dirExists,
     knownHosts: async () => (await targets.list()).map((server) => server.alias),
   });
+  // 旧版 workspaces.json 的字段级转换：在本进程读写项目配置之前跑一次。
+  // 没有文件或已经是新结构时为空报告；转换成功后原文件保留为 workspaces.json.bak。
+  logLegacyImport(await importLegacyWorkspaces({ configDir: config.configDir, store }));
   const pool = createSshPool({
     passwordStore: createPasswordStore({ configDir: config.configDir }),
     lookupHost: async (alias) => {

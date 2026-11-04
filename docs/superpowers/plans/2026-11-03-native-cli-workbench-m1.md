@@ -766,6 +766,21 @@ git commit -m "feat(sessions): 三个 CLI 统一的会话归属裁决" -m "- Cla
   - `GET /api/projects/:id/sessions/:agent/:sessionId` → `SessionHistory`
   - `GET /api/agents/probes` → `AgentProbe[]`
 
+> **PATCH 的解绑语义必须明确，否则「退回纯本地项目」在 HTTP 上不可达。**
+>
+> `store.update()` 用 JS 的 `undefined` 表示「清除这个字段」，但 JSON body 里没有 `undefined`——`{"server": null}` 与「没传这个键」是两件不同的事，而后者必须表示「不要动它」。
+>
+> 采用 **`null` 表示清除**：
+>
+> | 请求体 | 语义 |
+> |---|---|
+> | `{ "name": "新名字" }` | 只改名字，绑定与目录都不动 |
+> | `{ "server": null, "remoteDir": null }` | 同时解绑两半，退回纯本地项目 |
+> | `{ "server": null }` 只给一半 | **拒绝**（400），沿用 Task 4 的「同进同退」规则 |
+> | `{ "server": "my-server", "remoteDir": "~/x" }` | 绑定或改绑到指定服务器 |
+>
+> 实现上用 `z.object({ name?, dir?, server?: z.string().nullable(), remoteDir?: z.string().nullable() })`，用 `key in body` 判断是否要更新该字段，`null` 转成 `undefined` 再交给 store。**不要**把 `undefined` 直接塞进 `Partial` 透传——那样「没传」和「传了 null」会变成同一件事，只改名字会把绑定抹掉。
+
 - [ ] **Step 1: 写失败测试 —— 路由契约**
 
 ```ts

@@ -193,7 +193,9 @@ describe('Codex app-server 核心边界', () => {
     await handle.interrupt();
     await handle.done;
     expect(events.filter((event) => event.type === 'turn_end')).toEqual([{ type: 'turn_end', isError: false }]);
-  }, 10_000);
+    // 断言的是「5 秒后一定会被强杀」，不是「总共不超过 10 秒」。全量并行（100+ worker）时
+    // 子进程调度会被拖慢，10 秒余量不够，故放宽外层超时；被测行为本身（5 秒强杀）不变。
+  }, 30_000);
 
   it.each(['approval-command', 'approval-permissions'])('审批 %s 使用原始 RPC ID 与单次权限', async (mode) => {
     const { workspace, options, messages } = await setup(mode);

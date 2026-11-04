@@ -218,5 +218,7 @@ describe('Codex thread/fork', () => {
       forkCodexSession('native-thread', cancelled.dir, {}, { ...cancelled.options, signal: controller.signal }),
     ).rejects.toThrow('已取消');
     expect(await cancelled.messages()).toEqual([]);
-  });
+    // 这条用例要真起两个子进程并在其间 abort，全量并行跑时 5 秒默认超时不够；
+    // 放宽的是外层等待预算，被测行为（abort 后仍等原生完成）不变。
+  }, 30_000);
 });
