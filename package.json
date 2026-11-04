@@ -12,7 +12,7 @@
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p packages/shared/tsconfig.json && tsc -p apps/server/tsconfig.json && tsc -p apps/web/tsconfig.json && tsc -p scripts/tsconfig.json",
+    "typecheck": "tsc -p packages/shared/tsconfig.json && tsc -p apps/server/tsconfig.json && tsc -p apps/web/tsconfig.json && tsc -p apps/desktop/tsconfig.json && tsc -p scripts/tsconfig.json",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -21,6 +21,7 @@
     "coverage": "vitest run --coverage",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run docs:check && npm run dup && npm run coverage",
     "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev -w @agentdeck/server\" \"npm run dev -w @agentdeck/web\"",
+    "dev:desktop": "npm run build -w @agentdeck/web && npm run dev -w @agentdeck/desktop",
     "start": "npm run build -w @agentdeck/web && npm run start -w @agentdeck/server"
   },
   "devDependencies": {
