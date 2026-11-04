@@ -90,8 +90,4 @@ export function registerProjectRoutes(app: FastifyInstance, deps: ProjectRoutesD
       return reply.code(204).send();
     });
   });
-
-  // 兼容期：M1 前端仍用 GET /api/workspaces 取项目列表。
-  // 只保留这一条只读别名，Task 10 把前端切到 /api/projects 后删除。
-  app.get('/api/workspaces', (_req, reply) => respond(reply, listProjects));
 }

@@ -192,13 +192,15 @@ describe('项目接口', () => {
     expect(response.json().message).toContain('配置损坏');
   });
 
-  it('保留只读的 /api/workspaces 兼容别名给尚未迁移的前端', async () => {
+  it('旧的 /api/workspaces 列表别名已删除，避免两套入口并存', async () => {
     const { app } = await setup();
     const dir = await tempDir('agentdeck-project-');
-    const created = await create(app, { name: '兼容项目', dir });
+    await create(app, { name: '示例项目', dir });
+    // 项目列表只有 /api/projects 一个入口；旧别名删掉后必须是真的 404。
     const legacy = await app.inject('/api/workspaces');
-    expect(legacy.statusCode).toBe(200);
-    expect(legacy.json()).toEqual([created.json()]);
+    expect(legacy.statusCode).toBe(404);
+    const current = await app.inject('/api/projects');
+    expect(current.statusCode).toBe(200);
   });
 });
 
