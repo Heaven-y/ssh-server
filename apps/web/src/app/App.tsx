@@ -19,9 +19,23 @@ import { useProjectSessions } from './use-project-sessions';
 import { useServerDock } from './use-server-dock';
 import { AddProjectDialog } from './AddProjectDialog';
 import { BindServerDialog } from './BindServerDialog';
+import { PluginNavigation } from '../features/plugins/PluginNavigation';
+import { PluginWorkspace } from '../features/plugins/PluginWorkspace';
+import { usePluginPages } from '../features/plugins/use-plugin-pages';
 
 const SettingsDialog = lazy(() => import('../features/settings/SettingsDialog'));
 const CommandPalette = lazy(() => import('./CommandPalette'));
+const PluginManager = lazy(() => import('../features/plugins/PluginManager'));
+
+function OpenPluginManager({ opened, close }: { opened: boolean; close(): void }) {
+  return (
+    opened && (
+      <Suspense fallback={<p role="status">正在打开插件管理…</p>}>
+        <PluginManager onClose={close} />
+      </Suspense>
+    )
+  );
+}
 
 function OpenPalette({
   opened,
@@ -86,6 +100,8 @@ export function App() {
     if (productSettings.data) setDefaults(productSettings.data.settings);
   }, [productSettings.data, setDefaults]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const plugins = usePluginPages();
+  const activePlugin = plugins.active;
   const [serversOpen, setServersOpen] = useState(false);
   const [addProjectOpen, setAddProjectOpen] = useState(false);
   // 绑定服务器要拿到具体的项目对象，不能只记一个开关。
@@ -101,11 +117,13 @@ export function App() {
   const { sessionsByProject, loading: sessionsLoading } = useProjectSessions(projects.data);
   const openSession = (targetProject: string, session: SessionSummary) => {
     if (!allowConversationNavigation()) return;
+    plugins.show(undefined);
     if (useChat.getState().workspaceId !== targetProject) useChat.getState().selectWorkspace(targetProject);
     void useChat.getState().openSession(session);
   };
   const startSession = (targetProject: string, agent: AgentKind) => {
     if (!allowConversationNavigation()) return;
+    plugins.show(undefined);
     const chat = useChat.getState();
     if (chat.workspaceId !== targetProject) chat.selectWorkspace(targetProject);
     useChat.getState().newSession(agent);
@@ -118,11 +136,16 @@ export function App() {
         onOpenCommands={palette.open}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenServers={() => setServersOpen(true)}
+        onOpenPlugins={() => plugins.setManagerOpen(true)}
         terminalOpen={dock.open && dock.view === 'terminal'}
-        onOpenTerminal={() => dock.reveal('terminal')}
+        onOpenTerminal={() => {
+          plugins.show(undefined);
+          dock.reveal('terminal');
+        }}
       />
       <EnvironmentSummary onOpenSettings={() => setSettingsOpen(true)} />
       {serversOpen && <ServerManagerDialog onClose={() => setServersOpen(false)} />}
+      <OpenPluginManager opened={plugins.managerOpen} close={() => plugins.setManagerOpen(false)} />
       {addProjectOpen && <AddProjectDialog onClose={() => setAddProjectOpen(false)} />}
       {bindingProject && <BindServerDialog project={bindingProject} onClose={() => setBindingProject(undefined)} />}
       <OpenPalette
@@ -131,7 +154,14 @@ export function App() {
         workspaces={projects.data}
         close={palette.close}
         actions={{
+          plugins: plugins.commands,
+          conversation: () => {
+            if (!allowConversationNavigation()) return false;
+            plugins.show(undefined);
+            return true;
+          },
           terminal: () => {
+            plugins.show(undefined);
             dock.reveal('terminal');
             return true;
           },
@@ -141,6 +171,7 @@ export function App() {
           },
           resources: (id) => {
             if (id !== current?.id) return false;
+            plugins.show(undefined);
             dock.reveal('resources');
             return true;
           },
@@ -148,11 +179,11 @@ export function App() {
       />
       <OpenSettings opened={settingsOpen} project={current} close={() => setSettingsOpen(false)} />
       <WorkspaceLayout
-        dockOpen={dock.open}
+        dockOpen={dock.open && !activePlugin}
         dock={
           <ServerDock
             workspace={current}
-            open={dock.open}
+            open={dock.open && !activePlugin}
             view={dock.view}
             loaded={dock.loaded}
             onSelectView={dock.select}
@@ -161,6 +192,14 @@ export function App() {
         }
         navigation={
           <Sidebar
+            pages={
+              <PluginNavigation
+                plugins={plugins.list}
+                selected={plugins.selected}
+                open={plugins.show}
+                manage={() => plugins.setManagerOpen(true)}
+              />
+            }
             projects={projects.data ?? []}
             sessionsByProject={sessionsByProject}
             loadingSessions={sessionsLoading}
@@ -175,12 +214,24 @@ export function App() {
           />
         }
       >
-        <SessionPane
-          project={current}
-          pending={projects.isPending}
-          error={projects.error}
-          onAddProject={() => setAddProjectOpen(true)}
-        />
+        <div className="h-full min-h-0 min-w-0 w-full flex-1">
+          <div hidden={!!activePlugin} inert={!!activePlugin} className="h-full min-h-0">
+            <SessionPane
+              project={current}
+              pending={projects.isPending}
+              error={projects.error}
+              onAddProject={() => setAddProjectOpen(true)}
+            />
+          </div>
+          <PluginWorkspace
+            plugin={activePlugin}
+            sshPlugin={plugins.ssh}
+            project={current}
+            close={() => plugins.show(undefined)}
+            manageServers={() => setServersOpen(true)}
+            command={plugins.command}
+          />
+        </div>
       </WorkspaceLayout>
     </div>
   );

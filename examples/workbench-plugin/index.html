@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>项目计数器</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 32px;
+        line-height: 1.6;
+        background: light-dark(#fafafa, #171717);
+        color: light-dark(#252525, #e5e5e5);
+      }
+      main {
+        max-width: 660px;
+        margin: auto;
+      }
+      h1 {
+        font-size: 24px;
+        margin-bottom: 6px;
+      }
+      p {
+        margin-top: 0;
+      }
+      section {
+        border: 1px solid light-dark(#d4d4d4, #444);
+        border-radius: 12px;
+        padding: 20px;
+        margin-top: 20px;
+      }
+      h2 {
+        margin: 0 0 12px;
+        font-size: 16px;
+      }
+      output {
+        font-size: 40px;
+        display: block;
+        margin-bottom: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+      button {
+        padding: 8px 16px;
+        border-radius: 7px;
+        border: 1px solid #777;
+        color: inherit;
+        background: transparent;
+        cursor: pointer;
+        margin: 0 8px 8px 0;
+      }
+      button:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 3px;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: wait;
+      }
+      code {
+        display: block;
+        overflow-wrap: anywhere;
+      }
+      #status {
+        min-height: 2em;
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>项目计数器</h1>
+      <p>一个可安装的工作台插件：保存自己的计数，并查看你当前选择的项目。</p>
+      <section aria-label="插件计数器">
+        <h2>独立计数</h2>
+        <output id="count" aria-live="polite">—</output>
+        <button id="increment" disabled>增加一次</button>
+        <button id="reset" disabled>归零</button>
+        <button id="reload">重新读取</button>
+      </section>
+      <section aria-label="当前项目摘要">
+        <h2>当前项目</h2>
+        <p id="project-name">尚未读取</p>
+        <code id="project-path"></code>
+        <button id="refresh-project">刷新项目摘要</button>
+      </section>
+      <p id="status" role="status" aria-live="polite"></p>
+    </main>
+    <script>
+      const count = document.getElementById('count');
+      const status = document.getElementById('status');
+      const increment = document.getElementById('increment');
+      const reset = document.getElementById('reset');
+      const reload = document.getElementById('reload');
+      let current;
+      let busy = false;
+      function controls(working) {
+        busy = working;
+        increment.disabled = working || !current;
+        reset.disabled = working || !current;
+        reload.disabled = working;
+      }
+      function render() {
+        const value = current?.value.count;
+        count.textContent = Number.isSafeInteger(value) && value >= 0 ? String(value) : '0';
+      }
+      async function load() {
+        if (busy) return;
+        controls(true);
+        try {
+          current = await window.agentdeck.storage.get();
+          render();
+          status.textContent = '已读取插件自己的计数。';
+        } catch (error) {
+          status.textContent = error.message || '读取失败，请重试。';
+        } finally {
+          controls(false);
+        }
+      }
+      async function save(next) {
+        if (busy || !current) return;
+        controls(true);
+        try {
+          current = await window.agentdeck.storage.set({ value: { count: next }, revision: current.revision });
+          render();
+          status.textContent = '计数已保存。关闭页面后仍会保留。';
+        } catch (error) {
+          status.textContent = error.message || '保存失败，请重新读取后重试。';
+        } finally {
+          controls(false);
+        }
+      }
+      async function project() {
+        try {
+          const value = await window.agentdeck.project.get();
+          document.getElementById('project-name').textContent = value?.name || '尚未选择项目';
+          document.getElementById('project-path').textContent = value?.dir || '';
+        } catch (error) {
+          status.textContent = error.message || '项目摘要读取失败。';
+        }
+      }
+      increment.addEventListener('click', () => {
+        void save(Number(count.textContent) + 1);
+      });
+      reset.addEventListener('click', () => {
+        void save(0);
+      });
+      reload.addEventListener('click', () => {
+        void load();
+      });
+      document.getElementById('refresh-project').addEventListener('click', () => {
+        void project();
+      });
+      window.agentdeck.onCommand(() => {
+        void project();
+      });
+      void load();
+      void project();
+    </script>
+  </body>
+</html>

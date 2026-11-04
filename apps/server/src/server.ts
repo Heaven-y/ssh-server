@@ -63,6 +63,10 @@ import { registerLaunchEnvironmentRoutes } from './http/launch-environment.route
 import { createConfiguredRunner } from './agents/configured-runner';
 import { createNativeResourcesService } from './settings/native-resources';
 import { registerNativeResourceRoutes } from './http/native-resources.routes';
+import { createWorkbenchPlugins } from './plugins/service';
+import { registerPluginRoutes } from './http/plugins.routes';
+import { createSshConsoleService } from './ssh-console/service';
+import { registerSshConsoleRoutes } from './http/ssh-console.routes';
 
 /** 已启动的本机服务：地址固定带尾部斜杠，close 可重复调用。 */
 export type StartedServer = { url: string; close: () => Promise<void> };
@@ -167,6 +171,14 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
       return server ? serverHostConfig(server) : undefined;
     },
   });
+  const plugins = createWorkbenchPlugins({
+    configDir: config.configDir,
+    onDisable: (id) => {
+      if (id === 'ssh-console') sshConsole.dispose();
+    },
+  });
+  await plugins.list();
+  const sshConsole = createSshConsoleService({ pool, isEnabled: () => plugins.isEnabled('ssh-console') });
   const terminalBindings = createTerminalBindings({ store, pool });
   const activity = createWorkspaceActivity();
   const acquireWorkspace = (id: string) => activity.acquire(id);
@@ -248,6 +260,8 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
     webDir: options.webDir,
     routes: (a) => {
       registerProjectRoutes(a, { store });
+      registerPluginRoutes(a, { service: plugins });
+      registerSshConsoleRoutes(a, sshConsole);
       registerProbeRoutes(a, { probes });
       registerSessionRoutes(a, { store, sessions });
       registerCapabilityRoutes(a, { store, capabilities });
@@ -284,6 +298,7 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
   let closing: Promise<void> | undefined;
   const close = (): Promise<void> => {
     closing ??= (async () => {
+      sshConsole.dispose();
       terminals.dispose();
       resources.dispose();
       slurm.dispose();
