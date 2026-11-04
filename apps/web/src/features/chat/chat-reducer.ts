@@ -43,6 +43,16 @@ function appendText(items: ChatItem[], kind: 'assistant' | 'reasoning', delta: s
   return [...items, kind === 'assistant' ? { kind, id, text: delta, streaming: true } : { kind, id, text: delta }];
 }
 
+/**
+ * 历史接口返回的是完整事件序列，不是实时流：`text`/`reasoning` 的 delta 可能已是一整段。
+ * 复用实时对话的归并规则（连续 delta 合成一条消息、tool_result 回填工具卡片），
+ * 末尾补一个 turn_end 让最后一段内容脱离流式态；只读视图不提供分叉入口，因此丢掉分叉点。
+ */
+export function historyItems(events: AgentEvent[]): ChatItem[] {
+  const closed = [...events, { type: 'turn_end' as const, isError: false }].reduce<ChatItem[]>(reduceChat, []);
+  return closed.filter((item) => item.kind !== 'fork-point');
+}
+
 export function reduceChat(items: ChatItem[], e: AgentEvent): ChatItem[] {
   switch (e.type) {
     case 'compaction':

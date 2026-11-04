@@ -1,7 +1,7 @@
 import { useQueries } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import type { AgentKind, SessionSummary, Workspace } from '@agentdeck/shared';
-import { api, queryKeys } from '../lib/api';
+import { sessionListQuery } from '../features/sessions/use-sessions';
 
 /** 左栏要按项目展示分组，三条 CLI 各自一次请求；同一个 key 与对话区共享缓存。 */
 const AGENTS: AgentKind[] = ['claude', 'codex', 'antigravity'];
@@ -11,13 +11,7 @@ export function useProjectSessions(projects: Workspace[] | undefined): {
   loading: boolean;
 } {
   const queries = useQueries({
-    queries: (projects ?? []).flatMap((project) =>
-      AGENTS.map((agent) => ({
-        queryKey: queryKeys.sessions(project.id, agent),
-        queryFn: ({ signal }: { signal: AbortSignal }) => api.listSessions(project.id, agent, false, signal),
-        retry: false,
-      })),
-    ),
+    queries: (projects ?? []).flatMap((project) => AGENTS.map((agent) => sessionListQuery(project.id, agent))),
   });
   const sessionsByProject = useMemo(() => {
     const result: Record<string, SessionSummary[]> = {};
