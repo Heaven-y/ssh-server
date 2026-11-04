@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildApp } from '../../apps/server/src/http/app';
+import { registerProjectRoutes } from '../../apps/server/src/http/projects.routes';
 import { registerSshRoutes } from '../../apps/server/src/http/ssh.routes';
 import { registerTerminalRoutes } from '../../apps/server/src/http/terminal.routes';
 import { createTerminalBindings } from '../../apps/server/src/terminal/binding';
@@ -43,9 +44,9 @@ async function main() {
   const app = await buildApp({
     token,
     port: 0,
-    store: fixture.store,
     webDir: fileURLToPath(new URL('../../apps/web/dist', import.meta.url)),
     routes: (server) => {
+      registerProjectRoutes(server, { store: fixture.store });
       registerSshRoutes(server, { ...fixture, profiles });
       registerSshTargetRoutes(server, profiles);
       registerProductSettingsRoutes(

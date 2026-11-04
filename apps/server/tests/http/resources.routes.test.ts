@@ -21,7 +21,6 @@ it('真实SSH资源通道贯通安全HTTP、固定目标及关闭服务生命周
   const app = await buildApp({
     token: 'fixture-token',
     port: 0,
-    store: ssh.store,
     routes: (server) => registerResourcesRoutes(server, resources),
   });
   await app.listen({ host: '127.0.0.1', port: 0 });
