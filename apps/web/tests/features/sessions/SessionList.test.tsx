@@ -3,9 +3,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api, queryKeys } from '../../../src/lib/api';
-import { SessionList } from '../../../src/features/workspaces/SessionList';
+import { SessionList } from '../../../src/features/sessions/SessionList';
 import { useChat } from '../../../src/features/chat/chat-store';
-import { useSessionPins } from '../../../src/features/workspaces/session-preferences';
+import { useSessionPins } from '../../../src/features/sessions/session-preferences';
 
 const session = {
   agent: 'claude' as const,

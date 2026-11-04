@@ -1,11 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { sessionActionKey } from '../../../src/features/chat/chat-store';
-import {
-  readSessionPins,
-  SESSION_PINS_KEY,
-  useSessionPins,
-} from '../../../src/features/workspaces/session-preferences';
+import { readSessionPins, SESSION_PINS_KEY, useSessionPins } from '../../../src/features/sessions/session-preferences';
 
 const session = { agent: 'codex' as const, sessionId: 'same-native-id' };
 beforeEach(() => {

@@ -12,12 +12,17 @@ const SIZES = {
 type SizeKey = keyof typeof SIZES;
 export type UiWidthKey = Exclude<SizeKey, 'resourceShare' | 'resourceHeight'>;
 type SplitKey = 'resourceShare' | 'resourceHeight';
-type UiPreferences = { theme: 'dark' | 'light'; sidebarCollapsed: boolean } & Record<SizeKey, number>;
+/** 右侧服务器面板的展开状态：null 表示还没表过态，按窗口宽度决定首屏。 */
+type UiPreferences = { theme: 'dark' | 'light'; sidebarCollapsed: boolean; dockCollapsed: boolean | null } & Record<
+  SizeKey,
+  number
+>;
 const sizeKeys = Object.keys(SIZES) as SizeKey[];
 const KEY = 'agentdeck.ui.v1';
 const DEFAULTS: UiPreferences = {
   theme: 'light',
   sidebarCollapsed: false,
+  dockCollapsed: null,
   ...(Object.fromEntries(sizeKeys.map((key) => [key, SIZES[key][0]])) as Record<SizeKey, number>),
 };
 const bounded = (value: unknown, min: number, max: number): value is number =>
@@ -40,6 +45,7 @@ function read(): UiPreferences {
     return {
       theme: value.theme,
       sidebarCollapsed: value.sidebarCollapsed,
+      dockCollapsed: typeof value.dockCollapsed === 'boolean' ? value.dockCollapsed : null,
       ...(Object.fromEntries(
         sizeKeys.map((key) => {
           const [initial, min, max] = SIZES[key];
@@ -63,6 +69,7 @@ type State = UiPreferences & {
   toggleTheme(): void;
   setSidebarCollapsed(value: boolean): void;
   setSidebarAutoCollapsed(value: boolean): void;
+  setDockCollapsed(value: boolean): void;
   setWidth(panel: UiWidthKey, value: number): void;
   setSplit(panel: SplitKey, value: number): void;
   resetDockedSizes(): void;
@@ -73,6 +80,7 @@ export const useUiPreferences = create<State>((set, get) => {
     const next = {
       theme: current.theme,
       sidebarCollapsed: current.sidebarCollapsed,
+      dockCollapsed: current.dockCollapsed,
       ...(Object.fromEntries(sizeKeys.map((key) => [key, current[key]])) as Record<SizeKey, number>),
       ...patch,
     };
@@ -93,6 +101,9 @@ export const useUiPreferences = create<State>((set, get) => {
     },
     setSidebarAutoCollapsed: (value) => {
       if (value !== get().sidebarAutoCollapsed) set({ sidebarAutoCollapsed: value });
+    },
+    setDockCollapsed: (value) => {
+      if (value !== get().dockCollapsed) update({ dockCollapsed: value });
     },
     setWidth: setSize,
     setSplit: setSize,

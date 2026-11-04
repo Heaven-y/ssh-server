@@ -55,7 +55,10 @@ async function setup(mode = 'normal') {
 describe('Codex app-server 核心边界', () => {
   it('真实子进程处理 UTF-8 分片、超时和意外退出且不透出 stderr', async () => {
     const { dir, options } = await setup();
-    const client = await CodexClient.start({ ...options, cwd: dir, timeoutMs: 500 });
+    // timeoutMs 既是「请求超时」这个产品行为的阈值，也是本次连接等子进程启动的预算。
+    // 500ms 在并行跑 100+ worker 时不够 tsx 启动，会把 startup 慢误报成超时；
+    // 3 秒仍能验证「挂起的请求一定会以超时失败」，又不会被调度噪声打成红灯。
+    const client = await CodexClient.start({ ...options, cwd: dir, timeoutMs: 3000 });
     try {
       await client.initialize();
       expect(await client.request('echo', {})).toEqual({ value: '中文分片' });

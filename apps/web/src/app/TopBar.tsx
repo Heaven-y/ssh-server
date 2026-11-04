@@ -1,5 +1,4 @@
 import {
-  Activity,
   Command as CommandIcon,
   FolderOpen,
   LoaderCircle,
@@ -83,15 +82,13 @@ function BackendConnectionStatus() {
   );
 }
 
-/** 顶栏突出当前工作区SSH，本机WebSocket只有异常状态才提示。 */
+/** 顶栏只保留：当前项目、搜索与操作、终端、服务器、主题、设置；没有资源按钮与同步摘要。 */
 export function TopBar({
   workspace,
   onOpenSettings,
   onOpenServers,
   onOpenTerminal,
   terminalOpen,
-  resourcesOpen,
-  onOpenResources,
   onOpenCommands,
 }: {
   workspace?: Workspace;
@@ -99,8 +96,6 @@ export function TopBar({
   onOpenServers(): void;
   onOpenTerminal(): void;
   terminalOpen: boolean;
-  resourcesOpen: boolean;
-  onOpenResources(): void;
   onOpenCommands(): void;
 }) {
   return (
@@ -110,20 +105,27 @@ export function TopBar({
         <TerminalSquare aria-hidden className="size-5 text-accent" />
         <span className="text-sm font-semibold tracking-wide">AgentDeck</span>
       </div>
-      {workspace && (
-        <div className="flex min-w-0 flex-[1_1_24rem] items-center gap-2 px-3 text-sm text-muted-foreground">
-          <FolderOpen aria-hidden className="size-4 shrink-0" />
-          <span className="truncate text-foreground" title={workspace.dir}>
-            {workspace.name}
-          </span>
-          {isBoundWorkspace(workspace) && (
-            <SshConnectionPanel
-              key={JSON.stringify([workspace.id, workspace.server, workspace.remoteDir])}
-              workspace={workspace}
-            />
-          )}
-        </div>
-      )}
+      <div className="flex min-w-0 flex-[1_1_24rem] items-center gap-2 px-3 text-sm text-muted-foreground">
+        {workspace ? (
+          <>
+            <FolderOpen aria-hidden className="size-4 shrink-0" />
+            <span className="shrink-0 truncate text-foreground" title={workspace.name}>
+              {workspace.name}
+            </span>
+            <span className="min-w-0 truncate font-mono text-xs text-muted-foreground" dir="ltr" title={workspace.dir}>
+              {workspace.dir}
+            </span>
+            {isBoundWorkspace(workspace) && (
+              <SshConnectionPanel
+                key={JSON.stringify([workspace.id, workspace.server, workspace.remoteDir])}
+                workspace={workspace}
+              />
+            )}
+          </>
+        ) : (
+          <span className="truncate text-xs">没有当前项目</span>
+        )}
+      </div>
       <div className="ml-auto flex h-14 shrink-0 items-center gap-1 pr-4">
         <button
           type="button"
@@ -139,23 +141,13 @@ export function TopBar({
         <button
           type="button"
           className={buttonClass('ghost')}
-          disabled={!workspace && !terminalOpen}
+          disabled={!workspace}
           aria-expanded={terminalOpen}
+          aria-controls="server-dock"
           onClick={onOpenTerminal}
         >
           <TerminalSquare aria-hidden className="size-4" />
           终端
-        </button>
-        <button
-          type="button"
-          className={buttonClass('ghost')}
-          disabled={!workspace}
-          aria-expanded={resourcesOpen}
-          aria-controls="workspace-resources-panel"
-          onClick={onOpenResources}
-        >
-          <Activity aria-hidden className="size-4" />
-          资源
         </button>
         <button type="button" className={buttonClass('ghost')} onClick={onOpenServers} aria-haspopup="dialog">
           <Server aria-hidden className="size-4" />

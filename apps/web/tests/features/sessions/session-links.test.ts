@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { parseSessionLink, sessionLink } from '../../../src/features/workspaces/session-links';
+import { parseSessionLink, sessionLink } from '../../../src/features/sessions/session-links';
 
 const location = { workspaceId: 'workspace-2', agent: 'codex' as const, sessionId: 'native-id' };
 describe('网页会话深度链接', () => {
