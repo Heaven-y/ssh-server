@@ -7,7 +7,6 @@ import { claudeInvocationText } from './claude-capabilities';
 import { claudeEffort } from './claude-effort';
 import { ClaudeCompactionTracker } from './claude-compaction';
 import { ClaudeEventMapper } from './claude-mapper';
-import { buildInstructions } from './instructions';
 import {
   claudeControl,
   createClaudeStream,
@@ -124,7 +123,7 @@ export class ClaudeRuntime {
     const options = {
       cwd: workspace.dir,
       settingSources: ['user', 'project', 'local'],
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: buildInstructions(workspace) },
+      systemPrompt: { type: 'preset', preset: 'claude_code' },
       canUseTool: (toolName: string, toolInput: Record<string, unknown>, opts: { signal: AbortSignal }) =>
         this.permission(toolName, toolInput, opts),
       includePartialMessages: true,

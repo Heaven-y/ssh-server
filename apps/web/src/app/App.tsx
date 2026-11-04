@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react';
 import type { AgentKind, SessionSummary, Workspace } from '@agentdeck/shared';
-import { useChat } from '../features/chat/chat-store';
+import { allowConversationNavigation, useChat } from '../features/chat/chat-store';
 import { api, queryKeys } from '../lib/api';
 import { TopBar } from './TopBar';
 import { useProductSettings } from '../features/settings/use-product-settings';
@@ -84,10 +84,12 @@ export function App() {
   const current = projects.data?.find((project) => project.id === projectId);
   const { sessionsByProject, loading: sessionsLoading } = useProjectSessions(projects.data);
   const openSession = (targetProject: string, session: SessionSummary) => {
+    if (!allowConversationNavigation()) return;
     if (useChat.getState().workspaceId !== targetProject) useChat.getState().selectWorkspace(targetProject);
     void useChat.getState().openSession(session);
   };
   const startSession = (targetProject: string, agent: AgentKind) => {
+    if (!allowConversationNavigation()) return;
     const chat = useChat.getState();
     if (chat.workspaceId !== targetProject) chat.selectWorkspace(targetProject);
     useChat.getState().newSession(agent);
@@ -164,7 +166,9 @@ export function App() {
             onNewSession={startSession}
             onSelectProject={(id) => useChat.getState().selectWorkspace(id)}
             onSelectSession={openSession}
-            onBindServer={setBindingProject}
+            onBindServer={(project) => {
+              if (allowConversationNavigation()) setBindingProject(project);
+            }}
           />
         }
       >

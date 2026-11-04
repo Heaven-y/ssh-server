@@ -29,5 +29,14 @@ export function CodexIcon({ className = 'size-4' }: { className?: string }) {
 }
 
 export function AgentIcon({ agent, className }: { agent: AgentKind; className?: string }) {
+  if (agent === 'antigravity')
+    return (
+      <span
+        aria-hidden
+        className={`inline-flex shrink-0 items-center justify-center font-mono font-semibold ${className ?? 'size-4'}`}
+      >
+        A
+      </span>
+    );
   return agent === 'claude' ? <ClaudeIcon className={className} /> : <CodexIcon className={className} />;
 }

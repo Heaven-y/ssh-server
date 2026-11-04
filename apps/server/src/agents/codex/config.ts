@@ -1,9 +1,8 @@
 import type { AgentTurnInput } from '../types';
-import { buildInstructions } from '../instructions';
 import { record, text, type RecordValue } from './types';
 
 /**
- * 覆盖只包含本产品的工作区约束；模型、服务商、审批与沙箱策略默认由原生配置决定。
+ * 模型、服务商、审批、沙箱与行为指令默认由原生配置决定。
  *
  * `sandbox` 与 `approvalPolicy` 曾在这里写死为 workspace-write / on-request，那等于用网页常量
  * 覆盖用户在 `~/.codex/config.toml` 里的选择。按设计 §6.1「审批面由 CLI 自己的原生配置决定，
@@ -21,7 +20,7 @@ export function threadParams(input: AgentTurnInput, nativeConfig: RecordValue): 
     cwd: input.workspace.dir,
     approvalsReviewer: 'user',
     config,
-    developerInstructions: [instructions, buildInstructions(input.workspace)].filter(Boolean).join('\n\n'),
+    ...(instructions ? { developerInstructions: instructions } : {}),
     ...(input.model ? { model: input.model } : {}),
   };
 }

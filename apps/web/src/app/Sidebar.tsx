@@ -273,7 +273,7 @@ function NewSessionMenu({
         className="z-50 min-w-44 rounded-xl border border-border-strong bg-card p-1.5 text-foreground shadow-xl"
       >
         <p className="px-3 py-1.5 text-xs text-muted-foreground">在 {target.name} 新建</p>
-        {(['claude', 'codex'] as const).map((agent) => (
+        {AGENT_ORDER.map((agent) => (
           <MenuItem
             key={agent}
             className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none data-active-item:bg-muted data-active-item:ring-1 data-active-item:ring-accent"

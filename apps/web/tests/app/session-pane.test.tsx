@@ -36,12 +36,10 @@ it('加载中只显示进度，不闪空态', () => {
   expect(screen.queryByText('先在左栏添加项目目录')).toBeNull();
 });
 
-it('有当前项目但还没选会话时，引导去左栏选一条', () => {
+it('有当前项目时挂载新会话输入，不再停留在只读历史空态', () => {
   useChat.setState(useChat.getInitialState(), true);
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('[]', { status: 200 }));
-  mount(<SessionPane project={{ id: 'p1', name: '示例项目', dir: 'E:\\web\\demo' }} />);
-  // M1 是只读视图：没有会话时给的是「去左栏选一条」，不再是旧的空对话输入区。
-  expect(screen.getByRole('heading', { name: '选择一条会话查看历史' })).toBeTruthy();
-  expect(screen.getByText(/M1 只读/)).toBeTruthy();
-  expect(screen.queryByRole('textbox', { name: '输入消息' })).toBeNull();
+  mount(<SessionPane project={{ id: 'p1', name: '示例项目', dir: 'project' }} />);
+  expect(screen.getByRole('heading', { name: '从一条消息开始' })).toBeTruthy();
+  expect(screen.getByLabelText('输入消息')).toBeTruthy();
 });

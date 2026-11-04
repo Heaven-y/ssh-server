@@ -34,7 +34,9 @@ WebSocket 断开时后端取消准备、拒绝未处理审批并请求中断所�
 
 `/ws` 沿用 `chat.send`、`chat.interrupt` 和 `permission.respond`。非法发送请求若带有效 `clientTurnId`，错误须回传该关联字段，避免界面永久处于等待状态。
 
-Antigravity 使用本机 `agy` 的 print/stream-json 接口，参数与事件结构以本机帮助和内置文档为依据。适配器独立于 Claude，处理 `init`、`step_update`、`result`、stderr 与进程退出；输入走 stdin，不把 prompt 放进命令行。限制单行缓冲和工具输出，异常及时收尾。首次续接由摘要确认目录归属。
+Antigravity 使用本机 `agy --input-format stream-json --output-format stream-json`，输入为 `{"event":"user","message":{"content":"…"}}`。依据是本机帮助和[官方 headless 协议](https://antigravity.google/docs/cli/headless/)。每轮关闭 stdin，下一轮用 `--conversation` 续接；不依赖猜测的常驻控制接口。输出按 `event` 与嵌套载荷解码，处理 `init`、`step_update`、`result` 和 stderr。续接用摘要验证目录，成功结果仍等待真实进程退出；超时请求停止并保持占用，不能伪造退出成功。
+
+Antigravity 尚无已接入的结构化模型/命令目录：刷新只返回说明，不解析文本列表制造标识。其原生规则、技能和插件继续由 CLI 加载，工作台仅提供默认参数和手填模型；这一目录缺口与不能发消息分开记录。
 
 上述“运行中不切会话”和“断线中断”是本轮为可靠控制所作的实施取舍，后续多会话任务可替代；不是 CLI 本身的限制。
 
@@ -45,3 +47,5 @@ Antigravity 使用本机 `agy` 的 print/stream-json 接口，参数与事件结
 前端验证须覆盖三个 CLI 可选、历史失败禁发、Antigravity 不可回放仍可续接、菜单无自动能力请求、显式刷新、默认参数省略、输入法与停止、运行中导航保护。使用隔离的本机服务检查真实页面，不把受控测试写成真实模型验收。
 
 类型、代码质量、构建及相关回归通过后记录命令与证据；原生 CLI 升级后协议仍可能变化，失败只影响对应适配器。
+
+本轮代码与受控验证已完成，证据和未验证项以[当前路线图](../roadmap.md#m2-验证重点)为准。完整原生管理、后台多会话及真实端点验证不从本轮结果推定完成。

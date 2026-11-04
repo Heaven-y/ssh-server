@@ -96,6 +96,11 @@ export class TurnManager {
         pending.resolve({ allow: false, message: '网页连接已断开' });
       }
     }
+    for (const turn of this.turns.values()) {
+      if (turn.socket !== socket) continue;
+      turn.controller.abort();
+      void turn.handle?.interrupt().catch(() => undefined);
+    }
   }
 
   /** 退出后端时停止本进程拥有的轮次，并关闭长驻运行时。 */

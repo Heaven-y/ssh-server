@@ -2,6 +2,7 @@ import { access } from 'node:fs/promises';
 import path from 'node:path';
 import type { CodexRuntimeOptions } from './types';
 import { CodexError } from './types';
+import { resolveNodeExecutable } from '../../process/executable';
 
 type LaunchCommand = { command: string; args: string[] };
 async function exists(file: string): Promise<boolean> {
@@ -13,7 +14,7 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
-async function officialNpmCommand(dir: string): Promise<LaunchCommand | undefined> {
+async function officialNpmCommand(dir: string, env: NodeJS.ProcessEnv): Promise<LaunchCommand | undefined> {
   const root = path.join(dir, 'node_modules', '@openai', 'codex');
   const arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
   const vendor = path.join('vendor', `${arch}-pc-windows-msvc`, 'bin', 'codex.exe');
@@ -25,16 +26,18 @@ async function officialNpmCommand(dir: string): Promise<LaunchCommand | undefine
   ];
   for (const file of candidates) if (await exists(file)) return { command: file, args: [] };
   const entry = path.join(root, 'bin', 'codex.js');
-  return (await exists(entry)) ? { command: process.execPath, args: [entry] } : undefined;
+  return (await exists(entry)) ? { command: resolveNodeExecutable(dir, env), args: [entry] } : undefined;
 }
 
-async function explicitCommand(command: string): Promise<LaunchCommand> {
+async function explicitCommand(command: string, env: NodeJS.ProcessEnv): Promise<LaunchCommand> {
   if (/\.(cmd|ps1|bat)$/i.test(command)) {
-    const native = await officialNpmCommand(path.dirname(command));
+    const native = await officialNpmCommand(path.dirname(command), env);
     if (native) return native;
     throw new CodexError('请将 AGENTDECK_CODEX 指向 Codex 可执行文件或官方 JavaScript 入口。');
   }
-  return /\.[cm]?js$/i.test(command) ? { command: process.execPath, args: [command] } : { command, args: [] };
+  return /\.[cm]?js$/i.test(command)
+    ? { command: resolveNodeExecutable(path.dirname(command), env), args: [command] }
+    : { command, args: [] };
 }
 
 /** 不使用 shell；Windows 从 PATH 查找原生程序或已安装的官方 npm 入口。 */
@@ -42,7 +45,7 @@ export async function resolveCodexCommand(options: CodexRuntimeOptions = {}): Pr
   if (typeof options.command === 'object') return { ...options.command, args: options.command.args ?? [] };
   const env = { ...process.env, ...options.env };
   const explicit = options.command ?? env.AGENTDECK_CODEX;
-  if (explicit) return explicitCommand(explicit);
+  if (explicit) return explicitCommand(explicit, env);
   if (process.platform !== 'win32') return { command: 'codex', args: [] };
   return windowsCommand(env);
 }
@@ -52,7 +55,7 @@ async function windowsCommand(env: NodeJS.ProcessEnv): Promise<LaunchCommand> {
   for (const dir of envPath.split(path.delimiter).filter(Boolean)) {
     const exe = path.join(dir, 'codex.exe');
     if (await exists(exe)) return { command: exe, args: [] };
-    const native = await officialNpmCommand(dir);
+    const native = await officialNpmCommand(dir, env);
     if (native) return native;
   }
   throw new CodexError('找不到 Codex，请安装官方 CLI，或设置 AGENTDECK_CODEX。');

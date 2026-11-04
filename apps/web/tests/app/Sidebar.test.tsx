@@ -51,6 +51,14 @@ it('没有项目时显示引导添加项目', () => {
   expect(screen.getByText('还没有项目')).toBeTruthy();
 });
 
+it('新建会话包含Antigravity，明确把所选来源交给主界面', async () => {
+  const start = vi.fn();
+  render(<Sidebar projects={[project]} sessionsByProject={{}} onAddProject={vi.fn()} onNewSession={start} />);
+  fireEvent.click(screen.getByRole('button', { name: '新建会话' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Antigravity' }));
+  expect(start).toHaveBeenCalledExactlyOnceWith(project.id, 'antigravity');
+});
+
 it('按 CLI 分组显示会话并带徽标', () => {
   render(
     <Sidebar projects={[project]} sessionsByProject={{ p1: [claudeSession, codexSession] }} onAddProject={vi.fn()} />,

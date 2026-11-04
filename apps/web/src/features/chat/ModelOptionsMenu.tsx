@@ -14,7 +14,6 @@ export const AGENT_LABELS: Record<AgentKind, string> = {
   codex: 'Codex',
   antigravity: 'Antigravity',
 };
-const STANDARD_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const menuClass =
   'z-50 max-h-[min(440px,var(--popover-available-height))] w-72 overflow-y-auto rounded-xl border border-border-strong bg-card p-1.5 text-foreground shadow-xl';
 const itemClass =
@@ -65,16 +64,17 @@ function CatalogStatus({ catalog }: { catalog: ReturnType<typeof useAgentCapabil
     </>
   );
 }
-function RefreshModels({ catalog }: { catalog: ReturnType<typeof useAgentCapabilities> }) {
+function RefreshModels({ catalog, disabled }: { catalog: ReturnType<typeof useAgentCapabilities>; disabled: boolean }) {
   return (
     <MenuItem
       className={itemClass}
-      disabled={catalog.isFetching}
+      disabled={disabled || catalog.isFetching}
       hideOnClick={false}
-      onClick={() => void catalog.refetch()}
+      onClick={catalog.refresh}
+      title="启动 CLI 检查账号、模型与命令清单"
     >
       <RefreshCw aria-hidden className="size-3.5" />
-      刷新模型列表
+      刷新能力
     </MenuItem>
   );
 }
@@ -107,13 +107,8 @@ function AgentChoices({ disabled }: { disabled: boolean }) {
   return (
     <>
       <p className="px-3 py-2 text-xs text-muted-foreground">{historical ? '会话 Agent' : 'Agent'}</p>
-      {(['claude', 'codex'] as const).map((kind) => (
-        <Choice
-          key={kind}
-          checked={agent === kind}
-          disabled={disabled || historical || agentUnavailable(environment.data, kind)}
-          choose={() => setAgent(kind)}
-        >
+      {(['claude', 'codex', 'antigravity'] as const).map((kind) => (
+        <Choice key={kind} checked={agent === kind} disabled={disabled || historical} choose={() => setAgent(kind)}>
           <AgentIcon agent={kind} className="size-3.5" /> {AGENT_LABELS[kind]}
         </Choice>
       ))}
@@ -142,7 +137,8 @@ function ModelActions({ disabled, catalog, model, onManual }: CatalogProps & { m
         <MenuItem className={itemClass} disabled={disabled} onClick={onManual}>
           手动填写模型
         </MenuItem>
-        <RefreshModels catalog={catalog} />
+        <RefreshModels catalog={catalog} disabled={disabled} />
+        <p className="px-3 py-2 text-xs leading-5 text-muted-foreground">刷新会启动 CLI 检查账号、模型与命令清单。</p>
       </Menu>
     </MenuProvider>
   );
@@ -173,20 +169,9 @@ function ModelChoices({ disabled, catalog, model, onManual }: CatalogProps & { m
     </>
   );
 }
-function EffortChoices({
-  disabled,
-  agent,
-  selected,
-  effort,
-}: {
-  disabled: boolean;
-  agent: AgentKind;
-  selected?: AgentModel;
-  effort: string;
-}) {
+function EffortChoices({ disabled, selected, effort }: { disabled: boolean; selected?: AgentModel; effort: string }) {
   const setEffort = useChat((state) => state.setReasoningEffort);
-  const nativeEfforts = agent === 'codex' ? (selected?.reasoningEfforts ?? []) : [];
-  const efforts = [...new Set([...STANDARD_EFFORTS, ...nativeEfforts])];
+  const efforts = [...new Set(selected?.reasoningEfforts ?? [])];
   return (
     <>
       <p className="px-3 py-2 text-xs text-muted-foreground">推理强度</p>
@@ -217,7 +202,7 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
   const setModel = useChat((state) => state.setModel);
   const catalog = useAgentCapabilities(modelOpen || effortOpen);
   const models = catalog.data?.models ?? [];
-  const selected = models.find((candidate) => candidate.id === model);
+  const selected = models.find((candidate) => candidate.id === (model || presentation.label));
   return (
     <>
       <MenuButton
@@ -251,7 +236,7 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
         )}
       </Menu>
       <Menu store={effortMenu} portal unmountOnHide gutter={8} aria-label="推理强度菜单" className={menuClass}>
-        <EffortChoices disabled={disabled} agent={agent} selected={selected} effort={effort} />
+        <EffortChoices disabled={disabled} selected={selected} effort={effort} />
       </Menu>
       {manual && (
         <ManualModelDialog

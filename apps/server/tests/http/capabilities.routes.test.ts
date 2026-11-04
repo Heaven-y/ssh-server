@@ -23,13 +23,25 @@ describe('能力目录路由', () => {
     try {
       expect((await app.inject('/api/workspaces/workspace/agent-capabilities?agent=other')).statusCode).toBe(400);
       expect((await app.inject('/api/workspaces/missing/agent-capabilities?agent=claude')).statusCode).toBe(404);
+      const empty = await app.inject('/api/workspaces/workspace/agent-capabilities?agent=codex');
+      expect(empty.json().entries).toEqual([]);
+      expect(provider).not.toHaveBeenCalled();
+      const refresh = await app.inject({
+        method: 'POST',
+        url: '/api/workspaces/workspace/agent-capabilities?agent=codex',
+      });
+      expect(refresh.statusCode).toBe(200);
       const result = await app.inject('/api/workspaces/workspace/agent-capabilities?agent=codex');
       expect(result.statusCode).toBe(200);
       expect(result.headers['cache-control']).toBe('no-store');
       expect(result.json()).toEqual({ agent: 'codex', models: [], entries: [], warnings: ['模型目录暂不可用'] });
       expect(provider).toHaveBeenCalledWith(ws.dir, expect.any(AbortSignal));
+      expect(provider).toHaveBeenCalledTimes(1);
       provider.mockRejectedValueOnce(new Error('private-config-sentinel'));
-      const failed = await app.inject('/api/workspaces/workspace/agent-capabilities?agent=claude');
+      const failed = await app.inject({
+        method: 'POST',
+        url: '/api/workspaces/workspace/agent-capabilities?agent=claude',
+      });
       expect(failed.statusCode).toBe(503);
       expect(failed.body).not.toContain('private-config-sentinel');
     } finally {

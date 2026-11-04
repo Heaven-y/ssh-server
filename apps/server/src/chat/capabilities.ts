@@ -1,3 +1,4 @@
+import path from 'node:path';
 import type { AgentCapabilities, AgentKind, CapabilitySelection, Workspace } from '@agentdeck/shared';
 import type { CapabilityProvider, NativeCapabilityCatalog, NativeInvocation } from '../agents/capability-types';
 import { SessionError } from './sessions';
@@ -34,7 +35,34 @@ function providerOf(providers: Partial<Record<AgentKind, CapabilityProvider>>, a
   return provider;
 }
 
+function prepareEntry(entry: Entry, args: string, sessionId?: string) {
+  if (entry.requiresSession && !sessionId)
+    throw new SessionError(400, 'session_required', '此命令需要已有会话，请先开始或打开一段对话');
+  if (!entry.supportsArguments && args.trim())
+    throw new SessionError(400, 'arguments_unsupported', '此命令不接受附加参数，请清空输入后调用');
+  return { text: args, invocation: structuredClone(entry.invocation) };
+}
+
 export function createCapabilitiesService(providers: Partial<Record<AgentKind, CapabilityProvider>>) {
+  const cache = new Map<string, NativeCapabilityCatalog>();
+  const refreshing = new Map<string, symbol>();
+  function keyOf(ws: Workspace, agent: AgentKind) {
+    const dir = path.resolve(ws.dir);
+    return JSON.stringify([ws.id, process.platform === 'win32' ? dir.toLowerCase() : dir, agent]);
+  }
+  function publicCatalog(agent: AgentKind, catalog?: NativeCapabilityCatalog): AgentCapabilities {
+    if (!catalog)
+      return { agent, models: [], entries: [], warnings: ['能力尚未刷新；请点击“刷新能力”检查账号与模型清单。'] };
+    const visible = structuredClone(catalog);
+    return {
+      ...visible,
+      agent,
+      entries: visible.entries.map((entry) => {
+        delete entry.invocation;
+        return entry;
+      }),
+    };
+  }
   async function discover(ws: Workspace, agent: AgentKind, signal?: AbortSignal) {
     try {
       signal?.throwIfAborted();
@@ -51,36 +79,40 @@ export function createCapabilitiesService(providers: Partial<Record<AgentKind, C
     }
   }
   return {
-    async read(ws: Workspace, agent: AgentKind, signal?: AbortSignal): Promise<AgentCapabilities> {
-      const catalog = await discover(ws, agent, signal);
-      return {
-        agent,
-        models: catalog.models,
-        warnings: catalog.warnings,
-        entries: catalog.entries.map((entry) => {
-          const visible = { ...entry };
-          delete visible.invocation;
-          return visible;
-        }),
-      };
+    read(ws: Workspace, agent: AgentKind): Promise<AgentCapabilities> {
+      return Promise.resolve(publicCatalog(agent, cache.get(keyOf(ws, agent))));
     },
-    async prepare(
+    async refresh(ws: Workspace, agent: AgentKind, signal?: AbortSignal): Promise<AgentCapabilities> {
+      const key = keyOf(ws, agent);
+      const request = Symbol();
+      refreshing.set(key, request);
+      try {
+        const catalog = await discover(ws, agent, signal);
+        if (refreshing.get(key) !== request)
+          throw new SessionError(409, 'capabilities_refresh_superseded', '已有较新的能力刷新请求，请读取最新目录');
+        cache.set(key, structuredClone(catalog));
+        return publicCatalog(agent, catalog);
+      } finally {
+        if (refreshing.get(key) === request) refreshing.delete(key);
+      }
+    },
+    prepare(
       ws: Workspace,
       agent: AgentKind,
       input: { text: string; selection?: CapabilitySelection; sessionId?: string },
       signal?: AbortSignal,
     ): Promise<{ text: string; invocation?: NativeInvocation }> {
-      const { text, selection, sessionId } = input;
-      const command = selection ? undefined : typedCommand(text);
-      if (!selection && !command) return { text };
-      const catalog = await discover(ws, agent, signal);
-      const entry = chooseEntry(catalog.entries, selection, command?.name);
-      if (entry.requiresSession && !sessionId)
-        throw new SessionError(400, 'session_required', '此命令需要已有会话，请先开始或打开一段对话');
-      const args = command ? command.text : text;
-      if (!entry.supportsArguments && args.trim())
-        throw new SessionError(400, 'arguments_unsupported', '此命令不接受附加参数，请清空输入后调用');
-      return { text: args, invocation: entry.invocation };
+      return Promise.resolve().then(() => {
+        const { text, selection, sessionId } = input;
+        const command = selection ? undefined : typedCommand(text);
+        if (!selection && !command) return { text };
+        signal?.throwIfAborted();
+        const catalog = cache.get(keyOf(ws, agent));
+        if (!catalog)
+          throw new SessionError(409, 'capabilities_not_refreshed', '请先点击“刷新能力”，再使用技能或斜杠命令');
+        const entry = chooseEntry(catalog.entries, selection, command?.name);
+        return prepareEntry(entry, command ? command.text : text, sessionId);
+      });
     },
   };
 }

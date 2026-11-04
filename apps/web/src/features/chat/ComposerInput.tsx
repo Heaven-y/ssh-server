@@ -160,6 +160,6 @@ function ScopedInput({ id, text, onChange, onSend, placeholder, busy }: InputPro
 }
 
 export function ComposerInput(props: InputProps) {
-  const scope = useChat((state) => JSON.stringify([state.workspaceId, state.agent, state.sessionId]));
+  const scope = useChat((state) => state.conversationVersion);
   return <ScopedInput key={scope} {...props} />;
 }
