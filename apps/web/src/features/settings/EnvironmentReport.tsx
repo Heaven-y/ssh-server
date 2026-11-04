@@ -7,7 +7,6 @@ import { useCancelableRequest } from '../../lib/use-cancelable-request';
 import { useEnvironment } from './use-environment';
 
 const GUIDES: Record<EnvironmentTool['name'], { url: string; hint: string }> = {
-  'Node.js': { url: 'https://nodejs.org/en/download', hint: '安装 Node.js，并从可执行 node 的终端重新启动本机服务。' },
   'Claude Code': {
     url: 'https://code.claude.com/docs/en/setup',
     hint: '按官方说明安装并配置 Claude Code；原生配置位于 ~/.claude/。',
@@ -16,10 +15,9 @@ const GUIDES: Record<EnvironmentTool['name'], { url: string; hint: string }> = {
     url: 'https://developers.openai.com/codex/cli/',
     hint: '按官方说明安装 Codex CLI；原生配置位于 ~/.codex/config.toml。',
   },
-  git: { url: 'https://git-scm.com/downloads', hint: '安装 Git，并确保本机服务进程的 PATH 可以找到 git。' },
-  rclone: {
-    url: 'https://rclone.org/install/',
-    hint: '按官方说明安装 rclone，并将可执行文件目录加入本机服务进程的 PATH。',
+  Antigravity: {
+    url: 'https://antigravity.google/',
+    hint: '按官方说明安装 Antigravity CLI；可执行文件为 agy，通常位于 %LOCALAPPDATA%/agy/bin/agy.exe。',
   },
 };
 export function EnvironmentSummary({ onOpenSettings }: { onOpenSettings(): void }) {

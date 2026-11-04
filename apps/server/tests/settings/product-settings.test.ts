@@ -6,7 +6,12 @@ import { afterEach, expect, it } from 'vitest';
 import { ProductSettingsSchema, type ProductSettingsInput } from '@agentdeck/shared';
 import { createProductSettings } from '../../src/settings/product-settings';
 import { registerProductSettingsRoutes } from '../../src/http/product-settings.routes';
-import { createEnvironmentService } from '../../src/settings/environment';
+import { createAgentProbes } from '../../src/agents/probe';
+import { ProcessError } from '../../src/process/run';
+
+// 这些用例只关心产品设置存储与校验，环境接口固定按「未找到」返回。
+const probes = () =>
+  createAgentProbes({ run: () => Promise.reject(new ProcessError('executable_missing', '测试不探测本机 CLI')) });
 
 const roots: string[] = [];
 async function fixture() {
@@ -71,7 +76,7 @@ it('坏文件、非法字段和超界拒绝，不重建或覆盖原文', async (
 it('生产HTTP严格校验、摘要冲突与no-store贯通真实存储', async () => {
   const f = await fixture();
   const app = Fastify();
-  registerProductSettingsRoutes(app, f.store, createEnvironmentService());
+  registerProductSettingsRoutes(app, f.store, probes());
   try {
     const read = await app.inject({ url: '/api/settings/product' });
     expect(read.statusCode).toBe(200);
@@ -169,7 +174,7 @@ it.each([
 it('公开HTTP拒绝退休字段，不把磁盘读取边界当作API兼容层', async () => {
   const f = await fixture();
   const app = Fastify();
-  registerProductSettingsRoutes(app, f.store, createEnvironmentService());
+  registerProductSettingsRoutes(app, f.store, probes());
   try {
     const response = await app.inject({
       method: 'PUT',

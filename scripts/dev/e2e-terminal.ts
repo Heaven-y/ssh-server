@@ -19,7 +19,8 @@ import { SLURM_COMMAND } from '../../apps/server/src/slurm/commands';
 import { registerSlurmRoutes } from '../../apps/server/src/http/slurm.routes';
 import { createServerProfiles } from '../../apps/server/src/ssh/profiles';
 import { registerSshTargetRoutes } from '../../apps/server/src/http/ssh-targets.routes';
-import { createEnvironmentService } from '../../apps/server/src/settings/environment';
+import { createAgentProbes } from '../../apps/server/src/agents/probe';
+import { ProcessError } from '../../apps/server/src/process/run';
 import { createProductSettings } from '../../apps/server/src/settings/product-settings';
 import { registerProductSettingsRoutes } from '../../apps/server/src/http/product-settings.routes';
 
@@ -50,7 +51,10 @@ async function main() {
       registerProductSettingsRoutes(
         server,
         createProductSettings({ configDir: path.join(root, 'config') }),
-        createEnvironmentService(() => Promise.resolve({ checkedAt: Date.now(), tools: [] })),
+        createAgentProbes({
+          // 终端夹具不启动真实 CLI；环境接口固定按“未找到”返回，避免依赖测试机安装。
+          run: () => Promise.reject(new ProcessError('executable_missing', '终端夹具不探测本机 CLI')),
+        }),
       );
       registerTerminalRoutes(server, { terminals, bindings });
       registerResourcesRoutes(server, resources);

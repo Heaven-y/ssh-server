@@ -1,6 +1,7 @@
 // 后端入口：读取配置、组装依赖、只在本机地址上启动
 import { mkdir, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import type { AgentProbe } from '@agentdeck/shared';
 import { TurnManager } from './chat/turn-manager';
 import { createSessionsService } from './chat/sessions';
 import { createCapabilitiesService } from './chat/capabilities';
@@ -51,7 +52,7 @@ import { createWorkspaceActivity } from './workspaces/activity';
 import { createNativeConfigService } from './settings/native-config';
 import { createProductSettings } from './settings/product-settings';
 import { registerProductSettingsRoutes } from './http/product-settings.routes';
-import { createEnvironmentService } from './settings/environment';
+import { createAgentProbes, createLocalRunner } from './agents/probe';
 
 const WEB_DIST = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
@@ -80,6 +81,20 @@ function logLegacyImport(report: ImportReport): void {
   if (report.message) console.warn(`旧工作区配置导入：${report.message}`);
 }
 
+/** 启动日志只报本机事实：版本与四态，不打印路径、账号或任何探测输出。 */
+function logProbe(probe: AgentProbe): void {
+  const labels = { claude: 'Claude Code', codex: 'Codex', antigravity: 'Antigravity' } as const;
+  const statuses = {
+    available: '可用',
+    missing: '未找到',
+    changed: '接口变化',
+    'credential-missing': '凭据未配置',
+  } as const;
+  const version = probe.version ? `（版本 ${probe.version}）` : '';
+  const detail = probe.message ? `；${probe.message}` : '';
+  console.log(`${labels[probe.agent]}：${statuses[probe.status]}${version}${detail}`);
+}
+
 async function main(): Promise<void> {
   const config = loadConfig(process.env, process.argv.slice(2));
   // 改名后首次启动：把旧目录里的服务器档案与工作区搬过来，旧目录原样保留。
@@ -92,8 +107,8 @@ async function main(): Promise<void> {
   for (const name of migration.keptExisting) console.log(`新数据目录已有 ${name}，保留现有文件未覆盖`);
   for (const message of migration.errors) console.error(`数据迁移：${message}`);
   const productSettings = createProductSettings({ configDir: config.configDir });
-  const environment = createEnvironmentService();
-  const startupEnvironment = environment.read();
+  const probes = createAgentProbes({ run: createLocalRunner() });
+  const startupProbes = probes.probeAll();
 
   const targets = createServerTargets({ configDir: config.configDir });
   const store = createWorkspaceStore({
@@ -177,7 +192,7 @@ async function main(): Promise<void> {
       registerSshTargetRoutes(a, profiles);
       registerHostTrustRoutes(a, createHostTrust({ pool }));
       registerAgentConfigRoutes(a, { service: createNativeConfigService() });
-      registerProductSettingsRoutes(a, productSettings, environment);
+      registerProductSettingsRoutes(a, productSettings, probes);
       registerRemoteFileRoutes(a, browse);
       registerRemoteFileActionRoutes(a, { preflights, tasks, downloads: createFileDownloads({ pool, browse }) });
       registerWsRoutes(a, { turns });
@@ -192,12 +207,11 @@ async function main(): Promise<void> {
   const port = addr && typeof addr === 'object' ? addr.port : config.port;
   console.log(`AgentDeck 已启动，只监听 ${config.host}:${port}`);
   console.log(`访问地址：${accessUrl(config.host, port, config.devOrigin)}`);
-  const report = await startupEnvironment;
-  for (const tool of report.tools)
-    console.log(
-      `${tool.name}：${tool.available ? `可执行（版本 ${tool.version ?? '未知'}）` : '不可执行，请打开产品设置查看安装与配置指引'}`,
-    );
-  console.log('环境检测仅验证程序可执行，未检查模型登录或调用模型，也未安装、升级软件。');
+  const report = await startupProbes;
+  for (const probe of report) logProbe(probe);
+  console.log(
+    '本机探测只运行 --version、--help 与 Codex 的 schema 生成，不检查账号、不请求模型端点，也未安装或升级软件。',
+  );
 
   const shutdown = () => {
     terminals.dispose();

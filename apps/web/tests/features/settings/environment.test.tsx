@@ -13,9 +13,9 @@ it('启动摘要与设置共享GET报告，缺失有官方指引，未知版本�
   const report = {
     checkedAt: 1,
     tools: [
-      { name: 'Node.js' as const, available: true, version: null, message: null },
       { name: 'Claude Code' as const, available: true, version: null, message: null },
-      { name: 'Codex' as const, available: false, version: null, message: '未安装' },
+      { name: 'Codex' as const, available: true, version: null, message: null },
+      { name: 'Antigravity' as const, available: false, version: null, message: '可执行文件 agy 未找到或无法启动' },
     ],
   };
   vi.spyOn(api, 'readEnvironment').mockResolvedValue(report);
@@ -31,9 +31,9 @@ it('启动摘要与设置共享GET报告，缺失有官方指引，未知版本�
       <EnvironmentReport disabled={false} />
     </QueryClientProvider>,
   );
-  await screen.findByText(/缺少或不可用：Codex/);
+  await screen.findByText(/缺少或不可用：Antigravity/);
   expect(screen.getAllByText(/可用 · 版本未知/).length).toBe(2);
-  expect(screen.getByRole('link', { name: /Codex 官方/ }).getAttribute('href')).toContain('openai.com');
+  expect(screen.getByRole('link', { name: /Antigravity 官方/ }).getAttribute('href')).toContain('antigravity');
   expect(api.readEnvironment).toHaveBeenCalledTimes(1);
   expect(api.detectEnvironment).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '查看设置' }));
@@ -65,7 +65,7 @@ it('读取中保留简短状态，全部工具可用后不渲染摘要或占位�
   await act(async () => {
     resolve({
       checkedAt: 1,
-      tools: (['Node.js', 'Claude Code', 'Codex', 'git', 'rclone'] as const).map((name) => ({
+      tools: (['Claude Code', 'Codex', 'Antigravity'] as const).map((name) => ({
         name,
         available: true,
         version: '1.0',

@@ -7,6 +7,9 @@ import type { SessionActionInput } from '@agentdeck/shared';
 import { forkCodexSession, listCodexSessions, mutateCodexSession, readCodexSession } from '../../../src/agents/codex';
 
 type Message = { method?: string; params?: Record<string, unknown>; fixtureCompleted?: string };
+// 全量并行跑时 116 个 worker 会让延迟回复的夹具超过 vi.waitFor 默认的 1 秒；
+// 放宽的只是等待预算，断言本身不变。
+const DELAYED_REPLY_TIMEOUT_MS = 10_000;
 const dirs: string[] = [];
 const command = {
   command: process.execPath,
@@ -94,8 +97,9 @@ describe('Codex 原生会话管理', () => {
       { action: 'delete', confirmed: true },
       { ...options, signal: controller.signal },
     );
-    await vi.waitFor(async () =>
-      expect((await messages()).some((value) => value.method === 'thread/delete')).toBe(true),
+    await vi.waitFor(
+      async () => expect((await messages()).some((value) => value.method === 'thread/delete')).toBe(true),
+      { timeout: DELAYED_REPLY_TIMEOUT_MS },
     );
     controller.abort();
     await expect(pending).resolves.toBeUndefined();
@@ -209,7 +213,12 @@ describe('Codex thread/fork', () => {
     const { dir, options, messages } = await setup('fork-delayed');
     const controller = new AbortController();
     const pending = forkCodexSession('native-thread', dir, {}, { ...options, signal: controller.signal });
-    await vi.waitFor(async () => expect((await messages()).some((value) => value.method === 'thread/fork')).toBe(true));
+    await vi.waitFor(
+      async () => expect((await messages()).some((value) => value.method === 'thread/fork')).toBe(true),
+      {
+        timeout: DELAYED_REPLY_TIMEOUT_MS,
+      },
+    );
     controller.abort();
     await expect(pending).resolves.toMatchObject({ session: { sessionId: 'forked-thread' } });
     expect((await messages()).some((value) => value.fixtureCompleted === 'thread/fork')).toBe(true);
