@@ -8,6 +8,7 @@ import { createCapabilitiesService } from './chat/capabilities';
 import { runClaudeTurn } from './agents/claude-adapter';
 import { discoverClaudeCapabilities } from './agents/claude-capabilities';
 import { createClaudeSessions } from './agents/claude-sessions';
+import { createAntigravitySessions } from './agents/antigravity/sessions';
 import {
   createCodexRunner,
   listCodexSessions,
@@ -158,6 +159,7 @@ async function main(): Promise<void> {
   const sessions = createSessionsService(
     {
       claude: createClaudeSessions(),
+      antigravity: createAntigravitySessions(),
       codex: {
         list: (dir, signal, archived) => listCodexSessions(dir, { signal, archived }),
         read: (id, dir, signal) => readCodexSession(id, dir, { signal }),

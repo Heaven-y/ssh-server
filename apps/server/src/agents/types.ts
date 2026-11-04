@@ -18,7 +18,10 @@ export type TurnRunner = ((input: AgentTurnInput) => TurnHandle) & {
   dispose?(): Promise<void>;
 };
 /** 各 CLI 的原生会话行：只有原生元数据，不含项目归属与运行态。 */
-export type NativeSessionSummary = Omit<SessionRecord, 'agent'>;
+export type NativeSessionSummary = Omit<SessionRecord, 'agent'> & {
+  /** Antigravity 摘要里记录的工作区 URI；其它 CLI 通常没有。 */
+  workspaceUris?: string;
+};
 export type NativeSessionRead = {
   session: NativeSessionSummary;
   cwd: string;
