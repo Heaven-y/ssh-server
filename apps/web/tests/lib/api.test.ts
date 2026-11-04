@@ -145,7 +145,7 @@ describe('api', () => {
       api.sessionAction('w/1', 's 1', 'codex', { action: 'delete', confirmed: true }),
     ).resolves.toBeUndefined();
     const [url, init] = vi.mocked(fetch).mock.calls[0]!;
-    expect(url).toBe('/api/workspaces/w%2F1/sessions/s%201/actions?agent=codex');
+    expect(url).toBe('/api/projects/w%2F1/sessions/codex/s%201/actions');
     expect(init).toMatchObject({
       method: 'POST',
       headers: { 'content-type': 'application/json' },

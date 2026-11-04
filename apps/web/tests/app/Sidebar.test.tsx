@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import path from 'node:path';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { SessionSummary, Workspace } from '@agentdeck/shared';
 import { Sidebar } from '../../src/app/Sidebar';
 import { useChat } from '../../src/features/chat/chat-store';
+import { api, ApiError, queryKeys } from '../../src/lib/api';
+import { queryClient } from '../../src/lib/query-client';
 
-const project: Workspace = { id: 'p1', name: '示例项目', dir: 'E:\\web\\demo' };
-const otherProject: Workspace = { id: 'p2', name: '另一个项目', dir: 'E:\\web\\other' };
+const project: Workspace = { id: 'p1', name: '示例项目', dir: path.resolve('fixtures', 'demo') };
+const otherProject: Workspace = { id: 'p2', name: '另一个项目', dir: path.resolve('fixtures', 'other') };
 const base = {
   projectId: 'p1',
   running: false,
@@ -43,7 +46,12 @@ beforeEach(() => {
     this.open = false;
   };
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  queryClient.clear();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 it('没有项目时显示引导添加项目', () => {
   render(<Sidebar projects={[]} sessionsByProject={{}} onAddProject={vi.fn()} />);
@@ -105,12 +113,12 @@ it('点项目行切换项目，点会话行把它交给调用方', () => {
 
 it('项目目录以等宽路径展示，长列表只在中间滚动', () => {
   render(<Sidebar projects={[project]} sessionsByProject={{ p1: [] }} onAddProject={vi.fn()} />);
-  expect(screen.getByText('E:\\web\\demo')).toBeTruthy();
+  expect(screen.getByText(project.dir)).toBeTruthy();
   expect(screen.getByRole('navigation', { name: '项目与会话' })).toBeTruthy();
   expect(screen.getByText('暂无会话')).toBeTruthy();
 });
 
-it('每条会话都有管理入口，点开就能重命名', () => {
+it('受支持会话的管理入口先打开原生菜单，再选择重命名', async () => {
   // 动作对话框内部用到 useQueryClient，渲染它需要 provider。
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -119,7 +127,219 @@ it('每条会话都有管理入口，点开就能重命名', () => {
     </QueryClientProvider>,
   );
   const group = screen.getByRole('region', { name: 'Claude 会话' });
-  fireEvent.click(within(group).getByRole('button', { name: '管理会话：检查这个脚本' }));
+  fireEvent.click(within(group).getByRole('button', { name: /更多操作/ }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: '重命名' }));
   // 复用既有的动作对话框：出现重命名输入框即说明入口真的接上了，而不只是画了个按钮。
   expect(screen.getByDisplayValue('检查这个脚本')).toBeTruthy();
+});
+
+function managedSidebar(sessions = [claudeSession, codexSession]) {
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <Sidebar
+        projects={[project]}
+        sessionsByProject={{ p1: sessions }}
+        onAddProject={vi.fn()}
+        onSelectSession={vi.fn()}
+      />
+    </QueryClientProvider>,
+  );
+}
+function QueriedSidebar() {
+  const sessions = useQuery({
+    queryKey: queryKeys.sessions(project.id, 'codex'),
+    queryFn: ({ signal }) => api.listSessions(project.id, 'codex', false, signal),
+    retry: false,
+  });
+  return (
+    <Sidebar
+      projects={[project]}
+      sessionsByProject={{ p1: [claudeSession, ...(sessions.data ?? [])] }}
+      onAddProject={vi.fn()}
+      onSelectSession={vi.fn()}
+    />
+  );
+}
+async function actionFor(title: string, action: string) {
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(`会话“${title}”的更多操作`) }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: action }));
+}
+
+it('侧栏只展示CLI原生管理动作，Antigravity没有无效管理入口', async () => {
+  managedSidebar([
+    claudeSession,
+    codexSession,
+    { ...claudeSession, agent: 'antigravity', sessionId: 'agy', title: '引力会话' },
+  ]);
+  expect(screen.queryByRole('button', { name: /Antigravity.*更多操作/ })).toBeNull();
+  const menuButton = screen.getByRole('button', { name: /Claude.*更多操作/ });
+  menuButton.focus();
+  expect(document.activeElement).toBe(menuButton);
+  fireEvent.click(menuButton);
+  expect(await screen.findByRole('menuitem', { name: '分叉会话' })).toBeTruthy();
+  expect(screen.getByRole('menuitem', { name: '删除' })).toBeTruthy();
+  expect(screen.queryByRole('menuitem', { name: '归档' })).toBeNull();
+  expect(screen.queryByRole('menuitem', { name: /置顶|复制/ })).toBeNull();
+});
+
+it('非当前项目删除只发送源行身份，必须确认且失败留在原处', async () => {
+  useChat.getState().selectWorkspace('different-project');
+  const fetcher = vi
+    .fn()
+    .mockResolvedValue(new Response(JSON.stringify({ message: '原生写入未确认' }), { status: 503 }));
+  vi.stubGlobal('fetch', fetcher);
+  managedSidebar();
+  fireEvent.click(screen.getByRole('button', { name: /^示例项目/ }));
+  await actionFor(claudeSession.title, '删除');
+  const dialog = screen.getByRole('dialog', { name: '删除会话' });
+  const confirm = within(dialog).getByRole<HTMLButtonElement>('button', { name: '确认删除会话' });
+  expect(confirm.disabled).toBe(true);
+  expect(fetcher).not.toHaveBeenCalled();
+  fireEvent.click(within(dialog).getByRole('checkbox'));
+  fireEvent.click(confirm);
+  await within(dialog).findByText('原生写入未确认');
+  expect(fetcher).toHaveBeenCalledExactlyOnceWith(
+    '/api/projects/p1/sessions/claude/claude-1/actions',
+    expect.objectContaining({ method: 'POST', body: '{"action":"delete","confirmed":true}' }),
+  );
+  expect(useChat.getState().workspaceId).toBe('different-project');
+});
+
+it('Codex归档按需读取，归档行只能恢复或删除，恢复刷新两种列表', async () => {
+  const archived = { ...codexSession, sessionId: 'archived', title: '归档记录' };
+  let restored = false;
+  const list = vi
+    .spyOn(api, 'listSessions')
+    .mockImplementation(async (_project, _agent, isArchived) =>
+      isArchived
+        ? restored
+          ? []
+          : [
+              archived,
+              { ...archived, sessionId: 'foreign', title: '其他项目归档', projectId: 'p2' },
+              { ...archived, sessionId: 'orphan', title: '无归属归档', projectId: null },
+            ]
+        : restored
+          ? [codexSession, archived]
+          : [codexSession],
+    );
+  const mutate = vi.spyOn(api, 'sessionAction').mockImplementation(async () => {
+    restored = true;
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <QueriedSidebar />
+    </QueryClientProvider>,
+  );
+  await screen.findByText(codexSession.title);
+  expect(list.mock.calls.some((call) => call[2] === true)).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: /显示.*Codex 已归档会话/ }));
+  expect(await screen.findByText('归档记录')).toBeTruthy();
+  expect(screen.queryByText('其他项目归档')).toBeNull();
+  expect(screen.queryByText('无归属归档')).toBeNull();
+  expect(list).toHaveBeenCalledWith(project.id, 'codex', true, expect.any(AbortSignal));
+  expect(screen.queryByRole('button', { name: /^归档记录 ·/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /会话“归档记录”的更多操作/ }));
+  expect(await screen.findByRole('menuitem', { name: '恢复' })).toBeTruthy();
+  expect(screen.queryByRole('menuitem', { name: '重命名' })).toBeNull();
+  expect(screen.queryByRole('menuitem', { name: '分叉会话' })).toBeNull();
+  fireEvent.click(screen.getByRole('menuitem', { name: '恢复' }));
+  fireEvent.click(screen.getByRole('button', { name: '恢复到会话列表' }));
+  await waitFor(() =>
+    expect(mutate).toHaveBeenCalledExactlyOnceWith(project.id, archived.sessionId, 'codex', { action: 'unarchive' }),
+  );
+  await screen.findByText('暂无 Codex 已归档会话');
+  expect(await screen.findByRole('button', { name: /^归档记录 ·/ })).toBeTruthy();
+  expect(
+    queryClient
+      .getQueryData<SessionSummary[]>(queryKeys.sessions(project.id, 'codex'))
+      ?.map((entry) => entry.sessionId),
+  ).toEqual([codexSession.sessionId, 'archived']);
+});
+
+it('已打开菜单在会话变忙后禁用，409失败后可重新操作', async () => {
+  useChat.getState().selectWorkspace(project.id);
+  const mutate = vi
+    .spyOn(api, 'sessionAction')
+    .mockRejectedValueOnce(new ApiError(409, '会话正在运行', { code: 'session_busy' }))
+    .mockResolvedValue(undefined);
+  managedSidebar();
+  fireEvent.click(screen.getByRole('button', { name: /Claude.*更多操作/ }));
+  await screen.findByRole('menuitem', { name: '删除' });
+  act(() =>
+    useChat.setState({ agent: 'claude', sessionId: claudeSession.sessionId, pendingClientTurnId: 'preparing' }),
+  );
+  expect(screen.getByRole('menuitem', { name: '删除' }).getAttribute('aria-disabled')).toBe('true');
+  fireEvent.click(screen.getByRole('menuitem', { name: '删除' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  act(() => useChat.setState({ pendingClientTurnId: undefined }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }));
+  fireEvent.change(screen.getByLabelText('会话名称'), { target: { value: '新标题' } });
+  fireEvent.click(screen.getByRole('button', { name: '保存名称' }));
+  await screen.findByText('会话正在运行');
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: '保存名称' }).disabled).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: '保存名称' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(mutate).toHaveBeenCalledTimes(2);
+});
+
+it('归档确认框订阅原生摘要变化，变忙时停止恢复且不额外请求列表', async () => {
+  const archived = { ...codexSession, sessionId: 'archived', title: '归档记录' };
+  const list = vi.spyOn(api, 'listSessions').mockResolvedValue([archived]);
+  const action = vi.spyOn(api, 'sessionAction');
+  managedSidebar();
+  fireEvent.click(screen.getByRole('button', { name: /显示.*Codex 已归档会话/ }));
+  await screen.findByText(archived.title);
+  await actionFor(archived.title, '恢复');
+  act(() => {
+    queryClient.setQueryData(queryKeys.sessions(project.id, 'codex', true), [{ ...archived, running: true }]);
+  });
+  expect(await screen.findByText('当前会话正在运行，结束后才能管理。')).toBeTruthy();
+  const button = screen.getByRole('button', { name: '恢复到会话列表' });
+  expect(button.closest('fieldset')?.disabled).toBe(true);
+  fireEvent.click(button);
+  expect(action).not.toHaveBeenCalled();
+  expect(list).toHaveBeenCalledTimes(1);
+});
+
+it('当前项目分叉经确认后读取并选中新原生身份', async () => {
+  useChat.getState().selectWorkspace(project.id);
+  const forked = { agent: 'claude' as const, sessionId: 'forked', summary: '新分叉', lastModified: 2 };
+  const fork = vi.spyOn(api, 'sessionFork').mockResolvedValue({ session: forked });
+  const read = vi.spyOn(api, 'sessionEvents').mockResolvedValue({ session: forked, events: [] });
+  managedSidebar();
+  await actionFor(claudeSession.title, '分叉会话');
+  expect(fork).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '确认分叉' }));
+  await waitFor(() => expect(useChat.getState().sessionId).toBe('forked'));
+  expect(fork).toHaveBeenCalledExactlyOnceWith(project.id, claudeSession.sessionId, 'claude', {});
+  expect(read).toHaveBeenCalledWith(project.id, 'forked', 'claude', expect.any(AbortSignal));
+});
+
+it('Codex归档读取失败只显示本分组错误，重试后恢复', async () => {
+  const list = vi.spyOn(api, 'listSessions').mockRejectedValueOnce(new Error('原生目录暂不可用')).mockResolvedValue([]);
+  managedSidebar();
+  fireEvent.click(screen.getByRole('button', { name: /显示.*Codex 已归档会话/ }));
+  expect(await screen.findByText('归档会话读取失败：原生目录暂不可用')).toBeTruthy();
+  expect(screen.getByText(claudeSession.title)).toBeTruthy();
+  expect(list).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: '重新读取归档会话' }));
+  expect(await screen.findByText('暂无 Codex 已归档会话')).toBeTruthy();
+  expect(list).toHaveBeenCalledTimes(2);
+});
+
+it('原生摘要或当前回合运行时禁用菜单，操作处理中不重复发送', async () => {
+  const mutate = vi.spyOn(api, 'sessionAction').mockImplementation(() => new Promise(() => undefined));
+  managedSidebar([{ ...claudeSession, running: true }, codexSession]);
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: /Claude.*更多操作/ }).disabled).toBe(true);
+  await actionFor(codexSession.title, '归档');
+  const confirm = screen.getByRole('button', { name: '归档会话' });
+  fireEvent.click(confirm);
+  fireEvent.click(confirm);
+  expect(mutate).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: /Codex.*更多操作/ }).disabled).toBe(true);
+  act(() =>
+    useChat.setState({ workspaceId: project.id, agent: 'codex', sessionId: codexSession.sessionId, running: true }),
+  );
+  expect(screen.getByText('当前会话正在运行，结束后才能管理。')).toBeTruthy();
 });

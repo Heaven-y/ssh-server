@@ -17,7 +17,7 @@
 | 文档 | 用途 |
 |---|---|
 | [原生对话接入](engineering/native-dialogue.md) | 三 CLI 主流程的本轮边界与接口选择 |
-| [M2 实施计划](superpowers/plans/2026-11-04-native-dialogue.md) | 按任务执行和验证的当前计划 |
+| [会话管理计划](superpowers/plans/2026-11-04-session-management.md) | 接通原生管理入口与统一项目会话接口 |
 
 ## 维护规则
 
@@ -32,3 +32,5 @@
 2026-11-03 的原生 CLI 设计及 M1 实施计划、上一代停靠工作台验收和配套图片已从当前资料集移除。仍适用的理由和约束迁入现行文档，旧原文在 `c686ef2` 中可查；更早决策的锚点为 `ec33148`。
 
 完整路径与读取命令见[历史追溯](engineering/decisions.md#历史追溯)。
+
+三 CLI 对话核心接线计划已经完成，原始步骤与验证记录在 `6e33803:docs/superpowers/plans/2026-11-04-native-dialogue.md`。其仍有效的运行边界继续保留在原生对话接入说明中。

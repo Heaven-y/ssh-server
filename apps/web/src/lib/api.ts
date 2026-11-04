@@ -301,11 +301,9 @@ export const api = {
       },
     ),
   /** 原生管理请求不因面板关闭而取消；结果以运行时响应和重新读取为准。 */
-  // 动作与分叉目前仍只有 /api/workspaces/:id/... 前缀（Task 9 只迁了两个 GET），
-  // 前端先保持可用；等后端补 /api/projects 前缀后一并切换并删除旧别名。
   sessionAction: (workspaceId: string, sessionId: string, agent: AgentKind, input: SessionActionInput) =>
     request<void>(
-      `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/actions?agent=${agent}`,
+      `/api/projects/${encodeURIComponent(workspaceId)}/sessions/${agent}/${encodeURIComponent(sessionId)}/actions`,
       {
         method: 'POST',
         body: JSON.stringify(input),
@@ -314,7 +312,7 @@ export const api = {
   /** 分叉可能已写入原生历史，不随弹窗卸载取消或自动重试。 */
   sessionFork: (workspaceId: string, sessionId: string, agent: AgentKind, input: SessionForkInput) =>
     request<{ session: SessionRecord }>(
-      `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/fork?agent=${agent}`,
+      `/api/projects/${encodeURIComponent(workspaceId)}/sessions/${agent}/${encodeURIComponent(sessionId)}/fork`,
       { method: 'POST', body: JSON.stringify(input), cache: 'no-store' },
     ),
   sessionEvents: (workspaceId: string, sessionId: string, agent: AgentKind, signal?: AbortSignal) =>

@@ -60,7 +60,7 @@ async function main() {
       registerTerminalRoutes(server, { terminals, bindings });
       registerResourcesRoutes(server, resources);
       registerSlurmRoutes(server, slurm);
-      server.get('/api/workspaces/:id/sessions', () => Promise.resolve([]));
+      server.get('/api/projects/:id/sessions', () => Promise.resolve([]));
       server.get('/__fixture', () => Promise.resolve({ shells: fixture.shells, resources: metrics.state }));
       server.post<{ Body: { failure: boolean } }>('/__fixture/resource-failure', (req) => {
         metrics.state.failure = req.body.failure;

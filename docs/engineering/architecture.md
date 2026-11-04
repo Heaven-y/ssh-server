@@ -134,14 +134,14 @@ API 和 WebSocket 继续校验会话及来源；禁止 iframe 嵌入，开发来
 |---|---|
 | 项目 | `/api/projects` 与 `/:id`，列表/新增/修改/移除 |
 | 会话 | `/api/projects/:id/sessions` 与 `/:agent/:sessionId`，原生读取 |
-| 原生管理 | `/api/workspaces/:id/sessions/:sessionId/actions`、`/fork`，按 CLI 支持处理 |
+| 原生管理 | `/api/projects/:id/sessions/:agent/:sessionId/actions`、`/fork`，来源及项目均在路径中 |
 | 探测与能力 | `/api/agents/probes`；项目下 `agent-capabilities` 缓存与显式刷新 |
 | 设置 | `/api/settings/product`、`/environment`、`/api/agent-config/:agent` |
 | 对话 | `/ws`，发送、停止、审批答复及回合事件 |
 | SSH 档案 | `/api/ssh-targets`、`/api/ssh/*`，档案、认证、信任 |
 | 现有服务器工具 | `/api/workspaces/:id/terminal*`、`/resources`、`/slurm`、`/remote-files/*` |
 
-旧会话读取别名仍转发到相同实现；后续可删除无客户端别名，不恢复第二条协议栈。前端构建由 Fastify 托管，接口路径不回退为 HTML。
+会话读写只使用项目路径；旧工作区会话别名返回 404，服务器工具路径暂时保持。会话接口在进入解析前设置 no-store，写入确认和原生会话锁仍由服务层维护。前端构建由 Fastify 托管，接口路径不回退为 HTML。
 
 Electron 主进程用端口 0 启动服务后加载实际地址；preload 仅暴露窄系统信息，`nodeIntegration: false`、`contextIsolation: true`。单实例锁让第二次启动聚焦已有窗口，关窗和退出都先释放服务，最长关闭等待 8 秒。后端清理终端、资源/Slurm、SSH、轮次和 HTTP；进程退出不留下后台业务实例。
 

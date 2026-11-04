@@ -40,7 +40,7 @@ export async function forkSession(workspaceId: string, session: SessionRef, inpu
   const key = sessionActionKey(workspaceId, session);
   const current = useChat.getState();
   if (current.sessionOperations[key]?.pending) return false;
-  if (isSource(current, workspaceId, session) && current.running) {
+  if (isSource(current, workspaceId, session) && (current.running || current.pendingClientTurnId)) {
     setOperation(key, { action: 'fork', pending: false, error: '请结束源会话后再分叉' });
     return false;
   }
