@@ -30,6 +30,7 @@ class Socket {
 }
 const other = { ...workspace, id: 'w2', name: '另一个项目', remoteDir: '~/projects/other' };
 beforeEach(() => {
+  useChat.setState(useChat.getInitialState(), true);
   wide = true;
   resized = new Set();
   Socket.instances.length = 0;
@@ -114,6 +115,23 @@ function dock() {
   return screen.getByRole('complementary', { name: '服务器面板' });
 }
 
+it('运行时从另一项目新建会话保留当前回合，不启动错误项目的会话', async () => {
+  mount();
+  await screen.findByLabelText('输入消息');
+  act(() => useChat.setState({ running: true, pendingClientTurnId: 'pending', agent: 'claude' }));
+  const nav = screen.getByRole('navigation', { name: '项目与会话' });
+  fireEvent.click(within(nav).getByRole('button', { name: /^另一个项目/ }));
+  fireEvent.click(within(nav).getByRole('button', { name: '新建会话' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Antigravity' }));
+  expect(useChat.getState()).toMatchObject({
+    workspaceId: workspace.id,
+    agent: 'claude',
+    running: true,
+    pendingClientTurnId: 'pending',
+  });
+  expect(screen.getByText(/当前会话正在运行，请先停止/)).toBeTruthy();
+});
+
 it('服务器面板独立开关，收起后再打开仍是原节点', async () => {
   mount();
   const panel = await screen.findByRole('complementary', { name: '服务器面板' });
@@ -130,7 +148,7 @@ it('服务器面板独立开关，收起后再打开仍是原节点', async () =
 
 it('顶栏不再提供资源与文件入口，也没有本地文件面板', async () => {
   mount();
-  await screen.findByText('选择一条会话查看历史');
+  await screen.findByLabelText('输入消息');
   expect(top().queryByRole('button', { name: '资源' })).toBeNull();
   expect(top().queryByRole('button', { name: '文件' })).toBeNull();
   expect(screen.queryByRole('complementary', { name: '文件面板' })).toBeNull();
@@ -139,7 +157,7 @@ it('顶栏不再提供资源与文件入口，也没有本地文件面板', asyn
 it('窄窗首屏不展开服务器面板，点终端按钮后才出现', async () => {
   wide = false;
   mount();
-  await screen.findByText('选择一条会话查看历史');
+  await screen.findByLabelText('输入消息');
   expect(screen.queryByRole('complementary', { name: '服务器面板' })).toBeNull();
   fireEvent.click(top().getByRole('button', { name: '终端' }));
   const panel = await screen.findByRole('complementary', { name: '服务器面板' });
@@ -149,7 +167,7 @@ it('窄窗首屏不展开服务器面板，点终端按钮后才出现', async (
 it('窄窗主动展开左栏时服务器面板让位，折叠左栏后按记忆恢复', async () => {
   wide = false;
   mount();
-  await screen.findByText('选择一条会话查看历史');
+  await screen.findByLabelText('输入消息');
   fireEvent.click(top().getByRole('button', { name: '终端' }));
   const panel = await screen.findByRole('complementary', { name: '服务器面板' });
   expect(panel.closest('[hidden]')).toBeNull();
@@ -162,7 +180,7 @@ it('窄窗主动展开左栏时服务器面板让位，折叠左栏后按记忆�
 
 it('Escape 收起整个服务器面板并把焦点还给顶栏入口', async () => {
   mount();
-  await screen.findByText('选择一条会话查看历史');
+  await screen.findByLabelText('输入消息');
   const trigger = top().getByRole('button', { name: '终端' });
   trigger.focus();
   fireEvent.click(trigger);
@@ -176,7 +194,7 @@ it('Escape 收起整个服务器面板并把焦点还给顶栏入口', async () 
 
 it('嵌套设置弹窗取消时 Escape 不收起服务器面板', async () => {
   mount();
-  await screen.findByText('选择一条会话查看历史');
+  await screen.findByLabelText('输入消息');
   const panel = document.getElementById('server-dock')!;
   fireEvent.click(top().getByRole('button', { name: '设置' }));
   const settingsDialog = await screen.findByRole<HTMLDialogElement>('dialog', { name: '产品设置' });
@@ -190,7 +208,7 @@ it('嵌套设置弹窗取消时 Escape 不收起服务器面板', async () => {
 it('切换项目时服务器面板与左栏保持同一节点', async () => {
   const errors = vi.spyOn(console, 'error');
   mount();
-  await screen.findByText('选择一条会话查看历史');
+  await screen.findByLabelText('输入消息');
   const panel = dock();
   const sidebar = screen.getByRole('navigation', { name: '项目与会话' });
   expect(within(sidebar).getByText(workspace.name)).toBeTruthy();
@@ -204,7 +222,7 @@ it('切换项目时服务器面板与左栏保持同一节点', async () => {
 
 it('顶栏显示当前项目与 SSH 状态，正常本机连接不常驻，断线仍可见并可重连', async () => {
   mount();
-  await screen.findByText('选择一条会话查看历史');
+  await screen.findByLabelText('输入消息');
   expect(top().getByText(workspace.name)).toBeTruthy();
   expect(top().getByText(workspace.dir)).toBeTruthy();
   expect(top().getByRole('button', { name: 'SSH 连接详情' })).toBeTruthy();

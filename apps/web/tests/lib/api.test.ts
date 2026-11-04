@@ -69,6 +69,16 @@ describe('api', () => {
     expect(queryKeys.agentCapabilities('w/1', 'codex')).not.toEqual(queryKeys.agentCapabilities('w2', 'codex'));
   });
 
+  it('显式刷新能力走POST，普通读取仍是GET', async () => {
+    respond(200, { agent: 'antigravity', entries: [], models: [], warnings: [] });
+    await api.agentCapabilities('project/one', 'antigravity');
+    await api.refreshAgentCapabilities('project/one', 'antigravity');
+    const [read, refresh] = vi.mocked(fetch).mock.calls;
+    expect(read?.[1]?.method).toBeUndefined();
+    expect(refresh?.[0]).toBe('/api/workspaces/project%2Fone/agent-capabilities?agent=antigravity');
+    expect(refresh?.[1]).toMatchObject({ method: 'POST', cache: 'no-store', body: '{}' });
+  });
+
   it('成功时返回 JSON；POST 带 content-type', async () => {
     respond(201, { alias: 'my-server' });
     await expect(

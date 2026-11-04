@@ -1,20 +1,17 @@
 // 第一层本机探测：只跑 --version、--help 与 Codex 的本地 schema 生成。
 // 不读能力目录、不检查账号、不向任何模型端点发请求；每个 CLI 独立判定四态。
-import { readFileSync, statSync } from 'node:fs';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { AgentKind, AgentProbe } from '@agentdeck/shared';
 import { ProcessError, runProcess, type ProcessRunner } from '../process/run';
+import { resolveLocalCommand } from '../process/executable';
 
 const PROBE_TIMEOUT_MS = 5_000;
 const VERSION_OUTPUT_CAP = 64 * 1024;
 const HELP_OUTPUT_CAP = 256 * 1024;
 const SCHEMA_OUTPUT_CAP = 1024 * 1024;
 const AGENT_ORDER: AgentKind[] = ['claude', 'codex', 'antigravity'];
-const WINDOWS_EXTENSIONS = ['.exe', '.com', '.cmd', '.bat', '.ps1'];
-const SCRIPT_EXTENSIONS = /\.(cjs|mjs|js)$/i;
-const NATIVE_EXTENSIONS = /\.(exe|com)$/i;
 
 type AgentSpec = {
   agent: AgentKind;
@@ -53,7 +50,6 @@ const SPECS: Record<AgentKind, AgentSpec> = {
   },
 };
 
-type ResolvedCommand = { command: string; args: string[] };
 type MissingReason = 'not-found' | 'timeout' | 'aborted';
 type MissingStep = { kind: 'missing'; reason: MissingReason };
 type ChangedStep = { kind: 'changed'; missing: string[]; detail: string };
@@ -73,117 +69,15 @@ function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
   return entry?.[1];
 }
 
-function isFile(file: string): boolean {
-  try {
-    return statSync(file).isFile();
-  } catch {
-    return false;
-  }
-}
-
-function pathDirectories(env: NodeJS.ProcessEnv): string[] {
-  const raw = envValue(env, 'PATH') ?? '';
-  return raw
-    .split(path.delimiter)
-    .map((dir) => dir.trim().replace(/^["']|["']$/g, ''))
-    .filter(Boolean);
-}
-
-function findOnPath(name: string, env: NodeJS.ProcessEnv): string | undefined {
-  const extensions = process.platform === 'win32' ? WINDOWS_EXTENSIONS : [''];
-  for (const dir of pathDirectories(env)) {
-    for (const extension of extensions) {
-      const candidate = path.join(dir, `${name}${extension}`);
-      if (isFile(candidate)) return candidate;
-    }
-  }
-  return undefined;
-}
-
-function nodeExecutable(dir: string): string {
-  const local = path.join(dir, process.platform === 'win32' ? 'node.exe' : 'node');
-  return isFile(local) ? local : process.execPath;
-}
-
-/**
- * npm 全局安装会在 PATH 上留下 .cmd / .ps1 包装脚本，shell:false 无法直接执行它们。
- * 这里只解析脚本里真实存在的绝对路径：优先 .js 入口（用 node 启动），其次原生 .exe。
- */
-function shimCandidates(text: string, dir: string): string[] {
-  const expanded = text
-    .replace(/%~dp0/gi, `${dir}${path.sep}`)
-    .replace(/%dp0%/gi, `${dir}${path.sep}`)
-    .replace(/\$basedir/gi, dir)
-    .replace(/\$psscriptroot/gi, dir);
-  const candidates: string[] = [];
-  for (const match of expanded.matchAll(/["']([^"'\r\n]+)["']/g)) {
-    const raw = match[1]?.trim();
-    if (!raw || raw.includes('%') || raw.includes('$') || !path.isAbsolute(raw)) continue;
-    const candidate = path.normalize(raw);
-    if (isFile(candidate)) candidates.push(candidate);
-  }
-  return candidates;
-}
-
-function resolveShim(file: string): ResolvedCommand {
-  const candidates = shimCandidates(readFileSync(file, 'utf8'), path.dirname(file));
-  const script = candidates.find((candidate) => SCRIPT_EXTENSIONS.test(candidate));
-  if (script) return { command: nodeExecutable(path.dirname(file)), args: [script] };
-  const native = candidates.find((candidate) => NATIVE_EXTENSIONS.test(candidate));
-  if (native) return { command: native, args: [] };
-  throw new ProcessError('executable_missing', `无法从 ${path.basename(file)} 解析出真实可执行文件`);
-}
-
-function resolveFile(file: string, overrideName?: string): ResolvedCommand {
-  if (!isFile(file))
-    throw new ProcessError(
-      'executable_missing',
-      overrideName ? `${overrideName} 指向的文件不存在` : `未找到可执行文件 ${path.basename(file)}`,
-    );
-  const extension = path.extname(file).toLowerCase();
-  if (extension === '.cmd' || extension === '.bat' || extension === '.ps1') return resolveShim(file);
-  if (SCRIPT_EXTENSIONS.test(file)) return { command: process.execPath, args: [file] };
-  return { command: file, args: [] };
-}
-
-function explicitOverride(spec: AgentSpec, env: NodeJS.ProcessEnv): { name: string; value: string } | undefined {
-  const names =
-    spec.agent === 'claude' ? ['CLAUDE_CODE_EXECUTABLE'] : spec.agent === 'codex' ? ['AGENTDECK_CODEX'] : [];
-  for (const name of names) {
-    const value = envValue(env, name)
-      ?.trim()
-      .replace(/^"(.*)"$/, '$1');
-    if (value) return { name, value };
-  }
-  return undefined;
-}
-
-function resolveCommand(spec: AgentSpec, env: NodeJS.ProcessEnv): ResolvedCommand {
-  const override = explicitOverride(spec, env);
-  if (override) return resolveFile(override.value, override.name);
-  const found = findOnPath(spec.executable, env);
-  if (found) return resolveFile(found);
-  // Antigravity 的安装器默认只把 agy 目录加进 PATH；从开始菜单启动时可能还没继承到。
-  const localAppData = envValue(env, 'LOCALAPPDATA');
-  if (spec.agent === 'antigravity' && localAppData) {
-    const known = path.join(localAppData, 'agy', 'bin', 'agy.exe');
-    if (isFile(known)) return resolveFile(known);
-  }
-  throw new ProcessError('executable_missing', `未找到可执行文件 ${spec.executable}`);
-}
-
 /** 固定探测目标，界面显示的版本就是这里实际运行的程序版本。 */
 export function createLocalRunner(env: () => NodeJS.ProcessEnv = () => process.env): ProcessRunner {
   return async (command, args, options) => {
+    const currentEnv = env();
     const resolved =
-      command === 'claude'
-        ? resolveCommand(SPECS.claude, env())
-        : command === 'codex'
-          ? resolveCommand(SPECS.codex, env())
-          : command === 'agy'
-            ? resolveCommand(SPECS.antigravity, env())
-            : { command, args: [] };
-    return runProcess(resolved.command, [...resolved.args, ...args], options);
+      command === 'claude' || command === 'codex' || command === 'agy'
+        ? resolveLocalCommand(command, currentEnv)
+        : { command, args: [] };
+    return runProcess(resolved.command, [...resolved.args, ...args], { ...options, env: options.env ?? currentEnv });
   };
 }
 

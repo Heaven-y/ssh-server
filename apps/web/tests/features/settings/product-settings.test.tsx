@@ -242,17 +242,21 @@ it('产品草稿保存只输出现行偏好，不包含同步分类字段与已�
 });
 
 it('对话分类保留默认Agent，不再提供网页默认模型输入', () => {
+  const change = vi.fn();
   render(
     <ProductSettingsForm
       category="conversation"
       draft={productDraft}
       disabled={false}
       showErrors={false}
-      change={vi.fn()}
+      change={change}
       validate={vi.fn()}
     />,
   );
   expect(screen.getByLabelText<HTMLSelectElement>('默认 Agent').value).toBe('codex');
+  expect(screen.getByRole('option', { name: 'Antigravity' })).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('默认 Agent'), { target: { value: 'antigravity' } });
+  expect(change).toHaveBeenCalledWith({ defaultAgent: 'antigravity' });
   expect(screen.queryByLabelText(/Claude 默认模型/)).toBeNull();
   expect(screen.queryByLabelText(/Codex 默认模型/)).toBeNull();
 });

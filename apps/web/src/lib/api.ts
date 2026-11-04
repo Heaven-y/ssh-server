@@ -170,6 +170,12 @@ export const api = {
       signal,
       cache: 'no-store',
     }),
+  refreshAgentCapabilities: (workspaceId: string, agent: AgentKind) =>
+    request<AgentCapabilities>(`/api/workspaces/${encodeURIComponent(workspaceId)}/agent-capabilities?agent=${agent}`, {
+      method: 'POST',
+      cache: 'no-store',
+      body: '{}',
+    }),
   /** 原生配置内容只能由显式打开的编辑区持有，不接入查询缓存或持久存储。 */
   readAgentConfig: (agent: NativeConfigAgent, signal?: AbortSignal) =>
     request<NativeConfigDocument>(`/api/agent-config/${agent}`, { signal, cache: 'no-store' }),

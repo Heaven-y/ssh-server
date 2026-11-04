@@ -65,6 +65,36 @@ const send = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
+it('连接关闭时中断所属运行回合，取消准备中的启动且不影响另一连接', async () => {
+  const { turns, fake, sessions } = setup();
+  const first = fakeSocket();
+  const other = fakeSocket();
+  await turns.handle(first.socket, send({ sessionId: 'first' }));
+  await turns.handle(other.socket, send({ sessionId: 'other' }));
+  turns.socketClosed(first.socket);
+  expect(fake.turns[0]!.interrupt).toHaveBeenCalledOnce();
+  expect(fake.turns[1]!.interrupt).not.toHaveBeenCalled();
+  let release!: () => void;
+  sessions.assertBelongs.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+  );
+  const preparing = fakeSocket();
+  const pending = turns.handle(preparing.socket, send({ sessionId: 'preparing' }));
+  await vi.waitFor(() => expect(sessions.assertBelongs).toHaveBeenCalledTimes(3));
+  turns.socketClosed(preparing.socket);
+  await pending;
+  release();
+  await flush();
+  expect(fake.turns).toHaveLength(2);
+  fake.turns[0]!.finish();
+  fake.turns[1]!.finish();
+  await flush();
+  await turns.dispose();
+});
+
 describe('TurnManager', () => {
   it('原生能力解析在启动前完成，纯上下文命令照常交给适配器', async () => {
     const prepare = vi.fn(async () => ({

@@ -1,6 +1,6 @@
 import { FolderPlus } from 'lucide-react';
 import type { Workspace } from '@agentdeck/shared';
-import { SessionHistory } from '../features/sessions/SessionHistory';
+import { ChatView } from '../features/chat/ChatView';
 import { buttonClass } from '../ui/styles';
 
 /** 主区只负责按状态选择呈现：加载、读取失败、没有项目、有项目。 */
@@ -53,7 +53,7 @@ export function SessionPane({
     );
   return (
     <main className="flex min-w-0 flex-1 flex-col">
-      <SessionHistory projectId={project.id} projectDir={project.dir} />
+      <ChatView workspace={project} />
     </main>
   );
 }

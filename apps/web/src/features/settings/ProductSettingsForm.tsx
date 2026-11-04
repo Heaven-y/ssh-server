@@ -104,6 +104,7 @@ export function ProductSettingsForm({
         >
           <option value="claude">Claude Code</option>
           <option value="codex">Codex</option>
+          <option value="antigravity">Antigravity</option>
         </select>
       </label>
     </section>

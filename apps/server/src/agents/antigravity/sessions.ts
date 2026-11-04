@@ -4,6 +4,7 @@ import type { SessionProvider } from '../../chat/sessions';
 import { SessionError } from '../../chat/sessions';
 import type { NativeSessionSummary } from '../types';
 import { readSummaries, type SummaryRow } from './summaries';
+import { resolveProjectId } from '../../sessions/ownership';
 
 /** Antigravity 在用户目录下维护自己的会话摘要库，不随项目目录变化。 */
 export const ANTIGRAVITY_DB_PATH = path.join(homedir(), '.gemini', 'antigravity-cli', 'conversation_summaries.db');
@@ -70,8 +71,17 @@ export function createAntigravitySessions(api: Partial<AntigravitySessionsApi> =
         ),
       );
     },
-    assertBelongs(id) {
-      if (rows().some((row) => row.conversationId === id)) return Promise.resolve();
+    assertBelongs(id, dir, signal) {
+      signal?.throwIfAborted();
+      const found = rows().find((row) => row.conversationId === id);
+      if (
+        found &&
+        resolveProjectId({
+          workspaceUris: found.workspaceUris,
+          projects: [{ id: 'current', name: '', dir }],
+        }) === 'current'
+      )
+        return Promise.resolve();
       return Promise.reject(new SessionError(404, 'session_missing', 'Antigravity 在当前工作区中没有此会话'));
     },
     mutate() {

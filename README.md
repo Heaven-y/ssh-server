@@ -10,7 +10,7 @@ Windows 本机桌面工作台，按项目集中使用 Claude Code、Codex 和 An
 |---|---|
 | 桌面与项目 | Electron 窗口、单实例和退出清理已具备；项目按本地目录组织，移除列表记录不删除目录或原生会话 |
 | 会话历史 | 三个 CLI 可发现会话；Claude/Codex 可读历史；Antigravity 仅有摘要，私有轨迹无法回放 |
-| 原生对话 | M2 当前主线：接通三个 CLI 的新建、续接、流式事件、中断和原生参数；审批或软拒提示遵循各自权限机制 |
+| 原生对话 | 三个 CLI 的新建、续接、流式事件和中断已接线；Claude/Codex 接原生审批，Antigravity 提示软拒；受控验证通过，真实模型回合待验证 |
 | 原生配置 | 已有 Claude `settings.json` 与 Codex `config.toml` 的编辑基础；后续逐项核实各 CLI 支持的作用域和入口 |
 | SSH | 现有项目绑定式终端、资源、Slurm 与服务器文件能力暂保留；后续按 SSH Console 的实际体验接入插件 |
 | 插件 | M4 扩展方向：自己的插件接口；SSH Console 是首个业务插件，尚未作为插件交付 |

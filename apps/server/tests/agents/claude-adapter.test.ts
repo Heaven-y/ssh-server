@@ -83,16 +83,14 @@ afterEach(async () => {
 });
 
 describe('runClaudeTurn：调用参数', () => {
-  it('按设计传入 cwd、设置来源与系统提示，不再注入网页侧工具策略', async () => {
+  it('只传 cwd、原生设置来源与原生系统预设，不追加应用行为指令或工具策略', async () => {
     const fake = fakeQuery();
     await run(fake).handle.done;
     const o = fake.state.options!;
     expect(fake.state.prompt).toBe('你好');
     expect(o.cwd).toBe(ws.dir);
     expect(o.settingSources).toEqual(['user', 'project', 'local']);
-    expect(o.systemPrompt).toMatchObject({ type: 'preset', preset: 'claude_code' });
-    expect((o.systemPrompt as { append: string }).append).toContain(ws.dir);
-    expect((o.systemPrompt as { append: string }).append).not.toContain('my-server');
+    expect(o.systemPrompt).toEqual({ type: 'preset', preset: 'claude_code' });
     expect(o).not.toHaveProperty('mcpServers');
     expect(o).not.toHaveProperty('allowedTools');
     expect(o.includePartialMessages).toBe(true);

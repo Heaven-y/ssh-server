@@ -11,9 +11,16 @@ function ComposerActions({ disabled }: { disabled: boolean }) {
   const running = useChat((s) => s.running);
   const stopping = useChat((s) => s.interruptRequested);
   const loading = useChat((s) => s.loadingHistory);
+  const historyError = useChat((s) => s.historyError);
   const managing = useChat(managementPending);
   const interrupt = useChat((s) => s.interrupt);
-  const hint = loading ? '正在读取历史，请稍候…' : managing ? '正在管理当前会话，请稍候…' : undefined;
+  const hint = loading
+    ? '正在读取历史，请稍候…'
+    : historyError
+      ? '请先重新读取历史'
+      : managing
+        ? '正在管理当前会话，请稍候…'
+        : undefined;
   return (
     <div className="flex shrink-0 items-center gap-2">
       {hint && (
@@ -60,6 +67,7 @@ export function Composer() {
   const running = useChat((s) => s.running);
   const connected = useChat((s) => s.connection === 'open');
   const loading = useChat((s) => s.loadingHistory);
+  const historyError = useChat((s) => s.historyError);
   const selection = useChat((s) => s.selectedCapability);
   const sessionId = useChat((s) => s.sessionId);
   const managing = useChat(managementPending);
@@ -68,7 +76,7 @@ export function Composer() {
   const restriction = selectionRestriction(selection, sessionId, text);
   const busy = running || loading || managing;
   const empty = emptyInput(text, selection);
-  const blocked = !connected || empty || busy || !!restriction;
+  const blocked = !connected || empty || busy || !!historyError || !!restriction;
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault();

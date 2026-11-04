@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readSummaries } from '../../../src/agents/antigravity/summaries';
@@ -279,19 +280,23 @@ describe('Antigravity 会话提供方', () => {
     });
   });
 
-  it('assertBelongs 只放行摘要库里存在的会话', async () => {
+  it('assertBelongs 仅放行存在且属于当前项目的会话', async () => {
     const provider = createAntigravitySessions({
       readSummaries: () => [
         {
           conversationId: 'c1',
           title: '示例会话',
-          workspaceUris: 'file:///E:/web/demo',
+          workspaceUris: pathToFileURL(dir).href,
           lastModified: '2026-11-03 12:00:00',
           preview: '',
         },
       ],
     });
     await expect(provider.assertBelongs('c1', dir)).resolves.toBeUndefined();
+    await expect(provider.assertBelongs('c1', path.join(dir, 'other'))).rejects.toMatchObject({
+      status: 404,
+      code: 'session_missing',
+    });
     await expect(provider.assertBelongs('missing', dir)).rejects.toMatchObject({
       status: 404,
       code: 'session_missing',

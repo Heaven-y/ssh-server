@@ -5,10 +5,12 @@ import type { AgentProbe } from '@agentdeck/shared';
 import { TurnManager } from './chat/turn-manager';
 import { createSessionsService } from './chat/sessions';
 import { createCapabilitiesService } from './chat/capabilities';
-import { runClaudeTurn } from './agents/claude-adapter';
+import { createClaudeRunner } from './agents/claude-adapter';
 import { discoverClaudeCapabilities } from './agents/claude-capabilities';
 import { createClaudeSessions } from './agents/claude-sessions';
 import { createAntigravitySessions } from './agents/antigravity/sessions';
+import { createAntigravityRunner } from './agents/antigravity/adapter';
+import { discoverAntigravityCapabilities } from './agents/antigravity/capabilities';
 import {
   createCodexRunner,
   listCodexSessions,
@@ -187,6 +189,7 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
   const capabilities = createCapabilitiesService({
     claude: (dir, signal) => discoverClaudeCapabilities(dir, { signal }),
     codex: (dir, signal) => discoverCodexCapabilities(dir, { signal }),
+    antigravity: discoverAntigravityCapabilities,
   });
   // 会话服务与轮次管理器互相引用：会话服务里的回调只在调用时读 turns，声明顺序保持原样。
   const sessions = createSessionsService(
@@ -212,7 +215,11 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
     getWorkspace: (id) => store.get(id),
     sessions,
     capabilities,
-    runners: { claude: runClaudeTurn, codex: createCodexRunner() },
+    runners: {
+      claude: createClaudeRunner(),
+      codex: createCodexRunner(),
+      antigravity: createAntigravityRunner(),
+    },
     acquireWorkspace,
   });
 

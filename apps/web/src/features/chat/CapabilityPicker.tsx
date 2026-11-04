@@ -86,12 +86,14 @@ function CapabilityDialog({ disabled, onClose }: { disabled: boolean; onClose():
             type="button"
             className={buttonClass('outline')}
             disabled={query.isFetching}
-            onClick={() => void query.refetch()}
-            aria-label="刷新技能与命令"
+            onClick={query.refresh}
+            aria-label="刷新能力"
+            title="启动 CLI 检查账号、模型与命令清单"
           >
             <RefreshCw aria-hidden className="size-4" />
           </button>
         </div>
+        <p className="text-xs leading-5 text-muted-foreground">刷新能力会启动 CLI 检查账号、模型与命令清单。</p>
         {query.isFetching && (
           <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
             <LoaderCircle aria-hidden className="size-4 motion-safe:animate-spin" />
@@ -178,6 +180,6 @@ function ScopedPicker({ disabled }: { disabled: boolean }) {
 }
 
 export function CapabilityPicker({ disabled }: { disabled: boolean }) {
-  const scope = useChat((state) => JSON.stringify([state.workspaceId, state.agent, state.sessionId]));
+  const scope = useChat((state) => state.conversationVersion);
   return <ScopedPicker key={scope} disabled={disabled} />;
 }

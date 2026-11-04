@@ -93,7 +93,7 @@ describe('Codex app-server 核心边界', () => {
     }
   });
 
-  it('默认配置只追加指令与工作区约束，不向 CLI 注入 MCP', async () => {
+  it('默认配置只保留原生指令，不追加应用约束或注入 MCP', async () => {
     const { workspace, options, messages } = await setup();
     const events: AgentEvent[] = [];
     await runCodexTurn(
@@ -111,10 +111,7 @@ describe('Codex app-server 核心边界', () => {
     // 审批与沙箱策略沿用原生配置，网页不再用常量覆盖
     expect(start).not.toHaveProperty('sandbox');
     expect(start).not.toHaveProperty('approvalPolicy');
-    expect(start?.developerInstructions).toContain('原生约束');
-    expect(start?.developerInstructions).toContain(workspace.dir);
-    expect(start?.developerInstructions).not.toContain('my-server');
-    expect(start?.developerInstructions).not.toContain('~/projects/demo');
+    expect(start?.developerInstructions).toBe('原生约束');
     expect(start?.config).toEqual({});
     expect(JSON.stringify(records)).not.toContain('AGENTDECK');
     expect(start).not.toHaveProperty('model');

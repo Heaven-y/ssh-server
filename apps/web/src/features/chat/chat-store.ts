@@ -11,7 +11,7 @@ import type {
   SessionRef,
   ProductSettings,
 } from '@agentdeck/shared';
-import { api, queryKeys } from '../../lib/api';
+import { api, ApiError, queryKeys } from '../../lib/api';
 import { queryClient } from '../../lib/query-client';
 import { connectChat, type ChatSocket, type ConnectionStatus } from '../../lib/ws';
 import { markPermissionPending, reduceChat, type ChatItem } from './chat-reducer';
@@ -19,11 +19,11 @@ import { capabilityRestriction, selectionRestriction } from './capability-select
 
 const LAST_WORKSPACE_KEY = 'agentdeck.lastProject';
 const DEFAULT_REASONING_EFFORTS: Record<AgentKind, string> = {
-  claude: 'high',
-  codex: 'high',
-  antigravity: 'high',
+  claude: '',
+  codex: '',
+  antigravity: '',
 };
-/** 模型覆盖按 CLI 分开；Antigravity 在 M1 只读会话，先留空避免缺键。 */
+/** 未显式选择的模型和强度都由原生配置决定。 */
 const EMPTY_MODEL_OVERRIDES: Record<AgentKind, string> = { claude: '', codex: '', antigravity: '' };
 export type SessionOperation = { action: SessionActionInput['action'] | 'fork'; pending: boolean; error?: string };
 export const sessionActionKey = (workspaceId: string, session: SessionRef): string =>
@@ -51,6 +51,8 @@ type ChatState = {
   pendingClientTurnId?: string;
   interruptRequested: boolean;
   loadingHistory: boolean;
+  historyError?: string;
+  historyNotice?: string;
   banner?: string;
   sessionOperations: Record<string, SessionOperation>;
   manageSession(workspaceId: string, session: SessionRef, input: SessionActionInput): Promise<boolean>;
@@ -58,7 +60,7 @@ type ChatState = {
   removeWorkspace(id: string, nextId?: string): void;
   newSession(agent?: AgentKind): void;
   setAgent(agent: AgentKind): void;
-  openSession(session: SessionRef): Promise<void>;
+  openSession(session: SessionRef, options?: { preserveDraft?: boolean }): Promise<void>;
   setModel(model: string): void;
   setDefaults(settings: ProductSettings): void;
   touchDraft(): void;
@@ -86,6 +88,8 @@ const emptyConversation = {
   pendingClientTurnId: undefined,
   interruptRequested: false,
   loadingHistory: false,
+  historyError: undefined,
+  historyNotice: undefined,
   banner: undefined,
 };
 function changeSelection(): number {
@@ -102,6 +106,36 @@ function historyIsCurrent(controller: AbortController, generation: number, works
     current.agent === session.agent &&
     current.sessionId === session.sessionId
   );
+}
+function historyFailure(agent: AgentKind, error: unknown): Pick<ChatState, 'historyError' | 'historyNotice'> {
+  const notReplayable = agent === 'antigravity' && error instanceof ApiError && error.code === 'session_not_replayable';
+  if (notReplayable)
+    return { historyNotice: 'Antigravity 的原生历史暂不能回放；可以继续此会话，本次收到的内容会显示在这里。' };
+  return { historyError: `加载会话失败：${error instanceof Error ? error.message : '请重试'}` };
+}
+function historyViewVersion(
+  current: ChatState,
+  session: SessionRef,
+  generation: number,
+  options?: { preserveDraft?: boolean },
+) {
+  return options?.preserveDraft && current.agent === session.agent && current.sessionId === session.sessionId
+    ? current.conversationVersion
+    : generation;
+}
+function historyParameters(current: ChatState, session: SessionRef) {
+  if (current.agent === session.agent && current.sessionId === session.sessionId)
+    return { modelOverrides: current.modelOverrides, reasoningEfforts: current.reasoningEfforts };
+  return {
+    modelOverrides: { ...EMPTY_MODEL_OVERRIDES },
+    reasoningEfforts: { ...DEFAULT_REASONING_EFFORTS },
+  };
+}
+/** 重试期间先保留已收到的正文；只有成功读取的历史才有资格替换它。 */
+function historyRetryItems(current: ChatState, session: SessionRef, options?: { preserveDraft?: boolean }) {
+  return options?.preserveDraft && current.agent === session.agent && current.sessionId === session.sessionId
+    ? current.items
+    : [];
 }
 function sameSession(current: ChatState, workspaceId: string, session: SessionRef): boolean {
   return (
@@ -120,9 +154,17 @@ function cannotSend(current: ChatState, text: string): boolean {
   return (
     current.running ||
     current.loadingHistory ||
+    !!current.historyError ||
     (!text.trim() && !current.selectedCapability) ||
     managementPending(current)
   );
+}
+/** 本阶段保留当前回合控制权，不能通过导航抹掉仍在运行的身份。 */
+export function allowConversationNavigation(): boolean {
+  const current = useChat.getState();
+  if (!current.running && !current.pendingClientTurnId) return true;
+  useChat.setState({ banner: '当前会话正在运行，请先停止或等待本轮结束后再切换。' });
+  return false;
 }
 function sendRestriction(current: ChatState, text: string): string | undefined {
   return selectionRestriction(current.selectedCapability, current.sessionId, text);
@@ -168,6 +210,7 @@ export const useChat = create<ChatState>()((set, get) => ({
   ...emptyConversation,
   selectWorkspace(id) {
     if (get().workspaceId === id) return;
+    if (!allowConversationNavigation()) return;
     const conversationVersion = changeSelection();
     persistWorkspace(id);
     set({ workspaceId: id, ...emptyConversation, ...newDefaults(get()), conversationVersion });
@@ -186,6 +229,7 @@ export const useChat = create<ChatState>()((set, get) => ({
     });
   },
   newSession(agent = get().defaults.defaultAgent) {
+    if (!allowConversationNavigation()) return;
     const conversationVersion = changeSelection();
     set({ ...emptyConversation, ...newDefaults(get()), agent, initialDefaultsEligible: false, conversationVersion });
   },
@@ -198,19 +242,23 @@ export const useChat = create<ChatState>()((set, get) => ({
       set({ ...emptyConversation, agent, conversationVersion });
     }
   },
-  async openSession(session) {
+  async openSession(session, options) {
+    if (!allowConversationNavigation()) return;
     const { workspaceId } = get();
     if (!workspaceId) return;
     const generation = changeSelection();
+    const conversationVersion = historyViewVersion(get(), session, generation, options);
     const controller = new AbortController();
     historyRequest = controller;
     set({
       ...emptyConversation,
+      ...historyParameters(get(), session),
+      items: historyRetryItems(get(), session, options),
       agent: session.agent,
       sessionId: session.sessionId,
       actualModel: get().sessionModels[sessionActionKey(workspaceId, session)]?.actualModel,
       loadingHistory: true,
-      conversationVersion: generation,
+      conversationVersion,
       initialDefaultsEligible: false,
     });
     try {
@@ -235,8 +283,9 @@ export const useChat = create<ChatState>()((set, get) => ({
         },
       }));
     } catch (error) {
-      if (historyIsCurrent(controller, generation, workspaceId, session))
-        set({ loadingHistory: false, banner: `加载会话失败：${error instanceof Error ? error.message : '请重试'}` });
+      if (historyIsCurrent(controller, generation, workspaceId, session)) {
+        set({ loadingHistory: false, ...historyFailure(session.agent, error) });
+      }
     } finally {
       if (historyRequest === controller) historyRequest = undefined;
     }
@@ -260,6 +309,10 @@ export const useChat = create<ChatState>()((set, get) => ({
   setModel: (model) =>
     set((current) => ({
       modelOverrides: { ...current.modelOverrides, [current.agent]: model },
+      reasoningEfforts:
+        model.trim() === current.modelOverrides[current.agent].trim()
+          ? current.reasoningEfforts
+          : { ...current.reasoningEfforts, [current.agent]: '' },
       initialDefaultsEligible: false,
     })),
   setReasoningEffort: (reasoningEffort) =>
@@ -461,6 +514,7 @@ function handleStatus(status: ConnectionStatus): void {
       interruptRequested: false,
       items: reduceChat(current.items, { type: 'turn_end', isError: true }),
       banner: '连接已断开，本轮输出可能不完整。重新连接后可从会话列表重新打开查看。',
+      historyError: '连接已断开，已请求中断本轮。请恢复连接后重新读取原生历史，再继续发送。',
     });
   }
   useChat.setState({ connection: status });

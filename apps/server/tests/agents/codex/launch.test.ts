@@ -6,6 +6,7 @@ import { resolveCodexCommand } from '../../../src/agents/codex/launch';
 
 const dirs: string[] = [];
 afterEach(async () => {
+  Reflect.deleteProperty(process.versions, 'electron');
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -25,6 +26,14 @@ async function installation() {
 }
 
 describe('Codex 启动发现', () => {
+  it('桌面宿主运行脚本须找到真实Node，不能把Electron当解释器', async () => {
+    const { addFile, env } = await installation();
+    const js = await addFile('desktop-entry.mjs');
+    Object.defineProperty(process.versions, 'electron', { configurable: true, value: 'fixture' });
+    await expect(resolveCodexCommand({ command: js, env })).rejects.toThrow(/Node/);
+    const node = await addFile(process.platform === 'win32' ? 'node.exe' : 'node');
+    expect(await resolveCodexCommand({ command: js, env })).toEqual({ command: node, args: [js] });
+  });
   it('显式命令优先于环境设置，JavaScript 入口通过当前 Node 启动', async () => {
     const { addFile, env } = await installation();
     const js = await addFile('custom entry.mjs');
