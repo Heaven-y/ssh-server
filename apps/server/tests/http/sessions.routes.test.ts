@@ -17,7 +17,9 @@ const ws: Workspace = {
   remoteDir: '~',
 };
 const other: Workspace = { id: 'w2', name: 'other', dir: path.join(os.tmpdir(), 'agentdeck-fixture', 'other') };
-const store = { get: async (id: string) => (id === 'w1' ? ws : undefined) } as unknown as WorkspaceStore;
+const store = {
+  get: async (id: string) => (id === 'w1' ? ws : id === 'w2' ? other : undefined),
+} as unknown as WorkspaceStore;
 
 const apps: FastifyInstance[] = [];
 afterEach(async () => {
@@ -115,14 +117,14 @@ function setup() {
 
 describe('会话接口', () => {
   it.each([
-    { method: 'GET' as const, url: '/api/workspaces/w1/sessions' },
-    { method: 'GET' as const, url: '/api/workspaces/w1/sessions/s1/events' },
+    { method: 'GET' as const, url: '/api/projects/w1/sessions' },
+    { method: 'GET' as const, url: '/api/projects/w1/sessions/gemini/s1' },
     {
       method: 'POST' as const,
       url: '/api/workspaces/w1/sessions/s1/actions',
       payload: { action: 'rename', title: '新名称' },
     },
-  ])('缺Agent拒绝 $method $url，不能默认为Claude', async (request) => {
+  ])('缺Agent或Agent非法时拒绝 $method $url，不能默认为Claude', async (request) => {
     const { app, api, codex, withIdleSession } = setup();
     expect((await app.inject(request)).statusCode).toBe(400);
     expect(api.list).not.toHaveBeenCalled();
@@ -171,9 +173,9 @@ describe('会话接口', () => {
 
   it('归档查询只发给Codex，Claude归档操作被拒绝', async () => {
     const { app, codex } = setup();
-    expect((await app.inject('/api/workspaces/w1/sessions?agent=codex&archived=true')).statusCode).toBe(200);
+    expect((await app.inject('/api/projects/w1/sessions?agent=codex&archived=true')).statusCode).toBe(200);
     expect(codex.list).toHaveBeenCalledWith(ws.dir, expect.any(AbortSignal), true);
-    expect((await app.inject('/api/workspaces/w1/sessions?agent=claude&archived=true')).statusCode).toBe(400);
+    expect((await app.inject('/api/projects/w1/sessions?agent=claude&archived=true')).statusCode).toBe(400);
     expect(
       (
         await app.inject({
@@ -185,9 +187,9 @@ describe('会话接口', () => {
     ).toBe(400);
   });
 
-  it('列出工作区本地文件夹下的会话', async () => {
+  it('列出项目本地文件夹下的会话', async () => {
     const { app, api } = setup();
-    const r = await app.inject({ method: 'GET', url: '/api/workspaces/w1/sessions?agent=claude' });
+    const r = await app.inject({ method: 'GET', url: '/api/projects/w1/sessions?agent=claude' });
     expect(r.statusCode).toBe(200);
     expect(r.json()).toEqual([
       {
@@ -202,41 +204,78 @@ describe('会话接口', () => {
     expect(api.list).toHaveBeenCalledWith(ws.dir);
   });
 
-  it('Antigravity 按 workspace_uris 归属，解析不出时标为未归属', async () => {
+  it('Antigravity 按 workspace_uris 归属，并按项目裁掉其他项目与未归属的会话', async () => {
     const { app } = setup();
-    const r = await app.inject({ method: 'GET', url: '/api/workspaces/w1/sessions?agent=antigravity' });
-    expect(r.statusCode).toBe(200);
+    const mine = await app.inject({ method: 'GET', url: '/api/projects/w1/sessions?agent=antigravity' });
+    expect(mine.statusCode).toBe(200);
     expect(
-      r
+      mine
         .json()
         .map((session: { sessionId: string; projectId: string | null }) => [session.sessionId, session.projectId]),
-    ).toEqual([
-      ['a1', 'w1'],
-      ['a2', 'w2'],
-      ['a3', null],
-    ]);
+    ).toEqual([['a1', 'w1']]);
+    // 同一个全局列表在另一个项目下只返回归属它自己的行。
+    const theirs = await app.inject({ method: 'GET', url: '/api/projects/w2/sessions?agent=antigravity' });
+    expect(
+      theirs
+        .json()
+        .map((session: { sessionId: string; projectId: string | null }) => [session.sessionId, session.projectId]),
+    ).toEqual([['a2', 'w2']]);
   });
 
-  it('返回会话历史对应的事件', async () => {
+  it('适配器未接入时按 agent_unavailable 拒绝，不静默当成别的 CLI', async () => {
+    const app = Fastify();
+    apps.push(app);
+    const sessions = createSessionsService({}, { withIdleSession: (_session, operation) => operation() });
+    registerSessionRoutes(app, { store, sessions });
+    const response = await app.inject({ method: 'GET', url: '/api/projects/w1/sessions?agent=antigravity' });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({ code: 'agent_unavailable', message: 'Antigravity 适配器尚未接入' });
+    expect(response.headers['cache-control']).toBe('no-store');
+  });
+
+  it('非法的 agent 查询在项目查找之前就被拒绝', async () => {
     const { app, api } = setup();
-    const r = await app.inject({ method: 'GET', url: '/api/workspaces/w1/sessions/s1/events?agent=claude' });
+    const response = await app.inject({ method: 'GET', url: '/api/projects/nope/sessions?agent=gemini' });
+    expect(response.statusCode).toBe(400);
+    expect(api.list).not.toHaveBeenCalled();
+  });
+
+  it('返回会话历史对应的事件，Antigravity 不可回放时保留 501 语义', async () => {
+    const { app, api } = setup();
+    const r = await app.inject({ method: 'GET', url: '/api/projects/w1/sessions/claude/s1' });
     expect(r.json().session).toMatchObject({ agent: 'claude', sessionId: 's1' });
     expect(r.json().events).toEqual([
       { type: 'user_message', text: '你好' },
       { type: 'text', delta: '在' },
     ]);
     expect(api.messages).toHaveBeenCalledWith('s1', ws.dir);
+    // Task 11 的「不可回放」文案要靠这个错误码推导，不能在路由层被改写成通用 503。
+    const replay = await app.inject('/api/projects/w1/sessions/antigravity/a1');
+    expect(replay.statusCode).toBe(501);
+    expect(replay.json()).toMatchObject({ code: 'session_not_replayable' });
+    expect(replay.headers['cache-control']).toBe('no-store');
   });
 
-  it('工作区不存在 404，会话 id 不合法 400', async () => {
+  it('保留旧读取路径作为转发别名，结果与项目路径一致', async () => {
+    const { app, api } = setup();
+    const listViaOld = await app.inject('/api/workspaces/w1/sessions?agent=claude');
+    expect(listViaOld.statusCode).toBe(200);
+    expect(listViaOld.headers['cache-control']).toBe('no-store');
+    expect(listViaOld.json()).toEqual((await app.inject('/api/projects/w1/sessions?agent=claude')).json());
+    expect(api.list).toHaveBeenCalledWith(ws.dir);
+
+    const historyViaOld = await app.inject('/api/workspaces/w1/sessions/s1/events?agent=claude');
+    expect(historyViaOld.statusCode).toBe(200);
+    expect(historyViaOld.json().session).toMatchObject({ agent: 'claude', sessionId: 's1' });
+    expect((await app.inject('/api/workspaces/w1/sessions/s1/events?agent=gemini')).statusCode).toBe(400);
+  });
+
+  it('项目不存在 404，会话 id 与 agent 不合法 400', async () => {
     const { app } = setup();
-    expect((await app.inject({ method: 'GET', url: '/api/workspaces/nope/sessions?agent=claude' })).statusCode).toBe(
-      404,
-    );
-    expect(
-      (await app.inject({ method: 'GET', url: '/api/workspaces/w1/sessions/a.b/events?agent=claude' })).statusCode,
-    ).toBe(400);
-    expect((await app.inject('/api/workspaces/w1/sessions?agent=unknown')).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/api/projects/nope/sessions?agent=claude' })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/projects/nope/sessions/claude/s1' })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/projects/w1/sessions/claude/a.b' })).statusCode).toBe(400);
+    expect((await app.inject('/api/projects/w1/sessions?agent=unknown')).statusCode).toBe(400);
   });
 
   it('原生列表过滤其他工作区，历史显示最后实际模型，续接校验拒绝错误身份', async () => {
@@ -245,7 +284,7 @@ describe('会话接口', () => {
       { sessionId: 's1', summary: '本项目', lastModified: 100, cwd: ws.dir },
       { sessionId: 'foreign', summary: '其他项目', lastModified: 200, cwd: path.join(ws.dir, 'other') },
     ]);
-    expect((await app.inject('/api/workspaces/w1/sessions?agent=claude')).json()).toEqual([
+    expect((await app.inject('/api/projects/w1/sessions?agent=claude')).json()).toEqual([
       {
         agent: 'claude',
         sessionId: 's1',
@@ -260,9 +299,7 @@ describe('会话接口', () => {
       { type: 'assistant', message: { model: 'latest-model', content: [] } },
       { type: 'system', subtype: 'status' },
     ]);
-    expect((await app.inject('/api/workspaces/w1/sessions/s1/events?agent=claude')).json().actualModel).toBe(
-      'latest-model',
-    );
+    expect((await app.inject('/api/projects/w1/sessions/claude/s1')).json().actualModel).toBe('latest-model');
     await sessions.assertBelongs(ws, 'claude', 's1');
     await expect(sessions.assertBelongs(ws, 'claude', 'wrong-id')).rejects.toMatchObject({ status: 404 });
   });
@@ -286,7 +323,7 @@ describe('会话接口', () => {
 
   it('两类同 ID 会话独立读取，拒绝跨目录记录，单源失败不影响另一类', async () => {
     const { app, api, codex } = setup();
-    const listed = await app.inject('/api/workspaces/w1/sessions?agent=codex');
+    const listed = await app.inject('/api/projects/w1/sessions?agent=codex');
     expect(listed.json()).toEqual([
       {
         agent: 'codex',
@@ -297,7 +334,7 @@ describe('会话接口', () => {
         running: false,
       },
     ]);
-    const history = await app.inject('/api/workspaces/w1/sessions/s1/events?agent=codex');
+    const history = await app.inject('/api/projects/w1/sessions/codex/s1');
     expect(history.json()).toMatchObject({
       session: { agent: 'codex', sessionId: 's1' },
       actualModel: 'fixture-model',
@@ -309,12 +346,12 @@ describe('会话接口', () => {
       lastModified: 100,
       cwd: path.join(ws.dir, 'other'),
     });
-    expect((await app.inject('/api/workspaces/w1/sessions/s1/events?agent=claude')).statusCode).toBe(404);
+    expect((await app.inject('/api/projects/w1/sessions/claude/s1')).statusCode).toBe(404);
     vi.mocked(codex.list).mockRejectedValueOnce(new Error('secret-sentinel'));
-    const failed = await app.inject('/api/workspaces/w1/sessions?agent=codex');
+    const failed = await app.inject('/api/projects/w1/sessions?agent=codex');
     expect(failed.statusCode).toBe(503);
     expect(failed.body).not.toContain('secret-sentinel');
     expect(failed.headers['cache-control']).toBe('no-store');
-    expect((await app.inject('/api/workspaces/w1/sessions?agent=claude')).statusCode).toBe(200);
+    expect((await app.inject('/api/projects/w1/sessions?agent=claude')).statusCode).toBe(200);
   });
 });

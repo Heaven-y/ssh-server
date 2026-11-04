@@ -25,7 +25,6 @@ async function fixture(result = { stdout: slurmOutput(), exitCode: 0 }) {
   const app = await buildApp({
     token: 'fixture-token',
     port: 0,
-    store: ssh.store,
     routes: (server) => registerSlurmRoutes(server, service),
   });
   await app.listen({ host: '127.0.0.1', port: 0 });
@@ -144,7 +143,6 @@ it('HTTP 客户端中断传递自己的 signal，preClose 释放服务', async (
   const app = await buildApp({
     token: 'fixture-token',
     port: 0,
-    store: f.ssh.store,
     routes: (server) =>
       registerSlurmRoutes(server, {
         get: async (_target, signal) => {

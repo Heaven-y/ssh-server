@@ -22,7 +22,6 @@ async function fixture() {
   const app = await buildApp({
     token: 'fixture-token',
     port: 0,
-    store: ssh.store,
     routes: (app) => {
       registerTerminalRoutes(app, { terminals, bindings });
       app.get('/ws', { websocket: true }, (socket) => {

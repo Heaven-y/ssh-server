@@ -21,6 +21,8 @@ import {
 import { legacyConfigDir, loadConfig } from './config';
 import { buildApp } from './http/app';
 import { registerSessionRoutes } from './http/sessions.routes';
+import { registerProjectRoutes } from './http/projects.routes';
+import { registerProbeRoutes } from './http/probe.routes';
 import { registerCapabilityRoutes } from './http/capabilities.routes';
 import { registerSshRoutes } from './http/ssh.routes';
 import { registerAgentConfigRoutes } from './http/agent-config.routes';
@@ -187,9 +189,10 @@ async function main(): Promise<void> {
     token: config.token,
     port: config.port,
     devOrigin: config.devOrigin,
-    store,
     webDir: WEB_DIST,
     routes: (a) => {
+      registerProjectRoutes(a, { store });
+      registerProbeRoutes(a, { probes });
       registerSessionRoutes(a, { store, sessions });
       registerCapabilityRoutes(a, { store, capabilities });
       registerSshRoutes(a, { pool, profiles });
