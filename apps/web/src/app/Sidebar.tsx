@@ -1,9 +1,10 @@
 import { Menu, MenuButton, MenuItem, useMenuStore } from '@ariakit/react';
-import { ChevronRight, FolderPlus, LoaderCircle, Plus } from 'lucide-react';
+import { ChevronRight, FolderPlus, LoaderCircle, MoreHorizontal, Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { AgentKind, SessionSummary, Workspace } from '@agentdeck/shared';
 import { AGENT_LABELS } from '../features/chat/AgentControls';
 import { sessionActionKey, useChat } from '../features/chat/chat-store';
+import { SessionActionsDialog } from '../features/sessions/SessionActionsDialog';
 import { buttonClass } from '../ui/styles';
 import { relativeTime } from '../ui/relative-time';
 
@@ -50,7 +51,17 @@ function sessionGroups(sessions: SessionSummary[]) {
   })).filter((group) => group.sessions.length > 0);
 }
 
-function SessionRow({ session, active, select }: { session: SessionSummary; active: boolean; select?: () => void }) {
+function SessionRow({
+  session,
+  active,
+  select,
+  manage,
+}: {
+  session: SessionSummary;
+  active: boolean;
+  select?: () => void;
+  manage?: () => void;
+}) {
   const updated = new Date(session.updatedAt);
   const valid = !Number.isNaN(updated.getTime());
   const time = valid ? relativeTime(updated.getTime()) : '';
@@ -63,7 +74,10 @@ function SessionRow({ session, active, select }: { session: SessionSummary; acti
       )}
       <span className="min-w-0 flex-1 truncate leading-5">{title}</span>
       {time && (
-        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground" title={fullTime.format(updated)}>
+        <span
+          className="shrink-0 text-[11px] tabular-nums text-muted-foreground group-hover:hidden group-focus-within:hidden"
+          title={fullTime.format(updated)}
+        >
           {time}
         </span>
       )}
@@ -71,14 +85,30 @@ function SessionRow({ session, active, select }: { session: SessionSummary; acti
   );
   const className =
     'flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md border-l-2 border-transparent px-2 py-1 text-left text-[13px] text-muted-foreground transition-colors aria-[current]:border-accent aria-[current]:bg-muted aria-[current]:text-foreground';
+  // 管理按钮不能嵌在会话按钮里（HTML 不允许按钮套按钮），所以两者是同一行里的兄弟节点。
+  const manageButton = manage && (
+    <button
+      type="button"
+      aria-label={`管理会话：${title}`}
+      title="管理会话"
+      className="absolute top-1/2 right-1 hidden -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground group-hover:block group-focus-within:block"
+      onClick={(event) => {
+        event.stopPropagation();
+        manage();
+      }}
+    >
+      <MoreHorizontal aria-hidden className="size-3.5" />
+    </button>
+  );
   if (!select)
     return (
       <li className={`${className} cursor-default`} title={label}>
         {content}
+        {manageButton}
       </li>
     );
   return (
-    <li>
+    <li className="group relative">
       <button
         type="button"
         aria-current={active ? 'true' : undefined}
@@ -89,6 +119,7 @@ function SessionRow({ session, active, select }: { session: SessionSummary; acti
       >
         {content}
       </button>
+      {manageButton}
     </li>
   );
 }
@@ -98,11 +129,13 @@ function SessionGroup({
   sessions,
   activeKey,
   select,
+  manage,
 }: {
   agent: AgentKind;
   sessions: SessionSummary[];
   activeKey: string;
   select?: (session: SessionSummary) => void;
+  manage?: (session: SessionSummary) => void;
 }) {
   return (
     <section aria-label={`${AGENT_LABELS[agent]} 会话`} className="space-y-0.5">
@@ -118,6 +151,7 @@ function SessionGroup({
             session={session}
             active={activeKey === sessionActionKey(session.projectId ?? '', session)}
             select={select ? () => select(session) : undefined}
+            manage={manage ? () => manage(session) : undefined}
           />
         ))}
       </ul>
@@ -134,6 +168,7 @@ function ProjectItem({
   activeKey,
   toggle,
   selectSession,
+  manageSession,
 }: {
   project: Workspace;
   sessions: SessionSummary[];
@@ -143,6 +178,7 @@ function ProjectItem({
   activeKey: string;
   toggle(): void;
   selectSession?: (session: SessionSummary) => void;
+  manageSession?: (session: SessionSummary) => void;
 }) {
   const groups = sessionGroups(sessions);
   return (
@@ -177,6 +213,7 @@ function ProjectItem({
                 sessions={group.sessions}
                 activeKey={activeKey}
                 select={selectSession}
+                manage={manageSession}
               />
             ))
           )}
@@ -291,6 +328,8 @@ export function Sidebar({
   const defaultExpanded = selectedProject ?? projects[0]?.id;
   const isExpanded = (projectId: string) => toggled[projectId] ?? projectId === defaultExpanded;
   const [showOtherSessions, setShowOtherSessions] = useState(false);
+  // 会话管理（重命名/置顶/分叉/删除）复用既有的动作对话框，不另写一套。
+  const [managing, setManaging] = useState<SessionSummary | undefined>(undefined);
   const activeKey = useMemo(
     () =>
       chatSessionId && chatProjectId
@@ -366,6 +405,7 @@ export function Sidebar({
                 activeKey={activeKey}
                 toggle={() => toggle(project.id)}
                 selectSession={onSelectSession ? (session) => onSelectSession(project.id, session) : undefined}
+                manageSession={setManaging}
               />
             ))}
           </ul>
@@ -386,6 +426,16 @@ export function Sidebar({
           显示其他目录的会话
         </label>
       </footer>
+      {managing && (
+        <SessionActionsDialog
+          workspaceId={managing.projectId ?? ''}
+          session={managing}
+          archived={false}
+          action="rename"
+          onClose={() => setManaging(undefined)}
+          onCompleted={() => setManaging(undefined)}
+        />
+      )}
     </nav>
   );
 }
