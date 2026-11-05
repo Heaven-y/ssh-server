@@ -36,7 +36,7 @@ export function SessionForkDialog({ workspaceId, session, pointId, onClose }: Pr
     });
   };
   return (
-    <DetailDialog title="分叉会话" busy={busy} onClose={onClose}>
+    <DetailDialog title="创建分支" busy={busy} onClose={onClose}>
       <div className="space-y-4">
         <p className="text-sm font-medium wrap-anywhere">
           {session.title || '无标题会话'} · {AGENT_LABELS[session.agent]}
@@ -44,27 +44,21 @@ export function SessionForkDialog({ workspaceId, session, pointId, onClose }: Pr
         <p className="text-sm leading-6">
           {pointId ? '保留截至所选位置的对话历史，创建独立会话。' : '从会话末尾创建独立会话。'}
         </p>
-        <p className="text-xs leading-6 text-muted-foreground">
-          源会话保持不变；分叉后的对话继续使用源会话所属项目目录。
-        </p>
-        {pointId && <p className="text-xs break-all text-muted-foreground">原生分叉点：{pointId}</p>}
+        <p className="text-xs leading-6 text-muted-foreground">源会话保持不变，使用同一项目目录。</p>
         {running && (
           <p role="status" className="text-sm text-warning">
-            源会话正在运行，结束后才能分叉。
+            请先结束当前回合。
           </p>
         )}
         {busy && (
           <p role="status" className="text-sm text-muted-foreground">
-            正在创建原生分叉，请等待结果…
+            正在创建分支…
           </p>
         )}
         {operation?.error && (
           <div className="space-y-2">
             <p role="alert" className="text-sm text-destructive-foreground">
               {operation.error}
-            </p>
-            <p className="text-xs leading-6 text-muted-foreground">
-              请求未确认时分叉可能已创建；重试前请重新读取原生列表核对。
             </p>
             <button
               type="button"
@@ -82,7 +76,7 @@ export function SessionForkDialog({ workspaceId, session, pointId, onClose }: Pr
             取消
           </button>
           <button type="button" className={buttonClass('primary')} disabled={busy || running} onClick={submit}>
-            确认分叉
+            创建分支
           </button>
         </div>
       </div>

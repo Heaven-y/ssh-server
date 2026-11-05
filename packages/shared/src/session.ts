@@ -19,6 +19,23 @@ export type AgentProbe = z.infer<typeof AgentProbeSchema>;
 /** 会话身份 = CLI + 该 CLI 自己的原生会话 id，不能跨 CLI 转换。 */
 export type SessionRef = { agent: AgentKind; sessionId: string };
 
+/** 会话动作由服务端按实际接入能力提供；工作台归档不修改 CLI 历史。 */
+export const SessionCapabilitiesSchema = z.object({
+  rename: z.boolean(),
+  fork: z.literal('native').nullable(),
+  delete: z.literal('native').nullable(),
+  archive: z.enum(['native', 'workbench']).nullable(),
+});
+export type SessionCapabilities = z.infer<typeof SessionCapabilitiesSchema>;
+export function nativeSessionCapabilities(agent: AgentKind): SessionCapabilities {
+  return {
+    rename: agent !== 'antigravity',
+    fork: agent === 'antigravity' ? null : 'native',
+    delete: agent === 'antigravity' ? null : 'native',
+    archive: agent === 'codex' ? 'native' : null,
+  };
+}
+
 /** 项目会话列表的一行；projectId 为 null 表示不属于任何已配置项目。 */
 export const SessionSummarySchema = z.object({
   agent: AgentKindSchema,
@@ -29,6 +46,7 @@ export const SessionSummarySchema = z.object({
   running: z.boolean(),
   /** 原生元数据中可确定的本机绝对目录，供用户显式添加项目；未知或多目录不填写。 */
   directory: z.string().min(1).optional(),
+  capabilities: SessionCapabilitiesSchema.optional(),
 });
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
 

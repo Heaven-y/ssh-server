@@ -39,10 +39,7 @@ export function SessionPane({
       <main className="flex min-w-0 flex-1 items-center justify-center px-6">
         <div className="flex max-w-sm flex-col items-center gap-3 text-center">
           <FolderPlus aria-hidden className="size-8 text-muted-foreground" />
-          <h2 className="text-base font-medium">先在左栏添加项目目录</h2>
-          <p className="text-xs leading-5 text-muted-foreground">
-            项目就是一条本机绝对路径；会话由各 CLI 自己的存储提供，不在这里另存。
-          </p>
+          <h2 className="text-base font-medium">选择一个工作区，开始对话</h2>
           {onAddProject && (
             <button type="button" className={buttonClass('outline')} onClick={onAddProject}>
               添加项目目录

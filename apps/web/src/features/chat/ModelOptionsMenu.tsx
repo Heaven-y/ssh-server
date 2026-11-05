@@ -1,7 +1,10 @@
 import { Menu, MenuButton, MenuGroup, MenuItem, MenuProvider, MenuSeparator, useMenuStore } from '@ariakit/react';
 import { Check, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import type { AgentKind, AgentModel } from '@agentdeck/shared';
+import { useQueryClient } from '@tanstack/react-query';
+import type { AgentKind, AgentModel, Workspace } from '@agentdeck/shared';
+import { ApiError, queryKeys } from '../../lib/api';
+import { ProjectManageDialog } from '../../app/ProjectManageDialog';
 import { buttonClass } from '../../ui/styles';
 import { agentUnavailable, agentVersion, useEnvironment } from '../settings/use-environment';
 import { sessionActionKey, useChat } from './chat-store';
@@ -48,27 +51,14 @@ function CatalogStatus({ catalog }: { catalog: ReturnType<typeof useAgentCapabil
   if (catalog.isError)
     return (
       <p role="alert" className="px-3 py-2 text-xs leading-5 text-warning">
-        模型列表加载失败，请刷新重试。
+        {catalog.error instanceof ApiError ? catalog.error.message : '暂时无法读取模型。'}
       </p>
     );
   const data = catalog.data;
   if (!data || data.discovered === false) return null;
-  if (data.warnings.length)
-    return (
-      <>
-        {data.warnings.map((warning, index) => (
-          <p key={index} className="px-3 py-1 text-xs leading-5 text-warning">
-            {warning}
-          </p>
-        ))}
-      </>
-    );
-  if (data.models.length) return null;
-  return (
-    <p role="status" className="px-3 py-2 text-xs text-muted-foreground">
-      CLI 未提供可选模型，可沿用原生配置或手动填写。
-    </p>
-  );
+  const warning = data.modelWarning ?? data.warnings[0];
+  if (warning) return <p className="px-3 py-1 text-xs leading-5 text-warning">{warning}</p>;
+  return null;
 }
 function RefreshModels({ catalog, disabled }: { catalog: ReturnType<typeof useAgentCapabilities>; disabled: boolean }) {
   return (
@@ -77,10 +67,10 @@ function RefreshModels({ catalog, disabled }: { catalog: ReturnType<typeof useAg
       disabled={disabled || catalog.isFetching}
       hideOnClick={false}
       onClick={catalog.refresh}
-      title="启动 CLI 检查账号、模型与命令清单"
+      title="重新读取模型"
     >
       <RefreshCw aria-hidden className="size-3.5" />
-      刷新模型列表
+      {catalog.isError || catalog.data?.modelWarning ? '重试' : '刷新模型列表'}
     </MenuItem>
   );
 }
@@ -149,12 +139,21 @@ function ModelActions({ disabled, model, onManual }: { disabled: boolean; model:
     </MenuProvider>
   );
 }
-function ModelChoices({ disabled, catalog, model, onManual }: CatalogProps & { model: string; onManual(): void }) {
+function ModelChoices({
+  disabled,
+  catalog,
+  model,
+  onManual,
+  onRepair,
+}: CatalogProps & { model: string; onManual(): void; onRepair(): void }) {
   const setModel = useChat((state) => state.setModel);
   return (
     <>
       <MenuGroup aria-label="可选模型">
         <p className="px-3 py-2 text-xs text-muted-foreground">模型</p>
+        <Choice checked={!model} disabled={disabled} choose={() => setModel('')}>
+          默认模型
+        </Choice>
         {catalog.data?.models.map((candidate) => (
           <Choice
             key={candidate.id}
@@ -171,7 +170,13 @@ function ModelChoices({ disabled, catalog, model, onManual }: CatalogProps & { m
       </MenuGroup>
       <CatalogStatus catalog={catalog} />
       <MenuSeparator className="my-1 border-t border-border" />
-      <RefreshModels catalog={catalog} disabled={disabled} />
+      {catalog.error instanceof ApiError && catalog.error.code === 'workspace_directory_unavailable' ? (
+        <MenuItem className={itemClass} disabled={disabled} onClick={onRepair}>
+          更换工作区目录
+        </MenuItem>
+      ) : (
+        <RefreshModels catalog={catalog} disabled={disabled} />
+      )}
       <ModelActions disabled={disabled} model={model} onManual={onManual} />
     </>
   );
@@ -200,6 +205,8 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
   const [modelOpen, setModelOpen] = useState(false);
   const [effortOpen, setEffortOpen] = useState(false);
   const [manual, setManual] = useState(false);
+  const [repairProject, setRepairProject] = useState<Workspace>();
+  const client = useQueryClient();
   const modelMenu = useMenuStore({ open: modelOpen, setOpen: setModelOpen, placement: 'top-end' });
   const effortMenu = useMenuStore({ open: effortOpen, setOpen: setEffortOpen, placement: 'top-end' });
   const agent = useChat((state) => state.agent);
@@ -241,7 +248,18 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
       </MenuButton>
       <Menu store={modelMenu} portal unmountOnHide gutter={8} aria-label="模型选项菜单" className={menuClass}>
         <AgentChoices disabled={disabled} />
-        <ModelChoices disabled={disabled} catalog={catalog} model={model} onManual={() => setManual(true)} />
+        <ModelChoices
+          disabled={disabled}
+          catalog={catalog}
+          model={model}
+          onManual={() => setManual(true)}
+          onRepair={() => {
+            const project = client
+              .getQueryData<Workspace[]>(queryKeys.workspaces)
+              ?.find((entry) => entry.id === useChat.getState().workspaceId);
+            if (project) setRepairProject(project);
+          }}
+        />
         {presentation.actual && (
           <p className="px-3 pt-2 pb-1 text-xs leading-5 text-muted-foreground">最近实际运行：{presentation.actual}</p>
         )}
@@ -259,6 +277,9 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
           }}
           onClose={() => setManual(false)}
         />
+      )}
+      {repairProject && (
+        <ProjectManageDialog project={repairProject} action="directory" onClose={() => setRepairProject(undefined)} />
       )}
     </>
   );

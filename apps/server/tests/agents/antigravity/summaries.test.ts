@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readSummaries } from '../../../src/agents/antigravity/summaries';
 import { createAntigravitySessions } from '../../../src/agents/antigravity/sessions';
 
@@ -304,5 +304,73 @@ describe('Antigravity 会话提供方', () => {
       status: 404,
       code: 'session_missing',
     });
+  });
+});
+
+describe('Antigravity 原生管理接线', () => {
+  function setup() {
+    const dir = path.join(root, 'project');
+    const row = {
+      conversationId: 'source-session',
+      title: '原会话',
+      workspaceUris: pathToFileURL(dir).href,
+      lastModified: '2026-11-05 00:00:00',
+      preview: '',
+    };
+    const created = { ...row, conversationId: 'forked-session', title: '新分支' };
+    const rows = [row, created];
+    const management = {
+      rename: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+      fork: vi.fn(async () => ({ sessionId: created.conversationId })),
+    };
+    return {
+      dir,
+      row,
+      created,
+      management,
+      provider: createAntigravitySessions({ readSummaries: () => rows, management }),
+    };
+  }
+  it('按已接入能力显示动作，核对归属后调用原生管理，分支结果保留原生身份', async () => {
+    const { dir, provider, management } = setup();
+    expect(provider.capabilities).toEqual({ rename: true, fork: 'native', delete: 'native' });
+    await provider.mutate('source-session', dir, { action: 'rename', title: '新标题' });
+    await provider.mutate('source-session', dir, { action: 'delete', confirmed: true });
+    expect(management.rename).toHaveBeenCalledExactlyOnceWith('source-session', dir, '新标题');
+    expect(management.delete).toHaveBeenCalledExactlyOnceWith('source-session', dir);
+    expect(await provider.fork('source-session', dir, {})).toMatchObject({
+      session: { sessionId: 'forked-session', summary: '新分支' },
+      cwd: dir,
+    });
+    expect(management.fork).toHaveBeenCalledExactlyOnceWith('source-session', dir, {});
+  });
+  it('不存在或跨项目的源会话不能触发原生修改', async () => {
+    const { dir, provider, management } = setup();
+    await expect(provider.mutate('missing', dir, { action: 'delete', confirmed: true })).rejects.toMatchObject({
+      code: 'session_missing',
+    });
+    await expect(
+      provider.mutate('source-session', path.join(root, 'other'), { action: 'delete', confirmed: true }),
+    ).rejects.toMatchObject({ code: 'session_missing' });
+    await expect(provider.fork('source-session', path.join(root, 'other'), {})).rejects.toMatchObject({
+      code: 'session_missing',
+    });
+    expect(management.delete).not.toHaveBeenCalled();
+    expect(management.fork).not.toHaveBeenCalled();
+  });
+  it.each(['source-session', '../invalid', 'missing-new-session'])(
+    '无效分支身份 %s 不向前端报告成功',
+    async (sessionId) => {
+      const { dir, provider, management } = setup();
+      management.fork.mockResolvedValue({ sessionId });
+      await expect(provider.fork('source-session', dir, {})).rejects.toMatchObject({ code: 'session_runtime_failed' });
+      expect(management.delete).not.toHaveBeenCalled();
+    },
+  );
+  it('分支返回另一个目录时拒绝，不能凭新 ID 自动选错项目', async () => {
+    const { dir, provider, created } = setup();
+    created.workspaceUris = pathToFileURL(path.join(root, 'other')).href;
+    await expect(provider.fork('source-session', dir, {})).rejects.toMatchObject({ code: 'session_runtime_failed' });
   });
 });

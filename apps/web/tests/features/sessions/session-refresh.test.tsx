@@ -26,6 +26,7 @@ it('首次只建立版本基线；版本变化才刷新会话列表，不刷新�
   const { client, invalidate } = setup();
   await waitFor(() => expect(client.getQueryData(['session-changes'])).toEqual({ revision: 0, watching: true }));
   expect(invalidate).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: '刷新会话列表' })).toBeNull();
   await act(() => client.refetchQueries({ queryKey: ['session-changes'] }));
   expect(invalidate).not.toHaveBeenCalled();
   changes.mockResolvedValue({ revision: 1, watching: true });

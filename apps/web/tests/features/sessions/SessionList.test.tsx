@@ -29,7 +29,10 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false, retryOnMount: false, staleTime: Infinity } } });
   client.setQueryData(queryKeys.sessions('workspace', 'claude'), [session]);
   client.setQueryData(queryKeys.sessions('workspace', 'codex'), []);
+  client.setQueryData(queryKeys.sessions('workspace', 'antigravity'), []);
   client.setQueryData(queryKeys.sessions('workspace', 'codex', true), [archived]);
+  client.setQueryData(queryKeys.sessions('workspace', 'claude', true), []);
+  client.setQueryData(queryKeys.sessions('workspace', 'antigravity', true), []);
   useChat.setState(useChat.getInitialState(), true);
   useChat.getState().selectWorkspace('workspace');
   HTMLDialogElement.prototype.showModal = function () {
@@ -116,7 +119,7 @@ it('重命名和删除分别进入对应表单，删除仍需显式确认', asyn
   const confirm = within(remove).getByRole<HTMLButtonElement>('button', { name: '确认删除会话' });
   expect(confirm.disabled).toBe(true);
   expect(action).toHaveBeenCalledTimes(1);
-  fireEvent.click(within(remove).getByRole('checkbox', { name: /我确认删除/ }));
+  fireEvent.click(within(remove).getByRole('checkbox', { name: /确认删除/ }));
   fireEvent.click(confirm);
   await waitFor(() =>
     expect(action).toHaveBeenCalledWith('workspace', 'native-id', 'claude', { action: 'delete', confirmed: true }),
@@ -146,13 +149,13 @@ it('运行中会话的更多菜单禁用，不发起管理请求', () => {
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 
-it('归档列表成功为空时显示中性空状态，仍只读取Codex原生归档', async () => {
+it('归档列表成功为空时显示中性空状态，并复用其他来源缓存', async () => {
   client.removeQueries({ queryKey: queryKeys.sessions('workspace', 'codex', true), exact: true });
   const list = vi.spyOn(api, 'listSessions').mockResolvedValue([]);
   mount();
   fireEvent.click(screen.getByRole('button', { name: '已归档' }));
   expect(await screen.findByText('暂无归档会话')).toBeTruthy();
-  expect(list).toHaveBeenCalledExactlyOnceWith('workspace', 'codex', true);
+  expect(list).toHaveBeenCalledExactlyOnceWith('workspace', 'codex', true, expect.any(AbortSignal));
   expect(screen.queryByRole('alert')).toBeNull();
 });
 
@@ -189,9 +192,9 @@ it('复制可打开的网页深度链接，末尾分叉先呈现原生操作说�
   expect(copied.origin).toBe(window.location.origin);
   expect(copied.hash).toBe('#session?workspace=workspace&agent=claude&id=native-id');
   expect(await screen.findByText('会话链接已复制')).toBeTruthy();
-  await openAction('分叉会话');
-  const dialog = screen.getByRole('dialog', { name: '分叉会话' });
+  await openAction('创建分支');
+  const dialog = screen.getByRole('dialog', { name: '创建分支' });
   expect(dialog.textContent).toContain('源会话保持不变');
-  expect(within(dialog).getByRole('button', { name: '确认分叉' })).toBeTruthy();
+  expect(within(dialog).getByRole('button', { name: '创建分支' })).toBeTruthy();
   vi.unstubAllGlobals();
 });

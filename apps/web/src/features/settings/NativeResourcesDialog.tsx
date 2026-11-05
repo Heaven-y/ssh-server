@@ -73,9 +73,6 @@ export default function NativeResourcesDialog({
         <div className="min-w-0 flex-1 space-y-1 text-sm text-muted-foreground">
           <p>{project ? `当前项目：${project.name}` : '尚未选择项目，显示当前可用的原生入口。'}</p>
           {project && <p className="break-all font-mono text-xs">{project.dir}</p>}
-          <p className="leading-6">
-            各 CLI 使用自己的配置与作用域。目录只显示文件信息；显示并编辑后可见完整内容，包括文件中的密钥。
-          </p>
         </div>
         <button type="button" className={buttonClass('outline')} onClick={refresh} disabled={!catalog && !error}>
           <RefreshCw aria-hidden className="size-4" />

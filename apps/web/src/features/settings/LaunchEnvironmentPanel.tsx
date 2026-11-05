@@ -144,7 +144,7 @@ function LaunchFooter({ state }: { state: LaunchState }) {
   const canSave = !!state.document && state.dirty && !invalidLaunchDraft(state.document, state.draft);
   return (
     <>
-      <p className="text-xs text-muted-foreground">{state.dirty ? '有未保存修改' : '只显示来源状态，已有值不回传'}</p>
+      <p className="text-xs text-muted-foreground">{state.dirty ? '有未保存修改' : '对工作台新会话生效'}</p>
       <button
         type="button"
         className={buttonClass('primary')}
@@ -163,9 +163,6 @@ function LaunchContent({ state }: { state: LaunchState }) {
   const loading = !state.document && !state.error;
   return (
     <>
-      <p className="text-sm leading-6 text-muted-foreground">
-        保存对新启动生效。已有会话保留启动时的环境；可在空闲时重新启动 CLI，让下一次发送使用新配置。
-      </p>
       <div className="flex flex-wrap gap-2">
         <button type="button" className={buttonClass('outline')} disabled={busy || loading} onClick={state.reread}>
           <RefreshCw aria-hidden className="size-4" />
@@ -237,7 +234,10 @@ function LaunchVariables({
   );
   return (
     <div className="space-y-3">
-      <p className="text-sm leading-6 text-muted-foreground">{document.note}</p>
+      <details className="text-xs leading-6 text-muted-foreground">
+        <summary className="cursor-pointer">配置说明</summary>
+        <p>{document.note}</p>
+      </details>
       {!document.encryptionAvailable && (
         <p role="status" className="text-sm text-muted-foreground">
           本机加密不可用，无法保存新的密钥。仍可停用变量或恢复继承。

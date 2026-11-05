@@ -1,16 +1,41 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Archive, ArrowLeft, RefreshCw } from 'lucide-react';
-import type { SessionSummary, Workspace } from '@agentdeck/shared';
+import { nativeSessionCapabilities, type SessionSummary, type Workspace } from '@agentdeck/shared';
 import { api, queryKeys } from '../../lib/api';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { AgentIcon } from '../../ui/BrandIcons';
 import { SessionActionsDialog } from './SessionActionsDialog';
 import { useSessionBusy } from './use-session-busy';
 import type { ProjectDraft } from '../../app/project-management';
+import { AGENT_LABELS } from '../chat/AgentControls';
 
 type Selection = { session: SessionSummary; action: 'unarchive' | 'delete' };
 type Props = { projects: Workspace[]; close(): void; addProject(draft: ProjectDraft): void };
+
+function ArchivedActions({
+  session,
+  disabled,
+  choose,
+}: {
+  session: SessionSummary;
+  disabled: boolean;
+  choose(action: Selection['action']): void;
+}) {
+  const actions = session.capabilities ?? nativeSessionCapabilities(session.agent);
+  return (
+    <div className="flex gap-1">
+      <button type="button" className={buttonClass('outline')} disabled={disabled} onClick={() => choose('unarchive')}>
+        恢复
+      </button>
+      {actions.delete && (
+        <button type="button" className={buttonClass('ghost')} disabled={disabled} onClick={() => choose('delete')}>
+          删除
+        </button>
+      )}
+    </div>
+  );
+}
 function latestSelection(rows: SessionSummary[] | undefined, selected?: Selection) {
   if (!selected) return;
   return rows?.find(
@@ -38,29 +63,12 @@ function ArchivedRow({
           {session.title || '未命名会话'}
         </p>
         <p className="mt-1 truncate text-xs text-muted-foreground" title={session.directory}>
-          {project?.name ?? session.directory ?? '其他目录'} · Codex ·{' '}
+          {project?.name ?? session.directory ?? '其他目录'} · {AGENT_LABELS[session.agent]} ·{' '}
           {new Date(session.updatedAt).toLocaleString('zh-CN')}
         </p>
       </div>
       {project ? (
-        <div className="flex gap-1">
-          <button
-            type="button"
-            className={buttonClass('outline')}
-            disabled={busy.running || busy.pending}
-            onClick={() => choose('unarchive')}
-          >
-            恢复
-          </button>
-          <button
-            type="button"
-            className={buttonClass('ghost')}
-            disabled={busy.running || busy.pending}
-            onClick={() => choose('delete')}
-          >
-            删除
-          </button>
-        </div>
+        <ArchivedActions session={session} disabled={busy.running || busy.pending} choose={choose} />
       ) : session.directory ? (
         <button type="button" className={buttonClass('outline')} onClick={() => addProject({ dir: session.directory })}>
           加为项目后管理
@@ -72,7 +80,7 @@ function ArchivedRow({
   );
 }
 
-/** 一处查看全部原生归档；仅查询实际支持归档的来源，写操作仍复用项目身份校验。 */
+/** 一处查看原生与工作台归档，写操作仍复用来源项目身份校验。 */
 export default function ArchivedSessionsPage({ projects, close, addProject }: Props) {
   const client = useQueryClient();
   const [search, setSearch] = useState('');
@@ -81,21 +89,26 @@ export default function ArchivedSessionsPage({ projects, close, addProject }: Pr
   useLayoutEffect(() => {
     back.current?.focus();
   }, []);
-  const query = useQuery({
-    queryKey: queryKeys.archivedSessions('codex'),
-    queryFn: ({ signal }) => api.archivedSessions('codex', signal),
-    retry: false,
+  const queries = useQueries({
+    queries: (['codex', 'claude', 'antigravity'] as const).map((agent) => ({
+      queryKey: queryKeys.archivedSessions(agent),
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.archivedSessions(agent, signal),
+      retry: false,
+    })),
   });
+  const rows = queries.flatMap((query) => query.data ?? []);
+  const pending = queries.some((query) => query.isPending);
+  const errors = queries.filter((query) => query.isError).map((query) => query.error.message);
   const projectsById = new Map(projects.map((project) => [project.id, project]));
   const phrase = search.trim().toLocaleLowerCase();
-  const sessions = (query.data ?? [])
+  const sessions = rows
     .filter((session) =>
-      `${session.title} ${session.directory ?? ''} ${projectsById.get(session.projectId ?? '')?.name ?? ''} codex`
+      `${session.title} ${session.directory ?? ''} ${projectsById.get(session.projectId ?? '')?.name ?? ''} ${AGENT_LABELS[session.agent]}`
         .toLocaleLowerCase()
         .includes(phrase),
     )
     .toSorted((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
-  const selectedSession = latestSelection(query.data, selected);
+  const selectedSession = latestSelection(rows, selected);
   return (
     <section aria-label="已归档会话页面" className="flex h-full min-h-0 flex-col">
       <header className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border px-4">
@@ -119,24 +132,24 @@ export default function ArchivedSessionsPage({ projects, close, addProject }: Pr
             type="button"
             aria-label="刷新归档会话"
             title="刷新归档会话"
-            disabled={query.isFetching}
+            disabled={queries.some((query) => query.isFetching)}
             className={buttonClass('ghost')}
-            onClick={() => void query.refetch()}
+            onClick={() => queries.forEach((query) => void query.refetch())}
           >
             <RefreshCw aria-hidden className="size-4" />
           </button>
         </div>
-        {query.isPending && (
+        {pending && (
           <p role="status" className="text-sm text-muted-foreground">
             正在读取归档会话…
           </p>
         )}
-        {query.isError && (
-          <p role="alert" className="text-sm text-destructive-foreground">
-            {query.error.message}，可点击刷新重试。
+        {errors.map((error, index) => (
+          <p key={index} role="alert" className="text-sm text-destructive-foreground">
+            {error}
           </p>
-        )}
-        {query.isSuccess && !sessions.length && (
+        ))}
+        {!pending && !errors.length && !sessions.length && (
           <p className="py-12 text-center text-sm text-muted-foreground">
             {phrase ? '没有匹配的归档会话' : '暂无已归档会话'}
           </p>

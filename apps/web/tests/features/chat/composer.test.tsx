@@ -118,7 +118,7 @@ it('模型已有缓存时直接显示；技能和斜杠只读缓存，点击刷�
   fireEvent.click(screen.getByRole('button', { name: '技能与命令' }));
   const dialog = screen.getByRole('dialog', { name: '技能与命令' });
   expect(refresh).not.toHaveBeenCalled();
-  expect(within(dialog).getByText(/刷新能力会启动 CLI 检查账号/)).toBeTruthy();
+  expect(within(dialog).queryByText(/刷新能力会启动 CLI 检查账号/)).toBeNull();
   fireEvent.click(within(dialog).getByRole('button', { name: '刷新能力' }));
   await waitFor(() => expect(refresh).toHaveBeenCalledExactlyOnceWith(workspace.id, 'claude', undefined));
   await waitFor(() =>
@@ -175,7 +175,7 @@ it('自动发现失败显示可重试状态，重开菜单不循环检查账号'
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
   expect(refresh).toHaveBeenCalledTimes(1);
   refresh.mockResolvedValue({ ...catalog, agent: 'claude', discovered: true });
-  fireEvent.click(await screen.findByRole('menuitem', { name: '刷新模型列表' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: '重试' }));
   await screen.findByRole('menuitemradio', { name: /候选模型/ });
   expect(refresh).toHaveBeenCalledTimes(2);
 });
@@ -498,10 +498,13 @@ it('常规模型菜单只列真实候选，清除覆盖放次级操作且发送�
   expect(trigger.textContent).toContain('默认模型');
   fireEvent.click(trigger);
   const candidate = await screen.findByRole('menuitemradio', { name: /候选模型/ });
-  expect(screen.queryByRole('menuitemradio', { name: /默认模型|沿用会话模型/ })).toBeNull();
+  expect(screen.getByRole('menuitemradio', { name: '默认模型' })).toBeTruthy();
   expect(screen.queryByRole('menuitem', { name: '手动填写模型' })).toBeNull();
   expect(screen.queryByRole('menuitem', { name: '清除模型覆盖' })).toBeNull();
-  expect(within(screen.getByRole('group', { name: '可选模型' })).getAllByRole('menuitemradio')).toEqual([candidate]);
+  expect(within(screen.getByRole('group', { name: '可选模型' })).getAllByRole('menuitemradio')).toEqual([
+    screen.getByRole('menuitemradio', { name: '默认模型' }),
+    candidate,
+  ]);
   fireEvent.click(candidate);
   expect(useChat.getState().modelOverrides.claude).toBe('native-model');
   expect(trigger.textContent).toContain('native-model');
@@ -548,7 +551,7 @@ it('读取历史时明确显示读取状态，不将候选模型当作已取得�
   expect(trigger.textContent).not.toContain('native-model');
 });
 
-it('原生目录读取和空结果均有状态，不伪造默认模型候选', async () => {
+it('原生目录读取显示进度，空结果保留默认模型而不堆叠说明', async () => {
   client.removeQueries({ queryKey: queryKeys.agentCapabilities(workspace.id, 'claude') });
   let resolve!: (value: AgentCapabilities) => void;
   vi.spyOn(api, 'agentCapabilities').mockImplementation(
@@ -561,9 +564,9 @@ it('原生目录读取和空结果均有状态，不伪造默认模型候选', a
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
   await screen.findByText('正在加载模型…');
   await act(async () => resolve({ agent: 'claude', entries: [], models: [], warnings: [] }));
-  expect(await screen.findByText('CLI 未提供可选模型，可沿用原生配置或手动填写。')).toBeTruthy();
+  expect(screen.queryByText('CLI 未提供可选模型，可沿用原生配置或手动填写。')).toBeNull();
   expect(screen.getByRole('button', { name: '模型选项' }).textContent).toContain('默认模型');
-  expect(screen.queryByRole('menuitemradio', { name: /默认模型/ })).toBeNull();
+  expect(screen.getByRole('menuitemradio', { name: '默认模型' }).getAttribute('aria-checked')).toBe('true');
   expect(useChat.getState().modelOverrides.claude).toBe('');
 });
 
@@ -578,6 +581,29 @@ it('手填模型不把空白或默认占位符发送为型号，恢复原生必�
   fireEvent.click(apply);
   expect(useChat.getState().modelOverrides.claude).toBe('');
   expect(sent).toHaveLength(0);
+});
+
+it('模型菜单不显示技能错误；失效目录保留真实原因并能打开目录选择', async () => {
+  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'), {
+    ...catalog,
+    agent: 'claude',
+    modelWarning: '',
+    commandWarnings: ['技能读取失败'],
+    warnings: ['技能读取失败'],
+  });
+  client.setQueryData(queryKeys.workspaces, [workspace]);
+  vi.spyOn(api, 'refreshAgentCapabilities').mockRejectedValue(
+    new ApiError(409, '工作区目录不可用，请重新选择文件夹。', { code: 'workspace_directory_unavailable' }),
+  );
+  showComposer();
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
+  await screen.findByRole('menuitemradio', { name: /候选模型/ });
+  expect(within(screen.getByRole('menu', { name: '模型选项菜单' })).queryByText('技能读取失败')).toBeNull();
+  fireEvent.click(screen.getByRole('menuitem', { name: '刷新模型列表' }));
+  await screen.findByText('工作区目录不可用，请重新选择文件夹。');
+  expect(screen.queryByText('模型列表加载失败，请刷新重试。')).toBeNull();
+  fireEvent.click(screen.getByRole('menuitem', { name: '更换工作区目录' }));
+  expect(await screen.findByRole('dialog', { name: '更换项目目录' })).toBeTruthy();
 });
 
 it.each(['claude', 'codex'] as const)('输入区%s自动强度省略字段，并使用各自目录报告的档位', async (agent) => {

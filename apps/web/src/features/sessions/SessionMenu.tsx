@@ -1,7 +1,12 @@
 import { Menu, MenuButton, MenuItem, useMenuStore } from '@ariakit/react';
 import { Archive, ArchiveRestore, GitFork, Link, MoreHorizontal, Pencil, Pin, Trash2 } from 'lucide-react';
 import { useRef } from 'react';
-import type { SessionActionInput, SessionSummary } from '@agentdeck/shared';
+import {
+  nativeSessionCapabilities,
+  type SessionActionInput,
+  type SessionSummary,
+  type SessionCapabilities,
+} from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
 import { AGENT_LABELS } from '../chat/AgentControls';
 
@@ -11,11 +16,27 @@ const actions = {
   rename: { label: '重命名', icon: Pencil },
   pin: { label: '置顶', icon: Pin },
   copy: { label: '复制会话链接', icon: Link },
-  fork: { label: '分叉会话', icon: GitFork },
+  fork: { label: '创建分支', icon: GitFork },
   delete: { label: '删除', icon: Trash2 },
   archive: { label: '归档', icon: Archive },
   unarchive: { label: '恢复', icon: ArchiveRestore },
 };
+
+function visibleActions(
+  capabilities: SessionCapabilities,
+  archived: boolean,
+  localActions: boolean,
+): SessionMenuAction[] {
+  const visible: SessionMenuAction[] = [];
+  if (!archived) {
+    if (capabilities.rename) visible.push('rename');
+    if (localActions) visible.push('pin', 'copy');
+    if (capabilities.fork) visible.push('fork');
+  }
+  if (capabilities.archive) visible.push(archived ? 'unarchive' : 'archive');
+  if (capabilities.delete) visible.push('delete');
+  return visible;
+}
 
 /** 菜单仅选动作；危险操作在后续确认视图中执行。 */
 export function SessionMenu({
@@ -36,15 +57,9 @@ export function SessionMenu({
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useMenuStore({ placement: 'bottom-start' });
-  const visible: SessionMenuAction[] = [];
-  if (!archived) {
-    visible.push('rename');
-    if (localActions) visible.push('pin', 'copy');
-    visible.push('fork');
-  }
-  if (session.agent === 'codex') visible.push(archived ? 'unarchive' : 'archive');
-  visible.push('delete');
-  if (session.agent === 'antigravity') return null;
+  const capabilities = session.capabilities ?? nativeSessionCapabilities(session.agent);
+  const visible = visibleActions(capabilities, archived, localActions);
+  if (!visible.length) return null;
   return (
     <>
       <MenuButton
