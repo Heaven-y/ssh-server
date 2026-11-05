@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 
 const SIZES = {
-  sidebarWidth: [240, 200, 320],
+  sidebarWidth: [280, 264, 420],
   fileWidth: [420, 360, 960],
   resourceWidth: [320, 280, 640],
-  rightWidth: [420, 360, 720],
+  rightWidth: [420, 300, 720],
   wideToolsWidth: [760, 646, 1400],
   resourceShare: [43, 20, 80],
   resourceHeight: [40, 20, 80],
@@ -12,12 +12,17 @@ const SIZES = {
 type SizeKey = keyof typeof SIZES;
 export type UiWidthKey = Exclude<SizeKey, 'resourceShare' | 'resourceHeight'>;
 type SplitKey = 'resourceShare' | 'resourceHeight';
-type UiPreferences = { theme: 'dark' | 'light'; sidebarCollapsed: boolean } & Record<SizeKey, number>;
+/** dockCollapsed 仅保留旧兼容工具偏好；新会话右栏独立且每次启动关闭。 */
+type UiPreferences = { theme: 'dark' | 'light'; sidebarCollapsed: boolean; dockCollapsed: boolean | null } & Record<
+  SizeKey,
+  number
+>;
 const sizeKeys = Object.keys(SIZES) as SizeKey[];
-const KEY = 'ssh-server.ui.v1';
+const KEY = 'agentdeck.ui.v1';
 const DEFAULTS: UiPreferences = {
   theme: 'light',
   sidebarCollapsed: false,
+  dockCollapsed: null,
   ...(Object.fromEntries(sizeKeys.map((key) => [key, SIZES[key][0]])) as Record<SizeKey, number>),
 };
 const bounded = (value: unknown, min: number, max: number): value is number =>
@@ -29,7 +34,7 @@ function isPreferences(value: unknown): value is UiPreferences & { version: 1 } 
     fields.version === 1 &&
     (fields.theme === 'dark' || fields.theme === 'light') &&
     typeof fields.sidebarCollapsed === 'boolean' &&
-    bounded(fields.sidebarWidth, 200, 320) &&
+    bounded(fields.sidebarWidth, 200, 420) &&
     bounded(fields.fileWidth, 360, 960)
   );
 }
@@ -40,6 +45,7 @@ function read(): UiPreferences {
     return {
       theme: value.theme,
       sidebarCollapsed: value.sidebarCollapsed,
+      dockCollapsed: typeof value.dockCollapsed === 'boolean' ? value.dockCollapsed : null,
       ...(Object.fromEntries(
         sizeKeys.map((key) => {
           const [initial, min, max] = SIZES[key];
@@ -63,6 +69,7 @@ type State = UiPreferences & {
   toggleTheme(): void;
   setSidebarCollapsed(value: boolean): void;
   setSidebarAutoCollapsed(value: boolean): void;
+  setDockCollapsed(value: boolean): void;
   setWidth(panel: UiWidthKey, value: number): void;
   setSplit(panel: SplitKey, value: number): void;
   resetDockedSizes(): void;
@@ -73,6 +80,7 @@ export const useUiPreferences = create<State>((set, get) => {
     const next = {
       theme: current.theme,
       sidebarCollapsed: current.sidebarCollapsed,
+      dockCollapsed: current.dockCollapsed,
       ...(Object.fromEntries(sizeKeys.map((key) => [key, current[key]])) as Record<SizeKey, number>),
       ...patch,
     };
@@ -93,6 +101,9 @@ export const useUiPreferences = create<State>((set, get) => {
     },
     setSidebarAutoCollapsed: (value) => {
       if (value !== get().sidebarAutoCollapsed) set({ sidebarAutoCollapsed: value });
+    },
+    setDockCollapsed: (value) => {
+      if (value !== get().dockCollapsed) update({ dockCollapsed: value });
     },
     setWidth: setSize,
     setSplit: setSize,

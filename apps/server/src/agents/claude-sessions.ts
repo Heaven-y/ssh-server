@@ -7,15 +7,15 @@ import {
   renameSession,
   type SDKSessionInfo,
 } from '@anthropic-ai/claude-agent-sdk';
-import { NativeSessionIdSchema, type SessionForkInput } from '@ssh-server/shared';
+import { NativeSessionIdSchema, type SessionForkInput } from '@agentdeck/shared';
 import type { NativeSessionFork } from './types';
 import { SessionError, type SessionProvider } from '../chat/sessions';
 import { ClaudeEventMapper, claudeHistoryForkPoint } from './claude-mapper';
-import { sameSessionDirectory } from './session-scope';
+import { sameSessionDirectory, sessionDirectoryWithin } from './session-scope';
 
 export type ClaudeSessionsApi = {
   list(dir: string): Promise<SDKSessionInfo[]>;
-  info(id: string, dir: string): Promise<SDKSessionInfo | undefined>;
+  info(id: string, dir?: string): Promise<SDKSessionInfo | undefined>;
   messages(id: string, dir: string): Promise<unknown[]>;
   rename(id: string, title: string, dir: string): Promise<void>;
   delete(id: string, dir: string): Promise<void>;
@@ -23,8 +23,8 @@ export type ClaudeSessionsApi = {
 };
 
 const nativeApi: ClaudeSessionsApi = {
-  list: (dir) => listSessions({ dir, includeWorktrees: false }),
-  info: (id, dir) => getSessionInfo(id, { dir }),
+  list: () => listSessions({ includeWorktrees: false }),
+  info: (id, dir) => getSessionInfo(id, dir ? { dir } : undefined),
   messages: (id, dir) => getSessionMessages(id, { dir, includeSystemMessages: true }),
   rename: (id, title, dir) => renameSession(id, title, { dir }),
   delete: (id, dir) => deleteSession(id, { dir }),
@@ -77,12 +77,13 @@ export function createClaudeSessions(api: ClaudeSessionsApi = nativeApi): Sessio
     async list(dir, _signal, archived = false) {
       if (archived) throw new SessionError(400, 'unsupported_action', 'Claude Code 不支持归档会话');
       const records = await api.list(dir);
-      const scoped = await Promise.all(
-        records.map(async (record) => !record.cwd || (await sameSessionDirectory(record.cwd, dir))),
-      );
-      return records
-        .filter((_, index) => scoped[index])
-        .map(({ sessionId, summary, lastModified }) => ({ sessionId, summary, lastModified }));
+      return records.map(({ sessionId, summary, lastModified, cwd }) => ({
+        sessionId,
+        summary,
+        lastModified,
+        // 老会话可能没有 cwd；带出来让上层判为未归属，而不是拿当前项目目录兜底。
+        ...(cwd ? { cwd } : {}),
+      }));
     },
     async read(id, dir) {
       const record = await info(id, dir);
@@ -96,7 +97,14 @@ export function createClaudeSessions(api: ClaudeSessionsApi = nativeApi): Sessio
       };
     },
     async assertBelongs(id, dir) {
-      await info(id, dir);
+      const record = await api.info(id);
+      if (record?.sessionId === id && record.cwd && sessionDirectoryWithin(record.cwd, dir)) return record.cwd;
+      // 缺少 cwd 的老记录只能经 SDK 的指定目录读取核对，不把全局命中当作目录证明。
+      if (record && !record.cwd) {
+        await info(id, dir);
+        return dir;
+      }
+      throw new SessionError(404, 'session_missing', 'Claude Code 在当前项目目录中没有此会话');
     },
     async fork(id, dir, input) {
       await mutableInfo(id, dir);

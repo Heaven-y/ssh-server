@@ -1,20 +1,20 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it } from 'vitest';
-import { AppearanceActions } from '../../src/app/TopBar';
+import { SidebarFooter } from '../../src/app/SidebarChrome';
 import { useUiPreferences } from '../../src/ui/ui-preferences';
 
 afterEach(() => {
   cleanup();
   localStorage.clear();
 });
-it('顶栏显示明确目标主题文字，切换保存偏好而不卸载其他区域', () => {
+it('侧栏底部菜单显示明确目标主题，切换后保存偏好', async () => {
   useUiPreferences.setState({ theme: 'light' });
-  render(<AppearanceActions />);
-  expect(screen.getByRole('button', { name: '切换深色主题' }).textContent).toBe('深色');
-  fireEvent.click(screen.getByRole('button', { name: '切换深色主题' }));
-  expect(screen.getByRole('button', { name: '切换浅色主题' }).textContent).toBe('浅色');
-  expect(JSON.parse(localStorage.getItem('ssh-server.ui.v1')!).theme).toBe('dark');
-  fireEvent.click(screen.getByRole('button', { name: '切换浅色主题' }));
+  render(<SidebarFooter collapsed={false} />);
+  fireEvent.click(screen.getByRole('button', { name: '设置与外观' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: '切换为深色模式' }));
+  expect(JSON.parse(localStorage.getItem('agentdeck.ui.v1')!).theme).toBe('dark');
+  fireEvent.click(screen.getByRole('button', { name: '设置与外观' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: '切换为浅色模式' }));
   expect(useUiPreferences.getState().theme).toBe('light');
 });

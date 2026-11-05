@@ -1,4 +1,4 @@
-import type { RemoteBrowseSession, RemoteBrowseTarget } from '@ssh-server/shared';
+import type { RemoteBrowseSession, RemoteBrowseTarget } from '@agentdeck/shared';
 import { api, ApiError } from '../../lib/api';
 
 type Requests = Pick<typeof api, 'bindRemoteBrowseTarget' | 'createRemoteBrowseSession' | 'closeRemoteBrowseSession'>;

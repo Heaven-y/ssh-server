@@ -7,7 +7,7 @@ describe('Codex 工具与思考事件', () => {
     const mcp = {
       id: 'mcp',
       type: 'mcpToolCall',
-      server: 'ssh-server',
+      server: 'my-server',
       tool: 'remote_exec',
       arguments: { command: 'echo test' },
       status: 'inProgress',
@@ -16,7 +16,7 @@ describe('Codex 工具与思考事件', () => {
     const file = { id: 'file', type: 'fileChange', changes, status: 'inProgress' };
     const result = { content: [{ type: 'text', text: '运行完成' }], structuredContent: { exitCode: 0 } };
     expect(mapper.map('item/started', { item: mcp })).toEqual([
-      { type: 'tool_call', id: 'mcp', name: 'mcp__ssh-server__remote_exec', input: { command: 'echo test' } },
+      { type: 'tool_call', id: 'mcp', name: 'mcp__my-server__remote_exec', input: { command: 'echo test' } },
     ]);
     expect(mapper.map('item/mcpToolCall/progress', { itemId: 'mcp', message: '执行中' })).toEqual([]);
     expect(mapper.map('item/started', { item: file })).toEqual([
@@ -34,7 +34,7 @@ describe('Codex 工具与思考事件', () => {
 
     const failed = { ...mcp, id: 'mcp-failed', status: 'failed', result: null, error: { message: '同步冲突' } };
     expect(mapper.map('item/completed', { item: failed })).toEqual([
-      { type: 'tool_call', id: 'mcp-failed', name: 'mcp__ssh-server__remote_exec', input: { command: 'echo test' } },
+      { type: 'tool_call', id: 'mcp-failed', name: 'mcp__my-server__remote_exec', input: { command: 'echo test' } },
       { type: 'tool_result', id: 'mcp-failed', output: '{"message":"同步冲突"}', isError: true },
     ]);
   });

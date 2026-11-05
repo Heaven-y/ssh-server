@@ -1,6 +1,6 @@
 // 对话 WebSocket：断线重连交给 partysocket，这里只做消息编解码与连接状态
 import { WebSocket as ReconnectingWebSocket } from 'partysocket';
-import type { ClientMessage, ServerMessage } from '@ssh-server/shared';
+import type { ClientMessage, ServerMessage } from '@agentdeck/shared';
 
 export type ConnectionStatus = 'connecting' | 'open' | 'closed';
 

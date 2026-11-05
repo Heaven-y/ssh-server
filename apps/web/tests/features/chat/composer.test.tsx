@@ -2,18 +2,18 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { AgentCapabilities, ClientMessage, ServerMessage, Workspace } from '@ssh-server/shared';
+import type { AgentCapabilities, ClientMessage, ServerMessage, Workspace } from '@agentdeck/shared';
 import { ChatView } from '../../../src/features/chat/ChatView';
 import { Composer } from '../../../src/features/chat/Composer';
 import { ManualModelDialog } from '../../../src/features/chat/ManualModelDialog';
 import { startChatConnection, useChat } from '../../../src/features/chat/chat-store';
-import { api, queryKeys } from '../../../src/lib/api';
+import { api, ApiError, queryKeys } from '../../../src/lib/api';
 
 const workspace: Workspace = {
   id: 'workspace',
   name: '演示项目',
-  sshHost: 'my-server',
-  localDir: 'project',
+  server: 'my-server',
+  dir: 'project',
   remoteDir: '~/projects/demo',
 };
 const skill = {
@@ -65,7 +65,7 @@ beforeEach(() => {
   useChat.getState().selectWorkspace(workspace.id);
   useChat.setState({ connection: 'open' });
   client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-  for (const agent of ['claude', 'codex'] as const) {
+  for (const agent of ['claude', 'codex', 'antigravity'] as const) {
     client.setQueryData(queryKeys.sessions(workspace.id, agent), []);
     client.setQueryData(queryKeys.agentCapabilities(workspace.id, agent), { ...catalog, agent });
   }
@@ -99,6 +99,107 @@ async function menuChoose(menu: string, name: string | RegExp) {
   fireEvent.click(screen.getByRole('button', { name: menu }));
   fireEvent.click(await screen.findByRole('menuitemradio', { name }));
 }
+
+it('打开模型菜单、技能和斜杠只读缓存，点击刷新才发现能力', async () => {
+  const refresh = vi.spyOn(api, 'refreshAgentCapabilities').mockResolvedValue({
+    ...catalog,
+    agent: 'claude',
+    models: [{ id: 'fresh-model', label: '新报告的模型', reasoningEfforts: [] }],
+  });
+  showChat();
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
+  await screen.findByRole('menuitemradio', { name: /候选模型/ });
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
+  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '/' } });
+  await screen.findByRole('listbox', { name: '原生命令补全' });
+  fireEvent.keyDown(screen.getByLabelText('输入消息'), { key: 'Escape' });
+  fireEvent.click(screen.getByRole('button', { name: '技能与命令' }));
+  const dialog = screen.getByRole('dialog', { name: '技能与命令' });
+  expect(refresh).not.toHaveBeenCalled();
+  expect(within(dialog).getByText(/刷新能力会启动 CLI 检查账号/)).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole('button', { name: '刷新能力' }));
+  await waitFor(() => expect(refresh).toHaveBeenCalledExactlyOnceWith(workspace.id, 'claude', undefined));
+  await waitFor(() =>
+    expect(
+      client.getQueryData<AgentCapabilities>(queryKeys.agentCapabilities(workspace.id, 'claude'))?.models[0]?.id,
+    ).toBe('fresh-model'),
+  );
+  fireEvent.click(screen.getByRole('button', { name: '关闭技能与命令' }));
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
+  expect(await screen.findByRole('menuitemradio', { name: /新报告的模型/ })).toBeTruthy();
+  expect(refresh).toHaveBeenCalledTimes(1);
+});
+
+it('Antigravity历史不可回放仍可续聊，保留权限说明且不伪造审批', async () => {
+  vi.spyOn(api, 'sessionEvents').mockRejectedValue(new ApiError(501, '不能回放', { code: 'session_not_replayable' }));
+  await useChat.getState().openSession({ agent: 'antigravity', sessionId: 'agy-native' });
+  showChat();
+  expect(screen.getByText(/Antigravity 的原生历史暂不能回放/)).toBeTruthy();
+  expect(screen.getByText(/权限由 Antigravity 原生配置决定/)).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /允许|批准/ })).toBeNull();
+  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '继续处理' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  expect(sent.at(-1)).toMatchObject({
+    agent: 'antigravity',
+    sessionId: 'agy-native',
+    model: undefined,
+    reasoningEffort: undefined,
+  });
+});
+
+it('历史读取失败保留可编辑草稿，重读成功才恢复发送', async () => {
+  const read = vi.spyOn(api, 'sessionEvents').mockRejectedValueOnce(new Error('文件被占用'));
+  await useChat.getState().openSession({ agent: 'codex', sessionId: 'native' });
+  showChat();
+  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '待发送' } });
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: '发送' }).disabled).toBe(true);
+  read.mockResolvedValue({
+    session: { agent: 'codex', sessionId: 'native', summary: '会话', lastModified: 1 },
+    events: [],
+  });
+  fireEvent.click(screen.getByRole('button', { name: '重新读取历史' }));
+  await waitFor(() => expect(useChat.getState().historyError).toBeUndefined());
+  expect(screen.getByRole('heading', { name: '继续原生会话' })).toBeTruthy();
+  expect(screen.getByLabelText<HTMLTextAreaElement>('输入消息').value).toBe('待发送');
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: '发送' }).disabled).toBe(false);
+});
+
+it('更换模型清除旧模型的强度覆盖，避免发送不支持的参数', async () => {
+  showChat();
+  await menuChoose('模型选项', /候选模型/);
+  await menuChoose('推理强度', 'high');
+  await modelAction('手动填写模型');
+  fireEvent.change(screen.getByLabelText('模型名称'), { target: { value: 'another-model' } });
+  fireEvent.click(screen.getByRole('button', { name: '应用模型' }));
+  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '新模型的原生强度' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  expect(sent.at(-1)).toMatchObject({ model: 'another-model', reasoningEffort: undefined });
+});
+
+it('切换会话隔离草稿，首次原生身份回填保留当前输入框', async () => {
+  showChat();
+  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '旧草稿' } });
+  act(() => useChat.getState().newSession('antigravity'));
+  const input = screen.getByLabelText<HTMLTextAreaElement>('输入消息');
+  expect(input.value).toBe('');
+  fireEvent.change(input, { target: { value: '首次发送' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  act(() => {
+    emit({
+      type: 'turn.started',
+      turnId: 'agy-turn',
+      clientTurnId: useChat.getState().pendingClientTurnId!,
+      workspaceId: workspace.id,
+      agent: 'antigravity',
+    });
+    emit({
+      type: 'agent.event',
+      turnId: 'agy-turn',
+      event: { type: 'session', agent: 'antigravity', sessionId: 'agy-native', cwd: 'project', model: 'native' },
+    });
+  });
+  expect(screen.getByLabelText('输入消息')).toBe(input);
+});
 
 it.each(['claude', 'codex'] as const)('一体输入底栏用菜单设置%s模型与强度，发送带参数且停止有效', async (agent) => {
   useChat.getState().setAgent(agent);
@@ -172,30 +273,29 @@ it('历史固定Agent，载入期间禁用选项；ShiftEnter与IME不发送且�
     text: '保留草稿',
     sessionId: 'history',
     model: undefined,
-    reasoningEffort: 'high',
+    reasoningEffort: undefined,
   });
 });
 
-it('沿用原生模型时也直接提供强度档位，切换Agent保留各自选择且不猜型号', async () => {
+it('强度菜单只列当前模型实际报告的档位，默认不覆盖', async () => {
   showChat();
-  expect(screen.getByRole('button', { name: '推理强度' }).textContent).toBe('high');
+  expect(screen.getByRole('button', { name: '推理强度' }).textContent).toBe('自动');
   fireEvent.click(screen.getByRole('button', { name: '推理强度' }));
-  for (const effort of ['low', 'medium', 'high', 'xhigh', 'max']) {
-    expect(await screen.findByRole('menuitemradio', { name: effort })).toBeTruthy();
-  }
-  fireEvent.click(screen.getByRole('menuitemradio', { name: 'xhigh' }));
-  expect(useChat.getState().modelOverrides.claude).toBe('');
-  await menuChoose('模型选项', 'Codex');
-  expect(screen.getByRole('button', { name: '推理强度' }).textContent).toBe('high');
-  await menuChoose('推理强度', 'low');
-  await menuChoose('模型选项', 'Claude');
-  expect(screen.getByRole('button', { name: '推理强度' }).textContent).toBe('xhigh');
-  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '默认模型也可调强度' } });
+  expect(await screen.findByRole('menuitemradio', { name: '自动' })).toBeTruthy();
+  expect(screen.queryByRole('menuitemradio', { name: 'high' })).toBeNull();
+  fireEvent.click(screen.getByRole('menuitemradio', { name: '自动' }));
+  await menuChoose('模型选项', /候选模型/);
+  fireEvent.click(screen.getByRole('button', { name: '推理强度' }));
+  expect(await screen.findByRole('menuitemradio', { name: 'low' })).toBeTruthy();
+  expect(screen.getByRole('menuitemradio', { name: 'high' })).toBeTruthy();
+  expect(screen.queryByRole('menuitemradio', { name: 'max' })).toBeNull();
+  fireEvent.click(screen.getByRole('menuitemradio', { name: 'low' }));
+  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '使用已报告的参数' } });
   fireEvent.click(screen.getByRole('button', { name: '发送' }));
-  expect(sent.at(-1)).toMatchObject({ agent: 'claude', model: undefined, reasoningEffort: 'xhigh' });
+  expect(sent.at(-1)).toMatchObject({ agent: 'claude', model: 'native-model', reasoningEffort: 'low' });
 });
 
-it.each(['claude', 'codex'] as const)('%s手填模型且目录失败时仍可选择max并原样发送', async (agent) => {
+it.each(['claude', 'codex', 'antigravity'] as const)('%s手填模型且目录失败时仍能沿用原生强度发送', async (agent) => {
   useChat.getState().setAgent(agent);
   useChat.getState().setModel('manual-model');
   client.removeQueries({ queryKey: queryKeys.agentCapabilities(workspace.id, agent) });
@@ -205,10 +305,11 @@ it.each(['claude', 'codex'] as const)('%s手填模型且目录失败时仍可选
   await waitFor(() =>
     expect(client.getQueryState(queryKeys.agentCapabilities(workspace.id, agent))?.status).toBe('error'),
   );
-  fireEvent.click(screen.getByRole('menuitemradio', { name: 'max' }));
-  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '保留我的参数' } });
+  expect(screen.queryByRole('menuitemradio', { name: 'max' })).toBeNull();
+  fireEvent.click(screen.getByRole('menuitemradio', { name: '自动' }));
+  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '保留我的模型' } });
   fireEvent.click(screen.getByRole('button', { name: '发送' }));
-  expect(sent.at(-1)).toMatchObject({ agent, model: 'manual-model', reasoningEffort: 'max' });
+  expect(sent.at(-1)).toMatchObject({ agent, model: 'manual-model', reasoningEffort: undefined });
 });
 
 it('Codex保留目录提供的扩展强度，不被常用档位覆盖', async () => {
@@ -318,6 +419,7 @@ it.each([
     events: [],
   });
   await useChat.getState().openSession({ agent: 'claude', sessionId: 'history' });
+  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude', 'history'), { ...catalog, agent: 'claude' });
   showComposer();
   const trigger = screen.getByRole('button', { name: '模型选项' });
   expect(trigger.textContent).toContain(label);
@@ -330,7 +432,7 @@ it.each([
   if (actualModel) expect(trigger.title).toContain('最近实际运行：actual-history');
   fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '继续历史' } });
   fireEvent.click(screen.getByRole('button', { name: '发送' }));
-  expect(sent.at(-1)).toMatchObject({ sessionId: 'history', model: undefined, reasoningEffort: 'high' });
+  expect(sent.at(-1)).toMatchObject({ sessionId: 'history', model: undefined, reasoningEffort: undefined });
 });
 
 it('读取历史时明确显示读取状态，不将候选模型当作已取得的型号', () => {
@@ -374,7 +476,7 @@ it('手填模型不把空白或默认占位符发送为型号，恢复原生必�
   expect(sent).toHaveLength(0);
 });
 
-it.each(['claude', 'codex'] as const)('输入区%s自动强度省略字段，Claude不混入Codex扩展档位', async (agent) => {
+it.each(['claude', 'codex'] as const)('输入区%s自动强度省略字段，并使用各自目录报告的档位', async (agent) => {
   useChat.getState().setAgent(agent);
   useChat.getState().setModel('native-model');
   client.setQueryData(queryKeys.agentCapabilities(workspace.id, agent), {
@@ -385,8 +487,7 @@ it.each(['claude', 'codex'] as const)('输入区%s自动强度省略字段，Cla
   showComposer();
   fireEvent.click(screen.getByRole('button', { name: '推理强度' }));
   await screen.findByRole('menuitemradio', { name: '自动' });
-  if (agent === 'claude') expect(screen.queryByRole('menuitemradio', { name: 'custom-effort' })).toBeNull();
-  else expect(screen.getByRole('menuitemradio', { name: 'custom-effort' })).toBeTruthy();
+  expect(screen.getByRole('menuitemradio', { name: 'custom-effort' })).toBeTruthy();
   fireEvent.click(screen.getByRole('menuitemradio', { name: '自动' }));
   fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '使用原生自动强度' } });
   fireEvent.click(screen.getByRole('button', { name: '发送' }));

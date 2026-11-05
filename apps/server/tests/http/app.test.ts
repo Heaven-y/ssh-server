@@ -1,11 +1,13 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import type { Workspace, WorkspaceInput } from '@ssh-server/shared';
+import type { Workspace, WorkspaceInput } from '@agentdeck/shared';
 import type { WorkspaceStore } from '../../src/workspaces/store';
 import { buildApp } from '../../src/http/app';
+import { registerProjectRoutes } from '../../src/http/projects.routes';
 import { SESSION_COOKIE } from '../../src/http/security';
 
 const TOKEN = 'test-token-0123456789';
@@ -30,16 +32,14 @@ function memoryStore(): WorkspaceStore {
 }
 
 const apps: FastifyInstance[] = [];
+const webDirs: string[] = [];
 async function make(): Promise<FastifyInstance> {
+  const store = memoryStore();
   const app = await buildApp({
     token: TOKEN,
     port: 4317,
-    store: memoryStore(),
     routes: (a) => {
-      // 测试用的内部接口：自行要求 Bearer
-      a.get('/internal/ping', async (req, reply) =>
-        req.headers.authorization === 'Bearer internal' ? { ok: true } : reply.code(401).send({ message: '未授权' }),
-      );
+      registerProjectRoutes(a, { store });
       a.get('/ws', { websocket: true }, (socket) => socket.send('hello'));
     },
   });
@@ -49,12 +49,13 @@ async function make(): Promise<FastifyInstance> {
 
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((a) => a.close()));
+  await Promise.all(webDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
 const body: WorkspaceInput = {
   name: 'demo',
-  localDir: path.join(os.tmpdir(), 'ssh-server-fixture', 'demo'),
-  sshHost: 'my-server',
+  dir: path.join(os.tmpdir(), 'agentdeck-fixture', 'demo'),
+  server: 'my-server',
   remoteDir: '~/projects/demo',
 };
 
@@ -63,7 +64,7 @@ describe('访问控制', () => {
     const app = await make();
     const r = await app.inject({
       method: 'GET',
-      url: '/api/workspaces',
+      url: '/api/projects',
       headers: { host: 'evil.com', cookie: COOKIE },
     });
     expect(r.statusCode).toBe(403);
@@ -71,7 +72,7 @@ describe('访问控制', () => {
 
   it('没有 Cookie 访问 /api 返回 401', async () => {
     const app = await make();
-    const r = await app.inject({ method: 'GET', url: '/api/workspaces', headers: { host: HOST } });
+    const r = await app.inject({ method: 'GET', url: '/api/projects', headers: { host: HOST } });
     expect(r.statusCode).toBe(401);
   });
 
@@ -92,7 +93,7 @@ describe('访问控制', () => {
     expect(setCookie).toContain('SameSite=Strict');
     expect(r.headers['cache-control']).toBe('no-store');
     const response = await app.inject({
-      url: '/api/workspaces',
+      url: '/api/projects',
       headers: { host: HOST, cookie: setCookie.split(';')[0]! },
     });
     expect(response.statusCode).toBe(200);
@@ -143,36 +144,40 @@ describe('访问控制', () => {
 
   it('带 Cookie 的 GET 可以访问 /api', async () => {
     const app = await make();
-    const r = await app.inject({ method: 'GET', url: '/api/workspaces', headers: { host: HOST, cookie: COOKIE } });
+    const r = await app.inject({ method: 'GET', url: '/api/projects', headers: { host: HOST, cookie: COOKIE } });
     expect(r.statusCode).toBe(200);
     expect(r.json()).toEqual([]);
   });
 
-  it('修改类请求：Origin 不对或缺失时403，正确时进入业务服务可用性校验', async () => {
+  it('修改类请求：Origin 不对或缺失时403，正确时进入业务路由', async () => {
     const app = await make();
     const post = (origin?: string) =>
       app.inject({
         method: 'POST',
-        url: '/api/workspaces',
+        url: '/api/projects',
         headers: { host: HOST, cookie: COOKIE, ...(origin ? { origin } : {}) },
         payload: body,
       });
     expect((await post('http://evil.com')).statusCode).toBe(403);
     expect((await post()).statusCode).toBe(403);
     expect((await post('http://127.0.0.1:9999')).statusCode).toBe(403);
-    expect((await post(ORIGIN)).statusCode).toBe(503);
+    // 项目创建接口已迁到 /api/projects，放行 Origin 后应进入业务路由而不是被安全钩子挡下。
+    expect((await post(ORIGIN)).statusCode).toBe(200);
   });
-
-  it('/internal 不认 Cookie', async () => {
-    const app = await make();
-    const r = await app.inject({ method: 'GET', url: '/internal/ping', headers: { host: HOST, cookie: COOKIE } });
-    expect(r.statusCode).toBe(401);
-    const ok = await app.inject({
-      method: 'GET',
-      url: '/internal/ping',
-      headers: { host: HOST, authorization: 'Bearer internal' },
-    });
-    expect(ok.statusCode).toBe(200);
+  it('挂载前端产物后，/internal 路径仍是 404 而不回退到页面', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'agentdeck-web-'));
+    webDirs.push(dir);
+    await writeFile(path.join(dir, 'index.html'), '<!doctype html><title>shell</title>', 'utf8');
+    const app = await buildApp({ token: TOKEN, port: 4317, webDir: dir });
+    apps.push(app);
+    const header = { host: HOST, cookie: COOKIE };
+    const internal = await app.inject({ url: '/internal/remote-exec', headers: header });
+    expect(internal.statusCode).toBe(404);
+    expect(internal.json()).toEqual({ message: '未找到' });
+    // 普通页面路径仍回退到 index.html。
+    const page = await app.inject({ url: '/projects/1', headers: header });
+    expect(page.statusCode).toBe(200);
+    expect(page.body).toContain('<title>shell</title>');
   });
 });
 

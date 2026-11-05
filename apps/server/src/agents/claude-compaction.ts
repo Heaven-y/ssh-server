@@ -1,4 +1,4 @@
-import type { AgentEvent, CompactionState } from '@ssh-server/shared';
+import type { AgentEvent, CompactionState } from '@agentdeck/shared';
 
 type Rec = Record<string, unknown>;
 const isRec = (value: unknown): value is Rec => !!value && typeof value === 'object';

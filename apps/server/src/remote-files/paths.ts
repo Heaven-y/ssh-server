@@ -1,7 +1,7 @@
 import path from 'node:path';
-import type { RemoteFileEntry, SyncSettings } from '@ssh-server/shared';
+import type { RemoteFileEntry, RemoteFileFilter } from '@agentdeck/shared';
 import type { FileEntryWithStats, Stats } from 'ssh2';
-import { eligibleFile, excludedPath, safeRelativePath } from '../sync/filters';
+import { eligibleFile, excludedPath, safeRelativePath } from './sync-scope';
 import { RemoteFilesError } from './errors';
 
 export function remotePath(input: string, root: string, home: string): string {
@@ -23,7 +23,7 @@ export function inside(root: string, target: string): boolean {
 function scopeOf(
   entry: Omit<RemoteFileEntry, 'scope'>,
   root: string,
-  settings: SyncSettings,
+  settings: RemoteFileFilter,
 ): RemoteFileEntry['scope'] {
   if (!inside(root, entry.path)) return 'outside';
   if (entry.type === 'link') return 'link';
@@ -51,7 +51,7 @@ export function directoryEntry(
   item: FileEntryWithStats,
   directory: string,
   root: string,
-  settings: SyncSettings,
+  settings: RemoteFileFilter,
 ): RemoteFileEntry | undefined {
   const name = item.filename;
   if (!name || name === '.' || name === '..' || /[\0/]/.test(name)) return undefined;

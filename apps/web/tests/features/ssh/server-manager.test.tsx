@@ -1,12 +1,10 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { HostTrustStatus, ManagedServer } from '@ssh-server/shared';
+import type { HostTrustStatus, ManagedServer } from '@agentdeck/shared';
 import { api, ApiError } from '../../../src/lib/api';
 import { ServerManagerDialog } from '../../../src/features/ssh/ServerManagerDialog';
-import { ServerStep } from '../../../src/features/workspaces/setup/ServerStep';
 
 const server: ManagedServer = {
   alias: 'my-server',
@@ -38,7 +36,7 @@ beforeEach(() => {
   };
   vi.spyOn(api, 'listSshHosts').mockResolvedValue([server]);
   vi.spyOn(api, 'listWorkspaces').mockResolvedValue([
-    { id: 'w', name: '项目一', localDir: 'demo', sshHost: server.alias, remoteDir: '~/demo' },
+    { id: 'w', name: '项目一', dir: 'demo', server: server.alias, remoteDir: '~/demo' },
   ]);
   vi.spyOn(api, 'sshCredentials').mockResolvedValue(status);
   vi.spyOn(api, 'readSshPassword').mockResolvedValue({
@@ -185,28 +183,6 @@ it('SSH配置仅填表，不支持的选项不可导入，明确保存才登记�
       expect.any(AbortSignal),
     ),
   );
-});
-it('向导只选择档案，不出现认证表单；打开同一管理入口后关闭保留选择', async () => {
-  function Wizard() {
-    const [input, setInput] = useState({ name: '草稿', localDir: 'demo', sshHost: server.alias, remoteDir: '~/demo' });
-    return <ServerStep input={input} change={(patch) => setInput((value) => ({ ...value, ...patch }))} />;
-  }
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  clients.push(client);
-  render(
-    <QueryClientProvider client={client}>
-      <Wizard />
-    </QueryClientProvider>,
-  );
-  await screen.findByRole('option', { name: /演示服务器/ });
-  expect(screen.queryByLabelText('SSH 密码')).toBeNull();
-  expect(screen.queryByLabelText('认证方式')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: '管理服务器' }));
-  const password = await screen.findByLabelText<HTMLInputElement>('SSH 密码');
-  fireEvent.change(password, { target: { value: 'discard-secret' } });
-  fireEvent.click(screen.getByRole('button', { name: '关闭服务器' }));
-  expect(password.value).toBe('');
-  expect(screen.getByLabelText<HTMLSelectElement>('服务器').value).toBe(server.alias);
 });
 it('保存成功取消旧列表GET，迟到快照不能回退服务器档案', async () => {
   const updated = { ...server, name: '已更新服务器' };

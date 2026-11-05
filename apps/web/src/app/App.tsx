@@ -1,26 +1,44 @@
 import { useQuery } from '@tanstack/react-query';
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { Workspace } from '@ssh-server/shared';
-import { ChatView } from '../features/chat/ChatView';
-import { useChat } from '../features/chat/chat-store';
-import { useWorkspaceNavigation } from './use-workspace-navigation';
-import { SyncPanel, type SyncActions } from '../features/sync/SyncPanel';
-import { WorkspaceSidebar } from '../features/workspaces/WorkspaceSidebar';
-import { VersionsPanel, type VersionsActions } from '../features/versions/VersionsPanel';
+import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react';
+import type { AgentKind, SessionSummary, Workspace } from '@agentdeck/shared';
+import { allowConversationNavigation, useChat } from '../features/chat/chat-store';
 import { api, queryKeys } from '../lib/api';
 import { TopBar } from './TopBar';
-import { WorkspaceArea } from './WorkspaceArea';
 import { useProductSettings } from '../features/settings/use-product-settings';
 import { useUiPreferences } from '../ui/ui-preferences';
 import { useCommandPalette } from './use-command-palette';
 import type { PaletteActions } from './CommandPalette';
-import type { ChangesRequest } from '../features/changes/types';
 import { ServerManagerDialog } from '../features/ssh/ServerManagerDialog';
 import { EnvironmentSummary } from '../features/settings/EnvironmentReport';
-import { WorkspacePanels } from './WorkspacePanels';
+import { Sidebar } from './Sidebar';
+import { SessionPane } from './SessionPane';
+import { ConversationSidebar } from './ConversationSidebar';
+import { WorkspaceLayout } from './WorkspaceLayout';
+import { useProjectNavigation } from './use-project-navigation';
+import { useOtherSessions, useProjectSessions } from './use-project-sessions';
+import { useConversationSidebar } from './use-conversation-sidebar';
+import { AddProjectDialog } from './AddProjectDialog';
+import { BindServerDialog } from './BindServerDialog';
+import { ProjectManageDialog } from './ProjectManageDialog';
+import type { ProjectDraft, ProjectManageAction } from './project-management';
+import { PluginNavigation } from '../features/plugins/PluginNavigation';
+import { PluginWorkspace } from '../features/plugins/PluginWorkspace';
+import { usePluginPages } from '../features/plugins/use-plugin-pages';
 
 const SettingsDialog = lazy(() => import('../features/settings/SettingsDialog'));
 const CommandPalette = lazy(() => import('./CommandPalette'));
+const PluginManager = lazy(() => import('../features/plugins/PluginManager'));
+
+function OpenPluginManager({ opened, close }: { opened: boolean; close(): void }) {
+  return (
+    opened && (
+      <Suspense fallback={<p role="status">正在打开插件管理…</p>}>
+        <PluginManager onClose={close} />
+      </Suspense>
+    )
+  );
+}
+
 function OpenPalette({
   opened,
   workspace,
@@ -55,10 +73,48 @@ function OpenPalette({
   );
 }
 
-/** 对话与工具停靠分屏；收起及方向变化不关闭已打开文件或终端。 */
+function OpenSettings({ opened, project, close }: { opened: boolean; project?: Workspace; close(): void }) {
+  return (
+    opened && (
+      <Suspense
+        fallback={
+          <p role="status" className="absolute right-4 top-14 z-50 rounded-md border border-border bg-card p-3 text-sm">
+            正在打开设置…
+          </p>
+        }
+      >
+        <SettingsDialog key={project?.id ?? 'none'} project={project} onClose={close} />
+      </Suspense>
+    )
+  );
+}
+
+function ProjectDialogs({
+  adding,
+  binding,
+  managing,
+  closeAdd,
+  closeBind,
+  closeManage,
+}: {
+  adding?: ProjectDraft;
+  binding?: Workspace;
+  managing?: { project: Workspace; action: ProjectManageAction };
+  closeAdd(): void;
+  closeBind(): void;
+  closeManage(): void;
+}) {
+  return (
+    <>
+      {adding && <AddProjectDialog initialDir={adding.dir} initialName={adding.name} onClose={closeAdd} />}
+      {binding && <BindServerDialog project={binding} onClose={closeBind} />}
+      {managing && <ProjectManageDialog {...managing} onClose={closeManage} />}
+    </>
+  );
+}
+
+/** 工作区导航贯穿左列；会话与插件使用中间主区，右侧上下文按需打开。 */
 export function App() {
-  const sync = useRef<SyncActions>(null);
-  const versions = useRef<VersionsActions>(null);
   const palette = useCommandPalette();
   const theme = useUiPreferences((state) => state.theme);
   useLayoutEffect(() => {
@@ -70,147 +126,147 @@ export function App() {
     if (productSettings.data) setDefaults(productSettings.data.settings);
   }, [productSettings.data, setDefaults]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const plugins = usePluginPages();
+  const activePlugin = plugins.active;
   const [serversOpen, setServersOpen] = useState(false);
-  const [filesWorkspace, setFilesWorkspace] = useState<Workspace>();
-  const [resourcesOpen, setResourcesOpen] = useState(() => window.matchMedia('(min-width: 1280px)').matches);
-  const [filesOpen, setFilesOpen] = useState(false);
-  const [changesRequest, setChangesRequest] = useState<ChangesRequest>();
-  const [terminalLoaded, setTerminalLoaded] = useState(false);
-  const [terminalVisible, setTerminalVisible] = useState(false);
-  const hideTerminal = useCallback(() => setTerminalVisible(false), []);
-  const workspaces = useQuery({ queryKey: queryKeys.workspaces, queryFn: ({ signal }) => api.listWorkspaces(signal) });
-  const workspaceId = useChat((s) => s.workspaceId);
-  useWorkspaceNavigation(workspaces.data);
-  const current = workspaces.data?.find((w) => w.id === workspaceId);
-  const resourcesVisible = resourcesOpen && !!current;
-  const filesVisible = filesOpen && !!filesWorkspace;
-  const workspaceRemoved = useCallback((id: string) => {
-    setFilesWorkspace((opened) => (opened?.id === id ? undefined : opened));
-    setChangesRequest((opened) => (opened?.workspaceId === id ? undefined : opened));
-  }, []);
-  const openTerminal = () => {
-    setTerminalLoaded(true);
-    setTerminalVisible(true);
+  const [addingProject, setAddingProject] = useState<ProjectDraft>();
+  const [managingProject, setManagingProject] = useState<{ project: Workspace; action: ProjectManageAction }>();
+  // 绑定服务器要拿到具体的项目对象，不能只记一个开关。
+  const [bindingProject, setBindingProject] = useState<Workspace | undefined>(undefined);
+  const dock = useConversationSidebar();
+  const projects = useQuery({
+    queryKey: queryKeys.workspaces,
+    queryFn: ({ signal }) => api.listWorkspaces(signal),
+  });
+  const projectId = useChat((s) => s.workspaceId);
+  useProjectNavigation(projects.data);
+  const current = projects.data?.find((project) => project.id === projectId);
+  const {
+    sessionsByProject,
+    loading: sessionsLoading,
+    errorsByProject,
+    retryProject,
+  } = useProjectSessions(projects.data);
+  const [showOtherSessions, setShowOtherSessions] = useState(false);
+  const others = useOtherSessions(showOtherSessions);
+  const openSession = (targetProject: string, session: SessionSummary) => {
+    if (!allowConversationNavigation()) return;
+    plugins.show(undefined);
+    if (useChat.getState().workspaceId !== targetProject) useChat.getState().selectWorkspace(targetProject);
+    void useChat.getState().openSession(session);
   };
-  const openFiles = () => {
-    setFilesWorkspace((opened) => opened ?? current);
-    setFilesOpen(true);
-  };
-  const openChanges = (turnId: string) => {
-    const conversation = useChat.getState();
-    if (!current || conversation.workspaceId !== current.id) return;
-    if (filesWorkspace && filesWorkspace.id !== current.id) {
-      useChat.setState({ banner: '文件面板仍属于另一工作区，请先关闭该面板后查看此轮改动' });
-      return;
-    }
-    setChangesRequest({
-      workspaceId: current.id,
-      agent: conversation.agent,
-      conversationVersion: conversation.conversationVersion,
-      turnId,
-      nonce: crypto.randomUUID(),
-    });
-    setFilesWorkspace((opened) => opened ?? current);
-    setFilesOpen(true);
+  const startSession = (targetProject: string, agent: AgentKind) => {
+    if (!allowConversationNavigation()) return;
+    plugins.show(undefined);
+    const chat = useChat.getState();
+    if (chat.workspaceId !== targetProject) chat.selectWorkspace(targetProject);
+    useChat.getState().newSession(agent);
   };
 
   return (
-    <div className="flex h-full min-w-[960px] flex-col">
-      <TopBar
-        workspace={current}
-        onOpenCommands={palette.open}
-        resourcesOpen={resourcesVisible}
-        onOpenResources={() => setResourcesOpen((opened) => !opened)}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onOpenServers={() => setServersOpen(true)}
-        filesOpen={filesVisible}
-        onOpenFiles={() => (filesOpen && filesWorkspace ? setFilesOpen(false) : openFiles())}
-        terminalOpen={terminalVisible}
-        onOpenTerminal={openTerminal}
-      />
-      <EnvironmentSummary onOpenSettings={() => setSettingsOpen(true)} />
+    <div className="flex h-full min-w-[800px] flex-col">
       {serversOpen && <ServerManagerDialog onClose={() => setServersOpen(false)} />}
+      <OpenPluginManager opened={plugins.managerOpen} close={() => plugins.setManagerOpen(false)} />
+      <ProjectDialogs
+        adding={addingProject}
+        binding={bindingProject}
+        managing={managingProject}
+        closeAdd={() => setAddingProject(undefined)}
+        closeBind={() => setBindingProject(undefined)}
+        closeManage={() => setManagingProject(undefined)}
+      />
       <OpenPalette
         opened={palette.opened}
         workspace={current}
-        workspaces={workspaces.data}
+        workspaces={projects.data}
         close={palette.close}
         actions={{
-          files: () => {
-            openFiles();
-            return true;
-          },
-          terminal: () => {
-            openTerminal();
+          plugins: plugins.commands,
+          conversation: () => {
+            if (!allowConversationNavigation()) return false;
+            plugins.show(undefined);
             return true;
           },
           settings: () => {
             setSettingsOpen(true);
             return true;
           },
-          sync: (id) => sync.current?.run(id) ?? false,
-          versions: (id) => versions.current?.open(id) ?? false,
-          resources: (id) => {
-            if (id !== current?.id) return false;
-            setResourcesOpen(true);
-            return true;
-          },
         }}
       />
-      {settingsOpen && (
-        <Suspense
-          fallback={
-            <p
-              role="status"
-              className="absolute right-4 top-14 z-50 rounded-md border border-border bg-card p-3 text-sm"
-            >
-              正在打开设置…
-            </p>
-          }
-        >
-          <SettingsDialog onClose={() => setSettingsOpen(false)} />
-        </Suspense>
-      )}
-      <WorkspacePanels
-        navigation={<WorkspaceSidebar workspaces={workspaces} currentId={current?.id} onRemoved={workspaceRemoved} />}
-        resourcesOpen={resourcesVisible}
-        filesOpen={filesVisible}
-        workspace={current}
-        filesWorkspace={filesWorkspace}
-        changesRequest={changesRequest}
-        hide={(kind) => (kind === 'resources' ? setResourcesOpen(false) : setFilesOpen(false))}
-        closeFiles={() => {
-          setFilesOpen(false);
-          setFilesWorkspace(undefined);
-          setChangesRequest(undefined);
-        }}
+      <OpenSettings opened={settingsOpen} project={current} close={() => setSettingsOpen(false)} />
+      <WorkspaceLayout
+        dockOpen={dock.open && !activePlugin}
+        dock={
+          <ConversationSidebar
+            workspace={current}
+            open={dock.open && !activePlugin}
+            close={dock.hide}
+            settings={() => setSettingsOpen(true)}
+          />
+        }
+        navigation={
+          <Sidebar
+            pages={
+              <PluginNavigation
+                plugins={plugins.list}
+                selected={plugins.selected}
+                open={plugins.show}
+                manage={() => plugins.setManagerOpen(true)}
+              />
+            }
+            projects={projects.data ?? []}
+            sessionsByProject={sessionsByProject}
+            sessionErrorsByProject={errorsByProject}
+            onRetrySessions={retryProject}
+            otherSessions={others.sessions}
+            loadingOtherSessions={others.loading}
+            otherSessionsError={others.error}
+            onShowOtherSessions={setShowOtherSessions}
+            loadingSessions={sessionsLoading}
+            currentProjectId={current?.id}
+            onAddProject={(initial) => setAddingProject(initial ?? {})}
+            onManageProject={(project, action) => setManagingProject({ project, action })}
+            onNewSession={startSession}
+            onSelectProject={(id) => {
+              if (!allowConversationNavigation()) return;
+              plugins.show(undefined);
+              if (useChat.getState().workspaceId !== id) useChat.getState().selectWorkspace(id);
+            }}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenCommands={palette.open}
+            onSelectSession={openSession}
+            onBindServer={(project) => {
+              if (allowConversationNavigation()) setBindingProject(project);
+            }}
+          />
+        }
       >
-        <WorkspaceArea
-          workspace={current}
-          terminalLoaded={terminalLoaded}
-          terminalVisible={terminalVisible}
-          onHideTerminal={hideTerminal}
-        >
-          <main className="flex min-w-0 flex-1 flex-col">
-            {current ? (
-              <>
-                <div
-                  aria-label="工作区状态"
-                  className="flex min-h-11 shrink-0 flex-wrap items-center gap-1 border-b border-border/60 px-4"
-                >
-                  <SyncPanel key={`sync:${current.id}`} workspace={current} ref={sync} />
-                  <VersionsPanel key={`versions:${current.id}`} workspace={current} ref={versions} />
-                </div>
-                <ChatView workspace={current} onOpenChanges={openChanges} />
-              </>
-            ) : (
-              <div className="m-auto max-w-sm text-center text-sm text-muted-foreground">
-                {workspaces.isPending ? '正在加载工作区…' : '在左侧新建或选择一个工作区后开始对话。'}
-              </div>
-            )}
-          </main>
-        </WorkspaceArea>
-      </WorkspacePanels>
+        <div className="h-full min-h-0 min-w-0 w-full flex-1">
+          <div
+            hidden={!!activePlugin}
+            inert={!!activePlugin}
+            className={activePlugin ? 'hidden' : 'flex h-full min-h-0 flex-col'}
+          >
+            <TopBar workspace={current} sidebarOpen={dock.open} onToggleSidebar={dock.toggle} />
+            <EnvironmentSummary onOpenSettings={() => setSettingsOpen(true)} />
+            <SessionPane
+              project={current}
+              pending={projects.isPending}
+              error={projects.error}
+              onAddProject={() => setAddingProject({})}
+            />
+          </div>
+          <PluginWorkspace
+            plugin={activePlugin}
+            sshPlugin={plugins.ssh}
+            project={current}
+            close={() => plugins.show(undefined)}
+            manageServers={() => setServersOpen(true)}
+            bindServer={() => current && setBindingProject(current)}
+            command={plugins.command}
+          />
+        </div>
+      </WorkspaceLayout>
     </div>
   );
 }

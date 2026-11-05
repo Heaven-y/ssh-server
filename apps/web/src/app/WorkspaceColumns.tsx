@@ -1,40 +1,43 @@
 import { useLayoutEffect, type ReactNode } from 'react';
 import { Group, Panel, Separator, usePanelRef } from 'react-resizable-panels';
 import { useUiPreferences, type UiWidthKey } from '../ui/ui-preferences';
-import { WorkspaceTools, type WorkspaceToolsProps } from './WorkspaceTools';
 
-export function toolSizing(
-  horizontal: boolean,
-  resources: boolean,
-  files: boolean,
-): { key: UiWidthKey; min: number; max: number } {
-  if (!horizontal) return { key: 'rightWidth', min: 360, max: 720 };
-  if (resources && files) return { key: 'wideToolsWidth', min: 646, max: 1400 };
-  return resources ? { key: 'resourceWidth', min: 280, max: 640 } : { key: 'fileWidth', min: 360, max: 960 };
+/**
+ * 右侧上下文面板按需打开，关闭不重建中间对话。
+ * 默认 420px，可调 300–720px，收起时不占宽度（见 ui-layout 1.1）。
+ */
+export function dockSizing(): { key: UiWidthKey; min: number; max: number } {
+  return { key: 'rightWidth', min: 300, max: 720 };
 }
+
 export function WorkspaceColumns({
   children,
   chatMin,
-  ...tools
-}: WorkspaceToolsProps & { children: ReactNode; chatMin: number }) {
+  dock,
+  dockOpen = false,
+}: {
+  children: ReactNode;
+  chatMin: number;
+  dock?: ReactNode;
+  dockOpen?: boolean;
+}) {
   const panel = usePanelRef();
-  const opened = tools.resourcesOpen || tools.filesOpen;
-  const sizing = toolSizing(tools.horizontal, tools.resourcesOpen, tools.filesOpen);
+  const sizing = dockSizing();
   const width = useUiPreferences((state) => state[sizing.key]);
   useLayoutEffect(() => {
     const frame = requestAnimationFrame(() => {
-      if (opened) panel.current?.resize(width);
+      if (dockOpen) panel.current?.resize(width);
       else panel.current?.collapse();
     });
     return () => cancelAnimationFrame(frame);
-  }, [opened, panel, width, sizing.key]);
+  }, [dockOpen, panel, width, sizing.key]);
   return (
     <Group
       orientation="horizontal"
       id="workspace-columns"
       className="h-full min-h-0 min-w-0"
       onLayoutChanged={(_layout, meta) => {
-        if (meta.isUserInteraction && opened && panel.current)
+        if (meta.isUserInteraction && dockOpen && panel.current)
           useUiPreferences.getState().setWidth(sizing.key, panel.current.getSize().inPixels);
       }}
     >
@@ -42,23 +45,23 @@ export function WorkspaceColumns({
         <div className="flex h-full min-h-0 min-w-0">{children}</div>
       </Panel>
       <Separator
-        aria-label="调整工具区宽度"
-        disabled={!opened}
-        hidden={!opened}
-        className={`workspace-separator ${opened ? 'w-1.5' : 'hidden'}`}
+        aria-label="调整右侧边栏宽度"
+        disabled={!dockOpen}
+        hidden={!dockOpen}
+        className={`workspace-separator ${dockOpen ? 'w-px' : 'hidden'}`}
       />
       <Panel
-        id="workspace-tool-area"
+        id="workspace-context-sidebar"
         panelRef={panel}
-        defaultSize={opened ? width : 0}
+        defaultSize={dockOpen ? width : 0}
         groupResizeBehavior="preserve-pixel-size"
-        minSize={opened ? sizing.min : 0}
-        maxSize={opened ? sizing.max : 0}
-        collapsible={!opened}
+        minSize={dockOpen ? sizing.min : 0}
+        maxSize={dockOpen ? sizing.max : 0}
+        collapsible={!dockOpen}
         collapsedSize={0}
       >
-        <div className="h-full min-h-0 min-w-0" hidden={!opened} inert={!opened}>
-          <WorkspaceTools {...tools} />
+        <div className="h-full min-h-0 min-w-0" hidden={!dockOpen} inert={!dockOpen}>
+          {dock}
         </div>
       </Panel>
     </Group>

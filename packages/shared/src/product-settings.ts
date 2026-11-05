@@ -1,11 +1,8 @@
 import { z } from 'zod';
 import { AgentKindSchema } from './agents';
-import { SyncSettingsSchema } from './sync';
 
 export const ProductSettingsSchema = z.strictObject({
   defaultAgent: AgentKindSchema.default('claude'),
-  syncDefaults: SyncSettingsSchema.strict().default(() => SyncSettingsSchema.parse({})),
-  syncIntervalSeconds: z.number().int().min(5).max(300).default(60),
   resources: z
     .strictObject({
       intervalSeconds: z.number().int().min(2).max(60).default(5),
@@ -26,8 +23,9 @@ export const resourceTiming = (settings: ProductSettings['resources']) => ({
   staleMs: Math.max(15000, settings.intervalSeconds * 3000),
 });
 export type ResourceTiming = ReturnType<typeof resourceTiming>;
+/** 环境面板只显示三个 Agent 的第一层探测结果；同步与本地 git 域删除后不再检测 git/rclone。 */
 export type EnvironmentTool = {
-  name: 'Node.js' | 'Claude Code' | 'Codex' | 'git' | 'rclone';
+  name: 'Claude Code' | 'Codex' | 'Antigravity';
   available: boolean;
   version: string | null;
   message: string | null;

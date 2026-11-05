@@ -1,5 +1,5 @@
 // 把 Claude Agent SDK 的消息转换成统一的 AgentEvent
-import { NativeSessionIdSchema, type AgentEvent } from '@ssh-server/shared';
+import { NativeSessionIdSchema, type AgentEvent } from '@agentdeck/shared';
 import { claudeCompactionBoundary, claudeCompactionStatus, ClaudeReplayFilter } from './claude-compaction';
 
 type Rec = Record<string, unknown>;

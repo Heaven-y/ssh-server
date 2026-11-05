@@ -2,7 +2,9 @@
 node_modules/
 dist/
 build/
+out/
 coverage/
+release/
 *.tsbuildinfo
 
 # 本地 Agent skill（由 scripts/dev/install-skills.ps1 安装，不提交）
@@ -15,6 +17,7 @@ skills-lock.json
 
 # 本机技能执行记录、临时验收配置与截图
 .superpowers/
+.playwright-mcp/
 
 # 环境变量与本地数据
 .env

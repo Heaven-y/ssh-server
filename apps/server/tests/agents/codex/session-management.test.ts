@@ -3,10 +3,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SessionActionInput } from '@ssh-server/shared';
+import type { SessionActionInput } from '@agentdeck/shared';
 import { forkCodexSession, listCodexSessions, mutateCodexSession, readCodexSession } from '../../../src/agents/codex';
 
 type Message = { method?: string; params?: Record<string, unknown>; fixtureCompleted?: string };
+// 全量并行跑时 116 个 worker 会让延迟回复的夹具超过 vi.waitFor 默认的 1 秒；
+// 放宽的只是等待预算，断言本身不变。
+const DELAYED_REPLY_TIMEOUT_MS = 10_000;
 const dirs: string[] = [];
 const command = {
   command: process.execPath,
@@ -74,15 +77,19 @@ describe('Codex 原生会话管理', () => {
     ).toEqual(['thread/read']);
   });
 
-  it('已归档列表的每一页都携带 archived 参数并保持工作区过滤', async () => {
+  it('已归档列表的每一页都携带 archived 参数，保留全局目录元数据', async () => {
     const { dir, options, messages } = await setup();
     expect((await listCodexSessions(dir, { ...options, archived: true })).map((value) => value.sessionId)).toEqual([
       'native-thread',
+      'foreign',
       'second',
     ]);
     const pages = (await messages()).filter((value) => value.method === 'thread/list');
     expect(pages).toHaveLength(2);
-    for (const page of pages) expect(page.params).toMatchObject({ cwd: dir, archived: true });
+    for (const page of pages) {
+      expect(page.params).toMatchObject({ archived: true });
+      expect(page.params).not.toHaveProperty('cwd');
+    }
   });
 
   it('管理请求已发送后收到 abort，仍等原生结果而不假称回滚', async () => {
@@ -94,8 +101,9 @@ describe('Codex 原生会话管理', () => {
       { action: 'delete', confirmed: true },
       { ...options, signal: controller.signal },
     );
-    await vi.waitFor(async () =>
-      expect((await messages()).some((value) => value.method === 'thread/delete')).toBe(true),
+    await vi.waitFor(
+      async () => expect((await messages()).some((value) => value.method === 'thread/delete')).toBe(true),
+      { timeout: DELAYED_REPLY_TIMEOUT_MS },
     );
     controller.abort();
     await expect(pending).resolves.toBeUndefined();
@@ -209,7 +217,12 @@ describe('Codex thread/fork', () => {
     const { dir, options, messages } = await setup('fork-delayed');
     const controller = new AbortController();
     const pending = forkCodexSession('native-thread', dir, {}, { ...options, signal: controller.signal });
-    await vi.waitFor(async () => expect((await messages()).some((value) => value.method === 'thread/fork')).toBe(true));
+    await vi.waitFor(
+      async () => expect((await messages()).some((value) => value.method === 'thread/fork')).toBe(true),
+      {
+        timeout: DELAYED_REPLY_TIMEOUT_MS,
+      },
+    );
     controller.abort();
     await expect(pending).resolves.toMatchObject({ session: { sessionId: 'forked-thread' } });
     expect((await messages()).some((value) => value.fixtureCompleted === 'thread/fork')).toBe(true);
@@ -218,5 +231,7 @@ describe('Codex thread/fork', () => {
       forkCodexSession('native-thread', cancelled.dir, {}, { ...cancelled.options, signal: controller.signal }),
     ).rejects.toThrow('已取消');
     expect(await cancelled.messages()).toEqual([]);
-  });
+    // 这条用例要真起两个子进程并在其间 abort，全量并行跑时 5 秒默认超时不够；
+    // 放宽的是外层等待预算，被测行为（abort 后仍等原生完成）不变。
+  }, 30_000);
 });

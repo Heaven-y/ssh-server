@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import type { ClientChannel } from 'ssh2';
-import type { RemoteFileActionInput } from '@ssh-server/shared';
+import type { RemoteFileActionInput } from '@agentdeck/shared';
 import type { SshPool } from '../ssh/pool';
 import type { SshTarget } from '../ssh/connection';
 import { sq } from '../ssh/remote-command';

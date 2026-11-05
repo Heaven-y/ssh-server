@@ -36,7 +36,7 @@ export function LocalSessionGate({ start, mountApp }: { start(): void; mountApp(
   return (
     <main className="flex min-h-full items-center justify-center p-6">
       <section className="max-w-md space-y-4 rounded-xl border border-border bg-card p-6">
-        <h1 className="text-lg font-semibold">ssh-server</h1>
+        <h1 className="text-lg font-semibold">AgentDeck</h1>
         {phase === 'pending' ? (
           <p role="status">正在连接本机服务…</p>
         ) : (

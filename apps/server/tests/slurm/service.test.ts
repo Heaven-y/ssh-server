@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { workspaceTerminalTarget, type Workspace } from '@ssh-server/shared';
+import { workspaceTerminalTarget, type BoundWorkspace } from '@agentdeck/shared';
 import { createSlurmService } from '../../src/slurm/service';
 import type { ResolvedConnection } from '../../src/ssh/connection';
 import type { SshPool } from '../../src/ssh/pool';
@@ -12,11 +12,11 @@ afterEach(() => {
   vi.useRealTimers();
 });
 function fixture() {
-  let workspace: Workspace | undefined = {
+  let workspace: BoundWorkspace | undefined = {
     id: 'w',
     name: '合成工作区',
-    localDir: path.resolve('fixture'),
-    sshHost: 'my-server',
+    dir: path.resolve('fixture'),
+    server: 'my-server',
     remoteDir: '~/projects/demo',
   };
   let connection: ResolvedConnection = {
@@ -71,7 +71,7 @@ function fixture() {
     changeConnection(value: Partial<ResolvedConnection>) {
       connection = { ...connection, ...value };
     },
-    changeWorkspace(value?: Partial<Workspace>) {
+    changeWorkspace(value?: Partial<BoundWorkspace>) {
       workspace = value ? { ...workspace!, ...value } : undefined;
     },
     changeGeneration() {

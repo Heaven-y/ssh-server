@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Workspace } from './workspace';
+import type { BoundWorkspace } from './workspace';
 
 /** 终端专用限制；正文不进入聊天协议或持久存储。 */
 export const TERMINAL_LIMITS = {
@@ -89,9 +89,10 @@ export type TerminalSize = z.infer<typeof TerminalSizeSchema>;
 export type TerminalBinding = z.infer<typeof TerminalBindingSchema>;
 export type TerminalClientMessage = z.infer<typeof TerminalClientMessageSchema>;
 export type TerminalServerMessage = z.infer<typeof TerminalServerMessageSchema>;
-export const workspaceTerminalTarget = (workspace: Workspace): TerminalTarget => ({
+/** 终端只对已绑定服务器与默认目录的项目开放。 */
+export const workspaceTerminalTarget = (workspace: BoundWorkspace): TerminalTarget => ({
   workspaceId: workspace.id,
-  sshHost: workspace.sshHost,
+  sshHost: workspace.server,
   remoteDir: workspace.remoteDir,
 });
 export const terminalTargetKey = (target: TerminalTarget): string =>

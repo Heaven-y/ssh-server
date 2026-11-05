@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import type { ClientChannel, SFTPWrapper } from 'ssh2';
 import type WebSocket from 'ws';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { TerminalServerMessage, TerminalTarget, Workspace } from '@ssh-server/shared';
+import type { BoundWorkspace, TerminalServerMessage, TerminalTarget } from '@agentdeck/shared';
 import { createTerminalSession } from '../../src/terminal/session';
 import type { TerminalBindings } from '../../src/terminal/binding';
 import { createTerminalOutput } from '../../src/terminal/output';
@@ -12,11 +12,11 @@ import type { SshPool } from '../../src/ssh/pool';
 
 afterEach(() => vi.useRealTimers());
 const target: TerminalTarget = { workspaceId: 'w', sshHost: 'my-server', remoteDir: '/demo' };
-const workspace: Workspace = {
+const workspace: BoundWorkspace = {
   id: 'w',
   name: '工作区',
-  localDir: 'fixture',
-  sshHost: 'my-server',
+  dir: 'fixture',
+  server: 'my-server',
   remoteDir: '/demo',
 };
 const token = `1.12345.${'a'.repeat(32)}.${'b'.repeat(64)}`;

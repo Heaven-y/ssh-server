@@ -1,7 +1,6 @@
 import { z } from 'zod';
-import type { AgentEvent } from './events';
 
-export const AgentKindSchema = z.enum(['claude', 'codex']);
+export const AgentKindSchema = z.enum(['claude', 'codex', 'antigravity']);
 export const NativeSessionIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,100}$/);
 /** 只接收原生轮次/消息 ID，不接收文件路径或其他原生参数覆盖。 */
 export const SessionForkSchema = z.object({ pointId: NativeSessionIdSchema.optional() }).strict();
@@ -14,12 +13,3 @@ export const SessionActionSchema = z.discriminatedUnion('action', [
 ]);
 export type SessionActionInput = z.infer<typeof SessionActionSchema>;
 export type AgentKind = z.infer<typeof AgentKindSchema>;
-/** Codex 的 sessionId 对应 thread.id，不能使用分叉树根的 thread.sessionId。 */
-export type SessionRef = { agent: AgentKind; sessionId: string };
-export type SessionSummary = SessionRef & {
-  summary: string;
-  lastModified: number;
-  /** 原生会话记录的模型配置，不代表逐轮执行遥测。 */
-  nativeModel?: string;
-};
-export type SessionHistory = { session: SessionSummary; events: AgentEvent[]; actualModel?: string };

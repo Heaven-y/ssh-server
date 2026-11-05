@@ -1,6 +1,3 @@
-@import '@fontsource/ibm-plex-sans/400.css';
-@import '@fontsource/ibm-plex-sans/500.css';
-@import '@fontsource/ibm-plex-sans/600.css';
 @import '@fontsource/jetbrains-mono/400.css';
 @import 'tailwindcss';
 @import 'streamdown/styles.css';
@@ -8,45 +5,208 @@
 /* streamdown 组件里的类名需要被 Tailwind 扫描到（路径相对本文件，指向仓库根目录的 node_modules） */
 @source '../../../node_modules/streamdown/dist/*.js';
 
-/* 中性工作区主题：accent 表达主操作，success / warning / destructive 表达状态。 */
+/* 参考 DSH 本机主题的中性层级；品牌操作与状态颜色分别定义。 */
 @theme {
-  --color-background: #101114;
-  --color-card: #18191e;
-  --color-muted: #282a32;
-  --color-muted-foreground: #a2a6b3;
-  --color-foreground: #eeeff3;
-  --color-border: #30323b;
-  --color-border-strong: #747a89;
-  --color-accent: #9cb5ff;
-  --color-accent-foreground: #152044;
+  --color-background: #151517;
+  --color-sidebar: #1b1b1c;
+  --color-card: #232324;
+  --color-muted: #2c2c2e;
+  --color-muted-foreground: #adb2b8;
+  --color-foreground: #f9fafb;
+  --color-border: #ffffff1f;
+  --color-border-strong: #ffffff33;
+  --color-accent: #f9fafb;
+  --color-accent-foreground: #0f1115;
+  --color-interactive: #7aaaff;
   --color-success: #81cba4;
   --color-warning: #f0c77f;
   --color-destructive: #e66f7a;
   --color-destructive-foreground: #ffb0b8;
 
   --font-sans:
-    'IBM Plex Sans', 'Microsoft YaHei UI', 'PingFang SC', 'Noto Sans CJK SC', ui-sans-serif, system-ui, sans-serif;
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', 'Helvetica Neue', Arial,
+    sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
+  --surface-composer: #2c2c2e;
+  --surface-user-message: #2c2c2e;
+  --surface-code: #1b1b1c;
+  --control-hover: #ffffff14;
+  --control-shadow: 0 0 0 0.5px #ffffff1f, 0 2px 6px #00000024;
 }
 :root:not([data-theme='dark']) {
   color-scheme: light;
-  --color-background: #f5f6f8;
+  --color-background: #ffffff;
+  --color-sidebar: #f9fafb;
   --color-card: #ffffff;
-  --color-muted: #e5e8ee;
-  --color-muted-foreground: #505968;
-  --color-foreground: #1b2230;
-  --color-border: #d4d9e2;
-  --color-border-strong: #788294;
-  --color-accent: #254dc6;
+  --color-muted: #f1f3f5;
+  --color-muted-foreground: #61666b;
+  --color-foreground: #0f1115;
+  --color-border: #0000001a;
+  --color-border-strong: #00000029;
+  --color-accent: #0f1115;
   --color-accent-foreground: #ffffff;
+  --color-interactive: #4176e6;
   --color-success: #23613e;
   --color-warning: #805100;
   --color-destructive: #b6273f;
   --color-destructive-foreground: #a51c34;
+  --surface-composer: #ffffff;
+  --surface-user-message: #edf3fe;
+  --surface-code: #f9fafb;
+  --control-hover: #2631480f;
+  --control-shadow: 0 0 0 0.5px #0000001a, 0 2px 6px #0000000a;
+}
+
+/* 主区列宽以自己的容器计算；打开右栏后仍保留消息与输入的共同轴线。 */
+.conversation {
+  --conversation-width: clamp(680px, 64cqw, 920px);
+  container-type: inline-size;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.conversation-row {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: calc(var(--conversation-width) + 64px);
+  margin-inline: auto;
+  padding: 6px 32px;
+}
+.conversation-notice {
+  box-sizing: border-box;
+  width: calc(100% - 64px);
+  max-width: var(--conversation-width);
+  margin: 8px auto;
+}
+.conversation-user {
+  width: fit-content;
+  max-width: min(82%, 648px);
+  margin-left: auto;
+  border-radius: 20px;
+  background: var(--surface-user-message);
+  padding: 10px 16px;
+  font-size: 14px;
+  line-height: 22px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.conversation-assistant {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+.conversation-assistant :is(p, li) {
+  line-height: 24px;
+}
+.conversation-assistant :is(pre, [data-streamdown='code-block']) {
+  border-color: var(--color-border);
+  border-radius: 12px;
+  background: var(--surface-code);
+  font-size: 12px;
+  line-height: 20px;
+}
+.conversation-assistant :not(pre) > code {
+  border-radius: 4px;
+  background: var(--control-hover);
+  padding: 1px 4px;
+  font-size: 12px;
+}
+.conversation-assistant a {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.composer {
+  flex-shrink: 0;
+  padding: 12px 16px 16px;
+}
+.composer-card {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  max-width: calc(var(--conversation-width, 748px) + 32px);
+  flex-direction: column;
+  gap: 12px;
+  margin-inline: auto;
+  border-radius: 28px;
+  background: var(--surface-composer);
+  padding-top: 8px;
+  box-shadow: var(--control-shadow);
+  transition: box-shadow 0.15s ease;
+}
+.composer-card:focus-within {
+  box-shadow:
+    0 0 0 1px var(--color-border-strong),
+    0 2px 8px #0000000a;
+}
+.composer-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+  max-height: 336px;
+  resize: none;
+  field-sizing: content;
+  border: 0;
+  outline: none;
+  background: transparent;
+  padding: 4px 16px 0;
+  color: var(--color-foreground);
+  caret-color: var(--color-interactive);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 24px;
+}
+.composer-input::placeholder {
+  color: var(--color-muted-foreground);
+}
+.composer-input:focus-visible {
+  outline: none;
+}
+.composer-toolbar {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px 8px;
+}
+.composer-submit {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-accent-foreground);
+  transition: opacity 0.1s ease;
+}
+.composer-submit:hover:not(:disabled) {
+  opacity: 0.85;
+}
+.composer-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+@container (max-width: 560px) {
+  .conversation-row {
+    padding-inline: 20px;
+  }
+  .conversation-notice {
+    width: calc(100% - 40px);
+  }
+  .composer {
+    padding: 10px 12px 12px;
+  }
 }
 
 [cmdk-group-heading] {
@@ -89,6 +249,12 @@
   }
   body {
     @apply bg-background font-sans text-foreground antialiased;
+    font-size: 14px;
+    line-height: 22px;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
   }
   button,
   summary,
@@ -96,7 +262,7 @@
     cursor: pointer;
   }
   :focus-visible {
-    @apply outline-2 outline-offset-2 outline-accent;
+    @apply outline-2 outline-offset-2 outline-interactive;
   }
   @media (prefers-reduced-motion: reduce) {
     *,

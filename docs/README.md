@@ -1,20 +1,44 @@
 # 文档导航
 
-更新日期：2026-10-09。
+更新于 2026-11-05。按产品、实现、开发和进度组织当前资料；旧方案与历史验收通过 Git 查询，避免与现行规则并列。
+
+| 阅读顺序 | 文档 | 负责说明 |
+|---|---|---|
+| 1 | [项目入口](../README.md) | 产品定位、当前基础、启动入口 |
+| 2 | [产品需求](product/requirements.md) | 功能范围、行为边界和验收条件 |
+| 3 | [界面与交互](product/ui-layout.md) | 会话主区、导航、状态、原生配置与插件页面 |
+| 4 | [架构](engineering/architecture.md) | 模块、协议、生命周期与实现预算 |
+| 5 | [现行决策](engineering/decisions.md) | 仍有效的选择、理由、约束和替代关系 |
+| 6 | [开发指南](guides/dev-environment.md) | 环境、代码规范、分支、技能和验证方法 |
+| 7 | [路线图](roadmap.md) | 已交付基础、当前主线、后续顺序与证据边界 |
+
+## 接入与使用
 
 | 文档 | 用途 |
 |---|---|
-| [项目入口](../README.md) | 功能、启动和安全边界 |
-| [需求](product/requirements.md) | 第一版功能、边界及验收条件 |
-| [界面布局](product/ui-layout.md) | 当前停靠工作台、面板和交互 |
-| [架构](engineering/architecture.md) | 技术栈、接口、数据流和生命周期 |
-| [设计决策](engineering/decisions.md) | 长期保留的取舍、原因、替代关系及[Git追溯入口](engineering/decisions.md#决策追溯与保留规则) |
-| [开发环境](guides/dev-environment.md) | 运行、操作注意事项、代码规范和质量门禁 |
-| [路线图](roadmap.md) | 当前交付状态与运行边界 |
-| [最新验收](guides/ui-usability-optimization-acceptance.md) | D42质量门禁、浏览器交互与人工视觉检查结果，含4张代表图 |
+| [原生对话接入](engineering/native-dialogue.md) | 三 CLI 主流程的本轮边界与接口选择 |
+| [原生配置与启动环境](engineering/native-configuration.md) | 各 CLI 配置入口、显式正文编辑和启动变量的边界 |
+| [工作台插件接口](engineering/workbench-plugins.md) | 自有 v1 插件格式、宿主接口、SSH Console 与兼容边界 |
+| [本地安装与打包](guides/local-installation.md) | 安装版、便携版、数据保存、构建和隔离验收 |
 
-## 适用规则
+## 维护规则
 
-- 资源与文件按[D42](engineering/decisions.md#d42-停靠工作台会话操作与设置收敛2026-10-09)自适应停靠：宽屏四列、较窄右侧上下、更窄默认收起左栏；保留独立活动与已打开文件/PTY生命周期，本地文件只读（[D44](engineering/decisions.md#d44-本地文件只读设置入口与服务器点击即编辑2026-10-15)）。
-- 参数归属：产品可见阈值与验收条件写在[需求](product/requirements.md)，交互与呈现写在[界面布局](product/ui-layout.md)，实现预算、协议与模块约束写在[架构](engineering/architecture.md)，取舍理由与替代关系写在[设计决策](engineering/decisions.md)；同一数值只在一处定义，其余引用。
-- 只维护一种正式业务路径和数据格式；历史阶段的测试数字、截图与验收范围只在[最新验收](guides/ui-usability-optimization-acceptance.md)中按实际运行记录，重复计划与旧图可以精简，决策记录长期保留。
+- 功能做什么写进需求；界面怎么呈现写进交互；技术怎么运行写进架构；为什么这样取舍写进决策。具体数值只在负责该参数的文件定义，其他文件引用。
+- 迭代始终优先保证对话主流程；扩展接口按真实交付版本记录，不提前承诺尚未实现的宿主能力。
+- 每个 CLI 的原生配置和权限按实际支持接入。工作台插件与 CLI 原生扩展各自说明，不要求三种 CLI 使用相同层级。
+- 已实现、待实现、受控验证、真实验证分别记录。删除过时材料不改变过去的通过、失败或未验证结论。
+- 阶段计划只保留当前仍执行的版本；完成或被替代的计划归入 Git 记录，避免持续维护两份产品规范。
+
+## 已退出的资料
+
+2026-11-03 的原生 CLI 设计及 M1 实施计划、上一代停靠工作台验收和配套图片已从当前资料集移除。仍适用的理由和约束迁入现行文档，旧原文在 `c686ef2` 中可查；更早决策的锚点为 `ec33148`。
+
+完整路径与读取命令见[历史追溯](engineering/decisions.md#历史追溯)。
+
+三 CLI 对话核心接线计划已经完成，原始步骤与验证记录在 `6e33803:docs/superpowers/plans/2026-11-04-native-dialogue.md`。其仍有效的运行边界继续保留在原生对话接入说明中。
+
+会话管理实施计划已归档，完成版本为 `68e4ce1:docs/superpowers/plans/2026-11-04-session-management.md`；实现和整合提交分别为 `bd503b1`、`a3e29ab`。管理入口及并发规则继续由需求、架构和接入说明维护。
+
+整体交付计划的实现与验收已完成，步骤记录保存于 `33ffd9d:docs/superpowers/plans/2026-11-04-workbench-completion.md`。原生配置、工作台插件、本地包分别见上表的长期说明；阶段提交及未验证边界集中在路线图，不再保留并行维护的已完成计划。
+
+DSH 界面对齐和整体验证计划归档至 `08ed6df:docs/superpowers/plans/2026-11-05-dsh-ui-alignment.md`。现行布局、生命周期与验收分别由交互、架构和路线图维护，Git 合并结果以分支历史为准。

@@ -1,5 +1,5 @@
 import type { ClientChannel } from 'ssh2';
-import { TERMINAL_LIMITS } from '@ssh-server/shared';
+import { TERMINAL_LIMITS } from '@agentdeck/shared';
 import { TerminalError } from './errors';
 
 export function createTerminalInput(options: {

@@ -1,5 +1,5 @@
 import { RefreshCw } from 'lucide-react';
-import type { SlurmSnapshot, TerminalTarget } from '@ssh-server/shared';
+import type { SlurmSnapshot, TerminalTarget } from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
 import { useSlurm } from './use-slurm';
 

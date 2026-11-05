@@ -1,8 +1,14 @@
 import { createHash } from 'node:crypto';
-import { terminalTargetKey, workspaceTerminalTarget, type TerminalTarget, type Workspace } from '@ssh-server/shared';
+import {
+  terminalTargetKey,
+  workspaceTerminalTarget,
+  type BoundWorkspace,
+  type TerminalTarget,
+} from '@agentdeck/shared';
 import { workspaceTarget, type ResolvedConnection } from '../ssh/connection';
 import type { SshPool } from '../ssh/pool';
 import type { WorkspaceStore } from '../workspaces/store';
+import { boundWorkspace } from '../workspaces/bound';
 
 export class ResourceTargetError extends Error {
   constructor(readonly code: 'workspace_missing' | 'target_changed') {
@@ -12,7 +18,7 @@ export class ResourceTargetError extends Error {
 
 export type ResourceTargetContext = {
   target: TerminalTarget;
-  workspace: Workspace;
+  workspace: BoundWorkspace;
   key: string;
   samplingKey: string;
   generation: number;
@@ -36,7 +42,8 @@ function samplingKey(connection: ResolvedConnection): string {
 /** 资源与作业查询共用：每次异步解析前后都复查固定目标、实际 key 及认证代次。 */
 export function createResourceTargetContext({ store, pool }: { store: Pick<WorkspaceStore, 'get'>; pool: SshPool }) {
   async function checkedWorkspace(target: TerminalTarget) {
-    const workspace = await store.get(target.workspaceId);
+    // 资源面板只服务已绑定服务器的项目，未绑定与不存在同样按「工作区不可用」处理。
+    const workspace = boundWorkspace(await store.get(target.workspaceId));
     if (!workspace) throw new ResourceTargetError('workspace_missing');
     if (terminalTargetKey(workspaceTerminalTarget(workspace)) !== terminalTargetKey(target))
       throw new ResourceTargetError('target_changed');

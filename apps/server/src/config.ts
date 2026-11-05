@@ -15,10 +15,22 @@ export type ServerConfig = {
 
 export const DEFAULT_PORT = 4317;
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
+/** 当前数据目录名 */
+export const CONFIG_DIR_NAME = 'AgentDeck';
+/** 改名前的数据目录名，仅用于一次性迁移 */
+export const LEGACY_CONFIG_DIR_NAME = 'ssh-server';
+
+function localAppBase(env: NodeJS.ProcessEnv): string {
+  return env.LOCALAPPDATA ?? path.join(os.homedir(), '.local', 'share');
+}
 
 function defaultConfigDir(env: NodeJS.ProcessEnv): string {
-  const base = env.LOCALAPPDATA ?? path.join(os.homedir(), '.local', 'share');
-  return path.join(base, 'ssh-server');
+  return path.join(localAppBase(env), CONFIG_DIR_NAME);
+}
+
+/** 改名前的默认数据目录；不存在则无需迁移 */
+export function legacyConfigDir(env: NodeJS.ProcessEnv): string {
+  return path.join(localAppBase(env), LEGACY_CONFIG_DIR_NAME);
 }
 
 function parsePort(raw: string | undefined): number {
@@ -35,16 +47,16 @@ function argValue(argv: string[], name: string): string | undefined {
 
 /** argv 为去掉 node 与脚本路径后的参数 */
 export function loadConfig(env: NodeJS.ProcessEnv, argv: string[]): ServerConfig {
-  const host = env.SSH_SERVER_HOST || '127.0.0.1';
+  const host = env.AGENTDECK_HOST || '127.0.0.1';
   if (!LOOPBACK_HOSTS.has(host)) {
     throw new Error(`只允许监听本机地址（127.0.0.1、::1、localhost），当前为 ${host}`);
   }
-  const devRaw = argValue(argv, '--dev-origin') ?? env.SSH_SERVER_DEV_ORIGIN;
+  const devRaw = argValue(argv, '--dev-origin') ?? env.AGENTDECK_DEV_ORIGIN;
   return {
-    port: parsePort(env.SSH_SERVER_PORT),
+    port: parsePort(env.AGENTDECK_PORT),
     host,
-    configDir: env.SSH_SERVER_CONFIG_DIR || defaultConfigDir(env),
-    token: env.SSH_SERVER_TOKEN || randomBytes(32).toString('base64url'),
+    configDir: env.AGENTDECK_CONFIG_DIR || defaultConfigDir(env),
+    token: env.AGENTDECK_TOKEN || randomBytes(32).toString('base64url'),
     devOrigin: devRaw ? new URL(devRaw).origin : undefined,
   };
 }

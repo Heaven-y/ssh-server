@@ -1,0 +1,10 @@
+{
+  "id": "example-counter",
+  "name": "项目计数器",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "entry": "index.html",
+  "description": "演示工作台插件的独立存储与当前项目摘要。页面关闭后保留计数；卸载插件时清除。",
+  "permissions": ["storage", "project-context"],
+  "commands": [{ "id": "open-counter", "title": "打开项目计数器" }]
+}

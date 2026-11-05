@@ -1,7 +1,7 @@
 import { Command } from 'cmdk';
 import { useQueries } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { AgentKind, SessionSummary, Workspace } from '@ssh-server/shared';
+import type { AgentKind, SessionSummary, Workspace } from '@agentdeck/shared';
 import { DetailDialog } from '../ui/DetailDialog';
 import { AgentIcon } from '../ui/BrandIcons';
 import { api, queryKeys } from '../lib/api';
@@ -9,32 +9,32 @@ import { sessionActionKey, useChat } from '../features/chat/chat-store';
 import { useUiPreferences } from '../ui/ui-preferences';
 
 export type PaletteActions = {
-  files(): boolean;
-  terminal(): boolean;
+  conversation?(): boolean;
+  plugins?: Array<{ id: string; label: string; run(): boolean }>;
+  terminal?(): boolean;
   settings(): boolean;
-  sync(id: string): boolean;
-  versions(id: string): boolean;
-  resources(id: string): boolean;
+  resources?(id: string): boolean;
 };
 type Action = { id: string; label: string; workspace?: boolean; run(): boolean };
 const itemClass =
   'flex cursor-pointer items-center justify-between gap-3 rounded-md px-3 py-2.5 text-sm data-[selected=true]:bg-muted data-[selected=true]:text-foreground data-[disabled=true]:opacity-45';
 function commonActions(actions: PaletteActions, id: string): Action[] {
   return [
+    ...(actions.plugins ?? []),
     {
       id: 'new',
       label: '新会话',
       workspace: true,
       run: () => {
+        if (actions.conversation?.() === false) return false;
         useChat.getState().newSession();
         return true;
       },
     },
-    { id: 'files', label: '打开文件', workspace: true, run: actions.files },
-    { id: 'terminal', label: '打开终端', workspace: true, run: actions.terminal },
-    { id: 'sync', label: '立即同步', workspace: true, run: () => actions.sync(id) },
-    { id: 'versions', label: '保存版本（填写说明）', workspace: true, run: () => actions.versions(id) },
-    { id: 'resources', label: '查看资源详情', workspace: true, run: () => actions.resources(id) },
+    ...(actions.terminal ? [{ id: 'terminal', label: '打开 SSH Console 终端', run: actions.terminal }] : []),
+    ...(actions.resources
+      ? [{ id: 'resources', label: '查看服务器资源', workspace: true, run: () => actions.resources!(id) }]
+      : []),
     { id: 'settings', label: '打开设置', run: actions.settings },
     {
       id: 'theme',
@@ -72,7 +72,7 @@ function SessionSource({
       heading={
         <span className="flex items-center gap-1.5">
           <AgentIcon agent={agent} className="size-3.5" />
-          {agent === 'claude' ? 'Claude' : 'Codex'} 会话
+          {{ claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' }[agent]} 会话
         </span>
       }
     >
@@ -80,12 +80,12 @@ function SessionSource({
         <Command.Item
           key={session.sessionId}
           value={`session:${agent}:${session.sessionId}`}
-          keywords={[session.summary, agent, session.sessionId]}
+          keywords={[session.title, agent, session.sessionId]}
           className={itemClass}
           disabled={operations[sessionActionKey(workspaceId, session)]?.pending === true}
           onSelect={() => choose(session)}
         >
-          <span className="truncate">{session.summary || '无标题会话'}</span>
+          <span className="truncate">{session.title || '无标题会话'}</span>
           <span className="shrink-0 text-xs text-muted-foreground">{agent}</span>
         </Command.Item>
       ))}
@@ -94,7 +94,7 @@ function SessionSource({
 }
 function PaletteSessions({ workspace, choose }: { workspace?: Workspace; choose(session: SessionSummary): void }) {
   const sources = useQueries({
-    queries: (['claude', 'codex'] as const).map((agent) => ({
+    queries: (['claude', 'codex', 'antigravity'] as const).map((agent) => ({
       queryKey: queryKeys.sessions(workspace?.id ?? '', agent),
       queryFn: ({ signal }: { signal: AbortSignal }) => api.listSessions(workspace!.id, agent, false, signal),
       enabled: !!workspace,
@@ -105,7 +105,7 @@ function PaletteSessions({ workspace, choose }: { workspace?: Workspace; choose(
   return (
     <>
       {sources.map((query, index) => {
-        const agent = index === 0 ? 'claude' : 'codex';
+        const agent = (['claude', 'codex', 'antigravity'] as const)[index]!;
         return (
           <div key={agent}>
             {query.isLoading && (
@@ -147,7 +147,7 @@ export default function CommandPalette({
   const [error, setError] = useState<string>();
   const run = (action: Action) => {
     if (action.workspace && (!workspace || useChat.getState().workspaceId !== workspace.id)) {
-      setError('工作区已改变，请重新打开搜索与操作。');
+      setError('项目已改变，请重新打开搜索与操作。');
       return;
     }
     if (!action.run()) {
@@ -159,19 +159,20 @@ export default function CommandPalette({
   const choose = (session: SessionSummary) =>
     run({
       id: session.sessionId,
-      label: session.summary,
+      label: session.title,
       workspace: true,
       run: () => {
+        if (actions.conversation?.() === false) return false;
         void useChat.getState().openSession(session);
         return true;
       },
     });
   return (
     <DetailDialog title="搜索与操作" onClose={close}>
-      <Command label="工作区、会话和常用操作" loop>
+      <Command label="项目、会话和常用操作" loop>
         <Command.Input
           autoFocus
-          placeholder="搜索工作区、会话或操作…"
+          placeholder="搜索项目、会话或操作…"
           aria-label="搜索命令"
           className="w-full rounded-md border border-border-strong bg-background px-3 py-2 text-sm"
         />
@@ -182,7 +183,7 @@ export default function CommandPalette({
         )}
         <Command.List className="mt-3 max-h-[50vh] overflow-y-auto">
           <Command.Empty className="px-3 py-6 text-sm text-muted-foreground">没有匹配结果。</Command.Empty>
-          <Command.Group heading="工作区">
+          <Command.Group heading="项目">
             {workspaces.map((target) => (
               <Command.Item
                 key={target.id}
@@ -191,15 +192,16 @@ export default function CommandPalette({
                 className={itemClass}
                 onSelect={() => {
                   if (!workspaces.some((item) => item.id === target.id)) {
-                    setError('工作区已移除。');
+                    setError('项目已移除。');
                     return;
                   }
+                  if (actions.conversation?.() === false) return;
                   useChat.getState().selectWorkspace(target.id);
                   close();
                 }}
               >
                 {target.name}
-                <span className="text-xs text-muted-foreground">切换工作区</span>
+                <span className="text-xs text-muted-foreground">切换项目</span>
               </Command.Item>
             ))}
           </Command.Group>

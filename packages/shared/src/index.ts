@@ -2,6 +2,8 @@
 
 /** 前后端协议版本，协议出现不兼容变化时递增 */
 export const PROTOCOL_VERSION = 1;
+export * from './plugins';
+export * from './ssh-console';
 
 export { RESOURCE_LIMITS } from './resources';
 export type {
@@ -38,40 +40,13 @@ export type {
 export type { AgentEvent } from './events';
 export { ClientMessageSchema } from './protocol';
 export type { ClientMessage, ServerMessage } from './protocol';
-export { SshAuthModeSchema, WorkspaceInputSchema } from './workspace';
-export type { SshAuthMode, SshHostInfo, Workspace, WorkspaceInput } from './workspace';
-export {
-  DEFAULT_POLICY_RULE_IDS,
-  DEFAULT_POLICY_RULE_REASONS,
-  MAX_CUSTOM_POLICY_RULES,
-  CustomPolicyRuleSchema,
-  WorkspacePolicySchema,
-  WorkspacePolicyInputSchema,
-} from './policy';
-export type {
-  DefaultPolicyRuleId,
-  CustomPolicyRule,
-  WorkspacePolicy,
-  WorkspacePolicyInput,
-  WorkspacePolicyDocument,
-} from './policy';
-export { SyncSettingsSchema, DEFAULT_EXCLUDED_EXTENSIONS } from './sync';
-export type { SyncSettings, SyncConflict, SyncStatus } from './sync';
-export type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from './settings';
-export { ProductSettingsSchema, ProductSettingsInputSchema, resourceTiming } from './product-settings';
-export type {
-  ProductSettings,
-  ProductSettingsDocument,
-  ProductSettingsInput,
-  EnvironmentTool,
-  EnvironmentReport,
-  ResourceTiming,
-} from './product-settings';
-export { MAX_FILE_BYTES } from './files';
-export type { WorkspaceDirectory, WorkspaceFileEntry, WorkspaceFile } from './files';
+export { SshAuthModeSchema, WorkspaceInputSchema, WorkspaceSchema, isBoundWorkspace } from './workspace';
+export type { BoundWorkspace, SshAuthMode, SshHostInfo, Workspace, WorkspaceInput } from './workspace';
+export { DEFAULT_EXCLUDED_EXTENSIONS, RemoteFileFilterSchema } from './remote-files';
 export type {
   RemoteBrowseTarget,
   RemoteBrowseSession,
+  RemoteFileFilter,
   RemoteFileScope,
   RemoteFileEntry,
   RemoteDirectory,
@@ -81,61 +56,38 @@ export type {
   RemoteFileTaskPhase,
   RemoteFileTask,
 } from './remote-files';
+export type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from './settings';
 export type {
-  VersionChange,
-  VersionExcluded,
-  VersionStatus,
-  VersionCommit,
-  VersionHistory,
-  VersionDiff,
-  VersionSaveInput,
-  VersionSaveResult,
-  VersionRestoreInput,
-  VersionRestorePreview,
-  VersionRestoreResult,
-  VersionDiscardPreview,
-  VersionDiscardInput,
-} from './versions';
-export { VERSION_MESSAGE_MAX_LENGTH } from './versions';
+  NativeResource,
+  NativeResourceKind,
+  NativeResourceScope,
+  NativeResourceFormat,
+  NativeResourceRoot,
+  NativeResourceGuidance,
+  NativeResourceCatalog,
+  NativeResourceDocument,
+  NativeResourceSaveInput,
+  NativeResourceCreateInput,
+  NativeResourceSaved,
+} from './native-resources';
+export { LaunchEnvironmentInputSchema, LaunchVariableModeSchema } from './launch-environment';
+export type { LaunchEnvironmentInput, LaunchEnvironmentDocument, LaunchVariableMode } from './launch-environment';
+export { ProductSettingsSchema, ProductSettingsInputSchema, resourceTiming } from './product-settings';
+export type {
+  ProductSettings,
+  ProductSettingsDocument,
+  ProductSettingsInput,
+  EnvironmentTool,
+  EnvironmentReport,
+  ResourceTiming,
+} from './product-settings';
 export { AgentKindSchema, NativeSessionIdSchema, SessionActionSchema, SessionForkSchema } from './agents';
-export {
-  ManualServerInputSchema,
-  ManagedServerSchema,
-  HostTrustConfirmationSchema,
-  WorkspaceSetupInputSchema,
-  WorkspaceSetupVerifySchema,
-  WorkspaceSetupCreateSchema,
-} from './setup';
-export type {
-  ManualServerInput,
-  ManagedServer,
-  HostTrustStatus,
-  HostTrustConfirmation,
-  WorkspaceSetupCreate,
-  LocalDirectory,
-  SetupDirectoryInfo,
-  WorkspaceSetupVerification,
-  SetupInventory,
-  WorkspaceSetupPreview,
-  WorkspaceSetupResult,
-} from './setup';
-export type {
-  AgentKind,
-  SessionRef,
-  SessionSummary,
-  SessionHistory,
-  SessionActionInput,
-  SessionForkInput,
-} from './agents';
-export type { TurnFileChange } from './turn-files';
-export type { TurnChangesRecord } from './turn-changes';
-export { WorkspaceRemovalInputSchema } from './workspace-removal';
-export type {
-  WorkspaceRemovalInput,
-  WorkspaceRemovalBlocker,
-  WorkspaceRemovalPreview,
-  WorkspaceRemovalResult,
-} from './workspace-removal';
+export { ManualServerInputSchema, ManagedServerSchema, HostTrustConfirmationSchema } from './setup';
+export type { ManualServerInput, ManagedServer, HostTrustStatus, HostTrustConfirmation } from './setup';
+export type { AgentKind, SessionActionInput, SessionForkInput } from './agents';
+export { AgentProbeSchema, ProbeStatusSchema, SessionSummarySchema } from './session';
+export type { AgentProbe, ProbeStatus, SessionHistory, SessionRecord, SessionRef, SessionSummary } from './session';
+export type { SessionChangesSnapshot } from './session-changes';
 export { CapabilitySelectionSchema } from './capabilities';
 export type {
   CapabilitySelection,

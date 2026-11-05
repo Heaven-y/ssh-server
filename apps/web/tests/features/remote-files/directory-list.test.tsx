@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { RemoteDirectory, RemoteFileActionInput, RemoteFileEntry } from '@ssh-server/shared';
+import type { RemoteDirectory, RemoteFileActionInput } from '@agentdeck/shared';
 import { RemoteActionToolbar } from '../../../src/features/remote-files/RemoteActionToolbar';
 import { RemoteDirectoryList } from '../../../src/features/remote-files/RemoteDirectoryList';
 
@@ -19,12 +19,10 @@ const directory = {
 function Harness({
   action = vi.fn(),
   navigate = vi.fn(),
-  download = vi.fn(),
   listing = directory,
 }: {
   action?: (input: RemoteFileActionInput) => void;
   navigate?: (path: string) => void;
-  download?: (entry: RemoteFileEntry) => void;
   listing?: RemoteDirectory;
 }) {
   const [selected, select] = useState<string>();
@@ -36,7 +34,6 @@ function Harness({
       select={select}
       action={action}
       navigate={navigate}
-      download={download}
       sessionId="session"
     />
   );
@@ -93,7 +90,7 @@ it('同一浏览会话拖放只提交待确认操作，外部与其他会话拖�
   render(<Harness action={action} />);
   const folder = screen.getByRole('button', { name: /^folder/, pressed: false }).closest('li')!;
   const transfer = (sessionId: string) => ({
-    types: ['application/x-ssh-server-remote-file'],
+    types: ['application/x-agentdeck-remote-file'],
     getData: () => JSON.stringify({ sessionId, path: '/project/file2.py' }),
   });
   fireEvent.drop(folder, { dataTransfer: transfer('other') });
@@ -109,7 +106,6 @@ it('同一浏览会话拖放只提交待确认操作，外部与其他会话拖�
 it('默认按服务返回顺序显示点文件和点目录，打开与菜单操作仍可用', async () => {
   const navigate = vi.fn();
   const action = vi.fn();
-  const download = vi.fn();
   const hiddenDirectory = {
     name: '.git',
     path: '/project/.git',
@@ -118,7 +114,7 @@ it('默认按服务返回顺序显示点文件和点目录，打开与菜单操�
   };
   const hiddenFile = { name: '.env', path: '/project/.env', type: 'file' as const, scope: 'excluded' as const };
   const listing = { ...directory, entries: [hiddenDirectory, hiddenFile, ...directory.entries], nextCursor: 'page-2' };
-  render(<Harness listing={listing} navigate={navigate} action={action} download={download} />);
+  render(<Harness listing={listing} navigate={navigate} action={action} />);
   expect(screen.getAllByRole('button', { pressed: false }).map((button) => button.getAttribute('aria-label'))).toEqual([
     '.git',
     '.env',
@@ -140,7 +136,4 @@ it('默认按服务返回顺序显示点文件和点目录，打开与菜单操�
     source: '/project/.env',
     destination: '/project/.env',
   });
-  fireEvent.contextMenu(screen.getByRole('button', { name: '.env' }));
-  fireEvent.click(await screen.findByRole('menuitem', { name: '下载…' }));
-  expect(download).toHaveBeenCalledExactlyOnceWith(hiddenFile);
 });

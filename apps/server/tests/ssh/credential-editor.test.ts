@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ManagedServer } from '@ssh-server/shared';
+import type { ManagedServer } from '@agentdeck/shared';
 import { connectionIdentity } from '../../src/ssh/connection';
 import { credentialEditorFixture, deferred, input } from './credential-editor.fixture';
 
@@ -161,29 +161,6 @@ describe('明确编辑服务器才按需读取和保存密码', () => {
     expect(rejected.body).not.toContain('fixture-stale-secret');
     expect(await f.passwords.has(connectionIdentity(f.server))).toBe(false);
     expect(await f.passwords.has(connectionIdentity(other))).toBe(false);
-  });
-
-  it('活动工作区、远端文件和同步收尾锁阻止保存；读取不打断活动', async () => {
-    const f = await fixture();
-    const workspace = await f.store.create({
-      name: '项目',
-      localDir: f.root,
-      remoteDir: '~/projects/demo',
-      sshHost: f.server.alias,
-    });
-    const release = f.activity.acquire(workspace.id);
-    const bound = await revision(f);
-    const before = f.pool.generation(f.server.alias);
-    expect((await f.edit(bound, { password: 'fixture-blocked-secret' })).json()).toMatchObject({ code: 'target_busy' });
-    release();
-    for (const code of ['sync_busy', 'sync_task_pending', 'file_editor_open'] as const) {
-      // 资源阻塞代码对档案服务不透明；只要存在阻塞项即拒绝。
-      f.blockers.push({ code, message: '合成活动任务' });
-      expect((await f.edit(bound, { password: 'fixture-blocked-secret' })).statusCode).toBe(409);
-      f.blockers.pop();
-    }
-    expect(f.pool.generation(f.server.alias)).toBe(before);
-    expect(await f.passwords.has(connectionIdentity(f.server))).toBe(false);
   });
 
   it('目标改变未明确提供新密码时，不沿用原目标或目的地遗留密文', async () => {
@@ -354,7 +331,7 @@ it('新服务器加密失败不留下半份档案、密码或系统异常正文'
 
 it('携带新密码也不能绕过被引用连接目标的变更限制', async () => {
   const f = await fixture();
-  await f.store.create({ name: '项目', localDir: f.root, remoteDir: '~/projects/demo', sshHost: f.server.alias });
+  await f.store.create({ name: '项目', dir: f.root, server: f.server.alias, remoteDir: '~/projects/demo' });
   const response = await f.edit(await revision(f), {
     input: { ...input, hostname: 'other.invalid' },
     password: 'fixture-new-secret',

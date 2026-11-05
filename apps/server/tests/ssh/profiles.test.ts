@@ -3,11 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { WorkspaceRemovalBlocker } from '@ssh-server/shared';
 import { createServerTargets } from '../../src/ssh/targets';
 import { createServerProfiles } from '../../src/ssh/profiles';
 import { createWorkspaceStore } from '../../src/workspaces/store';
-import { createWorkspaceActivity } from '../../src/workspaces/activity';
 import { registerSshTargetRoutes } from '../../src/http/ssh-targets.routes';
 import { registerSshRoutes } from '../../src/http/ssh.routes';
 
@@ -24,8 +22,6 @@ async function fixture() {
     dirExists: async () => true,
     knownHosts: async () => (await targets.list()).map((server) => server.alias),
   });
-  const activity = createWorkspaceActivity();
-  const resources = { blockers: vi.fn<(id: string) => Promise<WorkspaceRemovalBlocker[]>>(async () => []) };
   const state = { connected: true, hasPassword: true, saved: false, savingAvailable: false, paused: false };
   const pool = {
     disconnect: vi.fn(),
@@ -37,7 +33,7 @@ async function fixture() {
     readServerPassword: vi.fn(async () => ({ password: null, revision: 'a'.repeat(64), savingAvailable: false })),
     commitServerEdit: vi.fn(async () => undefined),
   };
-  const profiles = createServerProfiles({ targets, store, activity, resources, pool });
+  const profiles = createServerProfiles({ targets, store, pool });
   const app = Fastify();
   registerSshTargetRoutes(app, profiles);
   registerSshRoutes(app, { profiles, pool });
@@ -48,11 +44,11 @@ async function fixture() {
   const server = await targets.save(input);
   const workspace = await store.create({
     name: '项目',
-    localDir: root,
+    dir: root,
     remoteDir: '~/projects/demo',
-    sshHost: server.alias,
+    server: server.alias,
   });
-  return { root, targets, profiles, activity, store, pool, server, workspace, app, resources };
+  return { root, targets, profiles, store, pool, server, workspace, app };
 }
 describe('服务器档案事务及HTTP保护', () => {
   it('GET只列登记档案，导入选项保留unsupported和私钥路径且不改写config', async () => {
@@ -109,57 +105,19 @@ describe('服务器档案事务及HTTP保护', () => {
     expect(await f.targets.list()).toEqual([]);
     expect(f.pool.forgetServerCredentials).toHaveBeenCalledExactlyOnceWith(f.server);
   });
-  it('另一关联工作区活动、持久任务和同步收尾均阻断修改和断开', async () => {
+  it('工作区活动不再阻断连接与凭据操作；普通连接检查与非普通连接均放行', async () => {
     const f = await fixture();
-    const other = await f.store.create({
+    await f.store.create({
       name: '另一个项目',
-      localDir: f.root,
+      dir: f.root,
       remoteDir: '/other',
-      sshHost: f.server.alias,
+      server: f.server.alias,
     });
-    const release = f.activity.acquire(other.id);
-    await expect(f.profiles.update(f.server.alias, { ...input, authMode: 'key' }, f.server)).rejects.toMatchObject({
-      code: 'target_busy',
-    });
-    const disconnect = () =>
-      f.app.inject({ method: 'POST', url: '/api/ssh/disconnect', payload: { sshHost: f.server.alias } });
-    expect((await disconnect()).statusCode).toBe(409);
-    release();
-    for (const code of ['sync_busy', 'sync_task_pending'] as const) {
-      f.resources.blockers.mockResolvedValue([{ code, message: '未完成' }]);
-      expect((await disconnect()).statusCode).toBe(409);
-      await expect(f.profiles.update(f.server.alias, { ...input, authMode: 'key' }, f.server)).rejects.toMatchObject({
-        code: 'target_busy',
-      });
-    }
-    expect(f.pool.disconnect).not.toHaveBeenCalled();
-  });
-  it('普通连接检查不中断活动工作区；新密码被拒绝', async () => {
-    const f = await fixture();
-    const release = f.activity.acquire(f.workspace.id);
-    try {
-      const request = (password?: string) =>
-        f.app.inject({ method: 'POST', url: '/api/ssh/connect', payload: { sshHost: f.server.alias, password } });
-      expect((await request()).statusCode).toBe(200);
-      expect((await request('fixture-secret')).statusCode).toBe(409);
-      expect(f.pool.connect).toHaveBeenCalledTimes(1);
-      expect(f.pool.disconnect).not.toHaveBeenCalled();
-    } finally {
-      release();
-    }
-  });
-  it('写盘前再次检查任务，锁内不允许新活动和并发工作区换绑', async () => {
-    const f = await fixture();
-    f.resources.blockers
-      .mockImplementationOnce(async () => [])
-      .mockImplementationOnce(async (id) => {
-        expect(() => f.activity.acquire(id)).toThrow();
-        return [{ code: 'sync_task_pending', message: '收尾未完成' }];
-      });
-    await expect(f.profiles.update(f.server.alias, { ...input, authMode: 'key' }, f.server)).rejects.toMatchObject({
-      code: 'target_busy',
-    });
-    expect(await f.targets.get(f.server.alias)).toEqual(f.server);
+    const request = (password?: string) =>
+      f.app.inject({ method: 'POST', url: '/api/ssh/connect', payload: { sshHost: f.server.alias, password } });
+    expect((await request()).statusCode).toBe(200);
+    expect((await request('fixture-secret')).statusCode).toBe(200);
+    expect(f.pool.connect).toHaveBeenCalledTimes(2);
     expect(f.pool.disconnect).not.toHaveBeenCalled();
   });
 });
@@ -170,7 +128,7 @@ it('删除与创建竞争时持有工作区快照，排队创建不能引用已�
   const { id: _id, ...input } = f.workspace;
   const deletion = f.profiles.remove(f.server.alias, f.server);
   const creation = f.store.create(input);
-  await expect(creation).rejects.toMatchObject({ field: 'sshHost' });
+  await expect(creation).rejects.toMatchObject({ field: 'server' });
   await deletion;
   expect(await f.store.list()).toEqual([]);
   expect(await f.targets.list()).toEqual([]);

@@ -2,7 +2,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 
-export const SESSION_COOKIE = 'ssh_server_session';
+export const SESSION_COOKIE = 'AGENTDECK_session';
 
 export type SecurityOptions = {
   token: string;
@@ -41,9 +41,8 @@ export function registerSecurity(app: FastifyInstance, opts: SecurityOptions): v
   const isLoopbackHost = (host: string | undefined) =>
     !!host && [...allowedOrigins()].some((origin) => new URL(origin).host === host.toLowerCase());
 
-  /** 修改类请求与 WebSocket 必须带允许的 Origin；/internal 只给本机 MCP 子进程调用，由路由自己校验会话令牌 */
-  const originRejected = (req: FastifyRequest, path: string) => {
-    if (path.startsWith('/internal/')) return false;
+  /** 修改类请求与 WebSocket 必须带允许的 Origin */
+  const originRejected = (req: FastifyRequest) => {
     if (req.headers['sec-fetch-site'] === 'cross-site') return true;
     const isUpgrade = req.headers.upgrade?.toLowerCase() === 'websocket';
     const isRead = req.method === 'GET' || req.method === 'HEAD';
@@ -62,14 +61,14 @@ export function registerSecurity(app: FastifyInstance, opts: SecurityOptions): v
 
   app.addHook('onRequest', async (req, reply) => {
     reply.header('X-Frame-Options', 'DENY');
-    reply.header('Content-Security-Policy', "frame-ancestors 'none'");
+    reply.header('Content-Security-Policy', "frame-ancestors 'none'; frame-src 'self'");
     // 1. Host必须匹配本机监听端口或显式开发来源，拒绝URL解析归一化旁路。
     if (!isLoopbackHost(req.headers.host)) {
       return reply.code(403).send({ message: '拒绝访问：Host 不是本机地址' });
     }
     const path = pathOf(req);
     // 2. 挡住其他网页借浏览器发请求
-    if (originRejected(req, path)) {
+    if (originRejected(req)) {
       return reply.code(403).send({ message: '拒绝访问：请求来源不被允许' });
     }
     // 3. 登录检查

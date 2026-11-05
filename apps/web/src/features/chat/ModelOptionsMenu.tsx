@@ -1,21 +1,24 @@
 import { Menu, MenuButton, MenuGroup, MenuItem, MenuProvider, MenuSeparator, useMenuStore } from '@ariakit/react';
 import { Check, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import type { AgentKind, AgentModel } from '@ssh-server/shared';
+import type { AgentKind, AgentModel } from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
-import { agentUnavailable, useEnvironment } from '../settings/use-environment';
+import { agentUnavailable, agentVersion, useEnvironment } from '../settings/use-environment';
 import { sessionActionKey, useChat } from './chat-store';
 import { useAgentCapabilities } from './use-agent-capabilities';
 import { AgentIcon } from '../../ui/BrandIcons';
 import { ManualModelDialog } from './ManualModelDialog';
 
-export const AGENT_LABELS: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex' };
-const STANDARD_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+export const AGENT_LABELS: Record<AgentKind, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  antigravity: 'Antigravity',
+};
 const menuClass =
-  'z-50 max-h-[min(440px,var(--popover-available-height))] w-72 overflow-y-auto rounded-xl border border-border-strong bg-card p-1.5 text-foreground shadow-xl';
+  'z-50 max-h-[min(440px,var(--popover-available-height))] w-72 overflow-y-auto rounded-2xl border border-border bg-card p-1 text-foreground shadow-lg';
 const itemClass =
-  'flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-sm outline-none data-active-item:bg-muted data-active-item:ring-1 data-active-item:ring-accent aria-disabled:cursor-not-allowed aria-disabled:opacity-45';
-const triggerClass = `${buttonClass('ghost')} min-w-0 gap-1 rounded-full px-2 text-xs`;
+  'flex w-full cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[13px] outline-none data-active-item:bg-muted data-active-item:ring-1 data-active-item:ring-border-strong aria-disabled:cursor-not-allowed aria-disabled:opacity-45';
+const triggerClass = `${buttonClass('ghost')} min-h-7 min-w-0 gap-1 rounded-lg px-2 text-[13px]`;
 
 function Choice({
   checked,
@@ -61,16 +64,17 @@ function CatalogStatus({ catalog }: { catalog: ReturnType<typeof useAgentCapabil
     </>
   );
 }
-function RefreshModels({ catalog }: { catalog: ReturnType<typeof useAgentCapabilities> }) {
+function RefreshModels({ catalog, disabled }: { catalog: ReturnType<typeof useAgentCapabilities>; disabled: boolean }) {
   return (
     <MenuItem
       className={itemClass}
-      disabled={catalog.isFetching}
+      disabled={disabled || catalog.isFetching}
       hideOnClick={false}
-      onClick={() => void catalog.refetch()}
+      onClick={catalog.refresh}
+      title="启动 CLI 检查账号、模型与命令清单"
     >
       <RefreshCw aria-hidden className="size-3.5" />
-      刷新模型列表
+      刷新能力
     </MenuItem>
   );
 }
@@ -103,13 +107,8 @@ function AgentChoices({ disabled }: { disabled: boolean }) {
   return (
     <>
       <p className="px-3 py-2 text-xs text-muted-foreground">{historical ? '会话 Agent' : 'Agent'}</p>
-      {(['claude', 'codex'] as const).map((kind) => (
-        <Choice
-          key={kind}
-          checked={agent === kind}
-          disabled={disabled || historical || agentUnavailable(environment.data, kind)}
-          choose={() => setAgent(kind)}
-        >
+      {(['claude', 'codex', 'antigravity'] as const).map((kind) => (
+        <Choice key={kind} checked={agent === kind} disabled={disabled || historical} choose={() => setAgent(kind)}>
           <AgentIcon agent={kind} className="size-3.5" /> {AGENT_LABELS[kind]}
         </Choice>
       ))}
@@ -138,7 +137,8 @@ function ModelActions({ disabled, catalog, model, onManual }: CatalogProps & { m
         <MenuItem className={itemClass} disabled={disabled} onClick={onManual}>
           手动填写模型
         </MenuItem>
-        <RefreshModels catalog={catalog} />
+        <RefreshModels catalog={catalog} disabled={disabled} />
+        <p className="px-3 py-2 text-xs leading-5 text-muted-foreground">刷新会启动 CLI 检查账号、模型与命令清单。</p>
       </Menu>
     </MenuProvider>
   );
@@ -169,20 +169,9 @@ function ModelChoices({ disabled, catalog, model, onManual }: CatalogProps & { m
     </>
   );
 }
-function EffortChoices({
-  disabled,
-  agent,
-  selected,
-  effort,
-}: {
-  disabled: boolean;
-  agent: AgentKind;
-  selected?: AgentModel;
-  effort: string;
-}) {
+function EffortChoices({ disabled, selected, effort }: { disabled: boolean; selected?: AgentModel; effort: string }) {
   const setEffort = useChat((state) => state.setReasoningEffort);
-  const nativeEfforts = agent === 'codex' ? (selected?.reasoningEfforts ?? []) : [];
-  const efforts = [...new Set([...STANDARD_EFFORTS, ...nativeEfforts])];
+  const efforts = [...new Set(selected?.reasoningEfforts ?? [])];
   return (
     <>
       <p className="px-3 py-2 text-xs text-muted-foreground">推理强度</p>
@@ -210,10 +199,12 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
   const model = useChat((state) => state.modelOverrides[state.agent]);
   const effort = useChat((state) => state.reasoningEfforts[state.agent]);
   const presentation = useModelPresentation(model);
+  const environment = useEnvironment();
+  const version = agentVersion(environment.data, agent);
   const setModel = useChat((state) => state.setModel);
   const catalog = useAgentCapabilities(modelOpen || effortOpen);
   const models = catalog.data?.models ?? [];
-  const selected = models.find((candidate) => candidate.id === model);
+  const selected = models.find((candidate) => candidate.id === (model || presentation.label));
   return (
     <>
       <MenuButton
@@ -221,11 +212,13 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
         render={<button type="button" />}
         aria-label="模型选项"
         disabled={disabled}
-        className={`${triggerClass} max-w-56`}
-        title={presentation.title}
+        className={`${triggerClass} max-w-64`}
+        title={`${AGENT_LABELS[agent]}${version ? ` · 本机探测版本 ${version}` : ''} · ${presentation.title}`}
       >
         <AgentIcon agent={agent} className="size-3.5" />
-        <span className="truncate">{presentation.label}</span>
+        <span className="truncate">
+          {AGENT_LABELS[agent]} · {presentation.label}
+        </span>
         <ChevronDown aria-hidden className="size-3.5 shrink-0" />
       </MenuButton>
       <MenuButton
@@ -247,7 +240,7 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
         )}
       </Menu>
       <Menu store={effortMenu} portal unmountOnHide gutter={8} aria-label="推理强度菜单" className={menuClass}>
-        <EffortChoices disabled={disabled} agent={agent} selected={selected} effort={effort} />
+        <EffortChoices disabled={disabled} selected={selected} effort={effort} />
       </Menu>
       {manual && (
         <ManualModelDialog

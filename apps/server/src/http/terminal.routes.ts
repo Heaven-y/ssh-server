@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
-import { TerminalBindingRequestSchema } from '@ssh-server/shared';
+import { TerminalBindingRequestSchema } from '@agentdeck/shared';
 import type { TerminalBindings } from '../terminal/binding';
 import type { TerminalManager } from '../terminal/manager';
 import { TerminalError, terminalError } from '../terminal/errors';

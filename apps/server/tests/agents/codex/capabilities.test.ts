@@ -1,9 +1,10 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { watch, type FSWatcher } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AgentEvent, Workspace } from '@ssh-server/shared';
+import { afterEach, describe, expect, it } from 'vitest';
+import type { AgentEvent, Workspace } from '@agentdeck/shared';
 import { discoverCodexCapabilities, runCodexTurn } from '../../../src/agents/codex';
 import { capabilityId } from '../../../src/agents/capability-types';
 import type { AgentTurnInput } from '../../../src/agents/types';
@@ -14,7 +15,9 @@ type Message = {
   fixturePhase?: string;
 };
 const dirs: string[] = [];
+const watchers: FSWatcher[] = [];
 afterEach(async () => {
+  for (const watcher of watchers.splice(0)) watcher.close();
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -26,8 +29,8 @@ async function setup(mode = 'normal') {
   const workspace: Workspace = {
     id: 'workspace',
     name: '能力测试',
-    localDir: dir,
-    sshHost: 'my-server',
+    dir,
+    server: 'my-server',
     remoteDir: '~/projects/demo',
   };
   const options = {
@@ -48,12 +51,24 @@ async function setup(mode = 'normal') {
     }
   };
   const waitFor = (predicate: (value: Message) => boolean) =>
-    vi.waitFor(async () => expect((await messages()).some(predicate)).toBe(true));
+    new Promise<void>((resolve, reject) => {
+      const inspect = async () => {
+        if (!(await messages()).some(predicate)) return;
+        watcher.close();
+        resolve();
+      };
+      const watcher = watch(dir, () => {
+        void inspect().catch(reject);
+      });
+      watchers.push(watcher);
+      watcher.once('error', reject);
+      // 先监听再复核，兼顾请求已经到达和即将到达，不依赖固定轮询时间窗。
+      void inspect().catch(reject);
+    });
   const events: AgentEvent[] = [];
   const input: AgentTurnInput = {
     workspace,
     text: '',
-    acquireEnv: () => ({ env: {}, release: () => {} }),
     emit: (event) => events.push(event),
     requestPermission: async () => ({ allow: false }),
   };
@@ -145,7 +160,7 @@ describe('Codex 原生能力目录与发送', () => {
           invocation: {
             kind: 'skill',
             name: 'example',
-            path: mode === 'unknown-path' ? path.join(input.workspace.localDir, 'removed', 'SKILL.md') : skillPath,
+            path: mode === 'unknown-path' ? path.join(input.workspace.dir, 'removed', 'SKILL.md') : skillPath,
           },
         },
         options,
@@ -162,11 +177,21 @@ describe('Codex 原生能力目录与发送', () => {
   it('等待同实例技能验证时停止，不发送模型轮次', async () => {
     const { options, input, messages, events, skillPath, waitFor } = await setup('wait-skills');
     const handle = runCodexTurn({ ...input, invocation: { kind: 'skill', name: 'example', path: skillPath } }, options);
-    await waitFor((value) => value.method === 'skills/list');
-    await handle.interrupt();
-    await handle.done;
-    expect((await messages()).some((value) => value.method === 'turn/start')).toBe(false);
-    expect(events.at(-1)).toEqual({ type: 'turn_end', isError: false });
+    try {
+      await Promise.race([
+        waitFor((value) => value.method === 'skills/list'),
+        handle.done.then(() => {
+          throw new Error('回合未进入技能验证就已结束');
+        }),
+      ]);
+      await handle.interrupt();
+      await handle.done;
+      expect((await messages()).some((value) => value.method === 'turn/start')).toBe(false);
+      expect(events.at(-1)).toEqual({ type: 'turn_end', isError: false });
+    } finally {
+      await handle.interrupt();
+      await handle.done;
+    }
   });
 });
 

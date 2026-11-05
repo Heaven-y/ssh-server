@@ -1,15 +1,28 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { watch, type FSWatcher } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AgentEvent, Workspace } from '@ssh-server/shared';
-import type { PermissionAnswer } from '../../../src/agents/types';
-import { runCodexTurn, listCodexSessions, readCodexSession, assertCodexSession } from '../../../src/agents/codex';
+import { afterEach, describe, expect, it } from 'vitest';
+import type { AgentEvent, Workspace } from '@agentdeck/shared';
+import type { PermissionAnswer, TurnHandle } from '../../../src/agents/types';
+import {
+  runCodexTurn as nativeRunCodexTurn,
+  listCodexSessions,
+  readCodexSession,
+  assertCodexSession,
+} from '../../../src/agents/codex';
 import { CodexClient } from '../../../src/agents/codex/client';
 import { CodexEventMapper } from '../../../src/agents/codex/mapper';
 
 const dirs: string[] = [];
+const watchers: FSWatcher[] = [];
+const turns: TurnHandle[] = [];
+function runCodexTurn(...args: Parameters<typeof nativeRunCodexTurn>) {
+  const handle = nativeRunCodexTurn(...args);
+  turns.push(handle);
+  return handle;
+}
 type LoggedMessage = {
   id?: string | number;
   method?: string;
@@ -21,6 +34,17 @@ const command = {
   args: ['--import', import.meta.resolve('tsx'), fileURLToPath(new URL('./fake-app-server.ts', import.meta.url))],
 };
 afterEach(async () => {
+  for (const watcher of watchers.splice(0)) watcher.close();
+  // 即使准备阶段的断言失败，也先停止本用例的进程，再清理其工作目录。
+  await Promise.allSettled(
+    turns.splice(0).map(async (handle) => {
+      try {
+        await handle.interrupt();
+      } finally {
+        await handle.done;
+      }
+    }),
+  );
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -30,8 +54,8 @@ async function setup(mode = 'normal') {
   const workspace: Workspace = {
     id: 'workspace',
     name: '测试',
-    localDir: dir,
-    sshHost: 'my-server',
+    dir,
+    server: 'my-server',
     remoteDir: '~/projects/demo',
   };
   const log = path.join(dir, 'rpc.jsonl');
@@ -47,15 +71,31 @@ async function setup(mode = 'normal') {
       return [];
     }
   };
-  const waitForMethod = async (method: string) =>
-    vi.waitFor(async () => expect((await messages()).some((value) => value.method === method)).toBe(true));
+  const waitForMethod = (method: string) =>
+    new Promise<void>((resolve, reject) => {
+      const inspect = async () => {
+        if (!(await messages()).some((value) => value.method === method)) return;
+        watcher.close();
+        resolve();
+      };
+      const watcher = watch(dir, () => {
+        void inspect().catch(reject);
+      });
+      watchers.push(watcher);
+      watcher.once('error', reject);
+      // 日志只在假进程真正收到 RPC 后写入；不把父进程函数入队当作请求已送达。
+      void inspect().catch(reject);
+    });
   return { dir, workspace, options, messages, waitForMethod };
 }
 
 describe('Codex app-server 核心边界', () => {
   it('真实子进程处理 UTF-8 分片、超时和意外退出且不透出 stderr', async () => {
     const { dir, options } = await setup();
-    const client = await CodexClient.start({ ...options, cwd: dir, timeoutMs: 500 });
+    // timeoutMs 既是「请求超时」这个产品行为的阈值，也是本次连接等子进程启动的预算。
+    // 500ms 在并行跑 100+ worker 时不够 tsx 启动，会把 startup 慢误报成超时；
+    // 3 秒仍能验证「挂起的请求一定会以超时失败」，又不会被调度噪声打成红灯。
+    const client = await CodexClient.start({ ...options, cwd: dir, timeoutMs: 3000 });
     try {
       await client.initialize();
       expect(await client.request('echo', {})).toEqual({ value: '中文分片' });
@@ -90,14 +130,13 @@ describe('Codex app-server 核心边界', () => {
     }
   });
 
-  it('默认配置只追加指令与自己的 MCP，实际令牌不进入协议参数', async () => {
+  it('默认配置只保留原生指令，不追加应用约束或注入 MCP', async () => {
     const { workspace, options, messages } = await setup();
     const events: AgentEvent[] = [];
     await runCodexTurn(
       {
         workspace,
         text: '你好',
-        acquireEnv: () => ({ env: { SSH_SERVER_TOKEN: 'synthetic-private-value' }, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: async () => ({ allow: false }),
       },
@@ -105,16 +144,17 @@ describe('Codex app-server 核心边界', () => {
     ).done;
     const records = await messages();
     const start = records.find((value) => value.method === 'thread/start')?.params;
-    expect(start).toMatchObject({ cwd: workspace.localDir, sandbox: 'workspace-write', approvalPolicy: 'on-request' });
-    expect(start?.developerInstructions).toContain('原生约束');
-    expect(start?.developerInstructions).toContain('remote_exec');
-    expect(start?.config?.['mcp_servers.ssh-server']).toMatchObject({ required: true, env_vars: ['SSH_SERVER_TOKEN'] });
-    expect(start?.config?.['shell_environment_policy.set.SSH_SERVER_TOKEN']).toBe('');
-    expect(JSON.stringify(records)).not.toContain('synthetic-private-value');
+    expect(start).toMatchObject({ cwd: workspace.dir, approvalsReviewer: 'user' });
+    // 审批与沙箱策略沿用原生配置，网页不再用常量覆盖
+    expect(start).not.toHaveProperty('sandbox');
+    expect(start).not.toHaveProperty('approvalPolicy');
+    expect(start?.developerInstructions).toBe('原生约束');
+    expect(start?.config).toEqual({});
+    expect(JSON.stringify(records)).not.toContain('AGENTDECK');
     expect(start).not.toHaveProperty('model');
     expect(start).not.toHaveProperty('modelProvider');
     expect(events.filter((event) => event.type === 'session')).toEqual([
-      { type: 'session', sessionId: 'native-thread', cwd: workspace.localDir, model: 'native-model', agent: 'codex' },
+      { type: 'session', sessionId: 'native-thread', cwd: workspace.dir, model: 'native-model', agent: 'codex' },
     ]);
     expect(events.filter((event) => event.type === 'text')).toEqual([{ type: 'text', delta: '流式回复' }]);
     expect(events.filter((event) => event.type === 'turn_end')).toEqual([
@@ -129,7 +169,6 @@ describe('Codex app-server 核心边界', () => {
       {
         workspace,
         text: '你好',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: async () => ({ allow: false }),
       },
@@ -153,7 +192,6 @@ describe('Codex app-server 核心边界', () => {
         text: '你好',
         model: 'selected-model',
         reasoningEffort: 'custom-effort',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: async () => ({ allow: false }),
       },
@@ -183,7 +221,6 @@ describe('Codex app-server 核心边界', () => {
       {
         workspace,
         text: '你好',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: async () => ({ allow: false }),
       },
@@ -193,7 +230,9 @@ describe('Codex app-server 核心边界', () => {
     await handle.interrupt();
     await handle.done;
     expect(events.filter((event) => event.type === 'turn_end')).toEqual([{ type: 'turn_end', isError: false }]);
-  }, 10_000);
+    // 断言的是「5 秒后一定会被强杀」，不是「总共不超过 10 秒」。全量并行（100+ worker）时
+    // 子进程调度会被拖慢，10 秒余量不够，故放宽外层超时；被测行为本身（5 秒强杀）不变。
+  }, 30_000);
 
   it.each(['approval-command', 'approval-permissions'])('审批 %s 使用原始 RPC ID 与单次权限', async (mode) => {
     const { workspace, options, messages } = await setup(mode);
@@ -202,7 +241,6 @@ describe('Codex app-server 核心边界', () => {
       {
         workspace,
         text: '执行',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: async () => ({ allow: true }),
       },
@@ -229,28 +267,43 @@ describe('Codex app-server 核心边界', () => {
     const { workspace, options, messages } = await setup('approval-command');
     const events: AgentEvent[] = [];
     let answer!: (value: PermissionAnswer) => void;
+    let requested!: () => void;
+    const awaitingAnswer = new Promise<void>((resolve) => {
+      requested = resolve;
+    });
     const handle = runCodexTurn(
       {
         workspace,
         text: '执行',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: () =>
           new Promise((resolve) => {
             answer = resolve;
+            requested();
           }),
       },
       options,
     );
-    await vi.waitFor(() => expect(events.some((event) => event.type === 'permission_request')).toBe(true));
-    await handle.interrupt();
-    await handle.done;
-    answer({ allow: true });
-    await Promise.resolve();
-    expect((await messages()).filter((value) => value.id === 'native-approval-id')).toEqual([
-      { id: 'native-approval-id', result: { decision: 'cancel' } },
-    ]);
-    expect(events.filter((event) => event.type === 'permission_resolved')).toMatchObject([{ decision: 'cancelled' }]);
+    try {
+      await Promise.race([
+        awaitingAnswer,
+        handle.done.then(() => {
+          throw new Error('回合未请求审批就已结束');
+        }),
+      ]);
+      expect(events.some((event) => event.type === 'permission_request')).toBe(true);
+      await handle.interrupt();
+      await handle.done;
+      answer({ allow: true });
+      await Promise.resolve();
+      expect((await messages()).filter((value) => value.id === 'native-approval-id')).toEqual([
+        { id: 'native-approval-id', result: { decision: 'cancel' } },
+      ]);
+      expect(events.filter((event) => event.type === 'permission_resolved')).toMatchObject([{ decision: 'cancelled' }]);
+    } finally {
+      await handle.interrupt();
+      await handle.done;
+    }
   });
 
   it('未知服务器交互返回 JSON-RPC 不支持错误', async () => {
@@ -259,7 +312,6 @@ describe('Codex app-server 核心边界', () => {
       {
         workspace,
         text: '执行',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: () => {},
         requestPermission: async () => ({ allow: true }),
       },
@@ -275,7 +327,6 @@ describe('Codex app-server 核心边界', () => {
       {
         workspace,
         text: '执行',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: () => new Promise(() => {}),
       },
@@ -293,7 +344,6 @@ describe('Codex app-server 核心边界', () => {
         workspace,
         sessionId: 'native-thread',
         text: '续接',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: async () => ({ allow: false }),
       },
@@ -306,14 +356,16 @@ describe('Codex app-server 核心边界', () => {
 });
 
 describe('原生会话读取', () => {
-  it('遍历全部分页并排除其他目录与内部子代理', async () => {
+  it('遍历全部目录分页并排除内部子代理，由服务统一裁决归属', async () => {
     const { dir, options, messages } = await setup();
     expect((await listCodexSessions(dir, options)).map((value) => value.sessionId)).toEqual([
       'native-thread',
+      'foreign',
       'second',
     ]);
     const records = (await messages()).filter((value) => value.method === 'thread/list');
     expect(records).toHaveLength(2);
+    expect(records.every((entry) => entry.params?.cwd === undefined)).toBe(true);
     expect(records[0]?.params).toMatchObject({
       sourceKinds: ['cli', 'vscode', 'exec', 'appServer'],
       modelProviders: [],
@@ -335,7 +387,6 @@ describe('原生会话读取', () => {
         workspace,
         sessionId: 'foreign',
         text: '续接',
-        acquireEnv: () => ({ env: {}, release: () => {} }),
         emit: (event) => events.push(event),
         requestPermission: async () => ({ allow: false }),
       },
@@ -398,7 +449,6 @@ it('实时分叉点核验完成快照自身的轮次身份，不采纳外来 tur
     {
       workspace,
       text: '核验分叉点',
-      acquireEnv: () => ({ env: {}, release: () => {} }),
       emit: (event) => events.push(event),
       requestPermission: async () => ({ allow: false }),
     },

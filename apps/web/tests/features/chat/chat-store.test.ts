@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ProductSettingsSchema } from '@ssh-server/shared';
+import { ProductSettingsSchema } from '@agentdeck/shared';
 import type {
   AgentCapability,
   AgentKind,
@@ -7,7 +7,7 @@ import type {
   ServerMessage,
   SessionActionInput,
   SessionHistory,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 import type { ConnectionStatus } from '../../../src/lib/ws';
 
 // node 环境没有 localStorage，用内存实现
@@ -19,7 +19,7 @@ vi.stubGlobal('localStorage', {
 
 const { useChat, startChatConnection, lastWorkspaceId, sessionActionKey } =
   await import('../../../src/features/chat/chat-store');
-const { api, queryKeys } = await import('../../../src/lib/api');
+const { api, ApiError, queryKeys } = await import('../../../src/lib/api');
 const { queryClient } = await import('../../../src/lib/query-client');
 afterEach(() => {
   vi.restoreAllMocks();
@@ -68,12 +68,13 @@ beforeAll(() => {
 beforeEach(() => {
   sent.length = 0;
   open = true;
+  useChat.setState(useChat.getInitialState(), true);
   useChat.getState().newSession('claude');
   useChat.setState({
     workspaceId: undefined,
     connection: 'open',
-    modelOverrides: { claude: '', codex: '' },
-    reasoningEfforts: { claude: '', codex: '' },
+    modelOverrides: { claude: '', codex: '', antigravity: '' },
+    reasoningEfforts: { claude: '', codex: '', antigravity: '' },
     sessionOperations: {},
     sessionModels: {},
     defaults: { defaultAgent: 'claude' },
@@ -82,71 +83,96 @@ beforeEach(() => {
   useChat.getState().selectWorkspace('w1');
 });
 
-const lineFeedback = {
-  path: 'main.py',
-  side: 'old' as const,
-  line: 2,
-  comment: '解释旧值',
-  source: { kind: 'turn' as const, id: '所属轮次', label: '本轮本地净差异' },
-};
-const feedbackScope = () => ({
-  workspaceId: 'w1',
-  agent: 'claude' as const,
-  conversationVersion: useChat.getState().conversationVersion,
+it.each(['claude', 'codex', 'antigravity'] as const)('未显式选择时%s发送省略模型与强度', (agent) => {
+  useChat.getState().newSession(agent);
+  expect(useChat.getState().send('沿用原生配置')).toBe(true);
+  const payload = JSON.parse(JSON.stringify(sent.at(-1)));
+  expect(payload).not.toHaveProperty('model');
+  expect(payload).not.toHaveProperty('reasoningEffort');
 });
-it('行反馈绑定选择代次，能力和断线失败保留，普通成功发送附来源后消费', () => {
-  expect(useChat.getState().addFeedback(lineFeedback, { ...feedbackScope(), workspaceId: 'other' })).toBe(false);
-  expect(useChat.getState().addFeedback(lineFeedback, feedbackScope())).toBe(true);
-  useChat.getState().selectCapability({
-    id: 'skill',
-    source: '项目',
-    kind: 'skill',
-    name: 'skill',
-    description: '',
-    available: true,
-    supportsArguments: true,
-    requiresSession: false,
-  });
-  expect(useChat.getState().send('保留正文')).toBe(false);
-  expect(useChat.getState().feedback).toHaveLength(1);
-  useChat.getState().selectCapability(undefined);
-  open = false;
-  expect(useChat.getState().send('保留正文')).toBe(false);
-  expect(useChat.getState().feedback).toHaveLength(1);
-  open = true;
-  expect(useChat.getState().send('保留正文')).toBe(true);
-  expect(sent.at(-1)).toMatchObject({ text: expect.stringContaining('保留正文\n\n行内反馈：') });
-  expect(sent.at(-1)).toMatchObject({ text: expect.stringContaining('旧侧第2行') });
-  expect(sent.at(-1)).toMatchObject({ text: expect.stringContaining('所属轮次') });
-  expect(useChat.getState().feedback).toEqual([]);
+
+it('历史读取失败后禁止发送，重新读取成功才允许续聊', async () => {
+  const read = vi.spyOn(api, 'sessionEvents').mockRejectedValueOnce(new Error('读取失败'));
+  await useChat.getState().openSession({ agent: 'claude', sessionId: 'same-id' });
+  expect(useChat.getState().send('继续')).toBe(false);
+  read.mockResolvedValue(history('claude', '历史'));
+  await useChat.getState().openSession({ agent: 'claude', sessionId: 'same-id' });
+  expect(useChat.getState().send('继续')).toBe(true);
 });
-it('反馈数量/字符门禁和移除有效，首次原生id保持、切换清理且旧scope不能追加', () => {
-  expect(useChat.getState().addFeedback({ ...lineFeedback, line: 0 }, feedbackScope())).toBe(false);
-  expect(useChat.getState().addFeedback({ ...lineFeedback, comment: ' ' }, feedbackScope())).toBe(false);
-  expect(useChat.getState().addFeedback({ ...lineFeedback, comment: 'x'.repeat(3001) }, feedbackScope())).toBe(false);
-  for (let i = 0; i < 4; i++)
-    expect(useChat.getState().addFeedback({ ...lineFeedback, comment: 'x'.repeat(3000) }, feedbackScope())).toBe(true);
-  expect(useChat.getState().addFeedback(lineFeedback, feedbackScope())).toBe(false);
-  useChat.getState().removeFeedback(useChat.getState().feedback[0]!.id);
-  expect(useChat.getState().feedback).toHaveLength(3);
-  useChat.setState({ feedback: [] });
-  for (let i = 0; i < 20; i++) expect(useChat.getState().addFeedback(lineFeedback, feedbackScope())).toBe(true);
-  expect(useChat.getState().addFeedback(lineFeedback, feedbackScope())).toBe(false);
-  useChat.setState({ feedback: [] });
-  expect(useChat.getState().send('启动')).toBe(true);
-  const clientTurnId = useChat.getState().pendingClientTurnId!;
-  emit({ type: 'turn.started', workspaceId: 'w1', agent: 'claude', clientTurnId, turnId: 'running' });
-  const scope = feedbackScope();
-  expect(useChat.getState().addFeedback(lineFeedback, scope)).toBe(true);
-  emit({
-    type: 'agent.event',
-    turnId: 'running',
-    event: { type: 'session', agent: 'claude', sessionId: 'native', cwd: '.', model: 'model' },
+
+it('Antigravity不可回放保留会话身份并允许续接', async () => {
+  vi.spyOn(api, 'sessionEvents').mockRejectedValue(
+    new ApiError(501, '私有轨迹无法回放', { code: 'session_not_replayable' }),
+  );
+  await useChat.getState().openSession({ agent: 'antigravity', sessionId: 'agy-native' });
+  expect(useChat.getState().send('接着处理')).toBe(true);
+  expect(sent.at(-1)).toMatchObject({ agent: 'antigravity', sessionId: 'agy-native' });
+});
+
+it('准备或运行中的导航保留原回合，避免审批和停止失联', async () => {
+  const read = vi.spyOn(api, 'sessionEvents');
+  const turnId = startTurn();
+  useChat.getState().selectWorkspace('another');
+  useChat.getState().newSession('antigravity');
+  await useChat.getState().openSession({ agent: 'codex', sessionId: 'other' });
+  expect(read).not.toHaveBeenCalled();
+  expect(useChat.getState()).toMatchObject({ workspaceId: 'w1', agent: 'claude', turnId, running: true });
+  expect(useChat.getState().banner).toContain('先停止');
+  useChat.getState().interrupt();
+  expect(sent.at(-1)).toEqual({ type: 'chat.interrupt', turnId });
+});
+
+it.each(['claude', 'codex', 'antigravity'] as const)('打开另一条%s会话不沿用上一会话的模型和强度', async (agent) => {
+  vi.spyOn(api, 'sessionEvents').mockImplementation(async (_workspace, sessionId, source) => ({
+    session: { agent: source, sessionId, summary: sessionId, lastModified: 1 },
+    events: [],
+  }));
+  await useChat.getState().openSession({ agent, sessionId: 'session-a' });
+  useChat.getState().setModel('old-model');
+  useChat.getState().setReasoningEffort('high');
+  await useChat.getState().openSession({ agent, sessionId: 'session-b' });
+  expect(useChat.getState().send('沿用会话B的原生参数')).toBe(true);
+  const payload = JSON.parse(JSON.stringify(sent.at(-1)));
+  expect(payload).toMatchObject({ agent, sessionId: 'session-b' });
+  expect(payload).not.toHaveProperty('model');
+  expect(payload).not.toHaveProperty('reasoningEffort');
+});
+
+it('同会话重读保留显式参数，跨会话即使要求保留草稿也不继承', async () => {
+  vi.spyOn(api, 'sessionEvents').mockImplementation(async (_workspace, sessionId) => ({
+    session: { agent: 'codex', sessionId, summary: sessionId, lastModified: 1 },
+    events: [],
+  }));
+  await useChat.getState().openSession({ agent: 'codex', sessionId: 'session-a' });
+  useChat.getState().setModel('selected-model');
+  useChat.getState().setReasoningEffort('low');
+  const version = useChat.getState().conversationVersion;
+  await useChat.getState().openSession({ agent: 'codex', sessionId: 'session-a' }, { preserveDraft: true });
+  expect(useChat.getState()).toMatchObject({
+    conversationVersion: version,
+    modelOverrides: { codex: 'selected-model' },
+    reasoningEfforts: { codex: 'low' },
   });
-  expect(useChat.getState().feedback).toHaveLength(1);
-  useChat.getState().newSession();
-  expect(useChat.getState().feedback).toEqual([]);
-  expect(useChat.getState().addFeedback(lineFeedback, scope)).toBe(false);
+  await useChat.getState().openSession({ agent: 'codex', sessionId: 'session-b' }, { preserveDraft: true });
+  expect(useChat.getState()).toMatchObject({ modelOverrides: { codex: '' }, reasoningEfforts: { codex: '' } });
+});
+
+it.each([
+  {
+    agent: 'antigravity' as const,
+    error: new ApiError(501, '不能回放', { code: 'session_not_replayable' }),
+    canSend: true,
+  },
+  { agent: 'codex' as const, error: new Error('暂时读不到'), canSend: false },
+])('$agent 同会话重读失败保留已经收到的内存正文', async ({ agent, error, canSend }) => {
+  const items = [{ kind: 'assistant' as const, id: 'received', text: '已经收到的结果', streaming: false }];
+  useChat.setState({ agent, sessionId: 'same-id', items, historyError: '已断线' });
+  vi.spyOn(api, 'sessionEvents').mockRejectedValue(error);
+  const reading = useChat.getState().openSession({ agent, sessionId: 'same-id' }, { preserveDraft: true });
+  expect(useChat.getState().items).toEqual(items);
+  await reading;
+  expect(useChat.getState().items).toEqual(items);
+  expect(useChat.getState().send('继续')).toBe(canSend);
 });
 
 it('视图代次只随选择变化，首次原生会话id不重置；重开同一历史仍新建视图', async () => {
@@ -223,10 +249,14 @@ describe('原生会话管理状态', () => {
   });
 
   it.each(removeActions)('$action 成功时清空仍匹配的当前对话并刷新来源列表', async (input) => {
+    useChat.getState().setModel('old-model');
+    useChat.getState().setReasoningEffort('high');
     vi.spyOn(api, 'sessionAction').mockResolvedValue(undefined);
     await expect(useChat.getState().manageSession('w1', session, input)).resolves.toBe(true);
     expect(useChat.getState()).toMatchObject({ workspaceId: 'w1', agent: 'codex', sessionId: undefined, items: [] });
     expect(useChat.getState().sessionOperations[key]).toBeUndefined();
+    expect(useChat.getState().modelOverrides.codex).toBe('');
+    expect(useChat.getState().reasoningEfforts.codex).toBe('');
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.sessions('w1', 'codex') });
   });
 
@@ -361,6 +391,7 @@ describe('原生能力状态', () => {
     expect(useChat.getState().contextUsage).not.toHaveProperty('percentage');
     emit({ type: 'agent.event', turnId, event: { type: 'context', usage: null } });
     expect(useChat.getState().contextUsage).toBeNull();
+    emit({ type: 'turn.finished', turnId, workspaceId: 'w1', agent: 'claude' });
     useChat.getState().selectWorkspace('w2');
     emit({ type: 'agent.event', turnId, event: { type: 'context', usage } });
     emit({ type: 'agent.event', turnId, event: { type: 'compaction', state: { status: 'completed' } } });
@@ -387,12 +418,12 @@ describe('原生能力状态', () => {
     ]);
     expect(useChat.getState().contextUsage).toBeUndefined();
     expect(useChat.getState().send('继续')).toBe(true);
-    expect(sent[0]).toMatchObject({ agent: 'codex', model: undefined, reasoningEffort: 'high' });
+    expect(sent[0]).toMatchObject({ agent: 'codex', model: undefined, reasoningEffort: undefined });
     expect(useChat.getState().compaction).toMatchObject({ status: 'completed' });
     queryClient.removeQueries({ queryKey: queryKeys.agentCapabilities('w1', 'codex') });
   });
 
-  it('断线后的普通新轮次不复活旧压缩，历史仍保留未确认边界', () => {
+  it('断线后保留未确认边界，重新读取前不能继续发送', () => {
     const turnId = startTurn('压缩当前会话');
     emit({
       type: 'agent.event',
@@ -403,8 +434,7 @@ describe('原生能力状态', () => {
     const boundary = useChat.getState().items.find((item) => item.kind === 'compaction');
     expect(boundary).toMatchObject({ state: { status: 'running' }, incomplete: true });
     status('open');
-    expect(useChat.getState().send('继续普通对话')).toBe(true);
-    expect(useChat.getState().compaction).toBeUndefined();
+    expect(useChat.getState().send('继续普通对话')).toBe(false);
     expect(useChat.getState().items.find((item) => item.kind === 'compaction')).toEqual(boundary);
   });
 });
@@ -415,14 +445,15 @@ describe('chat-store', () => {
     useChat.getState().setDefaults(ProductSettingsSchema.parse({ defaultAgent: 'codex' }));
     expect(useChat.getState()).toMatchObject({ agent: 'codex', modelOverrides: { claude: '', codex: '' } });
     expect(useChat.getState().send('初始会话')).toBe(true);
-    expect(sent.at(-1)).toMatchObject({ agent: 'codex', reasoningEffort: 'high', model: undefined });
+    expect(sent.at(-1)).toMatchObject({ agent: 'codex', reasoningEffort: undefined, model: undefined });
     useChat.getState().setModel('explicit-model');
     useChat.getState().setDefaults(ProductSettingsSchema.parse({ defaultAgent: 'claude' }));
     expect(useChat.getState()).toMatchObject({ agent: 'codex', modelOverrides: { codex: 'explicit-model' } });
+    finishTurn();
     useChat.getState().newSession();
     expect(useChat.getState()).toMatchObject({ agent: 'claude', modelOverrides: { claude: '', codex: '' } });
     expect(useChat.getState().send('新会话')).toBe(true);
-    expect(sent.at(-1)).toMatchObject({ agent: 'claude', model: undefined, reasoningEffort: 'high' });
+    expect(sent.at(-1)).toMatchObject({ agent: 'claude', model: undefined, reasoningEffort: undefined });
   });
 
   it('迟到产品偏好不覆盖已操作的Agent、模型和强度草稿', () => {
@@ -603,8 +634,10 @@ describe('chat-store', () => {
     expect(useChat.getState()).toMatchObject({
       agent: 'codex',
       actualModel: 'native-model',
-      modelOverrides: { claude: 'claude-model', codex: 'codex-model' },
+      modelOverrides: { claude: '', codex: '' },
     });
+    useChat.getState().setModel('codex-model');
+    useChat.getState().setReasoningEffort('high');
     useChat.getState().send('续接');
     expect(sent.at(-1)).toMatchObject({
       agent: 'codex',
@@ -612,12 +645,13 @@ describe('chat-store', () => {
       model: 'codex-model',
       reasoningEffort: 'high',
     });
+    finishTurn();
     useChat.getState().newSession('claude');
     useChat.getState().send('新会话');
     expect(sent.at(-1)).toMatchObject({
       agent: 'claude',
       model: undefined,
-      reasoningEffort: 'high',
+      reasoningEffort: undefined,
       sessionId: undefined,
     });
   });
@@ -663,7 +697,7 @@ describe('chat-store', () => {
     expect(useChat.getState().running).toBe(true);
   });
 
-  it('轮次尚未返回 ID 时保留停止意图，切换视图后仍中断原轮次', () => {
+  it('轮次尚未返回 ID 时保留停止意图，并阻止切换视图', () => {
     useChat.getState().setAgent('codex');
     useChat.getState().send('开始');
     const request = sent[0] as Extract<ClientMessage, { type: 'chat.send' }>;
@@ -679,7 +713,7 @@ describe('chat-store', () => {
       agent: 'codex',
     });
     expect(sent.at(-1)).toEqual({ type: 'chat.interrupt', turnId: 'old-turn' });
-    expect(useChat.getState()).toMatchObject({ agent: 'claude', running: false, turnId: undefined });
+    expect(useChat.getState()).toMatchObject({ agent: 'codex', running: true, turnId: 'old-turn' });
   });
 });
 
@@ -697,20 +731,24 @@ it('Claude与Codex推理强度隔离，切回恢复选择且发送真实字段',
   expect(sent.at(-1)).toMatchObject({ agent: 'codex', reasoningEffort: 'low' });
 });
 
-it.each(['claude', 'codex'] as const)('初始页面的%s消息默认发送high，不猜模型', (agent) => {
-  useChat.setState({ ...useChat.getInitialState(), workspaceId: 'w1', connection: 'open' }, true);
-  useChat.getState().setAgent(agent);
-  expect(useChat.getState().send('使用默认强度')).toBe(true);
-  expect(sent.at(-1)).toMatchObject({ agent, model: undefined, reasoningEffort: 'high' });
-});
-
-it.each(['claude', 'codex'] as const)('新建%s会话恢复high，也允许明确选择原生自动强度', (agent) => {
+it.each(['claude', 'codex', 'antigravity'] as const)('新建%s会话清空旧强度覆盖', (agent) => {
   useChat.getState().setReasoningEffort('low');
   useChat.getState().newSession(agent);
   expect(useChat.getState().send('新会话默认')).toBe(true);
-  expect(sent.at(-1)).toMatchObject({ agent, reasoningEffort: 'high' });
-  useChat.getState().newSession(agent);
-  useChat.getState().setReasoningEffort('');
-  expect(useChat.getState().send('使用原生自动强度')).toBe(true);
   expect(sent.at(-1)).toMatchObject({ agent, reasoningEffort: undefined });
 });
+
+/** 完成真实协议中的准备和结束阶段，让下一条操作不绕过导航保护。 */
+function finishTurn() {
+  const current = useChat.getState();
+  const turnId = current.turnId ?? 'finished-test-turn';
+  if (current.pendingClientTurnId)
+    emit({
+      type: 'turn.started',
+      turnId,
+      clientTurnId: current.pendingClientTurnId,
+      workspaceId: current.workspaceId!,
+      agent: current.agent,
+    });
+  emit({ type: 'turn.finished', turnId, workspaceId: current.workspaceId!, agent: current.agent });
+}

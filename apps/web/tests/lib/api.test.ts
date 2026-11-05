@@ -1,9 +1,7 @@
-import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError, queryKeys } from '../../src/lib/api';
 
-const localDir = path.join(os.tmpdir(), 'ssh-server-fixture', 'demo');
 const respond = (status: number, body?: unknown) =>
   vi.stubGlobal(
     'fetch',
@@ -30,7 +28,7 @@ describe('api', () => {
   });
 
   it('服务器浏览请求保留绑定令牌并正确传递工作区、目录和游标', async () => {
-    const target = { sshHost: 'my-server', remoteDir: '~/projects/demo', localDir };
+    const target = { sshHost: 'my-server', remoteDir: '~/projects/demo' };
     respond(200, { binding: 'fixture-binding' });
     const identity = await api.bindRemoteBrowseTarget('w/1', target);
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('/api/workspaces/w%2F1/remote-files/bindings');
@@ -38,7 +36,10 @@ describe('api', () => {
     const controller = new AbortController();
     await api.createRemoteBrowseSession('w/1', target, identity.binding, controller.signal);
     const created = vi.mocked(fetch).mock.calls[0]?.[1];
-    expect(JSON.parse(created?.body as string)).toMatchObject({ ...target, binding: identity.binding });
+    const createdBody = JSON.parse(created?.body as string);
+    expect(createdBody).toMatchObject({ ...target, binding: identity.binding });
+    // 绑定快照只带服务器别名与目录；工作区模型收敛后不再发送本地目录。
+    expect(createdBody).not.toHaveProperty('localDir');
     expect(created?.signal).toBe(controller.signal);
     const remote = path.posix.join(path.posix.sep, 'fixture-home', 'data & weights');
     respond(200, { path: remote, entries: [] });
@@ -66,29 +67,43 @@ describe('api', () => {
     expect(queryKeys.agentCapabilities('w/1', 'codex')).toEqual(['agent-capabilities', 'w/1', 'codex']);
     expect(queryKeys.agentCapabilities('w/1', 'codex')).not.toEqual(queryKeys.agentCapabilities('w/1', 'claude'));
     expect(queryKeys.agentCapabilities('w/1', 'codex')).not.toEqual(queryKeys.agentCapabilities('w2', 'codex'));
+    await api.agentCapabilities('w/1', 'codex', controller.signal, 'native/id');
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe(
+      '/api/workspaces/w%2F1/agent-capabilities?agent=codex&sessionId=native%2Fid',
+    );
+    expect(queryKeys.agentCapabilities('w/1', 'codex', 'one')).not.toEqual(
+      queryKeys.agentCapabilities('w/1', 'codex', 'two'),
+    );
+  });
+
+  it('显式刷新能力走POST，普通读取仍是GET', async () => {
+    respond(200, { agent: 'antigravity', entries: [], models: [], warnings: [] });
+    await api.agentCapabilities('project/one', 'antigravity');
+    await api.refreshAgentCapabilities('project/one', 'antigravity');
+    const [read, refresh] = vi.mocked(fetch).mock.calls;
+    expect(read?.[1]?.method).toBeUndefined();
+    expect(refresh?.[0]).toBe('/api/workspaces/project%2Fone/agent-capabilities?agent=antigravity');
+    expect(refresh?.[1]).toMatchObject({ method: 'POST', cache: 'no-store', body: '{}' });
   });
 
   it('成功时返回 JSON；POST 带 content-type', async () => {
-    respond(201, { id: 'w1' });
+    respond(201, { alias: 'my-server' });
     await expect(
-      api.createVerifiedWorkspace({
-        input: { name: 'n', localDir, sshHost: 'h', remoteDir: '~' },
-        verification: '11111111-1111-4111-8111-111111111111',
-        initializationConfirmed: true,
-      }),
-    ).resolves.toEqual({ id: 'w1' });
+      api.saveSshTarget({ name: 'n', hostname: 'my-server', username: 'demo', port: 22, authMode: 'key' }),
+    ).resolves.toEqual({ alias: 'my-server' });
     const [url, init] = vi.mocked(fetch).mock.calls[0]!;
-    expect(url).toBe('/api/workspaces');
+    expect(url).toBe('/api/ssh-targets');
     expect(init).toMatchObject({ method: 'POST', headers: { 'content-type': 'application/json' } });
   });
 
   it('接口错误保留字段名、分类及部分恢复路径', async () => {
-    respond(400, { field: 'localDir', message: '本地文件夹不存在' });
+    respond(400, { field: 'dir', message: '项目目录不存在' });
     const err = await api.listWorkspaces().catch((e: unknown) => e);
+    expect(vi.mocked(fetch).mock.calls[0]![0]).toBe('/api/projects');
     expect(err).toBeInstanceOf(ApiError);
-    expect(err).toMatchObject({ status: 400, field: 'localDir', message: '本地文件夹不存在' });
+    expect(err).toMatchObject({ status: 400, field: 'dir', message: '项目目录不存在' });
     respond(500, { code: 'partial_restore', message: '部分文件恢复失败', affectedPaths: ['main.py'] });
-    await expect(api.restoreVersion('w1', { commit: 'a'.repeat(40), revision: 'b'.repeat(64) })).rejects.toMatchObject({
+    await expect(api.deleteSshTarget({ alias: 'my-server' } as never)).rejects.toMatchObject({
       status: 500,
       code: 'partial_restore',
       affectedPaths: ['main.py'],
@@ -106,16 +121,16 @@ describe('api', () => {
   it('会话请求和缓存按 Agent 隔离，历史读取传递取消信号', async () => {
     respond(200, []);
     await api.sessionEvents('w/1', 's 1', 'claude');
-    expect(vi.mocked(fetch).mock.calls[0]![0]).toBe('/api/workspaces/w%2F1/sessions/s%201/events?agent=claude');
+    expect(vi.mocked(fetch).mock.calls[0]![0]).toBe('/api/projects/w%2F1/sessions/claude/s%201');
     await api.listSessions('w/1', 'codex');
     expect(vi.mocked(fetch).mock.calls[1]).toEqual([
-      '/api/workspaces/w%2F1/sessions?agent=codex',
+      '/api/projects/w%2F1/sessions?agent=codex',
       expect.objectContaining({ cache: 'no-store' }),
     ]);
     const controller = new AbortController();
     await api.sessionEvents('w/1', 's 1', 'codex', controller.signal);
     expect(vi.mocked(fetch).mock.calls[2]).toEqual([
-      '/api/workspaces/w%2F1/sessions/s%201/events?agent=codex',
+      '/api/projects/w%2F1/sessions/codex/s%201',
       expect.objectContaining({ cache: 'no-store', signal: controller.signal }),
     ]);
     expect(queryKeys.sessions('w/1', 'claude')).not.toEqual(queryKeys.sessions('w/1', 'codex'));
@@ -126,8 +141,8 @@ describe('api', () => {
     await api.listSessions('w/1', 'claude');
     await api.listSessions('w/1', 'codex', true);
     expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual([
-      '/api/workspaces/w%2F1/sessions?agent=claude',
-      '/api/workspaces/w%2F1/sessions?agent=codex&archived=true',
+      '/api/projects/w%2F1/sessions?agent=claude',
+      '/api/projects/w%2F1/sessions?agent=codex&archived=true',
     ]);
     expect(queryKeys.sessions('w/1', 'codex')).toEqual(['sessions', 'w/1', 'codex']);
     expect(queryKeys.sessions('w/1', 'codex', true)).toEqual(['sessions', 'w/1', 'codex', 'archived']);
@@ -137,7 +152,7 @@ describe('api', () => {
       api.sessionAction('w/1', 's 1', 'codex', { action: 'delete', confirmed: true }),
     ).resolves.toBeUndefined();
     const [url, init] = vi.mocked(fetch).mock.calls[0]!;
-    expect(url).toBe('/api/workspaces/w%2F1/sessions/s%201/actions?agent=codex');
+    expect(url).toBe('/api/projects/w%2F1/sessions/codex/s%201/actions');
     expect(init).toMatchObject({
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -176,45 +191,19 @@ describe('api', () => {
     ]);
   });
 
-  it('同步决策只走对应工作区接口，创建不附带密码', async () => {
-    respond(200, { phase: 'ready' });
-    await api.initializeSync('w/1');
+  it('远端文件操作只走对应工作区接口，提交绑定确认预检', async () => {
+    respond(200, { path: 'a.txt' });
+    await api.remoteFileTaskAction('w/1', 'task 1', 'check');
     expect(vi.mocked(fetch).mock.calls[0]).toEqual([
-      '/api/workspaces/w%2F1/sync/initialize',
-      expect.objectContaining({ method: 'POST', body: '{"confirmed":true}' }),
+      '/api/workspaces/w%2F1/remote-files/tasks/task%201/check',
+      expect.objectContaining({ method: 'POST', body: '{}' }),
     ]);
-    await api.decideSyncDeletions('w/1', 'reject');
-    expect(vi.mocked(fetch).mock.calls[1]).toEqual([
-      '/api/workspaces/w%2F1/sync/deletions',
-      expect.objectContaining({ body: '{"decision":"reject"}' }),
+    respond(200, { id: 'preflight' });
+    await api.submitRemoteFileTask('w/1', 'preflight-1');
+    expect(vi.mocked(fetch).mock.calls[0]).toEqual([
+      '/api/workspaces/w%2F1/remote-files/tasks',
+      expect.objectContaining({ body: JSON.stringify({ preflightId: 'preflight-1', confirmed: true }) }),
     ]);
-    const input = {
-      name: 'n',
-      localDir,
-      sshHost: 'h',
-      remoteDir: '~',
-      sync: { maxFileBytes: 100, excludedExtensions: [] },
-    };
-    await api.createVerifiedWorkspace({
-      input,
-      verification: '11111111-1111-4111-8111-111111111111',
-      initializationConfirmed: true,
-    });
-    const body = vi.mocked(fetch).mock.calls[2]![1]!.body as string;
-    expect(body).not.toContain('never-save');
-    expect(JSON.parse(body).input).not.toHaveProperty('savePassword');
-    expect(JSON.parse(body)).toMatchObject({
-      input: { sync: input.sync },
-      verification: '11111111-1111-4111-8111-111111111111',
-      initializationConfirmed: true,
-    });
-    const legacy = { ...input, authMode: 'password' };
-    expect(() =>
-      api.createVerifiedWorkspace({
-        input: legacy,
-        verification: '11111111-1111-4111-8111-111111111111',
-        initializationConfirmed: true,
-      }),
-    ).toThrow();
+    expect(api).not.toHaveProperty('recoverRemoteFileTask');
   });
 });

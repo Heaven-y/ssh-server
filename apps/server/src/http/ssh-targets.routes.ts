@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest, RouteShorthandOptions } from 'fastify';
 import { z } from 'zod';
-import { ManagedServerSchema, ManualServerInputSchema } from '@ssh-server/shared';
+import { ManagedServerSchema, ManualServerInputSchema } from '@agentdeck/shared';
 import { ServerTargetsError } from '../ssh/targets';
 import type { ServerProfiles } from '../ssh/profiles';
 import { CredentialStorageError } from '../ssh/credential-storage-error';

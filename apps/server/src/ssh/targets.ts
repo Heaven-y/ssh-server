@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
-import { ManagedServerSchema, ManualServerInputSchema, type ManagedServer } from '@ssh-server/shared';
+import { ManagedServerSchema, ManualServerInputSchema, type ManagedServer } from '@agentdeck/shared';
 import type { RegisteredSshHost } from './connection';
 import { listHosts, parseSshConfig, resolveHost } from './ssh-config';
 

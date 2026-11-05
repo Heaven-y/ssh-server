@@ -1,4 +1,4 @@
-import type { ResourceHost, ResourceDisk } from '@ssh-server/shared';
+import type { ResourceHost, ResourceDisk } from '@agentdeck/shared';
 import { ResourceMeter, capacityPercent } from './ResourceMeter';
 
 const decimal = (value: number | null, unit: string) => (value === null ? '不可用' : `${value.toFixed(1)}${unit}`);
@@ -47,7 +47,15 @@ const EMPTY_HOST: ResourceHost = {
   gpuProcessesAvailable: false,
 };
 
-function ResourceSummary({ host, disk }: { host: ResourceHost; disk: ResourceDisk | null }) {
+function ResourceSummary({
+  host,
+  disk,
+  diskLabel,
+}: {
+  host: ResourceHost;
+  disk: ResourceDisk | null;
+  diskLabel: string;
+}) {
   return (
     <dl className="grid grid-cols-2 gap-3">
       <Metric label="CPU利用率" value={decimal(host.cpuPercent, '%')} percent={host.cpuPercent} />
@@ -57,10 +65,7 @@ function ResourceSummary({ host, disk }: { host: ResourceHost; disk: ResourceDis
         percent={capacityPercent(host.memoryUsed, host.memoryTotal)}
         tone="memory"
       />
-      <Metric
-        label="项目磁盘（可用 / 总量）"
-        value={capacity(disk?.availableBytes ?? null, disk?.totalBytes ?? null)}
-      />
+      <Metric label={diskLabel} value={capacity(disk?.availableBytes ?? null, disk?.totalBytes ?? null)} />
       <div className="col-span-2 text-xs text-muted-foreground">
         <dt className="inline">负载（1 / 5 / 15分钟）：</dt>
         <dd className="inline font-mono">{host.load?.map((value) => value.toFixed(2)).join(' / ') ?? '不可用'}</dd>
@@ -129,12 +134,20 @@ function GpuList({ gpus }: { gpus: ResourceHost['gpus'] }) {
     </section>
   );
 }
-export function ResourceMetrics({ host, disk = null }: { host?: ResourceHost | null; disk?: ResourceDisk | null }) {
+export function ResourceMetrics({
+  host,
+  disk = null,
+  diskLabel = '项目磁盘（可用 / 总量）',
+}: {
+  host?: ResourceHost | null;
+  disk?: ResourceDisk | null;
+  diskLabel?: string;
+}) {
   const data = host ?? EMPTY_HOST;
   return (
     <div className="resource-scope space-y-5">
       <GpuList gpus={data.gpus} />
-      <ResourceSummary host={data} disk={disk} />
+      <ResourceSummary host={data} disk={disk} diskLabel={diskLabel} />
     </div>
   );
 }

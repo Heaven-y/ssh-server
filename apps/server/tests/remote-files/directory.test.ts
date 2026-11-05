@@ -1,13 +1,13 @@
 import path from 'node:path';
 import type { FileEntryWithStats, Stats } from 'ssh2';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SyncSettingsSchema } from '@ssh-server/shared';
+import { RemoteFileFilterSchema } from '@agentdeck/shared';
 import type { SftpReader } from '../../src/ssh/sftp';
 import { createDirectoryCursor } from '../../src/remote-files/directory';
 import { directoryEntry, remotePath } from '../../src/remote-files/paths';
 
 const root = path.posix.join(path.posix.sep, 'fixture-home', 'project');
-const settings = SyncSettingsSchema.parse({});
+const settings = RemoteFileFilterSchema.parse({});
 const entry = (name: string, type = 'file', size = 4): FileEntryWithStats => ({
   filename: name,
   longname: '',

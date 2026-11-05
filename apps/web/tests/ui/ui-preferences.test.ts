@@ -31,11 +31,11 @@ it.each([
   '{"version":2}',
   '{"version":1,"theme":"light","sidebarCollapsed":false,"sidebarWidth":-1,"fileWidth":420}',
 ])('坏或不支持的存储恢复可用默认布局：%s', async (value) => {
-  localStorage.setItem('ssh-server.ui.v1', value);
+  localStorage.setItem('agentdeck.ui.v1', value);
   expect((await preferences()).getState()).toMatchObject({
     theme: 'light',
     sidebarCollapsed: false,
-    sidebarWidth: 240,
+    sidebarWidth: 280,
     fileWidth: 420,
   });
 });
@@ -57,7 +57,7 @@ it('读写存储均失败时主题、折叠和宽度仍在内存可用', async (
 
 it('停靠新增尺寸不会丢弃已有主题，宽窄模式分别有界恢复', async () => {
   localStorage.setItem(
-    'ssh-server.ui.v1',
+    'agentdeck.ui.v1',
     JSON.stringify({
       version: 1,
       theme: 'dark',
@@ -88,7 +88,7 @@ it('停靠新增尺寸不会丢弃已有主题，宽窄模式分别有界恢复'
 });
 it('旧偏好缺少停靠字段时补默认值，窄屏自动折叠不写入用户偏好', async () => {
   localStorage.setItem(
-    'ssh-server.ui.v1',
+    'agentdeck.ui.v1',
     JSON.stringify({
       version: 1,
       theme: 'dark',
@@ -101,4 +101,12 @@ it('旧偏好缺少停靠字段时补默认值，窄屏自动折叠不写入用�
   expect(store.getState()).toMatchObject({ theme: 'dark', rightWidth: 420, resourceWidth: 320 });
   store.getState().setSidebarAutoCollapsed(true);
   expect((await preferences()).getState().sidebarCollapsed).toBe(false);
+});
+it('旧工具展开偏好仍可读写，但不决定新会话右栏首屏', async () => {
+  const store = await preferences();
+  expect(store.getState().dockCollapsed).toBeNull();
+  store.getState().setDockCollapsed(true);
+  expect((await preferences()).getState().dockCollapsed).toBe(true);
+  store.getState().setDockCollapsed(false);
+  expect((await preferences()).getState().dockCollapsed).toBe(false);
 });

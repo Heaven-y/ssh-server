@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { workspaceTerminalTarget, type Workspace, type TerminalBinding } from '@ssh-server/shared';
+import { workspaceTerminalTarget, type BoundWorkspace, type TerminalBinding } from '@agentdeck/shared';
 import { api, ApiError } from '../../../src/lib/api';
 import {
   activateTerminalPane,
@@ -15,11 +15,11 @@ import {
   useTerminalStore,
 } from '../../../src/features/terminal/terminal-store';
 
-const workspace: Workspace = {
+const workspace: BoundWorkspace = {
   id: 'w',
   name: '工作区',
-  localDir: path.resolve('fixture'),
-  sshHost: 'my-server',
+  dir: path.resolve('fixture'),
+  server: 'my-server',
   remoteDir: '~/projects/demo',
 };
 const binding = (ws = workspace): TerminalBinding => ({

@@ -1,6 +1,6 @@
 import { WebSocketServer } from 'ws';
 import type { FastifyInstance } from 'fastify';
-import { TERMINAL_LIMITS } from '@ssh-server/shared';
+import { TERMINAL_LIMITS } from '@agentdeck/shared';
 
 /** 沿用 Fastify 的升级/安全钩子，只在公开 handleUpgrade 入口选择终端帧限制。 */
 export function registerTerminalUpgrade(app: FastifyInstance): void {

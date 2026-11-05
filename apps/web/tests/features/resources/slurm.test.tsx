@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { SlurmSnapshot, Workspace } from '@ssh-server/shared';
+import type { BoundWorkspace, SlurmSnapshot } from '@agentdeck/shared';
 import { ResourcesPanel } from '../../../src/features/resources/ResourcesPanel';
 import { useChat } from '../../../src/features/chat/chat-store';
 import { api, queryKeys } from '../../../src/lib/api';
@@ -54,7 +54,7 @@ async function tick(ms = 20) {
     await vi.advanceTimersByTimeAsync(ms);
   });
 }
-function panel(active = true, current: Workspace = workspace) {
+function panel(active = true, current: BoundWorkspace = workspace) {
   return (
     <QueryClientProvider client={client}>
       <ResourcesPanel workspace={current} active={active} />

@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createWindowsProtector } from '../../src/ssh/windows-protection';
-import { runProcess, type ProcessRunner } from '../../src/sync/process';
+import { runProcess, type ProcessRunner } from '../../src/process/run';
 
 const entropy = Buffer.alloc(32, 7);
 describe('Windows 当前用户系统加密', () => {
@@ -17,7 +17,7 @@ describe('Windows 当前用户系统加密', () => {
       PSModulePath: path.join(profile, 'Modules'),
     };
     for (const [name, value] of Object.entries(paths)) vi.stubEnv(name, value);
-    vi.stubEnv('SSH_SERVER_FIXTURE_SECRET', 'fixture-service-secret');
+    vi.stubEnv('AGENTDECK_FIXTURE_SECRET', 'fixture-service-secret');
     const run = vi.fn<ProcessRunner>().mockResolvedValue({
       stdout: Buffer.from(Buffer.from('fixture-ciphertext').toString('base64')),
       stderr: Buffer.alloc(0),
@@ -30,7 +30,7 @@ describe('Windows 当前用户系统加密', () => {
     expect(run).toHaveBeenCalledOnce();
     const childEnv = run.mock.calls[0]?.[2].env;
     expect(childEnv).toMatchObject(paths);
-    expect(childEnv).not.toHaveProperty('SSH_SERVER_FIXTURE_SECRET');
+    expect(childEnv).not.toHaveProperty('AGENTDECK_FIXTURE_SECRET');
   });
 
   it.runIf(process.platform === 'win32')('真实 DPAPI 往返，秘密不进入命令行', async () => {

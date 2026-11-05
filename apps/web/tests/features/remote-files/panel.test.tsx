@@ -2,17 +2,17 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { RemoteDirectory, RemoteFilePreflight, RemoteFileTask, Workspace } from '@ssh-server/shared';
+import type { BoundWorkspace, RemoteDirectory, RemoteFilePreflight, RemoteFileTask } from '@agentdeck/shared';
 import { RemoteFilesPanel } from '../../../src/features/remote-files/RemoteFilesPanel';
 import { RemoteActionDialog } from '../../../src/features/remote-files/RemoteActionDialog';
 import { api } from '../../../src/lib/api';
 
-const workspace: Workspace = {
+const workspace: BoundWorkspace = {
   id: 'workspace',
   name: 'demo',
-  sshHost: 'my-server',
+  server: 'my-server',
   remoteDir: '/project',
-  localDir: 'mirror',
+  dir: 'mirror',
 };
 const session = {
   id: 'session',

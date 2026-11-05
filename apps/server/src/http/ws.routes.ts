@@ -1,9 +1,16 @@
 // 对话 WebSocket：/ws（访问控制在 security.ts 的 onRequest 钩子里完成）
 import type { FastifyInstance } from 'fastify';
-import { ClientMessageSchema } from '@ssh-server/shared';
+import { ClientMessageSchema } from '@agentdeck/shared';
+import { z } from 'zod';
 import type { Socket, TurnManager } from '../chat/turn-manager';
 
 const WS_OPEN = 1;
+const SendingIdentity = z.object({ type: z.literal('chat.send'), clientTurnId: z.string().min(1).max(200) });
+
+function sendingIdentity(value: unknown): { clientTurnId?: string } {
+  const parsed = SendingIdentity.safeParse(value);
+  return parsed.success ? { clientTurnId: parsed.data.clientTurnId } : {};
+}
 
 /** ws 的消息可能是 Buffer、ArrayBuffer 或分片数组 */
 function rawText(data: Buffer | ArrayBuffer | Buffer[]): string {
@@ -28,11 +35,16 @@ export function registerWsRoutes(app: FastifyInstance, deps: { turns: TurnManage
       }
       const msg = ClientMessageSchema.safeParse(parsed);
       if (!msg.success) {
-        socket.send({ type: 'error', message: '消息格式不正确' });
+        socket.send({ type: 'error', ...sendingIdentity(parsed), message: '消息格式不正确' });
         return;
       }
-      deps.turns.handle(socket, msg.data).catch((e: unknown) => {
-        if (socket.isOpen()) socket.send({ type: 'error', message: (e as Error).message });
+      deps.turns.handle(socket, msg.data).catch(() => {
+        if (socket.isOpen())
+          socket.send({
+            type: 'error',
+            ...sendingIdentity(msg.data),
+            message: '会话操作失败，请检查原生运行状态后重试',
+          });
       });
     });
 

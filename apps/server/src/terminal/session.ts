@@ -7,7 +7,7 @@ import {
   TerminalClientMessageSchema,
   type TerminalClientMessage,
   type TerminalServerMessage,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 import type { SshPool } from '../ssh/pool';
 import { workspaceTarget } from '../ssh/connection';
 import type { TerminalBindings } from './binding';

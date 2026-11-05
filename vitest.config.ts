@@ -14,8 +14,10 @@ export default defineConfig({
         '**/*.test.{ts,tsx}',
         // 进程入口：只做组装，由 e2e 验收覆盖
         'apps/server/src/main.ts',
-        'apps/server/src/remote-tools/main.ts',
         'apps/web/src/main.tsx',
+        // 桌面壳的进程入口与 preload：需要真实窗口才能执行，按手工验收覆盖
+        'apps/desktop/src/main.ts',
+        'apps/desktop/src/preload.ts',
         // 需要真实 SSH 连接，由 scripts/dev/ssh-smoke.ts 与 e2e 验收覆盖
         'apps/server/src/ssh/pool.ts',
         // 只有类型或样式常量
@@ -34,8 +36,7 @@ export default defineConfig({
         branches: 75,
         functions: 85,
         statements: 85,
-        // 安全边界：黑名单与访问控制要求更高
-        'apps/server/src/policy/**': { lines: 95, branches: 85, functions: 95, statements: 95 },
+        // 安全边界：访问控制要求更高
         'apps/server/src/http/security.ts': { lines: 95, branches: 90, functions: 95, statements: 95 },
         'packages/shared/src/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
       },

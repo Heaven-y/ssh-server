@@ -1,37 +1,31 @@
 // REST 接口封装：启动同源本机会话后，Cookie 由浏览器自动携带。
-import { WorkspaceInputSchema } from '@ssh-server/shared';
 import type {
   AgentKind,
   AgentCapabilities,
   SessionSummary,
+  SessionChangesSnapshot,
   SessionHistory,
+  SessionRecord,
   SessionActionInput,
   SessionForkInput,
   NativeConfigAgent,
   NativeConfigDocument,
   NativeConfigInput,
-  WorkspaceDirectory,
-  WorkspaceFile,
+  NativeResourceCatalog,
+  NativeResourceDocument,
+  NativeResourceSaveInput,
+  NativeResourceCreateInput,
+  NativeResourceSaved,
+  LaunchEnvironmentDocument,
+  LaunchEnvironmentInput,
   RemoteBrowseTarget,
   RemoteBrowseSession,
   RemoteDirectory,
   RemoteFileActionInput,
   RemoteFilePreflight,
   RemoteFileTask,
-  VersionStatus,
-  VersionHistory,
-  VersionDiff,
-  VersionSaveInput,
-  VersionSaveResult,
-  VersionRestoreInput,
-  VersionRestorePreview,
-  VersionRestoreResult,
-  VersionDiscardPreview,
-  VersionDiscardInput,
   SshAuthMode,
   SshHostInfo,
-  SyncSettings,
-  SyncStatus,
   Workspace,
   WorkspaceInput,
   TerminalTarget,
@@ -42,22 +36,12 @@ import type {
   ManagedServer,
   ResourceSnapshot,
   SlurmSnapshot,
-  LocalDirectory,
-  WorkspaceSetupCreate,
-  WorkspaceSetupVerification,
-  WorkspaceSetupPreview,
-  WorkspaceSetupResult,
-  WorkspaceRemovalPreview,
-  WorkspaceRemovalInput,
-  WorkspaceRemovalResult,
   ProductSettingsDocument,
   ProductSettingsInput,
   EnvironmentReport,
-  WorkspacePolicyDocument,
-  WorkspacePolicyInput,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 
-export type { SessionSummary } from '@ssh-server/shared';
+export type { SessionSummary } from '@agentdeck/shared';
 
 export type SshConnectionTarget = { sshHost: string; authMode: SshAuthMode };
 export type SshConnectInput = { sshHost: string; password?: string; savePassword?: boolean };
@@ -95,7 +79,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
+export async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
     headers: init?.body ? { 'content-type': 'application/json' } : undefined,
@@ -113,15 +97,54 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
-const syncUrl = (id: string) => `/api/workspaces/${encodeURIComponent(id)}/sync`;
-const versionsUrl = (id: string) => `/api/workspaces/${encodeURIComponent(id)}/versions`;
 const remoteSessionsUrl = (id: string) => `/api/workspaces/${encodeURIComponent(id)}/remote-files/sessions`;
-const fileUrl = (id: string, suffix: string, relative: string) =>
-  `/api/workspaces/${encodeURIComponent(id)}/${suffix}?path=${encodeURIComponent(relative)}`;
-const postSync = (id: string, suffix = '', body: unknown = {}) =>
-  request<SyncStatus>(syncUrl(id) + suffix, { method: 'POST', body: JSON.stringify(body) });
+export type NativeResourceContext = { agent: AgentKind; projectId?: string };
+function nativeResourceUrl(context: NativeResourceContext, suffix = '') {
+  const query = context.projectId ? `?${new URLSearchParams({ projectId: context.projectId })}` : '';
+  return `/api/native-resources/${context.agent}${suffix}${query}`;
+}
 
 export const api = {
+  listNativeResources: (context: NativeResourceContext, signal?: AbortSignal) =>
+    request<NativeResourceCatalog>(nativeResourceUrl(context), { signal, cache: 'no-store' }),
+  /** 正文只在用户显式打开时获取，不能放入查询缓存。 */
+  openNativeResource: (context: NativeResourceContext, id: string, signal?: AbortSignal) =>
+    request<NativeResourceDocument>(nativeResourceUrl(context, `/${encodeURIComponent(id)}/open`), {
+      method: 'POST',
+      body: '{}',
+      signal,
+      cache: 'no-store',
+    }),
+  saveNativeResource: (
+    context: NativeResourceContext,
+    id: string,
+    input: NativeResourceSaveInput,
+    signal?: AbortSignal,
+  ) =>
+    request<NativeResourceSaved>(nativeResourceUrl(context, `/${encodeURIComponent(id)}`), {
+      method: 'PUT',
+      body: JSON.stringify(input),
+      signal,
+      cache: 'no-store',
+    }),
+  createNativeResource: (context: NativeResourceContext, input: NativeResourceCreateInput, signal?: AbortSignal) =>
+    request<NativeResourceSaved>(nativeResourceUrl(context), {
+      method: 'POST',
+      body: JSON.stringify(input),
+      signal,
+      cache: 'no-store',
+    }),
+  readLaunchEnvironment: (agent: AgentKind, signal?: AbortSignal) =>
+    request<LaunchEnvironmentDocument>(`/api/settings/launch-environment/${agent}`, { signal, cache: 'no-store' }),
+  saveLaunchEnvironment: (agent: AgentKind, input: LaunchEnvironmentInput, signal?: AbortSignal) =>
+    request<LaunchEnvironmentDocument>(`/api/settings/launch-environment/${agent}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+      signal,
+      cache: 'no-store',
+    }),
+  restartAgentRuntime: (agent: AgentKind, signal?: AbortSignal) =>
+    request<void>(`/api/settings/launch-environment/${agent}/restart`, { method: 'POST', body: '{}', signal }),
   readProductSettings: (signal?: AbortSignal) =>
     request<ProductSettingsDocument>('/api/settings/product', { signal, cache: 'no-store' }),
   saveProductSettings: (input: ProductSettingsInput, signal?: AbortSignal) =>
@@ -169,16 +192,6 @@ export const api = {
       `/api/workspaces/${encodeURIComponent(id)}/remote-files/tasks/${encodeURIComponent(taskId)}/${action}`,
       { method: 'POST', body: '{}' },
     ),
-  recoverRemoteFileTask: (id: string, taskId: string) =>
-    request<RemoteFileTask>(
-      `/api/workspaces/${encodeURIComponent(id)}/remote-files/tasks/${encodeURIComponent(taskId)}/recover`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ confirmed: true }),
-      },
-    ),
-  remoteFileDownloadUrl: (id: string, sessionId: string, path: string) =>
-    `${remoteSessionsUrl(id)}/${encodeURIComponent(sessionId)}/download?${new URLSearchParams({ path })}`,
   bindRemoteBrowseTarget: (id: string, target: RemoteBrowseTarget) =>
     request<{ binding: string }>(`/api/workspaces/${encodeURIComponent(id)}/remote-files/bindings`, {
       method: 'POST',
@@ -205,50 +218,23 @@ export const api = {
       method: 'DELETE',
       keepalive: true,
     }),
-  agentCapabilities: (workspaceId: string, agent: AgentKind, signal?: AbortSignal) =>
-    request<AgentCapabilities>(`/api/workspaces/${encodeURIComponent(workspaceId)}/agent-capabilities?agent=${agent}`, {
-      signal,
-      cache: 'no-store',
-    }),
-  initializeVersions: (id: string) =>
-    request<VersionStatus>(versionsUrl(id) + '/initialize', { method: 'POST', body: '{}' }),
-  versionStatus: (id: string, signal?: AbortSignal) =>
-    request<VersionStatus>(versionsUrl(id), { signal, cache: 'no-store' }),
-  versionHistory: (id: string, skip = 0) =>
-    request<VersionHistory>(versionsUrl(id) + `/history?skip=${skip}`, { cache: 'no-store' }),
-  versionDiff: (id: string, input: { commit?: string; path?: string } = {}, signal?: AbortSignal) => {
-    const query = new URLSearchParams();
-    if (input.commit) query.set('commit', input.commit);
-    if (input.path) query.set('path', input.path);
-    return request<VersionDiff>(versionsUrl(id) + '/diff?' + query.toString(), { signal, cache: 'no-store' });
-  },
-  saveVersion: (id: string, input: VersionSaveInput) =>
-    request<VersionSaveResult>(versionsUrl(id) + '/save', { method: 'POST', body: JSON.stringify(input) }),
-  previewVersionRestore: (id: string, input: VersionRestoreInput) =>
-    request<VersionRestorePreview>(versionsUrl(id) + '/restore/preview', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
-  restoreVersion: (id: string, input: VersionRestoreInput & { revision: string }) =>
-    request<VersionRestoreResult>(versionsUrl(id) + '/restore', {
-      method: 'POST',
-      body: JSON.stringify({ ...input, confirmed: true }),
-    }),
-  previewDiscard: (id: string, path: string) =>
-    request<VersionDiscardPreview>(versionsUrl(id) + '/discard/preview', {
-      method: 'POST',
-      body: JSON.stringify({ path }),
-    }),
-  discardFile: (id: string, input: VersionDiscardInput) =>
-    request<VersionRestoreResult>(versionsUrl(id) + '/discard', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
-  listFiles: (id: string, relative = '', signal?: AbortSignal) =>
-    request<WorkspaceDirectory>(fileUrl(id, 'files', relative), { signal, cache: 'no-store' }),
-  /** 只读读取本地副本；网页不提供写入，改动交给 Agent、同步或外部编辑器。 */
-  readFile: (id: string, relative: string, signal?: AbortSignal) =>
-    request<WorkspaceFile>(fileUrl(id, 'file', relative), { signal, cache: 'no-store' }),
+  agentCapabilities: (workspaceId: string, agent: AgentKind, signal?: AbortSignal, sessionId?: string) =>
+    request<AgentCapabilities>(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/agent-capabilities?agent=${agent}${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ''}`,
+      {
+        signal,
+        cache: 'no-store',
+      },
+    ),
+  refreshAgentCapabilities: (workspaceId: string, agent: AgentKind, sessionId?: string) =>
+    request<AgentCapabilities>(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/agent-capabilities?agent=${agent}${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ''}`,
+      {
+        method: 'POST',
+        cache: 'no-store',
+        body: '{}',
+      },
+    ),
   /** 原生配置内容只能由显式打开的编辑区持有，不接入查询缓存或持久存储。 */
   readAgentConfig: (agent: NativeConfigAgent, signal?: AbortSignal) =>
     request<NativeConfigDocument>(`/api/agent-config/${agent}`, { signal, cache: 'no-store' }),
@@ -259,98 +245,32 @@ export const api = {
       cache: 'no-store',
       body: JSON.stringify({ content: input.content, revision: input.revision }),
     }),
-  listWorkspaces: (signal?: AbortSignal) => request<Workspace[]>('/api/workspaces', { signal }),
-  readWorkspacePolicy: (id: string, signal?: AbortSignal) =>
-    request<WorkspacePolicyDocument>(`/api/workspaces/${encodeURIComponent(id)}/policy`, { signal }),
-  saveWorkspacePolicy: (id: string, input: WorkspacePolicyInput, signal?: AbortSignal) =>
-    request<WorkspacePolicyDocument>(`/api/workspaces/${encodeURIComponent(id)}/policy`, {
-      method: 'PUT',
+  /** 项目列表：接口名沿用旧称，路径已切到 /api/projects（/api/workspaces 是待删的兼容别名）。 */
+  listWorkspaces: (signal?: AbortSignal) => request<Workspace[]>('/api/projects', { signal }),
+  createProject: (input: WorkspaceInput, signal?: AbortSignal) =>
+    request<Workspace>('/api/projects', { method: 'POST', body: JSON.stringify(input), signal }),
+  /**
+   * 改项目。传 `null` 表示清除该字段（解绑的「退回纯本地项目」要靠它），
+   * 没传的键表示不要动——JSON 里没有 undefined，两者不能混为一谈。
+   */
+  updateProject: (
+    id: string,
+    input: Partial<Record<'name' | 'dir', string>> & {
+      server?: string | null;
+      remoteDir?: string | null;
+    },
+    signal?: AbortSignal,
+  ) =>
+    request<Workspace>(`/api/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
       body: JSON.stringify(input),
       signal,
     }),
-  previewWorkspaceRemoval: (id: string, signal?: AbortSignal) =>
-    request<WorkspaceRemovalPreview>(`/api/workspaces/${encodeURIComponent(id)}/removal`, {
-      signal,
-      cache: 'no-store',
-    }),
-  removeWorkspace: (id: string, input: WorkspaceRemovalInput) =>
-    request<WorkspaceRemovalResult>(`/api/workspaces/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-      cache: 'no-store',
-      body: JSON.stringify(input),
-    }),
+  deleteProject: (id: string, signal?: AbortSignal) =>
+    request<void>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE', signal }),
   listSshHosts: (signal?: AbortSignal) => request<ManagedServer[]>('/api/ssh-targets', { signal, cache: 'no-store' }),
   sshImportOptions: (signal?: AbortSignal) =>
     request<Array<SshHostInfo & { keyFile?: string }>>('/api/ssh-targets/import-options', { signal }),
-  setupLocalDirectory: (input: { path?: string; cursor?: string }, signal?: AbortSignal) =>
-    request<LocalDirectory>('/api/workspace-setup/local-directory', {
-      method: 'POST',
-      signal,
-      cache: 'no-store',
-      body: JSON.stringify(input),
-    }),
-  closeSetupLocal: (cursor: string) =>
-    request<{ closed: true }>('/api/workspace-setup/local-directory/close', {
-      method: 'POST',
-      body: JSON.stringify({ cursor }),
-    }),
-  openSetupRemote: (input: { sshHost: string }, signal?: AbortSignal) =>
-    request<RemoteBrowseSession>('/api/workspace-setup/remote/open', {
-      method: 'POST',
-      signal,
-      cache: 'no-store',
-      body: JSON.stringify(input),
-    }),
-  readSetupRemote: (session: string, input: { path: string; cursor?: string }, signal?: AbortSignal) =>
-    request<RemoteDirectory>('/api/workspace-setup/remote/list', {
-      method: 'POST',
-      signal,
-      cache: 'no-store',
-      body: JSON.stringify({ session, ...input }),
-    }),
-  closeSetupRemote: (session: string) =>
-    request<{ closed: true }>('/api/workspace-setup/remote/close', {
-      method: 'POST',
-      body: JSON.stringify({ session }),
-    }),
-  setupRemoteSize: (session: string, path: string, signal?: AbortSignal) =>
-    request<{ path: string; bytes: number; sampledAt: number }>('/api/workspace-setup/remote/size', {
-      method: 'POST',
-      signal,
-      cache: 'no-store',
-      body: JSON.stringify({ session, path }),
-    }),
-  previewWorkspace: (input: WorkspaceInput, signal?: AbortSignal) =>
-    request<WorkspaceSetupPreview>('/api/workspace-setup/preview', {
-      method: 'POST',
-      signal,
-      cache: 'no-store',
-      body: JSON.stringify(input),
-    }),
-  verifyWorkspace: (input: WorkspaceInput, signal?: AbortSignal, previousBinding?: string) =>
-    request<WorkspaceSetupVerification>('/api/workspace-setup/verify', {
-      method: 'POST',
-      signal,
-      cache: 'no-store',
-      body: JSON.stringify({ input, previousBinding }),
-    }),
-  revokeWorkspaceVerification: (verification: string) =>
-    request<{ revoked: true }>('/api/workspace-setup/revoke', {
-      method: 'POST',
-      body: JSON.stringify({ verification }),
-    }),
-  createVerifiedWorkspace: (input: WorkspaceSetupCreate, signal?: AbortSignal) =>
-    request<WorkspaceSetupResult>('/api/workspaces', {
-      method: 'POST',
-      signal,
-      cache: 'no-store',
-      // 只提交现行工作区字段，运行时附加的认证数据不进入配置请求。
-      body: JSON.stringify({
-        input: WorkspaceInputSchema.parse(input.input),
-        verification: input.verification,
-        initializationConfirmed: input.initializationConfirmed,
-      }),
-    }),
   saveSshTarget: (input: ManualServerInput, signal?: AbortSignal) =>
     request<ManagedServer>('/api/ssh-targets', { method: 'POST', signal, body: JSON.stringify(input) }),
   updateSshTarget: (alias: string, input: ManualServerInput, expected: ManagedServer, signal?: AbortSignal) =>
@@ -431,24 +351,22 @@ export const api = {
     }),
   disconnectSsh: (sshHost: string, signal?: AbortSignal) =>
     request<void>('/api/ssh/disconnect', { method: 'POST', signal, body: JSON.stringify({ sshHost }) }),
-  syncStatus: (id: string) => request<SyncStatus>(syncUrl(id)),
-  syncWorkspace: (id: string) => postSync(id),
-  initializeSync: (id: string) => postSync(id, '/initialize', { confirmed: true }),
-  decideSyncDeletions: (id: string, decision: 'confirm' | 'reject') => postSync(id, '/deletions', { decision }),
-  acknowledgeSyncConflicts: (id: string) => postSync(id, '/conflicts/ack'),
-  updateSyncSettings: (id: string, settings: SyncSettings) => postSync(id, '/settings', settings),
   listSessions: (workspaceId: string, agent: AgentKind, archived = false, signal?: AbortSignal) =>
     request<SessionSummary[]>(
-      `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions?agent=${agent}${archived ? '&archived=true' : ''}`,
+      `/api/projects/${encodeURIComponent(workspaceId)}/sessions?agent=${agent}${archived ? '&archived=true' : ''}`,
       {
         cache: 'no-store',
         signal,
       },
     ),
+  sessionChanges: (signal?: AbortSignal) =>
+    request<SessionChangesSnapshot>('/api/session-changes', { signal, cache: 'no-store' }),
+  orphanSessions: (agent: AgentKind, signal?: AbortSignal) =>
+    request<SessionSummary[]>(`/api/sessions?agent=${agent}`, { signal, cache: 'no-store' }),
   /** 原生管理请求不因面板关闭而取消；结果以运行时响应和重新读取为准。 */
   sessionAction: (workspaceId: string, sessionId: string, agent: AgentKind, input: SessionActionInput) =>
     request<void>(
-      `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/actions?agent=${agent}`,
+      `/api/projects/${encodeURIComponent(workspaceId)}/sessions/${agent}/${encodeURIComponent(sessionId)}/actions`,
       {
         method: 'POST',
         body: JSON.stringify(input),
@@ -456,13 +374,13 @@ export const api = {
     ),
   /** 分叉可能已写入原生历史，不随弹窗卸载取消或自动重试。 */
   sessionFork: (workspaceId: string, sessionId: string, agent: AgentKind, input: SessionForkInput) =>
-    request<{ session: SessionSummary }>(
-      `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/fork?agent=${agent}`,
+    request<{ session: SessionRecord }>(
+      `/api/projects/${encodeURIComponent(workspaceId)}/sessions/${agent}/${encodeURIComponent(sessionId)}/fork`,
       { method: 'POST', body: JSON.stringify(input), cache: 'no-store' },
     ),
   sessionEvents: (workspaceId: string, sessionId: string, agent: AgentKind, signal?: AbortSignal) =>
     request<SessionHistory>(
-      `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/events?agent=${agent}`,
+      `/api/projects/${encodeURIComponent(workspaceId)}/sessions/${agent}/${encodeURIComponent(sessionId)}`,
       { signal, cache: 'no-store' },
     ),
 };
@@ -472,13 +390,16 @@ export const queryKeys = {
   productSettings: ['product-settings'] as const,
   environment: ['environment'] as const,
   sshImportOptions: ['ssh-import-options'] as const,
-  agentCapabilities: (workspaceId: string, agent: AgentKind) => ['agent-capabilities', workspaceId, agent] as const,
+  agentCapabilities: (workspaceId: string, agent: AgentKind, sessionId?: string) =>
+    sessionId
+      ? (['agent-capabilities', workspaceId, agent, sessionId] as const)
+      : (['agent-capabilities', workspaceId, agent] as const),
   workspaces: ['workspaces'] as const,
-  workspaceRemoval: (id: string) => ['workspace-removal', id] as const,
   sshHosts: ['ssh-targets'] as const,
   sshCredentials: (sshHost: string) => ['ssh-credentials', sshHost] as const,
   sessions: (workspaceId: string, agent: AgentKind, archived = false) =>
     archived ? (['sessions', workspaceId, agent, 'archived'] as const) : (['sessions', workspaceId, agent] as const),
-  sync: (workspaceId: string) => ['sync', workspaceId] as const,
-  versions: (workspaceId: string) => ['versions', workspaceId] as const,
+  /** 单条原生历史：会话身份包含 CLI 与原生 id，缓存不能跨 Agent 复用。 */
+  sessionHistory: (workspaceId: string, agent: AgentKind, sessionId: string) =>
+    ['session-history', workspaceId, agent, sessionId] as const,
 };

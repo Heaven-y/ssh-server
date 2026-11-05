@@ -1,6 +1,6 @@
 // 长驻 Codex 会话：一个 app-server 进程承载同一原生线程的多轮对话，空闲后回收。
-import type { AgentEvent } from '@ssh-server/shared';
-import type { AgentTurnInput, TurnEnv } from '../types';
+import type { AgentEvent } from '@agentdeck/shared';
+import type { AgentTurnInput } from '../types';
 import { sameSessionDirectory } from '../session-scope';
 import { CodexClient } from './client';
 import { validateCodexSkill } from './capabilities';
@@ -23,7 +23,6 @@ const INTERRUPT_FALLBACK_MS = 5_000;
 const TURN_START_TIMEOUT_MS = 30_000;
 
 export class CodexRuntime {
-  private readonly env: TurnEnv;
   private client?: CodexClient;
   private nativeConfig?: RecordValue;
   private thread?: string;
@@ -33,13 +32,7 @@ export class CodexRuntime {
   private broken = false;
   current?: CodexTurn;
 
-  constructor(
-    input: AgentTurnInput,
-    private readonly options: CodexRuntimeOptions = {},
-  ) {
-    // 令牌随会话存活：MCP 子进程在进程启动时拿到它，换令牌会让后续轮次失效。
-    this.env = input.acquireEnv();
-  }
+  constructor(private readonly options: CodexRuntimeOptions = {}) {}
 
   get alive(): boolean {
     return !this.broken && this.closing === undefined;
@@ -68,7 +61,6 @@ export class CodexRuntime {
   private async shutdown(): Promise<void> {
     this.current?.cancel();
     await this.client?.close().catch(() => undefined);
-    this.env.release();
   }
 
   private connect(input: AgentTurnInput, signal: AbortSignal): Promise<CodexClient> {
@@ -79,8 +71,7 @@ export class CodexRuntime {
   private async start(input: AgentTurnInput, signal: AbortSignal): Promise<CodexClient> {
     const client = await CodexClient.start({
       ...this.options,
-      env: { ...this.options.env, ...this.env.env },
-      cwd: input.workspace.localDir,
+      cwd: input.workspace.dir,
       signal,
     });
     this.client = client;
@@ -89,7 +80,7 @@ export class CodexRuntime {
     try {
       await client.initialize();
       this.nativeConfig = await client.request('config/read', {
-        cwd: input.workspace.localDir,
+        cwd: input.workspace.dir,
         includeLayers: false,
       });
     } catch (error) {
@@ -107,22 +98,22 @@ export class CodexRuntime {
   /** 未指定会话时新建原生线程，已指定时续接并复核目录归属。 */
   private async openThread(client: CodexClient, input: AgentTurnInput, signal: AbortSignal): Promise<void> {
     const id = input.sessionId;
-    const params = threadParams(input, this.nativeConfig ?? {}, Object.keys(this.env.env));
-    if (id) await checkedThread(client, id, input.workspace.localDir);
+    const params = threadParams(input, this.nativeConfig ?? {});
+    if (id) await checkedThread(client, id, input.workspace.dir);
     if (signal.aborted) throw cancelled();
     const response = await client.request(id ? 'thread/resume' : 'thread/start', {
       ...params,
       ...(id ? { threadId: id, excludeTurns: true } : {}),
     });
     const thread = record(response.thread);
-    await this.verifyThread(thread, id, input.workspace.localDir);
+    await this.verifyThread(thread, id, input.workspace.dir);
     this.thread = text(thread.id);
     this.model = text(response.model) || text(thread.model);
   }
 
   /** 复核原生线程身份：必须带 ID、属于当前工作区，且与续接目标一致。 */
-  private async verifyThread(thread: RecordValue, id: string | undefined, localDir: string): Promise<void> {
-    if (!text(thread.id) || !(await sameSessionDirectory(text(thread.cwd), localDir))) {
+  private async verifyThread(thread: RecordValue, id: string | undefined, dir: string): Promise<void> {
+    if (!text(thread.id) || !(await sameSessionDirectory(text(thread.cwd), dir))) {
       throw new CodexError('Codex 返回了不属于当前工作区的会话。');
     }
     if (id && thread.id !== id) throw new CodexError('Codex 返回的会话标识与续接目标不一致。');
@@ -186,7 +177,7 @@ export class CodexTurn {
         type: 'session',
         sessionId: threadId,
         model: this.runtime.sessionModel ?? '',
-        cwd: this.input.workspace.localDir,
+        cwd: this.input.workspace.dir,
         agent: 'codex',
       });
       this.ensureActive();
@@ -276,7 +267,7 @@ export class CodexTurn {
 
   private async startTurn(client: CodexClient, threadId: string): Promise<AgentEvent> {
     if (this.input.invocation?.kind === 'skill')
-      await validateCodexSkill(client, this.input.workspace.localDir, this.input.invocation);
+      await validateCodexSkill(client, this.input.workspace.dir, this.input.invocation);
     this.ensureActive();
     this.phase = 'starting';
     await this.sendTurn(client, threadId);

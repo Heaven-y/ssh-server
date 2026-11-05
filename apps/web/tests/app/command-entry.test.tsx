@@ -1,27 +1,23 @@
 // @vitest-environment jsdom
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { TopBar } from '../../src/app/TopBar';
+import { useChat } from '../../src/features/chat/chat-store';
 
 afterEach(cleanup);
-it('搜索与操作只有一个明确按钮入口，点击交给原命令面板流程', () => {
-  const open = vi.fn();
+it('中央标题栏只展示当前会话和按需右侧栏入口', () => {
+  const toggle = vi.fn();
+  useChat.setState({ ...useChat.getInitialState(), connection: 'open' });
+  const client = new QueryClient();
   render(
-    <TopBar
-      onOpenSettings={vi.fn()}
-      onOpenServers={vi.fn()}
-      onOpenFiles={vi.fn()}
-      filesOpen={false}
-      onOpenResources={vi.fn()}
-      resourcesOpen={false}
-      onOpenTerminal={vi.fn()}
-      terminalOpen={false}
-      onOpenCommands={open}
-    />,
+    <QueryClientProvider client={client}>
+      <TopBar sidebarOpen={false} onToggleSidebar={toggle} />
+    </QueryClientProvider>,
   );
-  const entries = screen.getAllByRole('button', { name: '搜索与操作' });
-  expect(entries).toHaveLength(1);
-  expect(entries[0]!.getAttribute('title')).toContain('Ctrl+K / Cmd+K');
-  fireEvent.click(entries[0]!);
-  expect(open).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('heading', { name: '新会话' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '服务器' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '终端' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '打开右侧边栏' }));
+  expect(toggle).toHaveBeenCalledOnce();
 });

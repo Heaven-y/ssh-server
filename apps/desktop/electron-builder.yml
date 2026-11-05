@@ -1,0 +1,41 @@
+appId: local.agentdeck.desktop
+productName: AgentDeck
+electronVersion: 45.2.2
+electronDist: ../../node_modules/electron/dist
+asar: true
+npmRebuild: false
+forceCodeSigning: false
+publish: null
+directories:
+  output: ../../release
+  buildResources: assets
+files:
+  - out/**
+  - package.json
+  - '!node_modules/@anthropic-ai/claude-agent-sdk-*/**'
+  - '!node_modules/cpu-features/**'
+  - '!node_modules/nan/**'
+  - '!node_modules/ssh2/lib/protocol/crypto/build/**'
+extraResources:
+  - from: ../web/dist
+    to: web
+    filter:
+      - '**/*'
+win:
+  icon: assets/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  signExecutable: false
+nsis:
+  artifactName: AgentDeck-${version}-${arch}-setup.${ext}
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  runAfterFinish: false
+  deleteAppDataOnUninstall: false
+portable:
+  artifactName: AgentDeck-${version}-${arch}-portable.${ext}
+  unpackDirName: false

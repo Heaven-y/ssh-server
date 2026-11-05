@@ -1,11 +1,11 @@
-// 使用已构建的网页和隔离的本机 SSH 夹具，供浏览器验收使用。
+// 终端本机夹具：只装配仍然存在的 SSH、终端、资源、Slurm 与产品设置路由。
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SyncSettingsSchema } from '@ssh-server/shared';
 import { buildApp } from '../../apps/server/src/http/app';
+import { registerProjectRoutes } from '../../apps/server/src/http/projects.routes';
 import { registerSshRoutes } from '../../apps/server/src/http/ssh.routes';
 import { registerTerminalRoutes } from '../../apps/server/src/http/terminal.routes';
 import { createTerminalBindings } from '../../apps/server/src/terminal/binding';
@@ -19,9 +19,9 @@ import { createSlurmService } from '../../apps/server/src/slurm/service';
 import { SLURM_COMMAND } from '../../apps/server/src/slurm/commands';
 import { registerSlurmRoutes } from '../../apps/server/src/http/slurm.routes';
 import { createServerProfiles } from '../../apps/server/src/ssh/profiles';
-import { createWorkspaceActivity } from '../../apps/server/src/workspaces/activity';
 import { registerSshTargetRoutes } from '../../apps/server/src/http/ssh-targets.routes';
-import { createEnvironmentService } from '../../apps/server/src/settings/environment';
+import { createAgentProbes } from '../../apps/server/src/agents/probe';
+import { ProcessError } from '../../apps/server/src/process/run';
 import { createProductSettings } from '../../apps/server/src/settings/product-settings';
 import { registerProductSettingsRoutes } from '../../apps/server/src/http/product-settings.routes';
 
@@ -39,39 +39,28 @@ async function main() {
   const terminals = createTerminalManager({ ...fixture, bindings });
   const resources = createResourcesService(fixture);
   const slurm = createSlurmService(fixture);
-  const activity = createWorkspaceActivity();
-  const profiles = createServerProfiles({ ...fixture, activity, resources: { blockers: () => Promise.resolve([]) } });
-  const syncStatus = () =>
-    Promise.resolve({
-      phase: 'uninitialized',
-      deletions: [],
-      conflicts: [],
-      settings: SyncSettingsSchema.parse({}),
-    });
-  const versionStatus = () => Promise.resolve({ initialized: false, revision: 'fixture', changes: [], excluded: [] });
+  const profiles = createServerProfiles(fixture);
   const token = randomBytes(24).toString('hex');
   const app = await buildApp({
     token,
     port: 0,
-    activity,
-    store: fixture.store,
     webDir: fileURLToPath(new URL('../../apps/web/dist', import.meta.url)),
     routes: (server) => {
+      registerProjectRoutes(server, { store: fixture.store });
       registerSshRoutes(server, { ...fixture, profiles });
       registerSshTargetRoutes(server, profiles);
       registerProductSettingsRoutes(
         server,
         createProductSettings({ configDir: path.join(root, 'config') }),
-        createEnvironmentService(() => Promise.resolve({ checkedAt: Date.now(), tools: [] })),
+        createAgentProbes({
+          // 终端夹具不启动真实 CLI；环境接口固定按“未找到”返回，避免依赖测试机安装。
+          run: () => Promise.reject(new ProcessError('executable_missing', '终端夹具不探测本机 CLI')),
+        }),
       );
       registerTerminalRoutes(server, { terminals, bindings });
       registerResourcesRoutes(server, resources);
       registerSlurmRoutes(server, slurm);
-      server.get('/api/workspaces/:id/sessions', () => Promise.resolve([]));
-      server.get('/api/workspaces/:id/sync', syncStatus);
-      server.post('/api/workspaces/:id/sync', syncStatus);
-      server.get('/api/workspaces/:id/versions', versionStatus);
-      server.post('/api/workspaces/:id/versions/initialize', versionStatus);
+      server.get('/api/projects/:id/sessions', () => Promise.resolve([]));
       server.get('/__fixture', () => Promise.resolve({ shells: fixture.shells, resources: metrics.state }));
       server.post<{ Body: { failure: boolean } }>('/__fixture/resource-failure', (req) => {
         metrics.state.failure = req.body.failure;
@@ -79,13 +68,13 @@ async function main() {
       });
       server.get('/__fixture/sftp', async () => {
         const connection = await fixture.pool.resolveConnection({
-          alias: fixture.workspace.sshHost,
+          alias: fixture.workspace.server,
         });
         const root = await resolveTerminalDirectory({
           workspace: fixture.workspace,
           pool: fixture.pool,
           guard: {
-            generation: fixture.pool.generation(fixture.workspace.sshHost),
+            generation: fixture.pool.generation(fixture.workspace.server),
             cacheKey: connection.cacheKey,
             signal: new AbortController().signal,
           },

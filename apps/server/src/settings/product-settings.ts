@@ -4,7 +4,7 @@ import {
   ProductSettingsInputSchema,
   type ProductSettingsDocument,
   type ProductSettingsInput,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 import { inspectDirectory, readConfigFile, writeConfigFile } from './safe-file';
 import { NativeConfigError, anonymousConfigError } from './errors';
 
@@ -35,9 +35,10 @@ export function createProductSettings({ configDir }: { configDir: string }) {
     let settings;
     try {
       const input: unknown = snapshot.revision === 'missing' ? {} : JSON.parse(snapshot.content);
-      // 仅磁盘读取退休字段；公开输入仍严格校验，其余无效偏好不能回退为默认值。
+      // 仅磁盘读取退休字段（已删除的模型覆盖与同步偏好）；公开输入仍严格校验。
       if (input && typeof input === 'object' && !Array.isArray(input))
-        delete (input as Record<string, unknown>).defaultModels;
+        for (const retired of ['defaultModels', 'syncDefaults', 'syncIntervalSeconds'])
+          delete (input as Record<string, unknown>)[retired];
       settings = ProductSettingsSchema.parse(input);
     } catch {
       throw new ProductSettingsError('settings_invalid', 503, '产品设置文件无效，原文件已保留；请核对后重新读取');

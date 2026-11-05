@@ -1,18 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
 import { Server } from 'lucide-react';
 import { useState } from 'react';
-import type { Workspace } from '@ssh-server/shared';
+import type { BoundWorkspace } from '@agentdeck/shared';
 import { api, queryKeys } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { ServerManagerDialog } from './ServerManagerDialog';
 
 /** 工作区只展示服务器共享状态，认证操作统一交给服务器管理。 */
-export function SshConnectionPanel({ workspace }: { workspace: Workspace }) {
+export function SshConnectionPanel({ workspace }: { workspace: BoundWorkspace }) {
   const [opened, setOpened] = useState<'details' | 'manager'>();
   const credentials = useQuery({
-    queryKey: queryKeys.sshCredentials(workspace.sshHost),
-    queryFn: ({ signal }) => api.sshCredentials(workspace.sshHost, signal),
+    queryKey: queryKeys.sshCredentials(workspace.server),
+    queryFn: ({ signal }) => api.sshCredentials(workspace.server, signal),
     retry: false,
     refetchInterval: 10000,
   });
@@ -34,7 +34,7 @@ export function SshConnectionPanel({ workspace }: { workspace: Workspace }) {
         onClick={() => setOpened('details')}
       >
         <Server aria-hidden className="size-3.5 shrink-0" />
-        <span className="truncate text-xs">{workspace.sshHost}</span>
+        <span className="truncate text-xs">{workspace.server}</span>
         <span className="shrink-0 text-xs">· {label}</span>
       </button>
       {opened === 'details' && (
@@ -50,7 +50,7 @@ export function SshConnectionPanel({ workspace }: { workspace: Workspace }) {
         </DetailDialog>
       )}
       {opened === 'manager' && (
-        <ServerManagerDialog initialAlias={workspace.sshHost} onClose={() => setOpened(undefined)} />
+        <ServerManagerDialog initialAlias={workspace.server} onClose={() => setOpened(undefined)} />
       )}
     </>
   );

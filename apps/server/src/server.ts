@@ -1,0 +1,342 @@
+// 可编程启动：读取配置、组装依赖、只在本机地址上启动，并返回关闭函数。
+// CLI（main.ts）与 Electron 桌面壳共用这里，业务路由与清理路径保持原样。
+import { mkdir, stat } from 'node:fs/promises';
+import type { FastifyInstance } from 'fastify';
+import type { AgentProbe } from '@agentdeck/shared';
+import { TurnManager } from './chat/turn-manager';
+import { createSessionsService } from './chat/sessions';
+import { createCapabilitiesService } from './chat/capabilities';
+import { createClaudeRunner } from './agents/claude-adapter';
+import { discoverClaudeCapabilities } from './agents/claude-capabilities';
+import { createClaudeSessions } from './agents/claude-sessions';
+import { createAntigravitySessions } from './agents/antigravity/sessions';
+import { createAntigravityRunner } from './agents/antigravity/adapter';
+import { discoverAntigravityCapabilities } from './agents/antigravity/capabilities';
+import {
+  createCodexRunner,
+  listCodexSessions,
+  readCodexSession,
+  assertCodexSession,
+  mutateCodexSession,
+  forkCodexSession,
+  discoverCodexCapabilities,
+} from './agents/codex';
+import { legacyConfigDir, type ServerConfig } from './config';
+import { buildApp } from './http/app';
+import { registerSessionRoutes } from './http/sessions.routes';
+import { registerProjectRoutes } from './http/projects.routes';
+import { registerProbeRoutes } from './http/probe.routes';
+import { registerCapabilityRoutes } from './http/capabilities.routes';
+import { registerSshRoutes } from './http/ssh.routes';
+import { registerAgentConfigRoutes } from './http/agent-config.routes';
+import { registerRemoteFileRoutes } from './http/remote-files.routes';
+import { registerRemoteFileActionRoutes } from './http/remote-file-actions.routes';
+import { createRemoteExecutor } from './remote-files/executor';
+import { createFilePreflights } from './remote-files/preflight';
+import { createFileTasks } from './remote-files/tasks';
+import { createRemoteFilesService } from './remote-files/service';
+import { registerWsRoutes } from './http/ws.routes';
+import { registerTerminalRoutes } from './http/terminal.routes';
+import { createTerminalBindings } from './terminal/binding';
+import { createTerminalManager } from './terminal/manager';
+import { registerResourcesRoutes } from './http/resources.routes';
+import { createResourcesService } from './resources/service';
+import { registerSlurmRoutes } from './http/slurm.routes';
+import { createSlurmService } from './slurm/service';
+import { createSshPool } from './ssh/pool';
+import { createServerTargets, serverHostConfig } from './ssh/targets';
+import { createServerProfiles } from './ssh/profiles';
+import { registerSshTargetRoutes } from './http/ssh-targets.routes';
+import { registerHostTrustRoutes } from './http/ssh-host-trust.routes';
+import { createHostTrust } from './ssh/host-trust';
+import { createPasswordStore } from './ssh/password-store';
+import { createWorkspaceStore } from './workspaces/store';
+import { migrateLegacyConfig } from './workspaces/migrate-legacy';
+import { importLegacyWorkspaces, type ImportReport } from './workspaces/import';
+import { createWorkspaceActivity } from './workspaces/activity';
+import { createNativeConfigService } from './settings/native-config';
+import { createProductSettings } from './settings/product-settings';
+import { registerProductSettingsRoutes } from './http/product-settings.routes';
+import { createAgentProbes, createLocalRunner } from './agents/probe';
+import type { ProcessRunner } from './process/run';
+import { createLaunchEnvironment } from './settings/launch-environment';
+import { registerLaunchEnvironmentRoutes } from './http/launch-environment.routes';
+import { createConfiguredRunner } from './agents/configured-runner';
+import { createNativeResourcesService } from './settings/native-resources';
+import { registerNativeResourceRoutes } from './http/native-resources.routes';
+import { createWorkbenchPlugins } from './plugins/service';
+import { registerPluginRoutes } from './http/plugins.routes';
+import { createSshConsoleService } from './ssh-console/service';
+import { registerSshConsoleRoutes } from './http/ssh-console.routes';
+import { createSessionChanges, type SessionChangesService } from './sessions/changes';
+import { registerSessionChangesRoutes } from './http/session-changes.routes';
+
+/** 已启动的本机服务：地址固定带尾部斜杠，close 可重复调用。 */
+export type StartedServer = { url: string; close: () => Promise<void> };
+
+export type StartServerOptions = {
+  /** 前端构建产物目录；不传则只提供接口，不托管页面 */
+  webDir?: string;
+  /** 旧数据目录；桌面壳与测试可用它隔离迁移来源 */
+  legacyDir?: string;
+  /** Agent 探测执行器；测试注入假执行器，避免启动本机真实 CLI */
+  probeRunner?: ProcessRunner;
+  /** 目录变更服务；测试注入隔离来源，避免监听用户的原生会话目录。 */
+  sessionChanges?: SessionChangesService;
+  /** 启动日志；默认写控制台 */
+  log?: (message: string) => void;
+  logError?: (message: string) => void;
+};
+
+async function dirExists(p: string): Promise<boolean> {
+  return stat(p).then(
+    (s) => s.isDirectory(),
+    () => false,
+  );
+}
+
+const hostForUrl = (host: string) => (host === '::1' ? '[::1]' : '127.0.0.1');
+
+function accessUrl(host: string, port: number, devOrigin?: string): string {
+  return `${devOrigin ?? `http://${hostForUrl(host)}:${port}`}/`;
+}
+
+/** 启动日志只报数量与是否有备份，不打印项目清单。 */
+function logLegacyImport(report: ImportReport, log: (message: string) => void): void {
+  if (report.imported > 0 || report.skipped > 0) {
+    log(
+      `旧工作区配置导入：导入 ${report.imported} 条，跳过 ${report.skipped} 条${
+        report.backupFiles.length > 0 ? '；原文件已备份为 .bak' : ''
+      }`,
+    );
+  }
+  if (report.message) log(`旧工作区配置导入：${report.message}`);
+}
+
+type MigrationReport = Awaited<ReturnType<typeof migrateLegacyConfig>>;
+
+function logMigration(
+  report: MigrationReport,
+  log: (message: string) => void,
+  logError: (message: string) => void,
+): void {
+  for (const name of report.copied) log(`已从旧数据目录迁移：${name}`);
+  for (const name of report.keptExisting) log(`新数据目录已有 ${name}，保留现有文件未覆盖`);
+  for (const message of report.errors) logError(`数据迁移：${message}`);
+}
+
+/** 启动日志只报本机事实：版本与四态，不打印路径、账号或任何探测输出。 */
+function logProbe(probe: AgentProbe, log: (message: string) => void): void {
+  const labels = { claude: 'Claude Code', codex: 'Codex', antigravity: 'Antigravity' } as const;
+  const statuses = {
+    available: '可用',
+    missing: '未找到',
+    changed: '接口变化',
+    'credential-missing': '凭据未配置',
+  } as const;
+  const version = probe.version ? `（版本 ${probe.version}）` : '';
+  const detail = probe.message ? `；${probe.message}` : '';
+  log(`${labels[probe.agent]}：${statuses[probe.status]}${version}${detail}`);
+}
+
+/**
+ * 启动本机服务并返回访问地址。端口传 0 时由系统分配，实际端口从监听结果读取。
+ * 关闭顺序沿用原 CLI：先停终端、资源、Slurm 与 SSH 池，再停轮次，最后关闭 Fastify。
+ */
+export async function startServer(config: ServerConfig, options: StartServerOptions = {}): Promise<StartedServer> {
+  const log = options.log ?? ((message: string) => console.log(message));
+  const logError = options.logError ?? ((message: string) => console.error(message));
+
+  // 改名后首次启动：把旧目录里的服务器档案与工作区搬过来，旧目录原样保留。
+  const migration = await migrateLegacyConfig({
+    legacyDir: options.legacyDir ?? legacyConfigDir(process.env),
+    configDir: config.configDir,
+  });
+  await mkdir(config.configDir, { recursive: true });
+  logMigration(migration, log, logError);
+  const productSettings = createProductSettings({ configDir: config.configDir });
+  const launchEnvironment = createLaunchEnvironment({ configDir: config.configDir });
+  const probes = createAgentProbes({ run: options.probeRunner ?? createLocalRunner() });
+  // 探测只用于启动日志，不阻塞窗口出现；接口被调用时会另行探测。
+  const startupProbes = probes.probeAll();
+
+  const targets = createServerTargets({ configDir: config.configDir });
+  const store = createWorkspaceStore({
+    configDir: config.configDir,
+    dirExists,
+    knownHosts: async () => (await targets.list()).map((server) => server.alias),
+  });
+  // 旧版 workspaces.json 的字段级转换：在本进程读写项目配置之前跑一次。
+  // 没有文件或已经是新结构时为空报告；转换成功后原文件保留为 workspaces.json.bak。
+  logLegacyImport(await importLegacyWorkspaces({ configDir: config.configDir, store }), log);
+  const pool = createSshPool({
+    passwordStore: createPasswordStore({ configDir: config.configDir }),
+    lookupHost: async (alias) => {
+      const server = await targets.get(alias);
+      return server ? serverHostConfig(server) : undefined;
+    },
+  });
+  const plugins = createWorkbenchPlugins({
+    configDir: config.configDir,
+    onDisable: (id) => {
+      if (id === 'ssh-console') sshConsole.dispose();
+    },
+  });
+  await plugins.list();
+  const sshConsole = createSshConsoleService({ pool, isEnabled: () => plugins.isEnabled('ssh-console') });
+  const terminalBindings = createTerminalBindings({ store, pool });
+  const activity = createWorkspaceActivity();
+  const acquireWorkspace = (id: string) => activity.acquire(id);
+  const terminals = createTerminalManager({
+    store,
+    pool,
+    bindings: terminalBindings,
+  });
+  const resources = createResourcesService({
+    store,
+    pool,
+    settings: async () => (await productSettings.read()).settings,
+  });
+  const slurm = createSlurmService({ store, pool });
+  const browse = createRemoteFilesService({ store, pool });
+  const executor = createRemoteExecutor(pool);
+  const preflights = createFilePreflights({ store, pool, browse, executor });
+  const tasks = createFileTasks({
+    configDir: config.configDir,
+    preflights,
+    executor,
+    acquireWorkspace,
+    onCorrupt: (name) => logError(`文件任务记录损坏，已保留原文件，未重放操作：${name}`),
+  });
+  const profiles = createServerProfiles({ targets, store, pool });
+  const capabilities = createCapabilitiesService({
+    claude: async (dir, signal) =>
+      discoverClaudeCapabilities(dir, { signal, env: await launchEnvironment.resolve('claude') }),
+    codex: async (dir, signal) =>
+      discoverCodexCapabilities(dir, { signal, env: await launchEnvironment.resolve('codex') }),
+    antigravity: discoverAntigravityCapabilities,
+  });
+  // 会话服务与轮次管理器互相引用：会话服务里的回调只在调用时读 turns，声明顺序保持原样。
+  const sessions = createSessionsService(
+    {
+      claude: createClaudeSessions(),
+      antigravity: createAntigravitySessions(),
+      codex: {
+        list: (dir, signal, archived) => listCodexSessions(dir, { signal, archived }),
+        read: (id, dir, signal) => readCodexSession(id, dir, { signal }),
+        assertBelongs: (id, dir, signal) => assertCodexSession(id, dir, { signal }),
+        mutate: (id, dir, input) => mutateCodexSession(id, dir, input),
+        fork: (id, dir, input) => forkCodexSession(id, dir, input),
+      },
+    },
+    {
+      withIdleSession: (session, operation) => turns.withIdleSession(session, operation),
+      isRunning: (s) => turns.isRunning(s),
+      // 归属裁决要比较全部项目目录，不能只看当前项目。
+      projects: () => store.list(),
+    },
+  );
+  const runners = {
+    claude: createConfiguredRunner({
+      environment: () => launchEnvironment.resolve('claude'),
+      create: (env) => createClaudeRunner({ env }),
+    }),
+    codex: createConfiguredRunner({
+      environment: () => launchEnvironment.resolve('codex'),
+      create: (env) => createCodexRunner({ env }),
+    }),
+    antigravity: createConfiguredRunner({
+      environment: () => launchEnvironment.resolve('antigravity'),
+      create: (env) => createAntigravityRunner({ env }),
+    }),
+  };
+  const turns: TurnManager = new TurnManager({
+    getWorkspace: (id) => store.get(id),
+    sessions,
+    capabilities,
+    runners,
+    acquireWorkspace,
+  });
+
+  const sessionChanges = options.sessionChanges ?? createSessionChanges();
+  let app: FastifyInstance | undefined;
+  let closing: Promise<void> | undefined;
+  const close = (): Promise<void> => {
+    closing ??= (async () => {
+      // 每个资源独立释放；一个关闭失败不能阻止其余通道和目录监听清理。
+      await Promise.allSettled(
+        [
+          () => sessionChanges.dispose(),
+          () => sshConsole.dispose(),
+          () => terminals.dispose(),
+          () => resources.dispose(),
+          () => slurm.dispose(),
+          () => pool.dispose(),
+        ].map((dispose) => Promise.resolve().then(dispose)),
+      );
+      // 启动探测最多跑 5 秒；关闭保持原有有界等待。
+      await Promise.race([
+        startupProbes,
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 2_000).unref();
+        }),
+      ]);
+      try {
+        await turns.dispose();
+      } finally {
+        await app?.close();
+      }
+    })();
+    return closing;
+  };
+
+  try {
+    app = await buildApp({
+      token: config.token,
+      port: config.port,
+      devOrigin: config.devOrigin,
+      webDir: options.webDir,
+      routes: (a) => {
+        registerProjectRoutes(a, { store, activity });
+        registerPluginRoutes(a, { service: plugins });
+        registerSshConsoleRoutes(a, sshConsole);
+        registerProbeRoutes(a, { probes });
+        registerSessionRoutes(a, { store, sessions, activity });
+        registerSessionChangesRoutes(a, sessionChanges);
+        registerCapabilityRoutes(a, { store, capabilities, sessions });
+        registerSshRoutes(a, { pool, profiles });
+        registerSshTargetRoutes(a, profiles);
+        registerHostTrustRoutes(a, createHostTrust({ pool }));
+        registerAgentConfigRoutes(a, { service: createNativeConfigService() });
+        registerNativeResourceRoutes(a, { service: createNativeResourcesService(), store, activity });
+        registerLaunchEnvironmentRoutes(a, {
+          service: launchEnvironment,
+          restart: (agent) => turns.withIdleAgent(agent, () => runners[agent].restart()),
+        });
+        registerProductSettingsRoutes(a, productSettings, probes);
+        registerRemoteFileRoutes(a, browse);
+        registerRemoteFileActionRoutes(a, { preflights, tasks });
+        registerWsRoutes(a, { turns });
+        registerTerminalRoutes(a, { terminals, bindings: terminalBindings });
+        registerResourcesRoutes(a, resources);
+        registerSlurmRoutes(a, slurm);
+      },
+    });
+
+    await app.listen({ host: config.host, port: config.port });
+    const addr = app.server.address();
+    const port = addr && typeof addr === 'object' ? addr.port : config.port;
+    log(`AgentDeck 已启动，只监听 ${config.host}:${port}`);
+    log(`访问地址：${accessUrl(config.host, port, config.devOrigin)}`);
+
+    void startupProbes.then((report) => {
+      for (const probe of report) logProbe(probe, log);
+      log('本机探测只运行 --version、--help 与 Codex 的 schema 生成，不检查账号、不请求模型端点，也未安装或升级软件。');
+    });
+
+    return { url: accessUrl(config.host, port, config.devOrigin), close };
+  } catch (error) {
+    await close().catch(() => undefined);
+    throw error;
+  }
+}

@@ -1,17 +1,17 @@
 import path from 'node:path';
 import { expect, it, vi } from 'vitest';
-import { workspaceTerminalTarget, type Workspace } from '@ssh-server/shared';
+import { workspaceTerminalTarget, type BoundWorkspace } from '@agentdeck/shared';
 import { createResourceTargetContext } from '../../src/resources/target';
 import type { ResolvedConnection } from '../../src/ssh/connection';
 import type { SshPool } from '../../src/ssh/pool';
 import { deferred } from '../slurm/fixture';
 
 function fixture() {
-  let workspace: Workspace | undefined = {
+  let workspace: BoundWorkspace | undefined = {
     id: 'w',
     name: '夹具',
-    localDir: path.resolve('fixture'),
-    sshHost: 'my-server',
+    dir: path.resolve('fixture'),
+    server: 'my-server',
     remoteDir: '~/projects/demo',
   };
   let generation = 1;
@@ -41,7 +41,7 @@ function fixture() {
     changeGeneration: () => {
       generation++;
     },
-    changeWorkspace: (value?: Partial<Workspace>) => {
+    changeWorkspace: (value?: Partial<BoundWorkspace>) => {
       workspace = value ? { ...workspace!, ...value } : undefined;
     },
   };

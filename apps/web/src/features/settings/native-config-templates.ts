@@ -1,4 +1,4 @@
-import type { NativeConfigAgent } from '@ssh-server/shared';
+import type { NativeConfigAgent } from '@agentdeck/shared';
 
 /** 原生配置的最小模板。 */
 export function nativeConfigTemplate(agent: NativeConfigAgent): { content: string; notes: string[] } {

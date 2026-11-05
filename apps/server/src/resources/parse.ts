@@ -5,7 +5,7 @@ import {
   type ResourceGpu,
   type ResourceHost,
   type ResourceProcess,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 
 export type CpuCounters = { total: number; idle: number };
 const clean = (value: string, limit: number) =>

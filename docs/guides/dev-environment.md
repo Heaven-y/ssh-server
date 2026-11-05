@@ -1,257 +1,157 @@
-# 开发环境
+# 开发指南
 
-本文档说明开发这个仓库所需的本机环境、代码规范、项目 skill 的管理方式，以及已经发现并处理的问题。
-
-当前规范更新于2026-10-09，见[需求](../product/requirements.md)、[设计决策](../engineering/decisions.md)和[路线图](../roadmap.md)。只维护当前正式实现；旧协议、迁移和重复入口不保留。资料入口见[文档索引](../README.md)，最终验证范围统一见[最新验收](ui-usability-optimization-acceptance.md)，不在开发指南重复阶段验收流水。
+更新于 2026-11-04。按当前工程组织环境、质量、Git 和验证规则。产品优先级见[路线图](../roadmap.md)，协议边界见[原生对话接入](../engineering/native-dialogue.md)，本地成包见[安装指南](local-installation.md)；旧验收数据及已退役问题通过 `c686ef2` 查询。
 
 ## 1. 本机环境
 
-| 组件 | 说明 |
-|---|---|
-| Node.js | 22+，运行本地 TypeScript + Fastify 后端，沿用现有 tsx 启动方式 |
-| Git | 2.43+，本地版本恢复需要 `GIT_ATTR_SOURCE` 支持目标提交属性 |
-| Claude Code、Codex CLI | Claude通过SDK随包平台程序运行，Codex通过本机CLI；使用模型时沿用已配置的原生设置。缺少Agent不妨碍服务器管理，历史Codex真实验收版本为0.160.0 |
-| 本机 Python | 3.x，仅部分开发 skill 的脚本按需使用（用 `python` 调用，见 3.3）；网页后端不依赖 Python |
-| rclone | 本机固定 1.75.1；通过 PATH 或 `SSH_SERVER_RCLONE` 指定，服务器无需安装 |
+Windows 10/11、Node.js 22+ 与 Git 是开发基础。按需安装 `claude`、`codex`、`agy`；缺少某个 CLI 应只影响对应功能。SQLite 摘要读取使用 Node 内置模块，不要求额外原生绑定；rclone 已不属于依赖。
+
+本机 Python 仅供部分开发技能脚本使用，命令为 `python -X utf8`。服务器分析使用已有解释器和项目环境；本机后端主要协调异步 I/O。
 
 ### 1.1 代码规范
 
-- 编码与换行：UTF-8、LF；`.ps1` 使用带 BOM 的 UTF-8（Windows PowerShell 5.1 按系统代码页读取无 BOM 文件会乱码）。由 `.editorconfig`、`.gitattributes` 约束。
-- 保持简洁可读，必要处写注释；拆分小函数，避免重复代码和过度设计。
-- 依赖固定到具体版本。
-- Windows 调用 Python 显式启用 UTF-8，使用 `python -X utf8`；由程序启动的子进程设置 `PYTHONUTF8=1`，文本 I/O 指定 `encoding='utf-8'`。远程分析沿用服务器已有解释器或项目环境。
-- 涉及认证、命令执行、文件删除的改动，说明验证了什么、没验证什么。
-- 优先复用成熟的库和组件，不全部手写。选用标准：
-  - 社区广泛使用（star 多、下载量大），最新的库也可以；已归档或安全问题长期无人处理的不用。
-  - 许可兼容：运行时依赖用 MIT / Apache-2.0 / BSD / ISC 等宽松许可，不用 GPL / AGPL；只在开发时使用、不打进产物的工具（如 lint 插件）可以是 LGPL。GPL 项目只参考设计，不复制代码。
-  - 有类型定义，版本固定；不为几行代码就能完成的功能引入大依赖。
-  - 黑名单、访问控制等安全边界逻辑，库的行为必须先用现有测试验证，不满足时保留手写并在 1.2 记录原因。
-  - 新增或替换依赖时同步更新 1.2。
+- 文件默认 UTF-8/LF；PowerShell 脚本按 `.editorconfig` 使用 UTF-8 BOM，以兼容 Windows PowerShell 5.1；`.slurm` 必须 LF。
+- 中文说明与必要注释，函数保持小而可复用，消除重复；不为简单业务堆叠抽象层。
+- 外部命令使用参数数组和明确超时/输出限制，避免拼接 shell；涉及敏感值时通过受控 stdin 或环境注入。
+- Python 文本 I/O 指定 UTF-8，子进程按需设置 `PYTHONUTF8=1`，不复用系统保留变量名。
+- 依赖固定具体版本，优先维护活跃、类型完整、许可兼容的成熟库。运行时使用 MIT/Apache/BSD/ISC 等宽松许可，GPL/AGPL 项目只参考设计；开发工具许可单独记录。
+- 安全边界先验证库的真实行为，不满足时保留明确的小范围实现并记录理由。涉及认证、执行或删除时报告验证范围与未知边界。
 
 ### 1.2 依赖选用记录
 
-| 功能 | 选择 | 理由 |
+| 功能 | 当前选择 | 主要理由 |
 |---|---|---|
-| 本地后端 | Node.js + TypeScript + Fastify | 协调异步 Agent / SSH / 子进程和流式消息，复用官方 TypeScript SDK 与前后端共享类型；选型比较见设计决策 D19 |
-| `~/.ssh/config` 解析与 Host 匹配 | `ssh-config`（MIT） | 按 OpenSSH 规则处理引号、`Key=value`、通配符、`!` 取反和先出现优先；本项目只额外去掉 `Match` 块并标记不支持的选项 |
-| 命令黑名单分词（`policy/shell.ts`） | 手写 | `shell-quote` 把换行当作空白而不是命令分隔，`echo x` 换行后接 `sudo ...` 会被当成一条命令，绕过黑名单 |
-| known_hosts 校验（`ssh/known-hosts.ts`） | 手写 | ssh2 不提供 known_hosts 解析；逻辑约 100 行，含哈希条目与 `@revoked`，已有测试覆盖 |
-| 远程命令拼装、工作区存储、访问控制 | 手写 | 项目特有逻辑，代码量小 |
-| SSH 连接、HTTP、WebSocket、MCP、Agent | ssh2、Fastify、@fastify/websocket、@modelcontextprotocol/sdk、Claude Agent SDK | — |
-| Codex 对话与历史 | 已验官方 app-server 0.160.0，stdio JSON-RPC | 复用原生配置、会话、审批与上下文；对话按会话复用同一进程并空闲回收，历史读取仍独立启动，不增加模型协议转换层 |
-| 前端接口数据（加载、错误、刷新） | `@tanstack/react-query` | 替代手写的 loading / error 状态与刷新逻辑 |
-| 前端 WebSocket 断线重连 | `partysocket` | 自带退避重连与发送缓冲 |
-| 对话长列表与贴底 | `react-virtuoso` 4.18.16（MIT） | 动态高度虚拟列表、流式贴底与用户上翻停止，取代早期use-stick-to-bottom；采用官方跟随/定位API，展开状态保存在列表外 |
-| Git差异与行反馈 | `@pierre/diffs` 1.5.1（Apache-2.0） | React19兼容，官方patch解析与侧别行号、按需加载；GitHub高对比双主题实测，失败保留有界原文本 |
-| Markdown 流式渲染 | `streamdown` | 处理未闭合的 Markdown |
-| 原生配置语法校验 | `smol-toml` 1.9.0（BSD-3-Clause）与原生 JSON 解析 | 校验语法后保存原文，保留未知字段、注释和格式，不自行实现 TOML |
-| 代码组件 | `@uiw/react-codemirror` 4.25.12、CodeMirror 6 JSON / TOML / 脚本语言扩展、`@codemirror/lang-markdown` 6.5.2（MIT） | 按需加载，原生配置编辑与本地文件只读查看共用；支持 Python、JS/TS、Shell、YAML、Markdown 高亮及搜索 |
-| 前端全局状态 | `zustand` | — |
-| 输入命令补全 | `@ariakit/react` 0.4.40（MIT） | 复用 combobox 的焦点、键盘与浮层定位，支持 textarea；仅从 combobox 子入口导入，保持现有视觉样式 |
-| 图标、字体 | `lucide-react`、fontsource | — |
-| 代码检查与复杂度 | ESLint、typescript-eslint、`eslint-plugin-sonarjs`（LGPL，仅开发时使用） | 见 1.3 |
-| 格式 | Prettier | — |
-| 重复率 | jscpd | — |
-| 覆盖率 | `@vitest/coverage-v8` | 与 Vitest 同版本 |
+| 后端与协议 | Fastify、WebSocket、zod、TypeScript | 协调 CLI 与 SSH，复用前后端类型，见[技术选择](../engineering/decisions.md#d2-electron-加壳沿用-node-与-react) |
+| 桌面 | Electron、electron-vite、electron-builder | 业务服务保持一份实现；本地构建 NSIS/portable，不执行发布 |
+| CLI | Claude Agent SDK、Codex app-server、Antigravity 本机接口 | 保留原生会话与行为，不重建模型引擎 |
+| SSH | ssh2、ssh-config | 连接/PTY/SFTP 与 OpenSSH Host 解析；known_hosts 小型校验保留本地实现，覆盖哈希和吊销条目 |
+| 数据与连接 | TanStack Query、zustand、partysocket | 分离服务缓存和交互状态；关闭 WS 发送缓冲避免重发 |
+| 消息 | streamdown、react-virtuoso | 流式 Markdown、动态高度列表和滚动跟随 |
+| 配置 | CodeMirror 6、smol-toml | 高亮和语法校验，保存原文保留未知字段与格式 |
+| 终端 | xterm.js、addon-fit、addon-search | 处理真实 PTY 画面、尺寸和本机回滚查找，不自造终端解析器 |
+| 交互 | Ariakit、cmdk、react-resizable-panels | 弹层、补全、命令面板与分栏的键盘行为 |
+| 图标与字体 | lucide-react、fontsource | 随包分发，避免外部字体请求 |
+| 质量 | ESLint/typescript-eslint/sonarjs、Prettier、jscpd、Vitest | 类型/复杂度、格式、精确重复和行为测试；sonarjs 仅开发期使用 |
 
-终端已接入固定 `@xterm/xterm` 6.0.0 与 `@xterm/addon-fit` 0.11.0，按入口加载并通过核心与实际网页/SSH验收；Pebrel 仅参考界面和交互，不引入其 GPL 实现。未安装的未来能力不写成已有依赖。
+精确版本和许可证声明以包文件与锁文件为准。新增依赖须更新本表的职责和选择理由；没有安装的候选工具不写成现有技术栈。
 
 ### 1.3 质量检查
 
-`.superpowers/` 保存本机执行记录与临时验收材料，不属于产品源码；Git、ESLint 和 Prettier 均排除该目录。
+按直接和间接影响范围验证；新产物、全局布局或影响不明时扩大范围。验证通过后，只有新改动、新问题或未解决风险才复验。阶段整合的完整门禁为 `npm run check`，Windows/Linux CI 运行同一入口。
 
-按变更影响范围执行相关检查；跨包测试布局或全局配置变更统一执行完整检查，后续只复验受影响部分。`npm run check` 提供完整门禁，CI（`.github/workflows/check.yml`，Windows 与 Linux）运行同一命令。它依次执行：
-
-| 步骤 | 命令 | 门槛 |
+| 检查 | 命令 | 约束 |
 |---|---|---|
-| 类型检查 | `npm run typecheck` | shared、server、web、scripts 全部通过 |
-| 代码检查 | `npm run lint` | 0 error。圈复杂度 ≤ 10（`complexity`），认知复杂度 ≤ 15（`sonarjs/cognitive-complexity`），嵌套深度 ≤ 4，参数 ≤ 4 |
-| 格式 | `npm run format:check` | Prettier 无差异；修复用 `npm run format`。Markdown 不自动排版 |
-| 文档一致性 | `npm run docs:check` | git 跟踪的 Markdown：相对链接与锚点有效、无跨文档重复长句（≥ 40 字符）、`docs/` 下每个文档都在导航中登记；单文档超过 600 行只预警不失败 |
-| 重复率 | `npm run dup` | ≤ 3%（50 个 token 以上算重复，不统计测试文件） |
-| 测试与覆盖率 | `npm run coverage` | 全局行 / 语句 / 函数 ≥ 85%，分支 ≥ 75%；`policy/` 与 `http/security.ts` 行 ≥ 95%；`packages/shared` ≥ 90% |
+| 类型 | `npm run typecheck` | shared、server、web、desktop、scripts 全部通过 |
+| ESLint | `npm run lint` | 零错误；圈复杂度 ≤10、认知复杂度 ≤15、嵌套 ≤4、参数 ≤4 |
+| 格式 | `npm run format:check` | Prettier 无差异；Markdown 保留人工排版 |
+| 文档 | `npm run docs:check` | 当前存在的跟踪文档及未忽略新文档；相对链接、锚点、导航与跨文档重复长句检查 |
+| 重复率 | `npm run dup` | 50 token 起检测，非测试代码重复率 ≤3% |
+| 桌面构建 | `npm run build:desktop` | 构建入口可用，不替代真实窗口验收 |
+| 测试覆盖 | `npm run coverage` | 全局行/语句/函数 ≥85%、分支 ≥75%；shared 各项 ≥90%；安全模块行/语句/函数 ≥95%、分支 ≥90% |
 
-- 覆盖率不统计：进程入口、需要真实SSH的`ssh/pool.ts`、界面组件（`.tsx`，由行为组件测试和浏览器验收验证）、`features/ssh/use-ssh-connection.ts`（沿用所属组件的浏览器范围）、`lib/ws.ts`（逻辑由partysocket提供，状态在chat-store测试）。完整排除项见根`vitest.config.ts`；新增排除须说明原因，目录拆分不改变门槛。
-- 超过门槛时先拆分函数、补测试；确实需要例外时用行内 `// eslint-disable-next-line <规则> -- 原因`，不放宽全局门槛。
-- 报告输出到 `coverage/`（已忽略），打开 `coverage/index.html` 查看未覆盖的行。
-- 测试、构建与验收基准记在[最新验收](ui-usability-optimization-acceptance.md)；纯文档变更跑 `npm run docs:check` 与 `npm run format:check`，不重复全量代码门禁。
-- 文档不设硬性行数上限：长度本身不是缺陷，重复定义、混入过程流水和坏锚点才是。超长时先按[文档导航](../README.md)的参数归属规则查重复，再考虑拆分；拆分后须保留原锚点或同步全部入链。
+文档检查采用 NUL 分隔枚举，保留中文和空格路径；开发技能与过程目录即使意外跟踪也不纳入检查，已删除文件跳过。相同长句跨文件达到 40 字符会报告，单篇超过 600 行只预警。新文档须登记在导航，不为通过检查重复定义参数。
 
-测试放各包独立的 `tests/`，与 `src/` 的模块路径对应；新增测试只覆盖核心行为和实际回归，复用现有路径，避免重复断言。需要绝对路径的本机 fixture 用 `path.resolve` / 临时目录生成，不写死开发机路径；协议和安全边界的路径字面量保留其测试意义。执行相关测试示例：`npm test -- apps/server/tests/ssh apps/server/tests/http/ssh.routes.test.ts`。目录总览见 [架构第 3 节](../engineering/architecture.md#3-仓库结构)。
+测试放各包 `tests/`，路径与模块相呼应。只补核心行为和实际回归，用临时目录生成绝对路径，不写开发机固定路径；脚本枚举回归复用服务端 `tests/dev` 发现范围。生命周期测试用明确屏障，不凭放宽超时掩盖竞争。
 
-任务重启或取消的回归使用确定的生命周期屏障，不因固定轮询窗口超时放宽全局超时或改变产品状态。
+覆盖率排除项由根 Vitest 配置统一维护：进程入口、需要真实 SSH 的池、前端组件及特定浏览器封装分别由相应验证覆盖。不得放宽全局门槛；必要的局部 lint 例外写明原因。jsdom 放根开发依赖，组件测试用 Testing Library，普通逻辑使用 Node 环境。
 
-向导 Hook 生命周期回归使用 Testing Library React 16.3.3、DOM 10.4.2 及 jsdom 27.4.0（为兼容现有 Node 22.20），在单个测试文件指定 jsdom；其他纯函数使用 node 环境。
+### 1.4 进度与证据
 
-### 1.4 当前接入状态
+三 CLI 对话、原生资源设置和工作台插件已有实现，项目管理、目录变化刷新、终端查找及本地打包在当前交付中接线。功能条件见[需求验收](../product/requirements.md#4-验收与证据)，实际通过范围仍以路线图中的证据为准；有组件或包文件不代表真实环境验收完成。
 
-功能状态见[路线图](../roadmap.md)，验收条件见[需求](../product/requirements.md#6-验收标准)。真实模型、实际SSH/rclone、受控服务和OS控件分别记录；Linux CI检验代码与路径/协议。
+分别记录类型检查、受控子进程、界面行为、真实模型、真实 SSH 与系统交互。不能从单个模型服务可用推断所有服务兼容，也不能从模拟消息推断真实 Antigravity 协议完整。
 
-- 模型与能力：原生配置为唯一默认来源，`defaultModels` 只在磁盘读取边界剔除；能力目录只缓存公开元数据，技能/命令在实际原生实例发送前复验，目录与 summary 查询不发送模型消息（初始化可能探测服务）。
-- 会话与链接：分叉走官方 inclusive 接口，源会话与项目文件不回滚；链接是含工作区/Agent/原生ID的本网页 hash。
-- 密码：只在明确编辑时按需读取并回显，默认掩码、可查看修改，确认保存不自动连接；验收只用合成凭据，明文不进入日志、URL、普通列表或浏览器持久存储。
-- 布局与隔离：D42 停靠 Group 与已打开文件/PTY 生命周期按[最新验收](ui-usability-optimization-acceptance.md)记录；原生配置与真实目标只用已授权隔离副本或专用测试根。
+### 1.5 后端与远程环境
 
-### 1.5 后端职责、远程 Python 与并发
+本地 Fastify 负责访问控制、原生适配、轮次、SSH 和文件任务；长时间操作必须异步、可取消且有界。并发边界、资源预算、主机信任和凭据规则见[架构](../engineering/architecture.md)。
 
-后端继续采用 Node.js + TypeScript + Fastify，负责访问控制、Agent 适配、SSH、同步、文件 / 版本操作及状态转发。服务器项目使用 Python 不要求网页后端采用 Python；统计、绘图和结果处理默认通过 SSH 使用项目已有环境。新分析脚本先同步，再执行，只回传必要统计或小文件；缺少环境 / 依赖时明确报告，不在服务器安装。
-
-Agent流、SSH通道、子进程输出和文件操作使用异步接口，避免阻塞请求或在后端重计算。同一会话只运行一轮，同一工作区同步串行，执行前等待自身同步成功；终端与资源独立。
-
-当前按 Node.js 本地启动，不增加 Go 工具链、独立 `.exe` 或安装器。详细约定见 [架构第 2 节](../engineering/architecture.md#2-技术栈) 与 [设计决策第 8 节](../engineering/decisions.md#8-后端选型分析位置与运行边界)。
+服务器使用已有工具和 Python 环境，不为监控安装 `nvitop` 或常驻采集器。远端操作、资源观察和对话互不代替，独立成功不能证明所有组合都通过。
 
 ### 1.6 本仓库的 Git 分支与提交
 
-采用 `main`、大功能分支和短期小功能分支，不设置额外的长期 `develop`。这些规则管理仓库开发；产品里用户工作区的“保存版本”是另一套操作，不套用或更改用户项目分支。
+保留 `main`、大功能分支与短期小分支，不增加长期 develop。
 
-| 分支 | 命名 | 用途 | 生命周期 |
-|---|---|---|---|
-| `main` | `main` | 已完成检查、可继续开发的基线 | 长期保留；未实现或未验收的功能记录在路线图，合入不等于发布 |
-| 大功能分支 | `feat/<功能域>`，如现有 `feat/ssh-workflow` | 一个完整功能域，可包含多个子功能 | 从 `main` 创建；阶段合入 `main` 后仍保留，归档或删除须用户明确要求 |
-| 小功能分支 | `<类型>/<主题>`，类型用 `feat`、`fix`、`docs`、`chore`、`test`、`refactor`，如 `fix/password-refresh` | 一项子功能、修复或成组文档变更 | 从所属大分支创建，没有对应大分支时从 `main` 创建；合入后删除 |
+| 分支 | 命名 | 生命周期 |
+|---|---|---|
+| 主线 | `main` | 已整合基线，长期保留；合入不等于发布 |
+| 大功能 | `feat/<功能域>` | 一个完整功能域，阶段合入后保留；删除须明确授权 |
+| 小功能 | `<类型>/<主题>` | 单项子功能或文档阶段，合入所属大分支后清理 |
 
-- 分支名只用小写英文与连字符，体现主题；不使用 `codex/` 一类工具前缀、`wip`、日期或人名。一个主题一个分支，不混入无关改动。
-- 开始前检查 `git status`、`git branch -vv` 与 `git worktree list`，确认所在分支、已有修改和工作树占用。保留不属于当前任务的未跟踪文件，不用 `git clean` 整理分支。
-- 提交按一个可审阅的阶段组织，代码与对应文档一起更新，使用 `type(scope): 中文摘要` 与必要要点；一个大功能可以由多条提交组成，不为每处小改动单独开分支或提交。
-- 小分支完成并验证后，经授权用 `git merge --no-ff <小分支>` 合入所属大分支；大功能达到可整合阶段后，经授权用 `git merge --no-ff <大分支>` 合入 `main`。保留每条原始提交并用 merge commit 记录整合边界，不用快进、squash 或 rebase 代替；冲突解决后验证，不重置主分支或改写已有历史。
-- `main` 的新改动需要进入仍在开发的大分支时同样使用 merge，先确认同步范围，不为凑合并图反复互合。
-- 合并后的代码树与已验证内容一致时沿用可靠基准，只检查新增文档与合并完整性；有冲突解决或代码变化才复验受影响部分。
-- 仅清理小分支：确认其 tip 已被目标分支包含、没有工作树占用后，用 `git branch -d` 删除；未合并小分支保留，不使用 `-D`。大功能分支即使已合入 `main` 也保留，不按“已合并”批量删除。
-- 本地与远端保持一致：`main` 与保留的大功能分支都有对应的 `origin` 分支且没有领先或落后；小分支合并后在本地和远端一起删除。推送前先取回并核对真实分支，网络失败时不把旧 `origin/*` 当作最新状态。用户要求推送时正常推送，禁止强推或改写已推送历史。
-- 小功能收尾后回到所属大分支；阶段已合入 `main` 且暂停开发时回到 `main`。报告说明保留的大分支、已清理的小分支与推送状态。
+- 名称用小写英文和连字符，体现主题，不用工具前缀、日期、人名或 wip。
+- 开始前检查状态、分支和 worktree 占用；保留别人的未跟踪文件，不用 `git clean` 清理工作区。
+- 提交按可审阅阶段组织，使用 `type(scope): 中文摘要`，代码与对应文档一起；未经明确要求不提交、不推送，当前会话授权持续有效。
+- 合并统一 `git merge --no-ff`，保留原提交及整合边界；不以快进、squash、rebase 或重写主线代替。冲突解决后复验受影响范围。
+- 没有冲突或新代码的整合沿用可靠验证基线，不重复跑无关全量测试。
+- 小分支确认已被目标包含且没有工作树占用后用 `git branch -d` 删除，不用 `-D`；大功能分支不按“已合并”批量清理。
+- 只有获推送授权才同步远端，先 fetch 核对真实状态，不把离线的 origin 引用当最新结果；正常推送，禁止强推。
+- 小阶段结束回到所属大功能分支；合入 main 后暂停开发时回到 main。报告保留分支、已清理小分支与是否推送。
 
-2026-10-03 起合并统一使用 `--no-ff`；此前的快进记录不重写，`feat/ssh-workflow` 从那时起作为大功能分支保留。
+2026-10-03 之前的旧合并记录不改写。
 
-## 2. 项目 skill
+## 2. 开发技能
 
-开发本仓库时，Agent 使用的 skill 只安装在项目内，不安装到全局，也不提交到仓库。
-
-本节限制的是开发本仓库所安装的 skills。产品内的聊天能力另按所选 Claude / Codex 官方运行时发现用户本机和工作区已有 skills / 命令，不要求用户重新安装，不修改全局配置，不复制到服务器。
-
-### 2.1 安装
-
-在仓库根目录执行：
+开发技能只安装到项目目录，不写全局配置、不提交技能本体。产品使用的 CLI 原生 Skills/MCP/插件是另一回事，按所选 CLI 的发现规则接入。
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\dev\install-skills.ps1
 ```
 
-脚本使用 [vercel-labs/skills](https://github.com/vercel-labs/skills)（`npx skills`，固定为 1.7.0），同时为 Claude Code 和 Codex 安装，并关闭它的匿名统计（`DISABLE_TELEMETRY=1`）。
+脚本使用固定 `skills@1.7.0`，设置 `DISABLE_TELEMETRY=1`，为 Claude Code 与 Codex 建立入口。真实文件放 `.agents/skills/`，`.claude/skills/` 为目录链接；`skills-lock.json` 记录来源与内容哈希，三者都忽略。
 
-### 2.2 安装内容
-
-| 来源 | skill | 许可证 |
+| 来源 | 能力 | 许可 |
 |---|---|---|
-| obra/superpowers | 全部 15 个（brainstorming、writing-plans、executing-plans、test-driven-development、systematic-debugging、requesting-code-review、receiving-code-review、verification-before-completion 等） | MIT |
-| vercel-labs/agent-skills | vercel-react-best-practices | MIT |
-| anthropics/skills | webapp-testing | Apache-2.0 |
-| anthropics/claude-plugins-official | build-mcp-server | Apache-2.0 |
-| nextlevelbuilder/ui-ux-pro-max-skill | ui-ux-pro-max | MIT |
+| obra/superpowers | 需求梳理、计划、执行、调试与评审 | MIT |
+| vercel-labs/agent-skills | React 实践 | MIT |
+| anthropics/skills | Web 应用验证 | Apache-2.0 |
+| anthropics/claude-plugins-official | MCP 开发 | Apache-2.0 |
+| nextlevelbuilder/ui-ux-pro-max-skill | UI/UX 辅助 | MIT |
 
-### 2.3 文件布局
+查看用 `npx skills@1.7.0 ls -a claude-code -a codex`，项目更新用 `npx skills@1.7.0 update -p`；新增来源先改安装脚本。更新取上游最新内容，锁文件不是提交号。技能中的插件根路径按 AGENTS 映射到本地；没有启动钩子，因此任务开始必须主动读取 using-superpowers。
 
-```text
-.agents/skills/<名称>/        # 真实文件，Codex 从这里读取
-.claude/skills/<名称>         # 目录链接（junction），指向上面的目录，Claude Code 从这里读取
-skills-lock.json              # 记录每个 skill 的来源和内容哈希
-```
+## 3. 启动与隔离验证
 
-以上三项都在 `.gitignore` 中。目录链接由 `npx skills` 自动创建，不需要管理员权限。
-
-### 2.4 日常管理
-
-| 操作 | 命令 |
+| 场景 | 命令 |
 |---|---|
-| 查看 | `npx skills@1.7.0 ls -a claude-code -a codex` |
-| 更新 | `npx skills@1.7.0 update -p` |
-| 删除 | `npx skills@1.7.0 remove <名称>` |
-| 新增 | 把来源加进 `scripts/dev/install-skills.ps1`，再运行一次脚本 |
+| 桌面开发与热更新 | `npm.cmd run dev:desktop` |
+| 浏览器热更新 | `npm.cmd run dev` |
+| 本机静态托管 | `npm.cmd start` |
+| 指定关联测试 | `npm.cmd test -- apps/server/tests/chat/turn-manager.test.ts` |
+| 终端受控夹具 | `node --import tsx scripts/dev/e2e-terminal.ts` |
+| Windows 本地包 | `npm.cmd run package:desktop` |
+| 解包目录与冒烟 | `npm.cmd run package:desktop:dir`，再按本地安装指南运行冒烟检查 |
 
-注意：`update` 会更新到上游最新版本。`skills-lock.json` 只记录来源和内容哈希，不记录提交号。核对启用状态时只检查本项目目录与 Claude 目录链接有效（Claude 用初始化事件清单、Codex 用实际发现结果），不新增全局 skill。
+开发服务地址和环境覆盖项统一见[启动配置](../engineering/architecture.md#53-启动配置)。前端先同源握手，服务重启后需重新取得会话。不要把测试页面指向正在使用的真实配置。
 
-## 3. 已知问题与处理
+桌面 `dev` 和 `start` 在运行 electron-vite 前执行 Electron 官方安装器：文件完整时立即返回，缺失时从缓存恢复或下载锁定版本。仅安装 npm 包不一定已包含桌面运行文件，跳过安装脚本或下载中断会使 electron-vite 报 `Electron uninstall`。已有依赖时可在仓库根目录运行 `node node_modules/electron/install.js` 修复，再执行 `npm.cmd run dev:desktop`；无需删除整套 node_modules。首次下载需要网络，未完成下载不能只创建 path.txt 充当成功。
 
-### 3.1 superpowers 不会自动启用
+桌面开发使用 electron-vite 的 renderer 服务和监听构建。前端入口复用 web 的 Vite/React/Tailwind 配置，默认页面地址为 `http://127.0.0.1:5173`，API 与 WebSocket 代理到本机后端；Host、Origin、Cookie 和插件 iframe 限制继续生效。
 
-- 现象：superpowers 原本通过插件的 SessionStart 钩子，在每个会话开头注入 `using-superpowers`。项目以 skill 文件方式安装，没有这个钩子。
-- 处理：在 `AGENTS.md`（`CLAUDE.md` 引用它）中要求开始任务前先阅读 `using-superpowers`。
-- 验证（2026-10-01）：Codex 和 Claude Code 执行任务时，第一个动作都是读取 `.agents/skills/using-superpowers/SKILL.md`。
+| 保存的内容 | 开发窗口行为 |
+|---|---|
+| React 页面、组件与 CSS | Vite HMR/Fast Refresh，通常保持当前页面与可保留的组件状态；不重启后端 |
+| Electron preload | 重新构建并刷新页面，页面内临时状态可能重置 |
+| 后端、桌面主进程及其共享源码、远端辅助脚本 | 重新构建并自动启动新 Electron 进程 |
+| 依赖或启动/构建配置 | 按变更安装依赖后停止并重新执行开发命令 |
 
-### 3.2 ui-ux-pro-max 的脚本路径
+后端重启会中断本次运行中的模型回合、SSH 通道和终端。不要在真实任务运行时编辑会触发重启的文件；原生历史与工作台已保存数据继续按各自存储规则保留。热更新只适用于源码开发，已生成的安装包和便携包不会随源码变化。
 
-- 现象：它的 SKILL.md 中脚本路径写作 `${CLAUDE_PLUGIN_ROOT}/.claude/skills/ui-ux-pro-max/scripts/search.py`。这个变量只在插件方式安装时才有值，项目级安装下为空，路径不成立。
-- 处理：不改第三方文件；按AGENTS中的映射使用`.agents/skills/<名称>/...`，需要Python时显式`python -X utf8`，不依赖插件专用环境变量。
+开发代理要求固定后端端口，使用 `AGENTDECK_HOST` 和 `AGENTDECK_PORT`，默认回环端口 4317；桌面热更新不接受端口 0。5173 被占用时明确启动失败，不自动连接其他开发服务，因此不要同时运行浏览器开发与桌面开发。安装版和静态预览仍使用系统分配的端口。
 
-### 3.3 `python3` 不可用
+原生配置接线脚本为 `e2e-claude-config.ts` 与 `e2e-agent-config.ts`。Codex 可通过 `--config` 与 `--codex` 指定隔离来源；只有已授权真实模型验证才追加 `--with-model`。复制认证材料必须明确指定、核对源摘要，清理只触及自身副本，不绕过策略拒绝。
 
-- 现象：本机 `python3` 指向 Windows 应用商店占位程序，执行无输出。
-- 处理：`AGENTS.md` 中规定 Python 脚本统一用 `python` 调用。
+原生资源、插件与独立控制台的组件和服务测试使用临时目录、合成运行器或假 SSH 通道。浏览器验证覆盖真实组件布局和键盘操作；终端搜索用本机输出缓冲，不需要连接真实服务器。外部静态插件的样例与权限边界见[插件契约](../engineering/workbench-plugins.md)。
 
-### 3.4 Bash 工具结束时会结束后台进程
+打包命令只生成本地 Windows x64 产物，不签名或推送版本。CLI 仍由用户自行安装，工作台数据不进入包；安装、卸载与配置保留按[本地安装指南](local-installation.md)逐项验收。包内服务可启动、安装器生成和安装操作是不同证据，不能互相替代。
 
-- 在一次命令里用 `Start-Process` 启动的后端和 Vite，会在该命令返回后被结束。需要先启动服务再验收时，把启动、验收、`Stop-Process` 写在同一条命令里（用 `try/finally` 保证关闭）。
+SSH 验证使用专用授权目录或合成服务；真实写操作先预检。服务器文件取消不代表回滚，断开后结果不明先读源与目标核对，不自动重发。现有主机/凭据行为不得因测试方便而跳过。
 
-### 3.5 前端打包体积
+## 4. 已知开发约束
 
-- 生产构建仍有大于500 kB的chunk提示；按需加载编辑器、终端与重型面板，不通过抬高阈值掩盖警告。
+- Windows 调 npm 使用 `npm.cmd`，避免 PowerShell shim 行为；`python3` 可能指向商店占位程序，脚本用 `python`。
+- 后台服务可能随命令宿主退出。验收脚本在同一进程生命周期内启动、检查并用 `try/finally` 清理；`Start-Process` 后台窗口设为 Hidden。
+- 已有非 watch 服务正在使用时，不重启它、不覆盖其默认前端产物。使用专用临时 outDir 和匹配版本的隔离后端，避免混版。
+- 大于 500 kB 的构建 chunk 提示通过按需加载和实际分析处理，不抬阈值隐藏；jscpd 只发现精确 token 重复，近似逻辑仍需评审。
+- Markdown 没有自动排版；纯文档改动检查链接、编号、事实、编码与差异即可，不为文档内容新增单元测试。
+- 当前没有独立 Playwright E2E 目录；界面验收用可用浏览器与隔离服务，临时截图和执行记录放 `.superpowers/` 或任务临时目录。
 
-### 3.6 jscpd 只报告精确重复
-
-- jscpd 按 token 序列匹配：整段复制会被发现（自检：复制 `shell.ts` 后报 23% 重复并失败），但改了类名或几行代码的"近似重复"不一定能发现。它只是底线检查，代码评审时仍要留意相似逻辑。
-- 在 PowerShell 中 `npx jscpd` 会把 "Using config" 提示写到 stderr，不影响退出码；以 `$LASTEXITCODE` 判断结果。
-
-### 3.7 真实验收与外部同步工具
-
-- `scripts/dev/e2e-m1.ts`和`e2e-m2.ts`用于相关真实Agent/SSH/同步检查；按变更影响选择范围。终端夹具入口为`node --import tsx scripts/dev/e2e-terminal.ts`。
-- rclone 要求 1.75.1；驱动拒绝其他版本或缺失的可执行文件，并暂停远端执行。从官方版本目录下载并核对 SHA-256；不自动安装到服务器。
-- rclone 的 obscure 仅是传输编码；明文密码不落盘，可选保存使用 Windows 当前用户系统加密，与 rclone 的传输编码分开。
-- 前端验收用会话临时目录中的 `playwright-core` 驱动本机 Edge（`executablePath` 指向 `msedge.exe`，不下载浏览器、不进仓库）。
-
-### 3.8 Windows 系统加密子进程环境
-
-- 加密子进程使用显式环境白名单，只补齐 `USERPROFILE`、`APPDATA`、`LOCALAPPDATA`、`PSModulePath` 四项路径；凭据仍经标准输入传递，保留 10 秒超时与输出上限，不继承其他服务凭据。
-
-### 3.9 Windows bisync 状态文件名过长
-
-真实rclone 1.75.1验收在较长配置目录下出现状态锁文件名错误。其[固定版本源码](https://github.com/rclone/rclone/blob/v1.75.1/cmd/bisync/bilib/canonical.go)把两端规范化完整路径拼成一个文件名，再添加清单/锁后缀；alias会展开真实路径，实际实验不能解决此限制。
-
-当前使用固定版本自带combine单上游映射，仅bisync使用短逻辑根，其他命令仍指向实际目录；取舍见[D31](../engineering/decisions.md#d31-同步清单短名称与兼容升级2026-10-05)。不靠搬配置根或alias掩盖产品问题。
-
-只维护version=1、mirror-v1、combine-v1。非空基线缺签名，或已有签名但布局缺失/不匹配时停止，不提供升级或自动重建；确认初始化也不能覆盖旧数据。当前格式未完成任务仍走结果核对/恢复，不重放服务器写操作。坏配置/任务不视为空，不删除状态或搬配置根规避；D31的兼容升级已由D36取消。
-
-Windows rclone会把远端根的反斜杠转换为斜杠，产品在同步/预览数据命令前拒绝，应重新选择已核对的实际兼容目录。服务器文件浏览与本人终端不套用此限制。`pwd`只去掉一个终止LF，保留尾随空格，截断/异常输出拒绝，见[D35](../engineering/decisions.md#d35-rclone-远端根的精确绑定2026-10-06)。
-
-## 4. 开发运行与验收说明
-
-- Windows PowerShell用`npm.cmd start`构建并启动，直接打开`http://127.0.0.1:4317/`；开发热更新用`npm.cmd run dev`并打开5173端口。无需令牌链接，同源握手后才启动业务查询；后端重启后刷新重新握手。安全契约见[D37](../engineering/decisions.md#d37-本机入口与统一服务器档案2026-10-07)。
-- 设置`SSH_SERVER_RCLONE`后，真实验收用`npm.cmd run e2e:m1 -- --host my-server --remote-dir ~/projects/demo --local-dir C:\Projects\demo --report <私有报告路径>`；M2将脚本名换为`e2e:m2`。两端必须是专用空测试根；M1保留原生验收会话，M2只创建/清理自身随机子目录，均不能在已有项目上运行。
-- 先在顶栏“服务器”保存连接档案并认证；SSH config只作为显式导入来源，生产工作区不直接使用未登记Host。私钥模式需要可读私钥，密码模式不回退私钥或SSH Agent；认证保存在服务器层，工作区只选目录和档案。已引用或有活动的服务器变更受保护，密码不进入工作区JSON、浏览器缓存、Agent、日志或argv。
-- 同步元数据、信任副本、缓存与临时目录在后端配置目录，`.git` 永不传输；只同步代码和小文件，排除范围变化需确认重建基线。
-- `/` 命令、压缩和资源状态按官方接口 / 服务器实际能力验证。终端测试使用服务器已有工具，不为了 `nvitop` 或监控而在服务器安装软件。
-- Codex正式启动使用`CODEX_HOME/config.toml`，`SSH_SERVER_CODEX`指定已有入口。真实模型检查须有明确授权，使用隔离配置并核对源摘要；只清理自身副本，不绕过策略拒绝。原生MCP内部令牌只经进程环境传递，轮次结束撤销。
-- 远程分析验证使用已有Python/项目环境，不为网页版安装科学计算依赖；对话、终端、资源、任务与同步的并发按实际影响范围核对，不能由独立通道成功推断所有组合。
-- 文档修改只检查链接、编号、编码、冲突表述与变更范围；代码改动再按受影响范围运行相关测试及工程检查，不重复未受影响的全量测试。
-- 远端文件验收复用授权目标的专用目录，按A20–A23核对大文件、混合目录、同名冲突、链接、跨文件系统与取消；先确认跨文件系统device确实不同。核实本机无隐式副本且不调用模型，显式下载不纳入同步/Git。终端全屏程序先等待进入与重绘再测试退出。
-- 每项能力只有当前实现。测试替身和开发脚本必须跟随必填Agent、对象SshTarget、runners注册表等正式契约，不能为旧替身恢复兼容分支。外部客户端只是可选检查工具。
-- 启动检测Node.js、Claude实际入口、Codex、Git、rclone能否执行；每项5秒、输出2KiB，命令成功但版本未知仍可用。产品设置“本机运行环境”复用报告并提供重新检测和安装指引。Git2.43+/rclone1.75.1为业务要求。
-- 默认配置目录为`%LOCALAPPDATA%\ssh-server`，`SSH_SERVER_CONFIG_DIR`可指定隔离目录；`SSH_SERVER_PORT`更改监听端口，`SSH_SERVER_HOST`仅允许本机地址。开发来源用`SSH_SERVER_DEV_ORIGIN`或`--dev-origin`显式设置；`SSH_SERVER_CODEX`和`SSH_SERVER_RCLONE`只选择已有程序。开发skills与其锁文件不属于产品启动依赖，不在启动时安装或检测。
-- 仅维护新档案和工作区格式，不自动迁移。若配置不合法，保留原文并拒绝；不要用删除配置的方法掩盖错误。隔离验收使用临时目录和合成SSH，不读取或清理用户真实服务器配置。
-
-### 4.1 原生配置与复验入口
-
-- 原生编辑固定为`CLAUDE_CONFIG_DIR/settings.json`、`CODEX_HOME/config.toml`，未设置时使用用户目录的`.claude/settings.json`、`.codex/config.toml`；不编辑认证文件或任意路径。最多256 KiB普通UTF-8，校验JSON根对象/TOML、revision与文件身份，保留未知字段及原格式；409先核对外部修改，不覆盖草稿或原文件。
-- 缺失或空白文件可插入最小模板，仅改变草稿，显式保存才写盘。原生登录可能不依赖配置文件，保存不证明已登录或模型可用。Codex新会话默认high，自动仅省略强度覆盖，不替用户选档。
-- 不调用真实模型的配置接线复验入口：`node --import tsx scripts/dev/e2e-claude-config.ts`；Codex入口：`node --import tsx scripts/dev/e2e-agent-config.ts --config <隔离配置来源> --codex <已有程序路径>`。仅获真实模型授权时追加`--with-model`；`--api-prefix /v1`只在确认服务前缀需要时使用，`--auth-file`只复制指定认证文件，不回写源文件。不能由某服务通过推断其他服务兼容。
-
-### 4.2 遇到阻断时的处理
-
-- 文件面板“收起”只隐藏；本地文件只读，不登记编辑状态。移除工作区前先处理运行轮次、同步收尾和未解决任务；不强停其他工作区或外部训练。
-- `needs_check`先读取源/目标核对结果；纯远端任务只用结果核对，不调用同步恢复。`sync_pending`将远端完成与同步待恢复分开；涉及同步范围时核对实际结果并明确确认恢复，恢复只协调同步，不重新移动/复制/删除。取消不等于回滚，哈希相同也不能补造原任务verified证明。
-- 读取失败或快照失配时保留原查询结果并提示重新读取；坏配置/任务保留原文并停止，不清空或跳过坏记录。
-- 自定义命令规则最多20条，模式1–256字符、原因1–160字符；程序名只填基本名，`contains`按区分大小写的字面串匹配，不支持正则。通常无需自定义，不能把它当终端安全沙箱。
-
-### 4.3 面板与隔离构建
-
-资源和文件各自开关/收起，可同时显示；拖动分隔线或用方向键调整尺寸，标题栏“复位”恢复该模式的默认尺寸。文件默认420px（360–960）、资源默认320px（280–640）、窄右区420px（360–720）、宽双工具760px（646–1400），横纵比例默认43%/40%（20%–80%）；只记录用户调整，其他几何仅当前页面记忆。隐藏不释放已打开文件或PTY；文件打开不停止资源采样。
-
-已有非watch实例仍在使用时，不重启用户服务，也不把新前端覆盖到其默认dist。生产验证构建可用`npm.cmd run build -w @ssh-server/web -- --outDir <会话临时目录>/panels-dist --emptyOutDir`，输出必须是专用临时目录；以匹配版本的隔离后端验证，避免前后端混版。
+旧 rclone 路径问题、上一代停靠截图及阶段测试数字不再作为当前开发说明；必要时按[历史追溯](../engineering/decisions.md#历史追溯)读取原始记录。

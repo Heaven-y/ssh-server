@@ -3,10 +3,15 @@ import os from 'node:os';
 import path from 'node:path';
 import Fastify from 'fastify';
 import { afterEach, expect, it } from 'vitest';
-import { ProductSettingsSchema, type ProductSettingsInput } from '@ssh-server/shared';
+import { ProductSettingsSchema, type ProductSettingsInput } from '@agentdeck/shared';
 import { createProductSettings } from '../../src/settings/product-settings';
 import { registerProductSettingsRoutes } from '../../src/http/product-settings.routes';
-import { createEnvironmentService } from '../../src/settings/environment';
+import { createAgentProbes } from '../../src/agents/probe';
+import { ProcessError } from '../../src/process/run';
+
+// 这些用例只关心产品设置存储与校验，环境接口固定按「未找到」返回。
+const probes = () =>
+  createAgentProbes({ run: () => Promise.reject(new ProcessError('executable_missing', '测试不探测本机 CLI')) });
 
 const roots: string[] = [];
 async function fixture() {
@@ -35,8 +40,11 @@ it('缺失只读默认，保存后重启读取；同摘要并发保存仅一个�
   expect(saved.revision).toMatch(/^[a-f0-9]{64}$/);
   expect(await createProductSettings({ configDir: f.configDir }).read()).toEqual(saved);
   const result = await Promise.allSettled(
-    [5, 6].map((syncIntervalSeconds) =>
-      f.store.save({ revision: saved.revision, settings: { ...first, syncIntervalSeconds } }),
+    [6, 7].map((intervalSeconds) =>
+      f.store.save({
+        revision: saved.revision,
+        settings: { ...first, resources: { intervalSeconds, timeoutSeconds: 8 } },
+      }),
     ),
   );
   expect(result.filter((entry) => entry.status === 'fulfilled')).toHaveLength(1);
@@ -56,7 +64,7 @@ it('坏文件、非法字段和超界拒绝，不重建或覆盖原文', async (
   await rm(f.file);
   for (const settings of [
     { ...ProductSettingsSchema.parse({}), secret: 'unknown' },
-    { ...ProductSettingsSchema.parse({}), syncIntervalSeconds: 4 },
+    { ...ProductSettingsSchema.parse({}), resources: { intervalSeconds: 1, timeoutSeconds: 8 } },
     { ...ProductSettingsSchema.parse({}), resources: { intervalSeconds: 2, timeoutSeconds: 31 } },
   ])
     await expect(f.store.save({ settings, revision: 'missing' })).rejects.toMatchObject({
@@ -68,7 +76,7 @@ it('坏文件、非法字段和超界拒绝，不重建或覆盖原文', async (
 it('生产HTTP严格校验、摘要冲突与no-store贯通真实存储', async () => {
   const f = await fixture();
   const app = Fastify();
-  registerProductSettingsRoutes(app, f.store, createEnvironmentService());
+  registerProductSettingsRoutes(app, f.store, probes());
   try {
     const read = await app.inject({ url: '/api/settings/product' });
     expect(read.statusCode).toBe(200);
@@ -83,47 +91,51 @@ it('生产HTTP严格校验、摘要冲突与no-store贯通真实存储', async (
       (await app.inject({ method: 'PUT', url: '/api/settings/product', payload: { ...input, unknown: true } }))
         .statusCode,
     ).toBe(400);
-    await writeFile(f.file, JSON.stringify({ ...input.settings, syncIntervalSeconds: 20 }));
+    await writeFile(
+      f.file,
+      JSON.stringify({ ...input.settings, resources: { intervalSeconds: 20, timeoutSeconds: 8 } }),
+    );
     const conflict = await app.inject({ method: 'PUT', url: '/api/settings/product', payload: save.json() });
     expect(conflict.statusCode).toBe(409);
-    expect((await f.store.read()).settings.syncIntervalSeconds).toBe(20);
+    expect((await f.store.read()).settings.resources.intervalSeconds).toBe(20);
   } finally {
     await app.close();
   }
 });
 
-it('缺省自动同步一分钟，显式间隔不被迁移，修改15秒只改变指定偏好', async () => {
+it('服务器资源采样缺省5秒，显式间隔不被迁移，修改15秒只改变指定偏好', async () => {
   const f = await fixture();
   const defaults = await f.store.read();
-  expect(defaults.settings.syncIntervalSeconds).toBe(60);
-  expect(ProductSettingsSchema.parse({ syncIntervalSeconds: 30 }).syncIntervalSeconds).toBe(30);
+  expect(defaults.settings.resources.intervalSeconds).toBe(5);
+  expect(
+    ProductSettingsSchema.parse({ resources: { intervalSeconds: 15, timeoutSeconds: 8 } }).resources.intervalSeconds,
+  ).toBe(15);
   const custom = {
     ...defaults.settings,
     defaultAgent: 'codex' as const,
-    syncIntervalSeconds: 15,
-    resources: { intervalSeconds: 7, timeoutSeconds: 9 },
+    resources: { intervalSeconds: 15, timeoutSeconds: 9 },
   };
   const previous = await f.store.save({ settings: custom, revision: defaults.revision });
-  expect((await createProductSettings({ configDir: f.configDir }).read()).settings.syncIntervalSeconds).toBe(15);
+  expect((await createProductSettings({ configDir: f.configDir }).read()).settings.resources.intervalSeconds).toBe(15);
   const updated = await f.store.save({
     revision: previous.revision,
-    settings: { ...previous.settings, syncIntervalSeconds: 60 },
+    settings: { ...previous.settings, resources: { intervalSeconds: 30, timeoutSeconds: 9 } },
   });
-  expect(updated.settings).toEqual({ ...custom, syncIntervalSeconds: 60 });
+  expect(updated.settings).toEqual({ ...custom, resources: { intervalSeconds: 30, timeoutSeconds: 9 } });
   expect(updated.revision).not.toBe(previous.revision);
 });
 
-it('磁盘只退休defaultModels，保留有效偏好和原文摘要，显式保存才更新文件', async () => {
+it('磁盘只退休已删除的字段，保留有效偏好和原文摘要，显式保存才更新文件', async () => {
   const f = await fixture();
   const preferences = {
     defaultAgent: 'codex' as const,
-    syncDefaults: { maxFileBytes: 8388608, excludedExtensions: ['pt'] },
-    syncIntervalSeconds: 15,
     resources: { intervalSeconds: 7, timeoutSeconds: 9 },
   };
   const original = JSON.stringify({
     ...preferences,
     defaultModels: { claude: 'retired-claude', codex: 'retired-codex' },
+    syncDefaults: { maxFileBytes: 8388608, excludedExtensions: ['pt'] },
+    syncIntervalSeconds: 15,
   });
   await writeFile(f.file, original, 'utf8');
   const loaded = await f.store.read();
@@ -132,17 +144,21 @@ it('磁盘只退休defaultModels，保留有效偏好和原文摘要，显式保
   expect(await readFile(f.file, 'utf8')).toBe(original);
   const saved = await f.store.save({
     revision: loaded.revision,
-    settings: { ...loaded.settings, syncIntervalSeconds: 20 },
+    settings: { ...loaded.settings, resources: { intervalSeconds: 20, timeoutSeconds: 9 } },
   });
-  expect(saved.settings).toEqual({ ...preferences, syncIntervalSeconds: 20 });
-  expect(JSON.parse(await readFile(f.file, 'utf8'))).toEqual({ ...preferences, syncIntervalSeconds: 20 });
+  expect(saved.settings).toEqual({ ...preferences, resources: { intervalSeconds: 20, timeoutSeconds: 9 } });
+  expect(JSON.parse(await readFile(f.file, 'utf8'))).toEqual({
+    ...preferences,
+    resources: { intervalSeconds: 20, timeoutSeconds: 9 },
+  });
   await expect(f.store.save(loaded)).rejects.toMatchObject({ status: 409, code: 'revision_conflict' });
 });
 
 it.each([
   { unknown: true },
   { resources: { intervalSeconds: 1, timeoutSeconds: 8 } },
-  { syncDefaults: { maxFileBytes: 8388608, excludedExtensions: ['pt'], unknown: true } },
+  // 退休字段被剔除后，其余活动字段仍按原规则校验，不回退默认值。
+  { resources: { intervalSeconds: 2, timeoutSeconds: 31 }, syncIntervalSeconds: 15 },
 ])('退休磁盘字段不放宽其余校验或回退默认：%j', async (invalid) => {
   const f = await fixture();
   const original = JSON.stringify({
@@ -158,14 +174,14 @@ it.each([
 it('公开HTTP拒绝退休字段，不把磁盘读取边界当作API兼容层', async () => {
   const f = await fixture();
   const app = Fastify();
-  registerProductSettingsRoutes(app, f.store, createEnvironmentService());
+  registerProductSettingsRoutes(app, f.store, probes());
   try {
     const response = await app.inject({
       method: 'PUT',
       url: '/api/settings/product',
       payload: {
         revision: 'missing',
-        settings: { defaultAgent: 'codex', defaultModels: { claude: '', codex: 'retired-model' } },
+        settings: { defaultAgent: 'codex', syncIntervalSeconds: 15 },
       },
     });
     expect(response.statusCode).toBe(400);

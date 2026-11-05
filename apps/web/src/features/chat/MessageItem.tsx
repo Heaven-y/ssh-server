@@ -20,14 +20,10 @@ export const MessageItem = memo(function MessageItem({
     case 'compaction':
       return <CompactionStatus state={item.state} incomplete={item.incomplete} />;
     case 'user':
-      return (
-        <div className="ml-auto max-w-[88%] rounded-xl bg-muted/70 px-4 py-3 text-[15px] leading-7 whitespace-pre-wrap break-words">
-          {item.text}
-        </div>
-      );
+      return <div className="conversation-user">{item.text}</div>;
     case 'assistant':
       return (
-        <div className="min-w-0 text-[15px] leading-7 break-words [&_li]:leading-7 [&_p]:leading-7 [&_pre]:text-[13px] [&_pre]:leading-6">
+        <div className="conversation-assistant">
           <Streamdown mode={item.streaming ? 'streaming' : 'static'} isAnimating={item.streaming}>
             {item.text}
           </Streamdown>
@@ -36,14 +32,16 @@ export const MessageItem = memo(function MessageItem({
     case 'reasoning':
       return (
         <details
-          className="min-w-0 text-sm text-muted-foreground"
+          className="min-w-0 text-[13px] text-muted-foreground"
           open={expanded}
           onToggle={(event) => {
             if (event.currentTarget.open !== expanded) onExpandedChange?.(event.currentTarget.open);
           }}
         >
-          <summary className="w-fit cursor-pointer rounded-md py-1 select-none hover:text-foreground">思考过程</summary>
-          <p className="mt-2 border-l border-border pl-4 leading-7 whitespace-pre-wrap break-words">{item.text}</p>
+          <summary className="w-fit cursor-pointer rounded-lg py-1 leading-6 select-none hover:text-foreground">
+            思考过程
+          </summary>
+          <p className="mt-1 border-l border-border pl-4 leading-6 whitespace-pre-wrap break-words">{item.text}</p>
         </details>
       );
     case 'tool':
@@ -52,7 +50,10 @@ export const MessageItem = memo(function MessageItem({
       return <PermissionCard item={item} />;
     case 'error':
       return (
-        <div role="alert" className="flex items-start gap-3 rounded-lg bg-destructive/10 px-4 py-3 text-sm leading-6">
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-xl bg-destructive/8 px-3 py-2 text-[13px] leading-6"
+        >
           <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
           <span className="min-w-0 break-words text-destructive-foreground">{item.message}</span>
         </div>

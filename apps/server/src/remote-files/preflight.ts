@@ -1,13 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { type RemoteFileActionInput, type RemoteFilePreflight, type Workspace } from '@ssh-server/shared';
+import { type BoundWorkspace, type RemoteFileActionInput, type RemoteFilePreflight } from '@agentdeck/shared';
 import type { SshPool } from '../ssh/pool';
 import { workspaceTarget } from '../ssh/connection';
 import type { WorkspaceStore } from '../workspaces/store';
+import { boundWorkspace } from '../workspaces/bound';
 import { workspaceKey } from './binding';
 import { RemoteFilesError } from './errors';
 import { RemoteActionPlanSchema, type RemoteActionPlan, type RemoteExecutor } from './executor';
 import { remotePath } from './paths';
-import { destinationPaths, syncImpact } from './sync-impact';
 import type { RemoteFilesService } from './service';
 
 export type FileActionContext = Omit<Awaited<ReturnType<RemoteFilesService['context']>>, 'identity'>;
@@ -24,8 +24,6 @@ type Deps = {
   pool: Pick<SshPool, 'identity' | 'resolveConnection' | 'generation'>;
   browse: Pick<RemoteFilesService, 'context'>;
   executor: RemoteExecutor;
-  syncAvailable?: boolean;
-  syncPaths?: (workspace: Workspace, incoming: string[], signal: AbortSignal) => Promise<void>;
 };
 const identityHash = (value: string) => createHash('sha256').update(value).digest('hex');
 
@@ -33,23 +31,26 @@ export function createFilePreflights(deps: Deps) {
   const prepared = new Map<string, PreparedAction>();
   async function managed(identity: string, signal: AbortSignal) {
     const workspaces = (await deps.store.list()).sort((a, b) => a.id.localeCompare(b.id));
-    const related: Workspace[] = [];
+    const related: BoundWorkspace[] = [];
     for (const workspace of workspaces) {
       signal.throwIfAborted();
-      if (identityHash(await deps.pool.identity(workspace.sshHost)) === identity) related.push(workspace);
+      const bound = boundWorkspace(workspace);
+      if (bound && identityHash(await deps.pool.identity(bound.server)) === identity) related.push(bound);
     }
     return related;
   }
   async function validate(action: PreparedAction, strictGeneration = true) {
-    const current = await deps.store.get(action.context.workspace.id);
+    const current = boundWorkspace(await deps.store.get(action.context.workspace.id));
     if (!current || workspaceKey(current) !== workspaceKey(action.context.workspace))
       throw new RemoteFilesError('target_changed');
     const connection = await deps.pool.resolveConnection(workspaceTarget(current));
     if (
       connection.cacheKey !== action.context.key ||
-      (strictGeneration && deps.pool.generation(current.sshHost) !== action.context.generation)
+      (strictGeneration && deps.pool.generation(current.server) !== action.context.generation)
     )
       throw new RemoteFilesError('target_changed');
+    // 受影响工作区核对已随同步域移除：affectedWorkspaces 恒为空，这里实际只剩工作区配置校验。
+    // 非严格模式因此没有可放行的项，保留参数只为调用方语义不变。
     const related = await managed(action.identity, new AbortController().signal);
     const affected = new Set(action.public.affectedWorkspaces.map((item) => item.id));
     const relevant = (id: string) => strictGeneration || affected.has(id);
@@ -58,17 +59,6 @@ export function createFilePreflights(deps: Deps) {
       .map((workspace) => ({ id: workspace.id, key: workspaceKey(workspace) }));
     const expected = action.configurations.filter((item) => relevant(item.id));
     if (JSON.stringify(configurations) !== JSON.stringify(expected)) throw new RemoteFilesError('stale_preflight');
-  }
-  async function checkDestinations(
-    workspaces: Workspace[],
-    affected: RemoteFilePreflight['affectedWorkspaces'],
-    input: { plan: RemoteActionPlan; action: RemoteFileActionInput; signal: AbortSignal },
-  ) {
-    const { plan, action, signal } = input;
-    for (const item of affected) {
-      const workspace = workspaces.find((workspace) => workspace.id === item.id)!;
-      await deps.syncPaths?.(workspace, destinationPaths(workspace, item.remoteRoot, plan, action), signal);
-    }
   }
   return {
     validate,
@@ -85,6 +75,7 @@ export function createFilePreflights(deps: Deps) {
       const action = prepared.get(id);
       if (!action || action.public.workspaceId !== workspaceId || action.public.expiresAt < Date.now())
         throw new RemoteFilesError('preflight_expired');
+      // canSubmit 恒为 true，同步域删除后不会有「等待同步」的预检；保留判断与错误码等 shared 清理时一并移除。
       if (!action.public.canSubmit) throw new RemoteFilesError('sync_pending');
       return action;
     },
@@ -107,29 +98,21 @@ export function createFilePreflights(deps: Deps) {
           { signal },
         ),
       );
-      const impact = syncImpact(workspaces, plan, action);
-      const affectedWorkspaces = impact.affected;
-      await checkDestinations(workspaces, affectedWorkspaces, { plan, action, signal });
+      // 同步域删除后远端操作不再影响本机镜像，因此没有受影响工作区，也不需要同步前置条件。
       const preview: RemoteFilePreflight = {
         ...action,
         id: randomUUID(),
         workspaceId,
-        sshHost: context.workspace.sshHost,
+        sshHost: context.workspace.server,
         expiresAt: Date.now() + 120_000,
         sourceType: plan.sourceType,
         entries: plan.entries,
         files: plan.files,
         bytes: plan.bytes,
         crossFilesystem: plan.crossFilesystem,
-        affectedWorkspaces,
-        canSubmit: affectedWorkspaces.length === 0 || (!!deps.syncAvailable && impact.complete),
-        warnings: affectedWorkspaces.length
-          ? [
-              deps.syncAvailable && impact.complete
-                ? '该操作会协调相关同步文件，存在未保存编辑、冲突或待确认删除时不执行。'
-                : '该操作涉及同步范围，当前仍待完整元数据与同步路径协调。',
-            ]
-          : [],
+        affectedWorkspaces: [],
+        canSubmit: true,
+        warnings: [],
       };
       const result: PreparedAction = {
         public: preview,

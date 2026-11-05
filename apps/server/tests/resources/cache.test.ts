@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { ResourceCache } from '../../src/resources/cache';
-import { RESOURCE_LIMITS } from '@ssh-server/shared';
-import { resourceTiming } from '@ssh-server/shared';
+import { RESOURCE_LIMITS } from '@agentdeck/shared';
+import { resourceTiming } from '@agentdeck/shared';
 
 afterEach(() => vi.useRealTimers());
 it('动态缩短成功间隔立即生效，参数变化不拆key或重叠首次采样', async () => {

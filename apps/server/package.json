@@ -1,5 +1,5 @@
 {
-  "name": "@ssh-server/server",
+  "name": "@agentdeck/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,15 +11,14 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.286",
     "@anthropic-ai/sdk": "0.131.0",
-    "@fastify/static": "10.1.5",
+    "@fastify/static": "10.1.9",
     "@fastify/websocket": "11.3.1",
-    "@modelcontextprotocol/sdk": "1.31.0",
     "csv-parse": "7.0.3",
-    "fastify": "5.12.5",
+    "fastify": "5.12.8",
     "smol-toml": "1.9.0",
     "ssh-config": "5.3.0",
     "ssh2": "1.17.0",
-    "zod": "4.6.5"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/ssh2": "1.15.6"

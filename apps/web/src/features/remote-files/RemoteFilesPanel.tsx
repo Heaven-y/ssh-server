@@ -1,18 +1,17 @@
 import { useId, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowUp, FolderRoot, RefreshCw, Server } from 'lucide-react';
-import type { RemoteFileActionInput, RemoteFileEntry, Workspace } from '@ssh-server/shared';
+import type { BoundWorkspace, RemoteFileActionInput } from '@agentdeck/shared';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { RemoteDirectoryList } from './RemoteDirectoryList';
 import { useRemoteDirectory } from './use-remote-directory';
 import { RemoteActionDialog } from './RemoteActionDialog';
 import { RemoteActionToolbar } from './RemoteActionToolbar';
-import { RemoteDownloadDialog } from './RemoteDownloadDialog';
 import { RemoteTasks, remoteTasksKey } from './RemoteTasks';
 
 type Browser = ReturnType<typeof useRemoteDirectory>;
 
-export function RemoteFilesPanel({ workspace, active }: { workspace: Workspace; active: boolean }) {
+export function RemoteFilesPanel({ workspace, active }: { workspace: BoundWorkspace; active: boolean }) {
   const browser = useRemoteDirectory(workspace, active);
   const directory = browser.directory;
   const targetChanged = browser.error?.code === 'target_changed';
@@ -23,8 +22,8 @@ export function RemoteFilesPanel({ workspace, active }: { workspace: Workspace; 
         <div className="flex min-w-0 items-center gap-2 text-sm">
           <Server aria-hidden className="size-4 shrink-0" />
           <span className="shrink-0 text-muted-foreground">Host</span>
-          <span className="truncate font-mono" title={workspace.sshHost}>
-            {workspace.sshHost}
+          <span className="truncate font-mono" title={workspace.server}>
+            {workspace.server}
           </span>
           {directory?.outsideWorkspace && (
             <span className="shrink-0 rounded bg-muted px-2 py-0.5 text-xs">工作区外</span>
@@ -188,7 +187,7 @@ function RemoteOperations({
   active,
   targetChanged,
 }: {
-  workspace: Workspace;
+  workspace: BoundWorkspace;
   browser: Browser;
   active: boolean;
   targetChanged: boolean;
@@ -196,7 +195,6 @@ function RemoteOperations({
   const directory = browser.directory;
   const [selectedPath, setSelectedPath] = useState<string>();
   const [action, setAction] = useState<RemoteFileActionInput>();
-  const [download, setDownload] = useState<RemoteFileEntry>();
   const queries = useQueryClient();
   const disabled = controlsDisabled(browser);
   return (
@@ -213,7 +211,6 @@ function RemoteOperations({
           selectedPath={selectedPath}
           select={setSelectedPath}
           action={setAction}
-          download={setDownload}
           sessionId={browser.session.id}
         />
       )}
@@ -223,9 +220,7 @@ function RemoteOperations({
         workspaceId={workspace.id}
         browser={browser}
         action={action}
-        download={download}
         closeAction={() => setAction(undefined)}
-        closeDownload={() => setDownload(undefined)}
         submitted={() => {
           void queries.invalidateQueries({ queryKey: remoteTasksKey(workspace.id) });
         }}
@@ -242,17 +237,13 @@ function OperationDialogs({
   workspaceId,
   browser,
   action,
-  download,
   closeAction,
-  closeDownload,
   submitted,
 }: {
   workspaceId: string;
   browser: Browser;
   action?: RemoteFileActionInput;
-  download?: RemoteFileEntry;
   closeAction(): void;
-  closeDownload(): void;
   submitted(): void;
 }) {
   return (
@@ -266,14 +257,6 @@ function OperationDialogs({
           connect={browser.createSecondarySession}
           submitted={submitted}
           close={closeAction}
-        />
-      )}
-      {download && browser.session && (
-        <RemoteDownloadDialog
-          workspaceId={workspaceId}
-          session={browser.session}
-          entry={download}
-          close={closeDownload}
         />
       )}
     </>

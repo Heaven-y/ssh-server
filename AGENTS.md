@@ -1,28 +1,28 @@
 # AGENTS.md
 
-开发本仓库时 Agent（Codex、Claude Code）必须遵守的规则。细节见 `docs/`。
+开发本仓库时 Agent（Codex、Claude Code）必须遵守的规则。
 
-- 回复、文档、注释、提交信息使用中文。
-- 开始任何任务前，先阅读并遵循 `.agents/skills/using-superpowers/SKILL.md`（项目未安装 superpowers 的启动钩子，靠这一步代替）。
-- skill 内出现的 `${CLAUDE_PLUGIN_ROOT}/.claude/skills/<名称>/...` 一律改用 `.agents/skills/<名称>/...`（仓库根目录相对路径），不要依赖该变量。
-- 仓库公开：不写入真实服务器地址、端口、用户名、密钥，示例用 `my-server`、`~/projects/demo`。
-- 有成熟的库或组件就直接使用，不全部手写；选用标准与记录见 `docs/guides/dev-environment.md` 1.1、1.2。
-- 后端沿用 Node.js + TypeScript + Fastify；Python 分析默认通过 SSH 在服务器已有环境执行。技术栈与打包范围以 `docs/engineering/decisions.md` D19、D20 和 `docs/engineering/architecture.md` 为准。
-- 未经用户明确要求不提交、不推送。
-- Git 分支与提交遵循 `docs/guides/dev-environment.md` 1.6：大功能分支负责一个完整功能域、合入 `main` 后保留，小分支负责一项子功能、合入后删除，合并统一使用 `git merge --no-ff`，本地与远端保持同步。
+- 回复、文档、注释和提交信息使用中文。
+- 开始任务前阅读 `.agents/skills/using-superpowers/SKILL.md`；本项目未安装启动钩子。
+- skill 中 `${CLAUDE_PLUGIN_ROOT}/.claude/skills/<名称>/...` 改用仓库根目录下的 `.agents/skills/<名称>/...`。
+- 仓库公开：不写入真实服务器地址、端口、用户名、密钥或会话正文，示例使用 `my-server`、`~/projects/demo`。
+- 优先成熟组件，方案保持简单；技术栈沿用 Node.js + TypeScript + Fastify、React 与 Electron。服务器脚本只用已有环境，缺依赖不自动安装。
+- 主线是各 CLI 原生会话与能力。先完成对话，再补原生配置，之后实现工作台插件；具体状态看路线图。
+- 配置作用域、权限、Skills、MCP 与原生插件按各 CLI 实际支持处理，不自行强造用户/项目两层或覆盖原生默认。
+- 工作台扩展采用自有插件接口，不建设 DSH 插件包兼容层；SSH Console 的目标以现有插件体验为基准，未迁移前不要把旧固定面板描述成已插件化。
+- 未经用户明确要求不提交、不推送；当前会话的明确授权优先。分支与合并遵循开发指南：大功能分支保留、小分支完成后删除，合并使用 `git merge --no-ff`。
+- 按改动影响范围验证，不无故重复全量测试；新增测试覆盖核心行为与真实回归，测试不写死开发机绝对路径。实现与文档不一致时先校正事实或说明待实现范围。
 
-## 文档
+## 文档入口
 
 | 内容 | 位置 |
 |---|---|
-| 需求与验收标准 | `docs/product/requirements.md` |
-| 界面布局 | `docs/product/ui-layout.md` |
-| 架构与模块设计 | `docs/engineering/architecture.md` |
-| 已确认的设计决策与取舍 | `docs/engineering/decisions.md` |
-| 开发环境、代码规范、项目 skill、已知问题 | `docs/guides/dev-environment.md` |
-| 里程碑与进度 | `docs/roadmap.md` |
-| 最新交付验收与精选截图 | `docs/guides/ui-usability-optimization-acceptance.md` |
+| 导航和历史追溯入口 | `docs/README.md` |
+| 功能与验收要求 | `docs/product/requirements.md` |
+| 界面与交互 | `docs/product/ui-layout.md` |
+| 架构与实现约束 | `docs/engineering/architecture.md` |
+| 当前取舍与理由 | `docs/engineering/decisions.md` |
+| 开发环境、质量检查与 Git 规则 | `docs/guides/dev-environment.md` |
+| 交付状态与开发顺序 | `docs/roadmap.md` |
 
-实现与文档不一致时，先更新文档或向用户确认。
-
-文档入口与适用规则见 `docs/README.md`。决策记录属于长期追溯资料：保留 `docs/engineering/decisions.md` 中的背景、理由、约束和替代关系，不因资料精简删除决策或覆盖历史事实；删除重复过程稿前，把独有的有效取舍迁入现行说明并保留提交锚点。
+新决策按主题重新排序，不再引用旧编号。移除过时文档前迁移仍有效的理由与约束，在文档头或追溯表留下稳定提交锚点；历史事实不覆盖，失败与未验证项不追认成通过。

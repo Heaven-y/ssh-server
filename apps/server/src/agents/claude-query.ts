@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { query, type Options, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { ContextUsage } from '@ssh-server/shared';
-import { resolveClaudeExecutable } from './claude-launch';
+import type { ContextUsage } from '@agentdeck/shared';
+import { resolveClaudeLaunch } from './claude-launch';
 
 /** 固定SDK的控制契约；只收窄消息迭代内容，由映射器校验原生事件。 */
 export type ClaudeQuery = AsyncIterable<unknown> &
@@ -12,7 +12,7 @@ export const nativeClaudeQuery: QueryFn = (params) =>
     ...params,
     options: {
       ...params.options,
-      pathToClaudeCodeExecutable: params.options.pathToClaudeCodeExecutable ?? resolveClaudeExecutable(),
+      ...resolveClaudeLaunch(params.options.env ?? process.env),
     },
   });
 export const CLAUDE_CONTROL_TIMEOUT_MS = 10_000;

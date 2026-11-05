@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { pluginApi } from '../../src/features/plugins/plugin-api';
 import { App } from '../../src/app/App';
 import { api, queryKeys } from '../../src/lib/api';
 import { useChat } from '../../src/features/chat/chat-store';
@@ -30,16 +31,17 @@ class Socket {
 }
 const other = { ...workspace, id: 'w2', name: '另一个项目', remoteDir: '~/projects/other' };
 beforeEach(() => {
+  useChat.setState(useChat.getInitialState(), true);
   wide = true;
   resized = new Set();
   Socket.instances.length = 0;
   vi.stubGlobal('WebSocket', Socket);
-  vi.stubGlobal('matchMedia', (query: string) => ({
+  vi.stubGlobal('matchMedia', (_query: string) => ({
     get matches() {
-      return query === '(min-width: 1280px)' && wide;
+      return wide;
     },
     addEventListener: (_event: string, callback: () => void) => {
-      if (query === '(min-width: 1280px)') resized.add(callback);
+      resized.add(callback);
     },
     removeEventListener: (_event: string, callback: () => void) => resized.delete(callback),
   }));
@@ -72,22 +74,36 @@ beforeEach(() => {
     connection: 'open',
     agent: 'claude',
   });
-  useUiPreferences.setState({ sidebarCollapsed: false });
+  // 每次挂载右栏均关闭；旧服务器栏偏好不再决定对话布局。
+  useUiPreferences.setState({ sidebarCollapsed: false, dockCollapsed: null });
   vi.spyOn(api, 'listWorkspaces').mockResolvedValue([workspace, other]);
   vi.spyOn(api, 'readProductSettings').mockResolvedValue(settings);
   vi.spyOn(api, 'readEnvironment').mockResolvedValue({ checkedAt: 1, tools: [] });
   vi.spyOn(api, 'listSshHosts').mockResolvedValue([server]);
   vi.spyOn(api, 'sshCredentials').mockResolvedValue(credentials);
   vi.spyOn(api, 'listSessions').mockResolvedValue([]);
+  vi.spyOn(api, 'sessionChanges').mockResolvedValue({ revision: 0, watching: true });
+  vi.spyOn(pluginApi, 'list').mockResolvedValue({
+    revision: 'fixture',
+    plugins: [
+      {
+        builtin: true,
+        enabled: true,
+        manifest: {
+          id: 'ssh-console',
+          name: 'SSH Console',
+          version: '1.0.0',
+          apiVersion: 1,
+          entry: 'index.html',
+          permissions: [],
+          commands: [],
+        },
+      },
+    ],
+  });
   vi.spyOn(api, 'agentCapabilities').mockResolvedValue({ agent: 'claude', entries: [], models: [], warnings: [] });
   vi.spyOn(api, 'readResources').mockImplementation(async () => snapshot());
   vi.spyOn(api, 'readSlurm').mockResolvedValue({ sampledAt: 1, status: 'available', output: '', truncated: false });
-  vi.spyOn(api, 'listFiles').mockImplementation(async (_id, directory) => ({
-    path: directory ?? '',
-    entries: directory ? [] : [{ path: 'main.py', name: 'main.py', kind: 'file', size: 8 }],
-    truncated: false,
-  }));
-  vi.spyOn(api, 'readFile').mockResolvedValue({ path: 'main.py', content: 'print(1)', size: 8 });
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => new Response(JSON.stringify({ message: '受控未启用接口' }), { status: 503 })),
@@ -112,121 +128,74 @@ function mount() {
     </QueryClientProvider>,
   );
 }
-function top() {
-  return within(screen.getByRole('button', { name: '搜索与操作' }).closest('header')!);
-}
-function resize(value: boolean) {
-  act(() => {
-    wide = value;
-    vi.stubGlobal('innerWidth', value ? 1440 : 960);
-    window.dispatchEvent(new Event('resize'));
-    resized.forEach((callback) => callback());
-  });
-}
-it('资源与文件独立打开、同时可见，任一收起不影响另一面板', async () => {
+
+it.each([null, false, true])('默认只显示工作区和对话，旧服务器栏偏好%s不连接服务器', async (oldChoice) => {
+  useUiPreferences.setState({ dockCollapsed: oldChoice });
   mount();
-  const resources = await screen.findByRole('complementary', { name: '资源面板' });
-  const toolbar = top();
-  const resourceTrigger = toolbar.getByRole('button', { name: '资源' });
-  const fileTrigger = toolbar.getByRole('button', { name: '文件' });
-  expect(within(resources).getByRole('region', { name: '服务器资源' })).toBeTruthy();
-  await waitFor(() => expect(api.readResources).toHaveBeenCalled());
-  const sampling = vi.mocked(api.readResources).mock.calls[0]![1]!;
-  fireEvent.click(fileTrigger);
-  const files = await screen.findByRole('complementary', { name: '文件面板' });
-  await within(files).findByRole('button', { name: 'main.py' });
-  expect(resources.hidden).toBe(false);
-  expect(sampling.aborted).toBe(false);
-  expect(toolbar.queryByRole('region', { name: '服务器资源' })).toBeNull();
-  expect(resourceTrigger.getAttribute('aria-expanded')).toBe('true');
-  expect(fileTrigger.getAttribute('aria-expanded')).toBe('true');
-  fireEvent.click(within(resources).getByRole('button', { name: '收起资源面板' }));
-  expect(resources.hidden).toBe(true);
-  expect(files.hidden).toBe(false);
-  fireEvent.click(resourceTrigger);
-  fireEvent.click(within(files).getByRole('button', { name: '收起文件面板' }));
-  expect(files.hidden).toBe(true);
-  expect(resources.hidden).toBe(false);
-  fireEvent.click(fileTrigger);
-  expect(screen.getByRole('complementary', { name: '文件面板' })).toBe(files);
+  await screen.findByLabelText('输入消息');
+  expect(screen.queryByRole('complementary', { name: '右侧边栏' })).toBeNull();
+  expect(screen.queryByRole('complementary', { name: '服务器面板' })).toBeNull();
+  expect(api.readResources).not.toHaveBeenCalled();
+  expect(api.sshCredentials).not.toHaveBeenCalled();
+  expect(api.listSshHosts).not.toHaveBeenCalled();
 });
-it('窄窗初始收起，两个非模态面板可共存，Escape只收起焦点所在面板并返回触发器', async () => {
+it('右侧按需打开会话信息，收起重开不卸载输入草稿', async () => {
+  mount();
+  const composer = await screen.findByLabelText('输入消息');
+  fireEvent.change(composer, { target: { value: '保留草稿' } });
+  fireEvent.click(screen.getByRole('button', { name: '打开右侧边栏' }));
+  const panel = screen.getByRole('complementary', { name: '右侧边栏' });
+  expect(within(panel).getByRole('heading', { name: '会话信息' })).toBeTruthy();
+  const close = within(panel).getByRole('button', { name: '收起右侧边栏' });
+  close.focus();
+  fireEvent.keyDown(close, { key: 'Escape' });
+  const reopen = screen.getByRole('button', { name: '打开右侧边栏' });
+  expect(document.activeElement).toBe(reopen);
+  fireEvent.click(reopen);
+  expect(screen.getByRole('complementary', { name: '右侧边栏' })).toBe(panel);
+  expect(screen.getByLabelText('输入消息')).toBe(composer);
+  expect((composer as HTMLTextAreaElement).value).toBe('保留草稿');
+  expect(api.readResources).not.toHaveBeenCalled();
+});
+it('SSH Console从左上打开中央面板，返回当前工作区保留对话草稿', async () => {
+  mount();
+  const composer = await screen.findByLabelText('输入消息');
+  fireEvent.change(composer, { target: { value: '留在对话' } });
+  fireEvent.click(await screen.findByRole('button', { name: 'SSH Console' }));
+  expect(await screen.findByRole('region', { name: 'SSH Console页面' })).toBeTruthy();
+  expect(screen.queryByRole('complementary', { name: '服务器面板' })).toBeNull();
+  expect(screen.queryByRole('combobox', { name: '输入消息' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: new RegExp('^' + workspace.name) }));
+  expect(await screen.findByLabelText('输入消息')).toBe(composer);
+  expect((composer as HTMLTextAreaElement).value).toBe('留在对话');
+  expect(screen.queryByRole('region', { name: 'SSH Console页面' })).toBeNull();
+});
+it('窄窗折叠为图标导航，右侧仍只在主动打开后出现', async () => {
   wide = false;
   mount();
-  await screen.findByText('从一条消息开始');
-  expect(screen.queryByRole('complementary', { name: '资源面板' })).toBeNull();
-  const trigger = top().getByRole('button', { name: '资源' });
-  trigger.focus();
-  fireEvent.click(trigger);
-  fireEvent.click(top().getByRole('button', { name: '文件' }));
-  await screen.findByRole('button', { name: 'main.py' });
-  expect(screen.queryByRole('dialog')).toBeNull();
-  const resources = screen.getByRole('complementary', { name: '资源面板' });
-  const handle = within(resources).getByRole('button', { name: '收起资源面板' });
-  handle.focus();
-  fireEvent.keyDown(handle, { key: 'Escape' });
-  expect(screen.queryByRole('complementary', { name: '资源面板' })).toBeNull();
-  expect(screen.getByRole('complementary', { name: '文件面板' })).toBeTruthy();
-  expect(document.activeElement).toBe(trigger);
+  await screen.findByLabelText('输入消息');
+  expect(screen.getByRole('navigation', { name: '项目与会话' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '展开侧栏' })).toBeTruthy();
+  expect(screen.queryByRole('complementary', { name: '右侧边栏' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '打开右侧边栏' }));
+  expect(screen.getByRole('complementary', { name: '右侧边栏' })).toBeTruthy();
 });
-it.each([true, false])('嵌套设置弹窗取消时Escape不隐藏文件面板（宽屏=%s）', async (isWide) => {
-  wide = isWide;
+it('运行中从另一工作区新建不会抢占当前原生回合', async () => {
   mount();
-  await screen.findByText('从一条消息开始');
-  const toolbar = within(document.getElementById('workspace-topbar')!);
-  fireEvent.click(toolbar.getByRole('button', { name: '文件' }));
-  const parent = document.getElementById('workspace-files-panel')!;
-  fireEvent.click(toolbar.getByRole('button', { name: '设置' }));
-  const settingsDialog = await screen.findByRole<HTMLDialogElement>('dialog', { name: '产品设置' });
-  fireEvent.keyDown(settingsDialog, { key: 'Escape' });
-  fireEvent(settingsDialog, new Event('cancel', { cancelable: true }));
-  expect(parent.hidden).toBe(false);
-  fireEvent.keyDown(within(parent).getByRole('button', { name: '收起文件面板' }), { key: 'Escape' });
-  expect(parent.hidden).toBe(true);
-});
-it('只读预览随收起、缩放与换工作区保留内容，关闭不需确认', async () => {
-  mount();
-  await screen.findByText('从一条消息开始');
-  fireEvent.click(top().getByRole('button', { name: '文件' }));
-  fireEvent.doubleClick(await screen.findByRole('button', { name: 'main.py' }));
-  const textbox = await screen.findByRole('textbox', { name: '项目文件内容' });
-  expect(screen.getByText(/只读 · python/)).toBeTruthy();
-  expect(screen.queryByRole('button', { name: '保存文件' })).toBeNull();
-  fireEvent.click(top().getByRole('button', { name: '资源' }));
-  expect(screen.getByRole('textbox', { name: '项目文件内容' })).toBe(textbox);
-  fireEvent.click(screen.getByRole('button', { name: '收起文件面板' }));
-  expect(screen.queryByRole('textbox', { name: '项目文件内容' })).toBeNull();
-  act(() => useChat.getState().selectWorkspace(other.id));
-  resize(false);
-  fireEvent.click(top().getByRole('button', { name: '文件' }));
-  expect(screen.getByRole('textbox', { name: '项目文件内容' })).toBeTruthy();
-  expect(screen.getByText('工作区：示例项目')).toBeTruthy();
-  expect(screen.queryByRole('dialog')).toBeNull();
-  expect(screen.getAllByRole('complementary', { name: '文件面板' })).toHaveLength(1);
-  resize(true);
-  fireEvent.click(screen.getByRole('button', { name: '关闭文件面板' }));
-  expect(window.confirm).not.toHaveBeenCalled();
-  expect(screen.queryByRole('textbox', { name: '项目文件内容' })).toBeNull();
-  expect(api.readFile).toHaveBeenCalledWith(workspace.id, 'main.py', expect.any(AbortSignal));
-}, 20_000);
-
-it('切换工作区时状态栏组件身份不重复', async () => {
-  const errors = vi.spyOn(console, 'error');
-  mount();
-  await screen.findByText('从一条消息开始');
-  act(() => useChat.getState().selectWorkspace(other.id));
-  expect(screen.getByRole('button', { name: other.name }).getAttribute('aria-current')).toBe('true');
-  expect(errors.mock.calls.flat().filter((value) => typeof value === 'string' && value.includes('same key'))).toEqual(
-    [],
-  );
-});
-
-it('顶栏显示当前工作区SSH，正常本机连接不常驻，断线仍可见并可重连', async () => {
-  mount();
-  await screen.findByText('从一条消息开始');
-  expect(top().getByRole('button', { name: 'SSH 连接详情' })).toBeTruthy();
-  expect(screen.queryByText('本机服务已连接')).toBeNull();
-  act(() => useChat.setState({ connection: 'closed' }));
-  expect(top().getByText('本机服务已断开')).toBeTruthy();
-  expect(top().getByRole('button', { name: '重新连接网页 WebSocket' })).toBeTruthy();
+  await screen.findByLabelText('输入消息');
+  act(() => useChat.setState({ running: true, pendingClientTurnId: 'pending', agent: 'claude' }));
+  const nav = screen.getByRole('navigation', { name: '项目与会话' });
+  fireEvent.click(await within(nav).findByRole('button', { name: 'SSH Console' }));
+  expect(screen.queryByRole('region', { name: 'SSH Console页面' })).toBeNull();
+  expect(screen.getByLabelText('输入消息')).toBeTruthy();
+  fireEvent.click(within(nav).getByRole('button', { name: /^另一个项目/ }));
+  fireEvent.click(within(nav).getByRole('button', { name: '新建会话' }));
+  const entry = await screen.findByRole('menuitem', { name: 'Antigravity' });
+  fireEvent.click(entry);
+  expect(useChat.getState()).toMatchObject({
+    workspaceId: workspace.id,
+    agent: 'claude',
+    running: true,
+    pendingClientTurnId: 'pending',
+  });
 });

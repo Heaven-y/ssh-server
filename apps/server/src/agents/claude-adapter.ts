@@ -7,7 +7,7 @@ export type { ClaudeTurnInput } from './claude-runtime';
 export type { QueryFn } from './claude-query';
 export type { PermissionAnswer, TurnHandle } from './types';
 
-/** 没有新轮次时保留原生进程的时间；超过后关闭并释放令牌。 */
+/** 没有新轮次时保留原生进程的时间；超过后关闭。 */
 export const CLAUDE_IDLE_TIMEOUT_MS = 5 * 60_000;
 
 /** 单轮调用：创建运行时、跑完即关闭，用于能力探测与一次性操作。 */
@@ -26,14 +26,14 @@ type Entry = { runtime: ClaudeRuntime; key: string; timer?: NodeJS.Timeout };
  * 按工作区、原生会话与模型配置复用运行时。
  * 模型或推理强度改变时创建新运行时，避免沿用旧进程的启动参数。
  */
-export function createClaudeRunner(options: { idleMs?: number } = {}): TurnRunner {
+export function createClaudeRunner(options: { idleMs?: number; env?: NodeJS.ProcessEnv } = {}): TurnRunner {
   const idleMs = options.idleMs ?? CLAUDE_IDLE_TIMEOUT_MS;
   const runtimes = new Map<string, Entry>();
   const keyOf = (input: ClaudeTurnInput) =>
     JSON.stringify([
       input.workspace.id,
-      input.workspace.localDir,
-      input.workspace.sshHost,
+      input.workspace.dir,
+      input.workspace.server,
       input.workspace.remoteDir,
       input.sessionId ?? '',
       input.model ?? '',
@@ -56,7 +56,7 @@ export function createClaudeRunner(options: { idleMs?: number } = {}): TurnRunne
       entry = undefined;
     }
     if (!entry) {
-      entry = { runtime: new ClaudeRuntime(input), key: keyOf(input) };
+      entry = { runtime: new ClaudeRuntime({ ...input, env: options.env }), key: keyOf(input) };
       runtimes.set(entry.key, entry);
     }
     clearTimeout(entry.timer);

@@ -4,10 +4,9 @@ import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SDKSessionInfo } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentKind, Workspace } from '@ssh-server/shared';
+import type { AgentKind, Workspace } from '@agentdeck/shared';
 import type { NativeSessionRead } from '../../src/agents/types';
 import { createClaudeSessions } from '../../src/agents/claude-sessions';
-import { createSessionRegistry } from '../../src/chat/registry';
 import { createSessionsService, SessionError } from '../../src/chat/sessions';
 import { TurnManager } from '../../src/chat/turn-manager';
 import { registerSessionRoutes } from '../../src/http/sessions.routes';
@@ -15,15 +14,15 @@ import { registerSessionRoutes } from '../../src/http/sessions.routes';
 const ws: Workspace = {
   id: 'w1',
   name: '分叉测试',
-  localDir: path.join(tmpdir(), 'ssh-server-fork-fixture', 'workspace'),
-  sshHost: 'my-server',
+  dir: path.join(tmpdir(), 'agentdeck-fork-fixture', 'workspace'),
+  server: 'my-server',
   remoteDir: '~/projects/demo',
 };
 const sourceId = 'source-session';
 const forkedId = 'forked-session';
 const forked = {
   session: { sessionId: forkedId, summary: '原生分叉', lastModified: 200 },
-  cwd: ws.localDir,
+  cwd: ws.dir,
 };
 const apps: FastifyInstance[] = [];
 afterEach(async () => {
@@ -47,7 +46,7 @@ function setup() {
       sessionId: id,
       summary: id === sourceId ? '源会话' : '原生分叉',
       lastModified: id === sourceId ? 100 : 200,
-      cwd: ws.localDir,
+      cwd: ws.dir,
     })),
     messages: vi.fn(async (): Promise<unknown[]> => [
       {
@@ -72,7 +71,7 @@ function setup() {
     list: vi.fn(async () => []),
     read: vi.fn(async (): Promise<NativeSessionRead> => ({
       session: { sessionId: sourceId, summary: '源会话', lastModified: 100 },
-      cwd: ws.localDir,
+      cwd: ws.dir,
       events: [],
     })),
     assertBelongs: vi.fn(async () => undefined),
@@ -81,15 +80,8 @@ function setup() {
   };
   const turns = new TurnManager({
     getWorkspace: async () => ws,
-    registry: createSessionRegistry(),
-    internalUrl: () => 'http://127.0.0.1:1',
     runners: {},
     sessions: { assertBelongs: async () => undefined },
-    sync: {
-      sync: async () => {
-        throw new Error('分叉不得运行同步或文件回退');
-      },
-    },
   });
   const sessions = createSessionsService({ claude: createClaudeSessions(api), codex }, turns);
   const app = Fastify();
@@ -98,7 +90,7 @@ function setup() {
   const post = (agent: AgentKind, payload: unknown = {}) =>
     app.inject({
       method: 'POST',
-      url: `/api/workspaces/w1/sessions/${sourceId}/fork?agent=${agent}`,
+      url: `/api/projects/w1/sessions/${agent}/${sourceId}/fork`,
       payload: JSON.stringify(payload),
       headers: { 'content-type': 'application/json' },
     });
@@ -117,8 +109,8 @@ describe('原生会话分叉 HTTP 契约', () => {
       });
     }
     const nativeFork = agent === 'claude' ? api.fork : codex.fork;
-    expect(nativeFork).toHaveBeenNthCalledWith(1, sourceId, ws.localDir, { pointId: 'native-point' });
-    expect(nativeFork).toHaveBeenNthCalledWith(2, sourceId, ws.localDir, {});
+    expect(nativeFork).toHaveBeenNthCalledWith(1, sourceId, ws.dir, { pointId: 'native-point' });
+    expect(nativeFork).toHaveBeenNthCalledWith(2, sourceId, ws.dir, {});
     expect(api.rename).not.toHaveBeenCalled();
     expect(api.delete).not.toHaveBeenCalled();
     expect(codex.mutate).not.toHaveBeenCalled();
@@ -154,7 +146,7 @@ describe('原生会话分叉 HTTP 契约', () => {
     const { app, codex, api } = setup();
     const response = await app.inject({
       method: 'POST',
-      url: `/api/workspaces/w1/sessions/${sourceId}/fork?agent=codex`,
+      url: `/api/projects/w1/sessions/codex/${sourceId}/fork`,
       headers: { 'content-type': 'application/json' },
       payload,
     });
@@ -165,11 +157,11 @@ describe('原生会话分叉 HTTP 契约', () => {
   });
 
   it.each([
-    `/api/workspaces/w1/sessions/${sourceId}/fork`,
-    `/api/workspaces/w1/sessions/${sourceId}/fork?agent=unknown`,
-    `/api/workspaces/w1/sessions/${sourceId}/fork?agent=codex&path=elsewhere`,
-    '/api/workspaces/w1/sessions/a.b/fork?agent=claude',
-  ])('拒绝缺失 Agent 或非法路由参数 %s', async (url) => {
+    `/api/projects/w1/sessions/claude/${sourceId}/fork?agent=codex`,
+    `/api/projects/w1/sessions/unknown/${sourceId}/fork`,
+    `/api/projects/w1/sessions/codex/${sourceId}/fork?path=elsewhere`,
+    '/api/projects/w1/sessions/claude/a.b/fork',
+  ])('拒绝非法路径或额外查询参数 %s', async (url) => {
     const { app, codex, api } = setup();
     const response = await app.inject({ method: 'POST', url, payload: {} });
     expect(response.statusCode).toBe(400);
@@ -182,7 +174,7 @@ describe('原生会话分叉 HTTP 契约', () => {
     const { app, codex, api } = setup();
     const response = await app.inject({
       method: 'POST',
-      url: `/api/workspaces/missing/sessions/${sourceId}/fork?agent=claude`,
+      url: `/api/projects/missing/sessions/claude/${sourceId}/fork`,
       payload: {},
     });
     expect(response.statusCode).toBe(404);
@@ -219,7 +211,7 @@ describe('原生会话分叉 HTTP 契约', () => {
       expect((await post('claude')).statusCode).toBe(409);
       expect((await post('codex')).statusCode).toBe(200);
     } finally {
-      gate.resolve({ sessionId: sourceId, summary: '源会话', lastModified: 100, cwd: ws.localDir });
+      gate.resolve({ sessionId: sourceId, summary: '源会话', lastModified: 100, cwd: ws.dir });
     }
     expect((await pending).statusCode).toBe(200);
     expect((await post('claude')).statusCode).toBe(200);
@@ -247,10 +239,10 @@ describe('原生会话分叉 HTTP 契约', () => {
   });
 
   it.each([
-    { session: { ...forked.session, sessionId: sourceId }, cwd: ws.localDir },
-    { session: { ...forked.session, sessionId: '' }, cwd: ws.localDir },
-    { session: { ...forked.session, sessionId: '../outside' }, cwd: ws.localDir },
-    { session: forked.session, cwd: path.join(ws.localDir, 'other') },
+    { session: { ...forked.session, sessionId: sourceId }, cwd: ws.dir },
+    { session: { ...forked.session, sessionId: '' }, cwd: ws.dir },
+    { session: { ...forked.session, sessionId: '../outside' }, cwd: ws.dir },
+    { session: forked.session, cwd: path.join(ws.dir, 'other') },
   ])('服务再次核验提供方的新 ID/目录，异常结果不返回且释放锁：%j', async (invalid) => {
     const { post, codex } = setup();
     codex.fork.mockResolvedValueOnce(invalid);
@@ -274,7 +266,7 @@ describe('原生会话分叉 HTTP 契约', () => {
     codex.fork.mockImplementationOnce(() => gate.promise);
     const origin = await app.listen({ host: '127.0.0.1', port: 0 });
     const closed = deferred<void>();
-    const client = request(`${origin}/api/workspaces/w1/sessions/${sourceId}/fork?agent=codex`, {
+    const client = request(`${origin}/api/projects/w1/sessions/codex/${sourceId}/fork`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
     });

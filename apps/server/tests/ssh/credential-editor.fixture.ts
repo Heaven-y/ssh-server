@@ -8,13 +8,12 @@ import { createSshPool } from '../../src/ssh/pool';
 import { createServerTargets, serverHostConfig } from '../../src/ssh/targets';
 import { createServerProfiles } from '../../src/ssh/profiles';
 import { createWorkspaceStore } from '../../src/workspaces/store';
-import { createWorkspaceActivity } from '../../src/workspaces/activity';
 import { registerSshTargetRoutes } from '../../src/http/ssh-targets.routes';
 import { registerSshRoutes } from '../../src/http/ssh.routes';
 import { registerSecurity } from '../../src/http/security';
 import { registerAuthRoute } from '../../src/http/auth';
 import type { SecretProtector } from '../../src/ssh/windows-protection';
-import type { ManagedServer, WorkspaceRemovalBlocker } from '@ssh-server/shared';
+import type { ManagedServer } from '@agentdeck/shared';
 
 export const input = {
   name: '合成服务器',
@@ -70,10 +69,7 @@ export async function credentialEditorFixture() {
     dirExists: async () => true,
     knownHosts: async () => (await targets.list()).map((item) => item.alias),
   });
-  const activity = createWorkspaceActivity();
-  const blockers: WorkspaceRemovalBlocker[] = [];
-  const resources = { blockers: async () => blockers };
-  const profiles = createServerProfiles({ targets, pool, store, activity, resources });
+  const profiles = createServerProfiles({ targets, pool, store });
   const app = Fastify();
   const origin = 'http://localhost:43210';
   registerSecurity(app, { token: 'fixture-session', port: 43210 });
@@ -115,8 +111,6 @@ export async function credentialEditorFixture() {
     passwords,
     pool,
     store,
-    activity,
-    blockers,
     profiles,
     app,
     headers,

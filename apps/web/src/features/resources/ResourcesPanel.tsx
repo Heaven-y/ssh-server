@@ -1,6 +1,6 @@
 import { RefreshCw, Server } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import type { ManagedServer, ResourceSnapshot, Workspace } from '@ssh-server/shared';
+import type { BoundWorkspace, ManagedServer, ResourceSnapshot } from '@agentdeck/shared';
 import { api, queryKeys, type SshCredentialStatus } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
 import { ResourceMetrics } from './ResourceMetrics';
@@ -19,7 +19,7 @@ function ResourceMetadata({
   server,
   snapshot,
 }: {
-  workspace: Workspace;
+  workspace: BoundWorkspace;
   server?: ManagedServer;
   snapshot?: ResourceSnapshot;
 }) {
@@ -30,7 +30,7 @@ function ResourceMetadata({
       </summary>
       <div className="mt-2 space-y-1 break-all">
         <p>实际目标：{server ? `${server.username}@${server.hostname}:${server.port}` : '档案尚未读取'}</p>
-        <p>SSH别名：{workspace.sshHost}</p>
+        <p>SSH别名：{workspace.server}</p>
         <p>采集主机：{snapshot?.host.data?.hostname ?? '不可用'}</p>
         <p>项目目录：{workspace.remoteDir}</p>
         <p>节点更新：{resourceTime(snapshot?.host.sampledAt)}</p>
@@ -81,7 +81,7 @@ function ResourceReading({ controller }: { controller: ResourcesController }) {
     </>
   );
 }
-export function ResourcesPanel({ workspace, active }: { workspace: Workspace; active: boolean }) {
+export function ResourcesPanel({ workspace, active }: { workspace: BoundWorkspace; active: boolean }) {
   const controller = useResources(workspace, active);
   const servers = useQuery({
     queryKey: queryKeys.sshHosts,
@@ -92,18 +92,18 @@ export function ResourcesPanel({ workspace, active }: { workspace: Workspace; ac
   });
   // 共用工作区连接栏的状态；资源面板不增加第二套SSH轮询。
   const credentials = useQuery({
-    queryKey: queryKeys.sshCredentials(workspace.sshHost),
-    queryFn: ({ signal }) => api.sshCredentials(workspace.sshHost, signal),
+    queryKey: queryKeys.sshCredentials(workspace.server),
+    queryFn: ({ signal }) => api.sshCredentials(workspace.server, signal),
     enabled: false,
   });
-  const server = servers.data?.find((item) => item.alias === workspace.sshHost);
+  const server = servers.data?.find((item) => item.alias === workspace.server);
   return (
     <section aria-label="服务器资源" className="resource-scope min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
       <header className="space-y-2">
         <div className="flex items-start gap-2.5">
           <Server aria-hidden className="mt-0.5 size-4 shrink-0 text-accent" />
           <div className="min-w-0 flex-1">
-            <h2 className="break-words text-sm font-semibold">{server?.name ?? workspace.sshHost}</h2>
+            <h2 className="break-words text-sm font-semibold">{server?.name ?? workspace.server}</h2>
             <p className="mt-1 truncate text-xs text-muted-foreground" title={workspace.name}>
               {workspace.name} · {connectionLabel(credentials.data)}
             </p>

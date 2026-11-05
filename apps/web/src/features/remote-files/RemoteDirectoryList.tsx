@@ -7,7 +7,7 @@ import type {
   RemoteFileActionKind,
   RemoteFileEntry,
   RemoteFileScope,
-} from '@ssh-server/shared';
+} from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
 import { ACTION_LABELS } from './RemoteActionDialog';
 import { isContextMenuKey, navigateFileList } from '../../ui/file-list-navigation';
@@ -50,7 +50,6 @@ export function RemoteDirectoryList({
   selectedPath,
   select,
   action,
-  download,
   sessionId,
 }: {
   directory: RemoteDirectory;
@@ -59,7 +58,6 @@ export function RemoteDirectoryList({
   selectedPath?: string;
   select(path?: string): void;
   action(input: RemoteFileActionInput): void;
-  download(entry: RemoteFileEntry): void;
   sessionId: string;
 }) {
   const menu = useMenuStore({ placement: 'bottom-start' });
@@ -102,7 +100,7 @@ export function RemoteDirectoryList({
     setDropPath(undefined);
     if (loading) return;
     try {
-      const data = JSON.parse(event.dataTransfer.getData('application/x-ssh-server-remote-file')) as {
+      const data = JSON.parse(event.dataTransfer.getData('application/x-agentdeck-remote-file')) as {
         sessionId?: unknown;
         path?: unknown;
       };
@@ -127,7 +125,7 @@ export function RemoteDirectoryList({
           if (!loading) openMenu(undefined, event.currentTarget);
         }}
         onDragOver={(event) => {
-          if (event.dataTransfer.types.includes('application/x-ssh-server-remote-file')) event.preventDefault();
+          if (event.dataTransfer.types.includes('application/x-agentdeck-remote-file')) event.preventDefault();
         }}
         onDrop={(event) => dropped(event, directory.path)}
       >
@@ -146,7 +144,7 @@ export function RemoteDirectoryList({
               menu={(anchor) => openMenu(entry, anchor)}
               drag={(event) => {
                 event.dataTransfer.setData(
-                  'application/x-ssh-server-remote-file',
+                  'application/x-agentdeck-remote-file',
                   JSON.stringify({ sessionId, path: entry.path }),
                 );
                 event.dataTransfer.effectAllowed = 'copyMove';
@@ -156,7 +154,7 @@ export function RemoteDirectoryList({
               dragOver={(event) => {
                 if (
                   entry.type === 'directory' &&
-                  event.dataTransfer.types.includes('application/x-ssh-server-remote-file')
+                  event.dataTransfer.types.includes('application/x-agentdeck-remote-file')
                 ) {
                   event.preventDefault();
                   event.stopPropagation();
@@ -188,7 +186,6 @@ export function RemoteDirectoryList({
           loading={loading}
           request={request}
           navigate={navigate}
-          download={download}
           details={setDetailsPath}
           hide={() => menu.hide()}
         />
@@ -202,7 +199,6 @@ function RemoteMenuItems({
   loading,
   request,
   navigate,
-  download,
   details,
   hide,
 }: {
@@ -210,7 +206,6 @@ function RemoteMenuItems({
   loading: boolean;
   request(kind: RemoteFileActionKind, entry?: RemoteFileEntry): void;
   navigate(path: string): void;
-  download(entry: RemoteFileEntry): void;
   details(path: string): void;
   hide(): void;
 }) {
@@ -255,18 +250,6 @@ function RemoteMenuItems({
           {ACTION_LABELS[kind]}
         </MenuItem>
       ))}
-      {entry.type === 'file' && (
-        <MenuItem
-          disabled={loading}
-          className={itemClass}
-          onClick={() => {
-            hide();
-            download(entry);
-          }}
-        >
-          下载…
-        </MenuItem>
-      )}
       <MenuItem
         className={itemClass}
         onClick={() => {

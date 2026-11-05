@@ -1,6 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import type { FileDownloads } from '../remote-files/downloads';
 import { remoteFilesError, RemoteFilesError } from '../remote-files/errors';
 import type { FilePreflights } from '../remote-files/preflight';
 import type { FileTasks } from '../remote-files/tasks';
@@ -18,10 +17,8 @@ const Action = z
   })
   .strict();
 const Submit = z.object({ preflightId: z.string().uuid(), confirmed: z.literal(true) }).strict();
-const Recover = z.object({ confirmed: z.literal(true) }).strict();
-const Query = z.object({ path: Path }).strict();
 const Empty = z.object({}).strict();
-type Deps = { preflights: FilePreflights; tasks: FileTasks; downloads: FileDownloads };
+type Deps = { preflights: FilePreflights; tasks: FileTasks };
 async function respond(reply: FastifyReply, action: () => Promise<unknown>) {
   try {
     return await action();
@@ -88,38 +85,5 @@ export function registerRemoteFileActionRoutes(app: FastifyInstance, deps: Deps)
       }),
     );
   }
-  app.post(`${base}/tasks/:taskId/recover`, options, async (request, reply) =>
-    respond(reply, async () => {
-      const params = Params.safeParse(request.params);
-      if (
-        !params.success ||
-        !params.data.taskId ||
-        !Empty.safeParse(request.query).success ||
-        !Recover.safeParse(request.body).success
-      )
-        throw new RemoteFilesError('invalid_request');
-      return deps.tasks.recover(params.data.id, params.data.taskId);
-    }),
-  );
-  app.get(`${base}/sessions/:sessionId/download`, options, async (request, reply) =>
-    respond(reply, async () => {
-      const params = Params.safeParse(request.params);
-      const query = Query.safeParse(request.query);
-      if (!params.success || !params.data.sessionId || !query.success) throw new RemoteFilesError('invalid_request');
-      const download = await deps.downloads.prepare(
-        params.data.id,
-        params.data.sessionId,
-        query.data.path,
-        requestSignal(request, reply),
-      );
-      reply.header('Content-Type', 'application/octet-stream');
-      reply.header('Content-Length', download.size);
-      reply.header(
-        'Content-Disposition',
-        `attachment; filename="download"; filename*=UTF-8''${encodeURIComponent(download.name).replace(/'/g, '%27')}`,
-      );
-      return reply.send(download.stream);
-    }),
-  );
   app.addHook('onClose', async () => deps.tasks.dispose());
 }

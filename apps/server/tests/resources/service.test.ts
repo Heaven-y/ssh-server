@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { workspaceTerminalTarget, type Workspace } from '@ssh-server/shared';
+import { workspaceTerminalTarget, type BoundWorkspace } from '@agentdeck/shared';
 import { createResourcesService } from '../../src/resources/service';
 import { sampleResourceCommand } from '../../src/resources/sample';
 import type { SshPool } from '../../src/ssh/pool';
@@ -13,15 +13,15 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-const workspace: Workspace = {
+const workspace: BoundWorkspace = {
   id: 'w',
   name: '示例',
-  localDir: path.resolve('fixture'),
-  sshHost: 'my-server',
+  dir: path.resolve('fixture'),
+  server: 'my-server',
   remoteDir: '~/projects/demo',
 };
 function fixture(blockCall?: number) {
-  let current: Workspace | undefined = workspace;
+  let current: BoundWorkspace | undefined = workspace;
   let calls = 0;
   let unblock!: () => void;
   let reached!: () => void;
@@ -64,7 +64,7 @@ function fixture(blockCall?: number) {
     service,
     blocked,
     unblock,
-    change: (value: Workspace | undefined) => {
+    change: (value: BoundWorkspace | undefined) => {
       current = value;
     },
   };
@@ -117,9 +117,9 @@ it('不同别名映射同实际认证共享宿主，磁盘按目录独立', asyn
     const reads = await Promise.all([f.service.get(first), f.service.get(second)]);
     expect(reads[0].host.sampledAt).toBe(reads[1].host.sampledAt);
     expect(vi.mocked(sampleResourceCommand).mock.calls).toHaveLength(2);
-    f.change({ ...workspace, sshHost: 'same-node', remoteDir: '~/projects/other' });
+    f.change({ ...workspace, server: 'same-node', remoteDir: '~/projects/other' });
     await f.service.get(
-      workspaceTerminalTarget({ ...workspace, id: 'third', sshHost: 'same-node', remoteDir: '~/projects/other' }),
+      workspaceTerminalTarget({ ...workspace, id: 'third', server: 'same-node', remoteDir: '~/projects/other' }),
     );
     const commands = vi.mocked(sampleResourceCommand).mock.calls.map((call) => call[2]);
     expect(commands.filter((command) => command.includes('/proc/stat'))).toHaveLength(1);

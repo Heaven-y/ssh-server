@@ -8,7 +8,6 @@ const Target = z
   .object({
     sshHost: z.string().min(1),
     remoteDir: z.string().min(1).max(4096),
-    localDir: z.string().min(1),
   })
   .strict();
 const Query = z.object({ path: z.string().max(4096).default(''), cursor: z.string().uuid().optional() }).strict();

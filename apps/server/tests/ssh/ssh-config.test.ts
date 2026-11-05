@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { listHosts, parseSshConfig, resolveHost } from '../../src/ssh/ssh-config';
 
-const fixtureHome = path.join(os.tmpdir(), 'ssh-server-fixture', 'home');
+const fixtureHome = path.join(os.tmpdir(), 'agentdeck-fixture', 'home');
 
 describe('parseSshConfig / resolveHost', () => {
   it('处理 BOM、CRLF 与带引号的中文别名', () => {

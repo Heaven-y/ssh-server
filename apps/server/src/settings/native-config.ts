@@ -1,8 +1,9 @@
 import os from 'node:os';
 import path from 'node:path';
 import { parse as parseToml } from 'smol-toml';
-import type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from '@ssh-server/shared';
+import type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from '@agentdeck/shared';
 import { anonymousConfigError, NativeConfigError } from './errors';
+import { nativeFileTransaction } from './native-resources-transactions';
 import {
   assertDirectoryUnchanged,
   contentRevision,
@@ -13,8 +14,12 @@ import {
   writeConfigFile,
 } from './safe-file';
 
-export type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from '@ssh-server/shared';
-type Deps = { homeDir?: string; env?: NodeJS.ProcessEnv };
+export type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from '@agentdeck/shared';
+type Deps = {
+  homeDir?: string;
+  env?: NodeJS.ProcessEnv;
+  onSaved?: (agent: NativeConfigAgent) => void | Promise<void>;
+};
 
 function validateContent(agent: NativeConfigAgent, content: string): Buffer {
   const data = Buffer.from(content, 'utf8');
@@ -84,20 +89,23 @@ export function createNativeConfigService(deps: Deps = {}) {
     save(agent: NativeConfigAgent, input: NativeConfigInput): Promise<NativeConfigDocument> {
       return transaction(agent, async () => {
         const location = target(agent);
-        const data = validateContent(agent, input.content);
-        await inspectDirectory(location.directory);
-        const previous = await readConfigFile(location.file);
-        if (input.revision !== previous.revision) throw new NativeConfigError('revision_conflict');
-        const directory = await inspectDirectory(location.directory, true);
-        await writeConfigFile(location.file, data, previous, directory!);
-        return {
-          agent,
-          displayPath: location.displayPath,
-          format: location.format,
-          content: input.content,
-          revision: contentRevision(data),
-          exists: true,
-        };
+        return nativeFileTransaction(location.file, async () => {
+          const data = validateContent(agent, input.content);
+          await inspectDirectory(location.directory);
+          const previous = await readConfigFile(location.file);
+          if (input.revision !== previous.revision) throw new NativeConfigError('revision_conflict');
+          const directory = await inspectDirectory(location.directory, true);
+          await writeConfigFile(location.file, data, previous, directory!);
+          await deps.onSaved?.(agent);
+          return {
+            agent,
+            displayPath: location.displayPath,
+            format: location.format,
+            content: input.content,
+            revision: contentRevision(data),
+            exists: true,
+          };
+        });
       });
     },
   };

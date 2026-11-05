@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { RemoteDirectory, SyncSettings } from '@ssh-server/shared';
+import type { RemoteDirectory, RemoteFileFilter } from '@agentdeck/shared';
 import type { SftpReader } from '../ssh/sftp';
-import { compareDirectoryEntries, createDirectoryBudget } from '../files/directory-order';
+import { compareDirectoryEntries, createDirectoryBudget } from './directory-order';
 import { directoryEntry, inside } from './paths';
 import { RemoteFilesError } from './errors';
 
@@ -11,7 +11,7 @@ const PAGE_SIZE = 200;
 export function createDirectoryCursor(
   reader: SftpReader,
   handle: Buffer,
-  { directory, root, settings }: { directory: string; root: string; settings: SyncSettings },
+  { directory, root, settings }: { directory: string; root: string; settings: RemoteFileFilter },
 ) {
   let closed = false;
   let expired = false;

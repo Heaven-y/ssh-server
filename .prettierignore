@@ -1,10 +1,13 @@
 node_modules/
 dist/
+out/
 coverage/
+release/
 package-lock.json
 .agents/
 .claude/
 .pi/
 .superpowers/
+.playwright-mcp/
 # 文档不自动排版：中文表格、示例代码块的手工格式要保留
 *.md

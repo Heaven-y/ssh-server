@@ -1,37 +1,23 @@
-import { ProductSettingsSchema, type ProductSettings } from '@ssh-server/shared';
+import { ProductSettingsSchema, type ProductSettings } from '@agentdeck/shared';
 
 export type ProductSettingsDraft = {
   defaultAgent: ProductSettings['defaultAgent'];
-  maxFileMiB: string;
-  extensions: string;
-  syncInterval: string;
   resourceInterval: string;
   resourceTimeout: string;
 };
 export const settingsDraft = (settings: ProductSettings): ProductSettingsDraft => ({
   defaultAgent: settings.defaultAgent,
-  maxFileMiB: String(settings.syncDefaults.maxFileBytes / 1024 / 1024),
-  extensions: settings.syncDefaults.excludedExtensions.join(', '),
-  syncInterval: String(settings.syncIntervalSeconds),
   resourceInterval: String(settings.resources.intervalSeconds),
   resourceTimeout: String(settings.resources.timeoutSeconds),
 });
 export function parseSettingsDraft(draft: ProductSettingsDraft) {
   return ProductSettingsSchema.safeParse({
     defaultAgent: draft.defaultAgent,
-    syncDefaults: {
-      maxFileBytes: Math.round(Number(draft.maxFileMiB) * 1024 * 1024),
-      excludedExtensions: draft.extensions.split(/[,\s]+/).filter(Boolean),
-    },
-    syncIntervalSeconds: Number(draft.syncInterval),
     resources: { intervalSeconds: Number(draft.resourceInterval), timeoutSeconds: Number(draft.resourceTimeout) },
   });
 }
 const fieldPaths: Record<string, keyof ProductSettingsDraft> = {
   defaultAgent: 'defaultAgent',
-  'syncDefaults.maxFileBytes': 'maxFileMiB',
-  'syncDefaults.excludedExtensions': 'extensions',
-  syncIntervalSeconds: 'syncInterval',
   'resources.intervalSeconds': 'resourceInterval',
   'resources.timeoutSeconds': 'resourceTimeout',
 };

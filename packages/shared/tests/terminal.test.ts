@@ -15,8 +15,8 @@ it('工作区目标仅包含固定身份字段，不复制服务器认证方式'
     workspaceTerminalTarget({
       id: 'w',
       name: '工作区',
-      localDir: 'local',
-      sshHost: 'my-server',
+      dir: 'local',
+      server: 'my-server',
       remoteDir: '~/projects/demo',
     }),
   ).toEqual({ workspaceId: 'w', sshHost: 'my-server', remoteDir: '~/projects/demo' });

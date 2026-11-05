@@ -1,6 +1,6 @@
 import type { ClientChannel } from 'ssh2';
 import type WebSocket from 'ws';
-import { TERMINAL_LIMITS } from '@ssh-server/shared';
+import { TERMINAL_LIMITS } from '@agentdeck/shared';
 import { TerminalError } from './errors';
 
 type Result = { exitCode: number | null; signal: string | null };

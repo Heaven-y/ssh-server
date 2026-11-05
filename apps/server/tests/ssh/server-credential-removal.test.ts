@@ -8,7 +8,6 @@ import { createSshPool } from '../../src/ssh/pool';
 import { createPasswordStore } from '../../src/ssh/password-store';
 import { connectionIdentity } from '../../src/ssh/connection';
 import { createWorkspaceStore } from '../../src/workspaces/store';
-import { createWorkspaceActivity } from '../../src/workspaces/activity';
 
 it('删除档案清除真实凭据文件且不重入队列；重新登记同一目标和新后端均不复用旧密码', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'server-removal-'));
@@ -40,13 +39,7 @@ it('删除档案清除真实凭据文件且不重入队列；重新登记同一�
   const pool = createSshPool(deps);
   const restarted = createSshPool(deps);
   const store = createWorkspaceStore({ configDir: root, knownHosts: async () => [], dirExists: async () => true });
-  const profiles = createServerProfiles({
-    targets,
-    store,
-    pool,
-    activity: createWorkspaceActivity(),
-    resources: { blockers: async () => [] },
-  });
+  const profiles = createServerProfiles({ targets, store, pool });
   try {
     await passwordStore.save(connectionIdentity(server), 'fixture-secret');
     await pool.setPassword(server.alias, 'fixture-secret');

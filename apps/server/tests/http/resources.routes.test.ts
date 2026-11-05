@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { expect, it } from 'vitest';
-import { workspaceTerminalTarget } from '@ssh-server/shared';
+import { workspaceTerminalTarget } from '@agentdeck/shared';
 import { buildApp } from '../../src/http/app';
 import { registerResourcesRoutes } from '../../src/http/resources.routes';
 import { createResourcesService } from '../../src/resources/service';
@@ -21,14 +21,13 @@ it('真实SSH资源通道贯通安全HTTP、固定目标及关闭服务生命周
   const app = await buildApp({
     token: 'fixture-token',
     port: 0,
-    store: ssh.store,
     routes: (server) => registerResourcesRoutes(server, resources),
   });
   await app.listen({ host: '127.0.0.1', port: 0 });
   const headers = {
     host: new URL(app.listeningOrigin).host,
     origin: app.listeningOrigin,
-    cookie: 'ssh_server_session=fixture-token',
+    cookie: 'AGENTDECK_session=fixture-token',
   };
   const target = workspaceTerminalTarget(ssh.workspace);
   const base = `/api/workspaces/${ssh.workspace.id}/resources`;

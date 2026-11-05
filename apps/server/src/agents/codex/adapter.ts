@@ -5,7 +5,7 @@ import type { CodexRuntimeOptions } from './types';
 
 export { CodexRuntime, CodexTurn } from './runtime';
 
-/** 没有新轮次时保留 app-server 的时间；超过后关闭并释放令牌。 */
+/** 没有新轮次时保留 app-server 的时间；超过后关闭。 */
 export const CODEX_IDLE_TIMEOUT_MS = 5 * 60_000;
 
 function startTurn(runtime: CodexRuntime, input: AgentTurnInput): TurnHandle {
@@ -20,7 +20,7 @@ function startTurn(runtime: CodexRuntime, input: AgentTurnInput): TurnHandle {
 
 /** 单轮调用：创建会话、跑完即关闭，用于一次性操作与测试。 */
 export function runCodexTurn(input: AgentTurnInput, options: CodexRuntimeOptions = {}): TurnHandle {
-  const runtime = new CodexRuntime(input, options);
+  const runtime = new CodexRuntime(options);
   const handle = startTurn(runtime, input);
   return { interrupt: () => handle.interrupt(), done: handle.done.then(() => runtime.close()) };
 }
@@ -37,8 +37,8 @@ export function createCodexRunner(options: CodexRuntimeOptions & { idleMs?: numb
   const keyOf = (input: AgentTurnInput) =>
     JSON.stringify([
       input.workspace.id,
-      input.workspace.localDir,
-      input.workspace.sshHost,
+      input.workspace.dir,
+      input.workspace.server,
       input.workspace.remoteDir,
       input.sessionId ?? '',
       input.model ?? '',
@@ -61,7 +61,7 @@ export function createCodexRunner(options: CodexRuntimeOptions & { idleMs?: numb
       entry = undefined;
     }
     if (!entry) {
-      entry = { runtime: new CodexRuntime(input, launch), key: keyOf(input) };
+      entry = { runtime: new CodexRuntime(launch), key: keyOf(input) };
       runtimes.set(entry.key, entry);
     }
     clearTimeout(entry.timer);

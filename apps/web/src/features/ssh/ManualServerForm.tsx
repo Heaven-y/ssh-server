@@ -1,9 +1,9 @@
 import { useId, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ManualServerInputSchema, type ManualServerInput, type ManagedServer } from '@ssh-server/shared';
+import { ManualServerInputSchema, type ManualServerInput, type ManagedServer } from '@agentdeck/shared';
 import { api, queryKeys } from '../../lib/api';
 import { buttonClass, inputClass } from '../../ui/styles';
-import { useCancelableRequest } from '../workspaces/setup/use-cancelable-request';
+import { useCancelableRequest } from '../../lib/use-cancelable-request';
 import { ServerPasswordEditor } from './ServerPasswordEditor';
 import { useServerPasswordEditor } from './use-server-password-editor';
 

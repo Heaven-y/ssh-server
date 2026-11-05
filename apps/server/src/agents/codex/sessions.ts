@@ -1,6 +1,6 @@
-import { NativeSessionIdSchema, type SessionActionInput, type SessionForkInput } from '@ssh-server/shared';
-import { sameSessionDirectory } from '../session-scope';
-import type { NativeSessionFork, NativeSessionRead, NativeSessionSummary } from '../types';
+import { NativeSessionIdSchema, type SessionActionInput, type SessionForkInput } from '@agentdeck/shared';
+import { sameSessionDirectory, sessionDirectoryWithin } from '../session-scope';
+import type { NativeSessionFork, NativeSessionRead, NativeSessionRow, NativeSessionSummary } from '../types';
 import { SessionError } from '../../chat/sessions';
 import { CodexClient } from './client';
 import { CodexEventMapper, codexForkPoint } from './mapper';
@@ -24,6 +24,15 @@ function summary(thread: RecordValue): NativeSessionSummary {
     lastModified: typeof thread.updatedAt === 'number' ? thread.updatedAt * 1_000 : 0,
     ...(text(thread.model).trim() ? { nativeModel: text(thread.model).trim() } : {}),
   };
+}
+
+/**
+ * 列表行：多带一个会话自己的 cwd，供上层按它裁决归属。
+ * 不能并进 `summary()`——read 对外返回的 session 也用那份，形状不能变。
+ */
+function row(thread: RecordValue): NativeSessionRow {
+  const cwd = text(thread.cwd).trim();
+  return { ...summary(thread), ...(cwd ? { cwd } : {}) };
 }
 
 export async function checkedThread(
@@ -54,9 +63,13 @@ async function withClient<T>(
   }
 }
 
-export async function assertCodexSession(id: string, dir: string, options: CodexRuntimeOptions = {}): Promise<void> {
-  await withClient(dir, options, async (client) => {
-    await checkedThread(client, id, dir);
+export async function assertCodexSession(id: string, dir: string, options: CodexRuntimeOptions = {}): Promise<string> {
+  return withClient(dir, options, async (client) => {
+    const thread = record((await client.request('thread/read', { threadId: id, includeTurns: false })).thread);
+    const cwd = text(thread.cwd);
+    if (thread.id !== id || !sessionDirectoryWithin(cwd, dir))
+      throw new SessionError(404, 'session_missing', 'Codex 会话不属于当前项目目录，无法读取或续接');
+    return cwd;
   });
 }
 
@@ -77,12 +90,12 @@ export async function readCodexSession(
   });
 }
 
-async function matchingSummaries(data: unknown[], dir: string): Promise<NativeSessionSummary[]> {
-  const result: NativeSessionSummary[] = [];
+function matchingSummaries(data: unknown[]): NativeSessionRow[] {
+  const result: NativeSessionRow[] = [];
   for (const value of data) {
     const thread = record(value);
     if (thread.parentThreadId || typeof thread.source === 'object') continue;
-    if (text(thread.id) && (await sameSessionDirectory(text(thread.cwd), dir))) result.push(summary(thread));
+    if (text(thread.id)) result.push(row(thread));
   }
   return result;
 }
@@ -90,16 +103,15 @@ async function matchingSummaries(data: unknown[], dir: string): Promise<NativeSe
 export async function listCodexSessions(
   dir: string,
   options: CodexRuntimeOptions & { archived?: boolean } = {},
-): Promise<NativeSessionSummary[]> {
+): Promise<NativeSessionRow[]> {
   const archived = options.archived ?? false;
   return withClient(dir, options, async (client) => {
-    const sessions = new Map<string, NativeSessionSummary>();
+    const sessions = new Map<string, NativeSessionRow>();
     const cursors = new Set<string>();
     let cursor: string | undefined;
     let count = 0;
     do {
       const response = await client.request('thread/list', {
-        cwd: dir,
         limit: 100,
         sortKey: 'updated_at',
         modelProviders: [],
@@ -112,7 +124,7 @@ export async function listCodexSessions(
       count += data.length;
       if (count > MAX_SESSIONS || cursors.size >= 1_000)
         throw new CodexError('Codex 会话数量超过读取上限，无法返回完整列表。');
-      for (const session of await matchingSummaries(data, dir)) sessions.set(session.sessionId, session);
+      for (const session of matchingSummaries(data)) sessions.set(session.sessionId, session);
       cursor = text(response.nextCursor) || undefined;
       if (cursor && cursors.has(cursor)) throw new CodexError('Codex 会话分页异常，无法返回完整列表。');
       if (cursor) cursors.add(cursor);

@@ -2,7 +2,7 @@ import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import ssh2 from 'ssh2';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { RemoteBrowseSession, RemoteDirectory } from '@ssh-server/shared';
+import type { RemoteBrowseSession, RemoteDirectory } from '@agentdeck/shared';
 import { registerRemoteFileRoutes } from '../../src/http/remote-files.routes';
 import { createRemoteFilesService } from '../../src/remote-files/service';
 import { startRemoteSftpFixture, type RemoteSftpFixture } from '../helpers/remote-sftp';
@@ -85,7 +85,7 @@ describe('真实 SFTP 服务器目录集成', () => {
     remote.service.close(remote.workspace.id, session.id);
     await released(remote);
     expect(remote.audit.handlesClosed).toBe(remote.audit.handlesOpened);
-    remote.pool.disconnect(remote.workspace.sshHost);
+    remote.pool.disconnect(remote.workspace.server);
     await vi.waitFor(() => expect(remote.resources().peers).toBe(0));
   }, 15_000);
 

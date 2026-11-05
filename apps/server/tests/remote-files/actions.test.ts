@@ -4,14 +4,13 @@ import os from 'node:os';
 import path from 'node:path';
 import Fastify from 'fastify';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { Workspace } from '@ssh-server/shared';
+import type { BoundWorkspace, Workspace } from '@agentdeck/shared';
 import { createFilePreflights, type FilePreflights, type PreparedAction } from '../../src/remote-files/preflight';
 import { createFileTasks } from '../../src/remote-files/tasks';
 import { RemoteFilesError } from '../../src/remote-files/errors';
 import type { RemoteExecutor } from '../../src/remote-files/executor';
 import type { SshPool } from '../../src/ssh/pool';
 import { registerRemoteFileActionRoutes } from '../../src/http/remote-file-actions.routes';
-import type { FileDownloads } from '../../src/remote-files/downloads';
 import { createWorkspaceActivity } from '../../src/workspaces/activity';
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -22,12 +21,12 @@ const remoteHome = path.posix.join(path.posix.sep, 'fixture-home');
 const root = path.posix.join(remoteHome, 'project');
 const source = path.posix.join(remoteHome, 'outside', 'source.py');
 const destination = path.posix.join(remoteHome, 'outside', 'target.py');
-const ws: Workspace = {
+const ws: BoundWorkspace = {
   id: 'w1',
   name: '测试工作区',
-  sshHost: 'my-server',
+  dir: path.join(os.tmpdir(), 'mirror'),
+  server: 'my-server',
   remoteDir: root,
-  localDir: path.join(os.tmpdir(), 'mirror'),
 };
 
 function actionFixture(): PreparedAction {
@@ -36,7 +35,7 @@ function actionFixture(): PreparedAction {
     public: {
       id,
       workspaceId: ws.id,
-      sshHost: ws.sshHost,
+      sshHost: ws.server,
       kind: 'move',
       source,
       destination,
@@ -52,7 +51,7 @@ function actionFixture(): PreparedAction {
     },
     context: {
       workspace: ws,
-      info: { id: randomUUID(), workspaceId: ws.id, sshHost: ws.sshHost, home: remoteHome, root },
+      info: { id: randomUUID(), workspaceId: ws.id, sshHost: ws.server, home: remoteHome, root },
       key: 'fixture-key',
       generation: 0,
     },
@@ -98,45 +97,57 @@ async function tasksFixture(
   return { tasks, action, executor, preflights, deps, corrupt, dir: path.join(configDir, 'remote-file-tasks') };
 }
 
-it('跨工作区提交从异步复验前持有全部租约，部分获取失败释放已取得租约', async () => {
+// 工作区移除链条已删除，租约不再阻断任何操作；仍要保证提交前给发起者与受影响
+// 工作区登记活动，并在完成或失败后如实归还，避免泄漏。
+it('跨工作区提交在异步复验前登记全部活动，完成后全部释放', async () => {
   const activity = createWorkspaceActivity();
+  const acquired: string[] = [];
+  const released: string[] = [];
+  const acquire = (id: string) => {
+    acquired.push(id);
+    const release = activity.acquire(id);
+    return () => {
+      released.push(id);
+      release();
+    };
+  };
   const action = actionFixture();
   action.public.affectedWorkspaces = [{ id: 'other', name: '另一个项目', remoteRoot: root }];
-  const fixture = await tasksFixture(async () => ({ completed: true }), action, activity.acquire);
+  const fixture = await tasksFixture(async () => ({ completed: true }), action, acquire);
   let finish!: () => void;
   const validation = new Promise<void>((resolve) => {
     finish = resolve;
   });
   vi.mocked(fixture.preflights.validate).mockImplementationOnce(() => validation);
   const submission = fixture.tasks.submit(ws.id, action.public.id);
-  try {
-    await vi.waitFor(() => expect(activity.active('other')).toBe(1));
-    for (const id of [ws.id, 'other'])
-      await expect(activity.exclusive(id, async () => undefined)).rejects.toMatchObject({ code: 'workspace_busy' });
-  } finally {
-    finish();
-  }
+  await vi.waitFor(() => expect(acquired).toEqual([ws.id, 'other']));
+  finish();
   await submission;
   await fixture.tasks.dispose();
-  expect(activity.active(ws.id)).toBe(0);
-  expect(activity.active('other')).toBe(0);
-  // closing第二项时第一项已获取；失败必须全部归还，且不开始异步复验。
-  const rejected = await tasksFixture(async () => ({ completed: true }), action, activity.acquire);
-  await activity.exclusive('other', async () => {
-    await expect(rejected.tasks.submit(ws.id, action.public.id)).rejects.toMatchObject({ code: 'workspace_deleting' });
-    expect(activity.active(ws.id)).toBe(0);
-    expect(rejected.preflights.validate).not.toHaveBeenCalled();
-  });
+  expect(released.sort()).toEqual([ws.id, 'other'].sort());
 });
 
-it('冷启动阻断遍历全部持久任务及受影响工作区，不受100项展示限制', async () => {
+it('登记活动部分失败时释放已取得的活动，且不开始异步复验', async () => {
+  const released: string[] = [];
+  const acquire = (id: string) => {
+    if (id === 'other') throw new Error('活动不可用');
+    return () => released.push(id);
+  };
+  const action = actionFixture();
+  action.public.affectedWorkspaces = [{ id: 'other', name: '另一个项目', remoteRoot: root }];
+  const fixture = await tasksFixture(async () => ({ completed: true }), action, acquire);
+  await expect(fixture.tasks.submit(ws.id, action.public.id)).rejects.toThrow('活动不可用');
+  expect(released).toEqual([ws.id]);
+  expect(fixture.preflights.validate).not.toHaveBeenCalled();
+});
+
+it('冷启动任务列表受100项展示限制，且只列本工作区', async () => {
   const fixture = await tasksFixture(async () => ({ completed: true }));
   const task = await fixture.tasks.submit(ws.id, fixture.action.public.id);
   await fixture.tasks.dispose();
   const record = JSON.parse(await readFile(path.join(fixture.dir, task.id + '.json'), 'utf8'));
   record.task.phase = 'needs_check';
   record.task.createdAt = 0;
-  record.action.public.affectedWorkspaces = [{ id: 'other', name: '受影响项目', remoteRoot: root }];
   await writeFile(path.join(fixture.dir, task.id + '.json'), JSON.stringify(record));
   for (let index = 1; index <= 101; index++) {
     const completed = structuredClone(record);
@@ -151,13 +162,12 @@ it('冷启动阻断遍历全部持久任务及受影响工作区，不受100项�
   cleanups.push(() => restored.dispose());
   const list = await restored.list(ws.id);
   expect(list).toHaveLength(100);
+  // 最新创建（createdAt 最大）的 100 项胜出，createdAt=0 的那条被挤出
   expect(list.every((item) => item.phase === 'completed')).toBe(true);
-  for (const id of [ws.id, 'other'])
-    expect(await restored.blockers(id)).toContainEqual(expect.objectContaining({ code: 'file_tasks_pending' }));
-  expect(await restored.blockers('unrelated')).toEqual([]);
+  expect(await restored.list('unrelated')).toEqual([]);
 });
 
-it('预检保留原工作区根配置，复验配置并阻止同步范围内提交', async () => {
+it('预检保留原工作区根配置，复验配置并拒绝陈旧预检', async () => {
   const action = actionFixture();
   const workspace = { ...ws, remoteDir: '~/linked-project' };
   const executor = { run: vi.fn(async () => action.plan) };
@@ -198,15 +208,15 @@ it('预检保留原工作区根配置，复验配置并阻止同步范围内提�
   workspace.remoteDir = '~/linked-project';
   const insideDestination = path.posix.join(root, 'target.py');
   executor.run.mockResolvedValue({ ...action.plan, destination: insideDestination });
-  const affected = await preflights.create(
+  const unaffected = await preflights.create(
     ws.id,
     action.context.info.id,
     { kind: 'move', source, destination: insideDestination },
     new AbortController().signal,
   );
-  expect(affected.canSubmit).toBe(false);
-  expect(affected.affectedWorkspaces.map((item) => item.id)).toEqual([ws.id]);
-  expect(() => preflights.take(ws.id, affected.id)).toThrow('同步');
+  // 同步域删除后远端操作不再影响本机镜像，任何目标都可直接提交。
+  expect(unaffected.canSubmit).toBe(true);
+  expect(unaffected.affectedWorkspaces).toEqual([]);
   const serverOnly = path.posix.join(root, 'data:2026.bin');
   executor.run.mockResolvedValue({
     ...action.plan,
@@ -246,11 +256,21 @@ it('重复提交只创建一个已持久化任务，执行仍传入原始配置�
 });
 
 it('首次阶段前断线保留待核对，核对同文件系统移动后确认结果而不重放', async () => {
-  const fixture = await tasksFixture(async () => {
-    throw new Error('连接中断');
+  let settled!: () => void;
+  const finished = new Promise<void>((resolve) => {
+    settled = resolve;
   });
+  const fixture = await tasksFixture(
+    async () => {
+      throw new Error('连接中断');
+    },
+    actionFixture(),
+    () => settled,
+  );
   const task = await fixture.tasks.submit(ws.id, fixture.action.public.id);
-  await vi.waitFor(async () => expect((await fixture.tasks.status(ws.id, task.id)).phase).toBe('needs_check'));
+  // 内存阶段先于落盘和 controller 清理；租约释放才代表执行已真正收尾，可以核对结果。
+  await finished;
+  expect((await fixture.tasks.status(ws.id, task.id)).phase).toBe('needs_check');
   fixture.executor.run.mockResolvedValue({
     source: { exists: false },
     destination: {
@@ -335,7 +355,6 @@ it.each(['mkdir', 'delete'] as const)('%s正式空路径记录在重启后仍可
   const restored = createFileTasks({ ...fixture.deps, executor });
   cleanups.push(() => restored.dispose());
   expect(await restored.status(ws.id, task.id)).toMatchObject({ kind, phase: 'completed' });
-  expect(await restored.blockers(ws.id)).toEqual([]);
   expect(executor.run).not.toHaveBeenCalled();
   expect(await readFile(file, 'utf8')).toBe(original);
 });
@@ -366,10 +385,7 @@ it.each(['syncRequired', 'dispatched', 'id', 'identity', 'json', 'read'])('%s损
     () => restored.status(ws.id, task.id),
     () => restored.cancel(ws.id, task.id),
     () => restored.check(ws.id, task.id),
-    () => restored.recover(ws.id, task.id),
     () => restored.submit(ws.id, randomUUID()),
-    () => restored.blockers(ws.id),
-    () => restored.blockers('other'),
   ]) {
     await expect(operation()).rejects.toMatchObject({ code: 'task_storage_error' });
     await expect(operation()).rejects.not.toThrow('private-secret');
@@ -379,7 +395,7 @@ it.each(['syncRequired', 'dispatched', 'id', 'identity', 'json', 'read'])('%s损
   await expect(restored.dispose()).resolves.toBeUndefined();
 });
 
-it('任务目录非ENOENT读取失败阻止新任务和工作区移除', async () => {
+it('任务目录非ENOENT读取失败阻止新任务', async () => {
   const fixture = await tasksFixture(async () => ({ completed: true }));
   await fixture.tasks.dispose();
   await writeFile(fixture.dir, 'private-secret', 'utf8');
@@ -387,7 +403,6 @@ it('任务目录非ENOENT读取失败阻止新任务和工作区移除', async (
   cleanups.push(() => restored.dispose());
   await expect(restored.list(ws.id)).rejects.toMatchObject({ code: 'task_storage_error' });
   await expect(restored.submit(ws.id, randomUUID())).rejects.toMatchObject({ code: 'task_storage_error' });
-  await expect(restored.blockers(ws.id)).rejects.toMatchObject({ code: 'task_storage_error' });
   expect(await readFile(fixture.dir, 'utf8')).toBe('private-secret');
 });
 
@@ -439,7 +454,6 @@ it('HTTP 提交必须绑定确认预检，未知字段拒绝执行，查询与�
   registerRemoteFileActionRoutes(app, {
     tasks: fixture.tasks,
     preflights: fixture.preflights,
-    downloads: {} as FileDownloads,
   });
   const base = `/api/workspaces/${ws.id}/remote-files/tasks`;
   for (const payload of [

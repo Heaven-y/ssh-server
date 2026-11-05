@@ -1,4 +1,4 @@
-import type { SlurmSnapshot } from '@ssh-server/shared';
+import type { SlurmSnapshot } from '@agentdeck/shared';
 import { SLURM_LIMITS } from './commands';
 
 // 对应固定 squeue 格式的右对齐列宽；不解释作业字段或依赖版本定义。

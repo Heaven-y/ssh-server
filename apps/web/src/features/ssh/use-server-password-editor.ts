@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ManagedServer, SshAuthMode } from '@ssh-server/shared';
+import type { ManagedServer, SshAuthMode } from '@agentdeck/shared';
 import { api, ApiError } from '../../lib/api';
 
 type Metadata = { phase: 'loading' | 'ready' | 'reread'; revision?: string; savingAvailable: boolean; error?: string };
