@@ -80,9 +80,10 @@ it('归档读取失败保留重试入口，成功空结果显示空态', async (
   mount();
   await screen.findByRole('alert');
   expect(screen.queryByText('暂无已归档会话')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: '刷新归档会话' }));
+  fireEvent.click(screen.getByRole('button', { name: '重试' }));
   await screen.findByText('暂无已归档会话');
-  expect(read).toHaveBeenCalledTimes(6);
+  expect(read).toHaveBeenCalledTimes(4);
+  expect(screen.queryByRole('button', { name: '重试' })).toBeNull();
 });
 it('删除必须确认；归档条目变忙后阻止写入', async () => {
   const session = row('one', 'first');

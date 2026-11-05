@@ -101,7 +101,6 @@ export type {
   SessionSummary,
   SessionCapabilities,
 } from './session';
-export type { SessionChangesSnapshot } from './session-changes';
 export { CapabilitySelectionSchema } from './capabilities';
 export type {
   CapabilitySelection,

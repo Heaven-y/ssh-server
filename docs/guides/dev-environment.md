@@ -1,6 +1,6 @@
 # 开发指南
 
-更新于 2026-11-04。按当前工程组织环境、质量、Git 和验证规则。产品优先级见[路线图](../roadmap.md)，协议边界见[原生对话接入](../engineering/native-dialogue.md)，本地成包见[安装指南](local-installation.md)；旧验收数据及已退役问题通过 `c686ef2` 查询。
+更新于 2026-11-05。按当前工程组织环境、质量、Git 和验证规则。产品优先级见[路线图](../roadmap.md)，协议边界见[原生对话接入](../engineering/native-dialogue.md)，本地成包见[安装指南](local-installation.md)；旧验收数据及已退役问题通过 `c686ef2` 查询。
 
 ## 1. 本机环境
 
@@ -57,7 +57,7 @@ Windows 10/11、Node.js 22+ 与 Git 是开发基础。按需安装 `claude`、`c
 
 ### 1.4 进度与证据
 
-三 CLI 对话、原生资源设置和工作台插件已有实现，项目管理、目录变化刷新、终端查找及本地打包在当前交付中接线。功能条件见[需求验收](../product/requirements.md#4-验收与证据)，实际通过范围仍以路线图中的证据为准；有组件或包文件不代表真实环境验收完成。
+三 CLI 对话、原生资源设置和工作台插件已有实现，项目管理、操作后列表更新、终端查找及本地打包在当前交付中接线。功能条件见[需求验收](../product/requirements.md#4-验收与证据)，实际通过范围仍以路线图中的证据为准；有组件或包文件不代表真实环境验收完成。
 
 分别记录类型检查、受控子进程、界面行为、真实模型、真实 SSH 与系统交互。不能从单个模型服务可用推断所有服务兼容，也不能从模拟消息推断真实 Antigravity 协议完整。
 
@@ -121,6 +121,8 @@ powershell -ExecutionPolicy Bypass -File scripts\dev\install-skills.ps1
 | 解包目录与冒烟 | `npm.cmd run package:desktop:dir`，再按本地安装指南运行冒烟检查 |
 
 开发服务地址和环境覆盖项统一见[启动配置](../engineering/architecture.md#53-启动配置)。前端先同源握手，服务重启后需重新取得会话。不要把测试页面指向正在使用的真实配置。
+
+后台验收进程的 stdout/stderr 写入本轮独立日志文件或设为 ignore，不继承可能先退出的工具输出管道。验收结束后关闭自己创建的窗口、进程与端口；桌面日志已处理异步 EPIPE，但这不能代替验收脚本的退出清理。
 
 桌面 `dev` 和 `start` 在运行 electron-vite 前执行 Electron 官方安装器：文件完整时立即返回，缺失时从缓存恢复或下载锁定版本。仅安装 npm 包不一定已包含桌面运行文件，跳过安装脚本或下载中断会使 electron-vite 报 `Electron uninstall`。已有依赖时可在仓库根目录运行 `node node_modules/electron/install.js` 修复，再执行 `npm.cmd run dev:desktop`；无需删除整套 node_modules。首次下载需要网络，未完成下载不能只创建 path.txt 充当成功。
 

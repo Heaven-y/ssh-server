@@ -10,6 +10,7 @@ import { desktopPaths, externalWebLink, navigationAllowed, rendererAddress } fro
 import { APP_MENU_CHANNEL, SELECT_DIRECTORY_CHANNEL, TITLE_BAR_THEME_CHANNEL } from './bridge';
 import { createDirectoryPicker } from './directory-picker';
 import { applicationMenuTemplate, createWindowChrome, desktopChromeOptions } from './window-chrome';
+import { createDesktopLogger } from './logging';
 
 /** 安装版页面跟随 resources 分发，开发版沿用工作区构建目录。 */
 const paths = desktopPaths({
@@ -19,6 +20,7 @@ const paths = desktopPaths({
 });
 /** 释放后端的最长等待：超时也退出，端口随进程结束由系统回收，不留后台进程。 */
 const CLOSE_TIMEOUT_MS = 8_000;
+const logger = createDesktopLogger();
 
 let mainWindow: BrowserWindow | undefined;
 let server: StartedServer | undefined;
@@ -106,7 +108,7 @@ async function startDesktop(): Promise<void> {
       port: rendererUrl ? config.port : 0,
       devOrigin: rendererUrl ? new URL(rendererUrl).origin : config.devOrigin,
     },
-    { webDir: paths.web },
+    { webDir: paths.web, log: (message) => logger.log(message), logError: (message) => logger.error(message) },
   );
   server = started;
   mainWindow = createMainWindow(resolveWindowUrl(started.url, rendererUrl));
@@ -114,7 +116,7 @@ async function startDesktop(): Promise<void> {
 
 function failStartup(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
-  console.error(`桌面壳启动失败：${message}`);
+  logger.error(`桌面壳启动失败：${message}`);
   dialog.showErrorBox('AgentDeck 启动失败', message);
   app.quit();
 }

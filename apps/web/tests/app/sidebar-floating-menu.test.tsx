@@ -3,7 +3,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
 import { Sidebar } from '../../src/app/Sidebar';
-import { api } from '../../src/lib/api';
 import { useUiPreferences } from '../../src/ui/ui-preferences';
 
 afterEach(() => {
@@ -13,7 +12,6 @@ afterEach(() => {
 
 it('更多菜单固定挂到 portal，焦点占位不再参与工作区上方的 margin 间距', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  vi.spyOn(api, 'sessionChanges').mockResolvedValue({ revision: 1, watching: true });
   useUiPreferences.setState({ sidebarCollapsed: false, sidebarAutoCollapsed: false });
   const archive = vi.fn();
   const view = render(

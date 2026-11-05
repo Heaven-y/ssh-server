@@ -44,7 +44,6 @@ const render = (element: ReactElement) =>
 beforeEach(() => {
   useChat.setState(useChat.getInitialState(), true);
   useUiPreferences.setState({ sidebarCollapsed: false, sidebarAutoCollapsed: false, theme: 'light' });
-  vi.spyOn(api, 'sessionChanges').mockResolvedValue({ revision: 1, watching: true });
   // jsdom 不实现 showModal；动作对话框用它，这里按项目既有做法打桩。
   HTMLDialogElement.prototype.showModal = function () {
     this.open = true;

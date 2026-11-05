@@ -202,6 +202,49 @@ it('视图代次只随选择变化，首次原生会话id不重置；重开同�
   expect(useChat.getState().conversationVersion).toBe(live);
 });
 
+it.each(['claude', 'codex', 'antigravity'] as const)(
+  '%s 新会话和结束事件更新列表，取消尚未完成的旧枚举',
+  async (agent) => {
+    useChat.getState().newSession(agent);
+    const queryKey = queryKeys.sessions('w1', agent);
+    const original = deferred<string[]>();
+    let latest = ['native-session'];
+    let originalSignal: AbortSignal | undefined;
+    const observer = new QueryObserver(queryClient, {
+      queryKey,
+      staleTime: Infinity,
+      retry: false,
+      queryFn: ({ signal }) => {
+        if (!originalSignal) {
+          originalSignal = signal;
+          return original.promise;
+        }
+        return Promise.resolve(latest);
+      },
+    });
+    const unsubscribe = observer.subscribe(() => undefined);
+    try {
+      const turnId = startTurn();
+      emit({
+        type: 'agent.event',
+        turnId,
+        event: { type: 'session', agent, sessionId: 'native-session', model: '', cwd: 'project' },
+      });
+      await vi.waitFor(() => expect(observer.getCurrentResult().data).toEqual(['native-session']));
+      expect(originalSignal?.aborted).toBe(true);
+      latest = ['updated-native-session'];
+      emit({ type: 'turn.finished', turnId, workspaceId: 'w1', agent });
+      await vi.waitFor(() => expect(observer.getCurrentResult().data).toEqual(['updated-native-session']));
+      expect(useChat.getState().running).toBe(false);
+    } finally {
+      original.resolve(['obsolete-session']);
+      unsubscribe();
+      await queryClient.cancelQueries({ queryKey });
+      queryClient.removeQueries({ queryKey });
+    }
+  },
+);
+
 describe('原生会话管理状态', () => {
   const session = { agent: 'codex', sessionId: 'same-id' } as const;
   const key = sessionActionKey('w1', session);
@@ -727,7 +770,13 @@ describe('chat-store', () => {
     const refresh = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
     useChat.getState().send('新工作区');
     emit({ type: 'turn.finished', turnId: 'background', workspaceId: 'w1', agent: 'codex' });
-    expect(refresh).toHaveBeenCalledWith({ queryKey: queryKeys.sessions('w1', 'codex') });
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledWith({ predicate: expect.any(Function) }));
+    const filter = refresh.mock.lastCall?.[0]?.predicate;
+    const lists = queryClient.getQueryCache();
+    queryClient.setQueryData(queryKeys.sessions('w1', 'codex'), []);
+    queryClient.setQueryData(queryKeys.sessions('w2', 'claude'), []);
+    expect(filter?.(lists.find({ queryKey: queryKeys.sessions('w1', 'codex') })!)).toBe(true);
+    expect(filter?.(lists.find({ queryKey: queryKeys.sessions('w2', 'claude') })!)).toBe(false);
     expect(useChat.getState().running).toBe(true);
   });
 

@@ -82,7 +82,6 @@ beforeEach(() => {
   vi.spyOn(api, 'listSshHosts').mockResolvedValue([server]);
   vi.spyOn(api, 'sshCredentials').mockResolvedValue(credentials);
   vi.spyOn(api, 'listSessions').mockResolvedValue([]);
-  vi.spyOn(api, 'sessionChanges').mockResolvedValue({ revision: 0, watching: true });
   vi.spyOn(pluginApi, 'list').mockResolvedValue({
     revision: 'fixture',
     plugins: [
