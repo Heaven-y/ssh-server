@@ -3,7 +3,6 @@ import type {
   AgentKind,
   AgentCapabilities,
   SessionSummary,
-  SessionChangesSnapshot,
   SessionHistory,
   SessionRecord,
   SessionActionInput,
@@ -359,8 +358,6 @@ export const api = {
         signal,
       },
     ),
-  sessionChanges: (signal?: AbortSignal) =>
-    request<SessionChangesSnapshot>('/api/session-changes', { signal, cache: 'no-store' }),
   orphanSessions: (agent: AgentKind, signal?: AbortSignal) =>
     request<SessionSummary[]>(`/api/sessions?agent=${agent}`, { signal, cache: 'no-store' }),
   /** 原生管理请求不因面板关闭而取消；结果以运行时响应和重新读取为准。 */

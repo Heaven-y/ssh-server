@@ -106,7 +106,7 @@ zustand 持有当前项目、CLI、会话和回合状态，TanStack Query 管项
 
 partysocket 退避从 1 秒到 15 秒，关闭发送缓冲，防止断开时积压消息在重连后发送。历史与事件只在前端/进程内暂存，服务器没有正文数据库。
 
-会话自动更新只观察固定的 CLI 存储根：每个来源一个主监听和一个父目录哨兵，不扫描正文。文件事件按 1 秒有界合并为 revision；缺失监听每 30 秒重试，并跟随父目录重建。页面可见时每 5 秒读取版本，有变化才失效会话列表；手动刷新也只更新列表，不重读主区正文或能力目录。
+原生存储是会话的唯一事实来源。列表在首次挂载时读取；新会话返回 id、回合结束、重命名、分支、归档、恢复或删除后，取消同 CLI 的在途摘要请求并使相关列表失效，避免首次加载中的旧结果覆盖新状态。项目变更仍重新计算全部摘要归属。没有目录监听、revision 轮询或会话刷新接口；重新打开应用会读取 CLI 已保存的记录，工作台不维护第二份正文。
 
 ## 5. 存储与配置
 
@@ -155,7 +155,6 @@ API 和 WebSocket 继续校验会话及来源；主应用禁止被 iframe 嵌入
 | 会话 | `/api/projects/:id/sessions` 与 `/:agent/:sessionId`，原生读取；`/api/sessions?agent=...` 发现无归属摘要 |
 | 原生管理 | `/api/projects/:id/sessions/:agent/:sessionId/actions`、`/fork`，来源及项目均在路径中 |
 | 探测与能力 | `/api/agents/probes`；项目下 `agent-capabilities` 缓存与显式刷新 |
-| 会话变化 | `/api/session-changes`，只返回目录 revision 与监听状态 |
 | 设置 | `/api/settings/product`、`/environment`、`/launch-environment/:agent`，原生文件由 `/api/native-resources/:agent` 提供 |
 | 插件 | `/api/plugins/*`，安装注册、启停、静态页面与权限内的设置存储 |
 | 对话 | `/ws`，发送、停止、审批答复及回合事件 |
@@ -168,6 +167,8 @@ API 和 WebSocket 继续校验会话及来源；主应用禁止被 iframe 嵌入
 安装版与静态预览的 Electron 主进程用端口 0 启动服务后加载实际地址；preload 仅暴露窄系统信息，`nodeIntegration: false`、`contextIsolation: true`。单实例锁让第二次启动聚焦已有窗口，关窗和退出都先释放服务，最长关闭等待 8 秒。后端清理终端、资源/Slurm、SSH、轮次和 HTTP；进程退出不留下后台业务实例。
 
 桌面开发通过 Vite 加载源码页面，后端使用固定端口接受同源代理。React/CSS 采用热更新，preload 重建触发整页刷新，主进程及后端源码重建触发应用重启；这是开发工作流，不提供在途模型任务无中断迁移。开发监听范围和使用方式见[开发指南](../guides/dev-environment.md#3-启动与隔离验证)。
+
+桌面后端与启动诊断通过专用 Console 输出；stdout/stderr 的异步 EPIPE 单独处理，接收日志的终端退出不再触发主进程错误弹窗。其他流异常继续抛出，业务异常仍由原启动失败与窗口流程报告，不安装全局异常吞错处理器。
 
 ## 7. SSH 基础与兼容模块约束
 

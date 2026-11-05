@@ -89,7 +89,7 @@ async function awaitSummary(id: string, ready: (id: string) => boolean) {
   const deadline = Date.now() + 2000;
   while (!ready(id)) {
     if (Date.now() >= deadline)
-      throw new SessionError(503, 'session_runtime_failed', '原生分支已创建，摘要尚未更新；请刷新会话列表后核对。');
+      throw new SessionError(503, 'session_runtime_failed', '原生分支已创建，摘要尚未就绪；稍后重新读取列表核对。');
     await delay(40);
   }
 }
