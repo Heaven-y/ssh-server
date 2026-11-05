@@ -28,6 +28,7 @@ import { usePluginPages } from '../features/plugins/use-plugin-pages';
 const SettingsDialog = lazy(() => import('../features/settings/SettingsDialog'));
 const CommandPalette = lazy(() => import('./CommandPalette'));
 const PluginManager = lazy(() => import('../features/plugins/PluginManager'));
+const ArchivedSessionsPage = lazy(() => import('../features/sessions/ArchivedSessionsPage'));
 
 function OpenPluginManager({ opened, close }: { opened: boolean; close(): void }) {
   return (
@@ -128,12 +129,29 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const plugins = usePluginPages();
   const activePlugin = plugins.active;
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const showPlugin = (id?: string) => {
+    if (!allowConversationNavigation()) return;
+    setArchiveOpen(false);
+    plugins.show(id);
+  };
+  const showArchive = () => {
+    if (!allowConversationNavigation()) return;
+    plugins.show(undefined);
+    setArchiveOpen(true);
+  };
+  const closeArchive = () => {
+    setArchiveOpen(false);
+    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('button[aria-label="更多"]')?.focus());
+  };
   const [serversOpen, setServersOpen] = useState(false);
   const [addingProject, setAddingProject] = useState<ProjectDraft>();
   const [managingProject, setManagingProject] = useState<{ project: Workspace; action: ProjectManageAction }>();
   // 绑定服务器要拿到具体的项目对象，不能只记一个开关。
   const [bindingProject, setBindingProject] = useState<Workspace | undefined>(undefined);
   const dock = useConversationSidebar();
+  const conversationVisible = !activePlugin && !archiveOpen;
+  const sidebarVisible = dock.open && conversationVisible;
   const projects = useQuery({
     queryKey: queryKeys.workspaces,
     queryFn: ({ signal }) => api.listWorkspaces(signal),
@@ -151,12 +169,14 @@ export function App() {
   const others = useOtherSessions(showOtherSessions);
   const openSession = (targetProject: string, session: SessionSummary) => {
     if (!allowConversationNavigation()) return;
+    setArchiveOpen(false);
     plugins.show(undefined);
     if (useChat.getState().workspaceId !== targetProject) useChat.getState().selectWorkspace(targetProject);
     void useChat.getState().openSession(session);
   };
   const startSession = (targetProject: string, agent: AgentKind) => {
     if (!allowConversationNavigation()) return;
+    setArchiveOpen(false);
     plugins.show(undefined);
     const chat = useChat.getState();
     if (chat.workspaceId !== targetProject) chat.selectWorkspace(targetProject);
@@ -181,9 +201,17 @@ export function App() {
         workspaces={projects.data}
         close={palette.close}
         actions={{
-          plugins: plugins.commands,
+          plugins: plugins.commands.map((command) => ({
+            ...command,
+            run: () => {
+              if (!command.run()) return false;
+              setArchiveOpen(false);
+              return true;
+            },
+          })),
           conversation: () => {
             if (!allowConversationNavigation()) return false;
+            setArchiveOpen(false);
             plugins.show(undefined);
             return true;
           },
@@ -195,11 +223,11 @@ export function App() {
       />
       <OpenSettings opened={settingsOpen} project={current} close={() => setSettingsOpen(false)} />
       <WorkspaceLayout
-        dockOpen={dock.open && !activePlugin}
+        dockOpen={sidebarVisible}
         dock={
           <ConversationSidebar
             workspace={current}
-            open={dock.open && !activePlugin}
+            open={sidebarVisible}
             close={dock.hide}
             settings={() => setSettingsOpen(true)}
           />
@@ -210,7 +238,7 @@ export function App() {
               <PluginNavigation
                 plugins={plugins.list}
                 selected={plugins.selected}
-                open={plugins.show}
+                open={showPlugin}
                 manage={() => plugins.setManagerOpen(true)}
               />
             }
@@ -229,11 +257,13 @@ export function App() {
             onNewSession={startSession}
             onSelectProject={(id) => {
               if (!allowConversationNavigation()) return;
+              setArchiveOpen(false);
               plugins.show(undefined);
               if (useChat.getState().workspaceId !== id) useChat.getState().selectWorkspace(id);
             }}
             onOpenSettings={() => setSettingsOpen(true)}
             onOpenCommands={palette.open}
+            onOpenArchive={showArchive}
             onSelectSession={openSession}
             onBindServer={(project) => {
               if (allowConversationNavigation()) setBindingProject(project);
@@ -243,9 +273,9 @@ export function App() {
       >
         <div className="h-full min-h-0 min-w-0 w-full flex-1">
           <div
-            hidden={!!activePlugin}
-            inert={!!activePlugin}
-            className={activePlugin ? 'hidden' : 'flex h-full min-h-0 flex-col'}
+            hidden={!conversationVisible}
+            inert={!conversationVisible}
+            className={conversationVisible ? 'flex h-full min-h-0 flex-col' : 'hidden'}
           >
             <TopBar workspace={current} sidebarOpen={dock.open} onToggleSidebar={dock.toggle} />
             <EnvironmentSummary onOpenSettings={() => setSettingsOpen(true)} />
@@ -265,6 +295,17 @@ export function App() {
             bindServer={() => current && setBindingProject(current)}
             command={plugins.command}
           />
+          {archiveOpen && (
+            <Suspense
+              fallback={
+                <p role="status" className="p-4">
+                  正在打开归档会话…
+                </p>
+              }
+            >
+              <ArchivedSessionsPage projects={projects.data ?? []} close={closeArchive} addProject={setAddingProject} />
+            </Suspense>
+          )}
         </div>
       </WorkspaceLayout>
     </div>

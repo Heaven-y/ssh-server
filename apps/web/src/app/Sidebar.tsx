@@ -4,7 +4,6 @@ import type { AgentKind, SessionSummary, Workspace } from '@agentdeck/shared';
 import { AGENT_LABELS } from '../features/chat/AgentControls';
 import { sessionActionKey, useChat } from '../features/chat/chat-store';
 import { ProjectSessionRow as SessionRow } from '../features/sessions/ProjectSessionRow';
-import { ProjectSessionArchive } from '../features/sessions/ProjectSessionArchive';
 import { ProjectSessionDialog, type ProjectSessionSelection } from '../features/sessions/ProjectSessionDialog';
 import type { SessionDialogAction } from '../features/sessions/SessionMenu';
 import { buttonClass } from '../ui/styles';
@@ -35,6 +34,7 @@ export type SidebarProps = {
   onBindServer?(project: Workspace): void;
   onOpenSettings?(): void;
   onOpenCommands?(): void;
+  onOpenArchive?(): void;
   /** 会话仍在读取时不要把加载中误报成空列表。 */
   loadingSessions?: boolean;
   currentProjectId?: string;
@@ -136,7 +136,6 @@ function ProjectItem({
               ))}
             </ul>
           )}
-          <ProjectSessionArchive workspaceId={project.id} projectName={project.name} manage={manageSession} />
         </section>
       )}
     </li>
@@ -246,6 +245,7 @@ export function Sidebar({
   onManageProject,
   onOpenSettings,
   onOpenCommands,
+  onOpenArchive,
   loadingSessions = false,
   currentProjectId,
 }: SidebarProps) {
@@ -294,6 +294,7 @@ export function Sidebar({
           showOtherSessions={showOtherSessions}
           setShowOtherSessions={showOther}
           onOpenCommands={onOpenCommands}
+          onOpenArchive={onOpenArchive}
         />
       </div>
       <SidebarWorkspaces

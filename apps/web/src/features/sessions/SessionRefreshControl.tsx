@@ -49,7 +49,7 @@ export function SessionRefreshControl() {
       <button
         type="button"
         aria-label="刷新会话列表"
-        title={notice ?? '会话目录变化时自动更新，也可以手动刷新'}
+        title="刷新会话列表"
         className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-wait disabled:opacity-45"
         disabled={reading}
         onClick={() => {

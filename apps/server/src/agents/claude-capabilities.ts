@@ -96,12 +96,15 @@ function entriesFrom(commands: SlashCommand[]): Entry[] {
 }
 
 function modelsFrom(models: ModelInfo[]): AgentModel[] {
-  return models.map((model) => ({
-    id: model.value,
-    label: model.displayName,
-    description: model.description,
-    reasoningEfforts: model.supportsEffort === false ? [] : model.supportedEffortLevels,
-  }));
+  // default 是原生配置选择，不作为具体型号发送；自定义别名原样保留给 CLI 解析。
+  return models
+    .filter((model) => model.value !== 'default')
+    .map((model) => ({
+      id: model.value,
+      label: model.displayName,
+      description: model.description,
+      reasoningEfforts: model.supportsEffort === false ? [] : model.supportedEffortLevels,
+    }));
 }
 
 async function readCatalog(q: ClaudeQuery, signal: AbortSignal): Promise<NativeCapabilityCatalog> {

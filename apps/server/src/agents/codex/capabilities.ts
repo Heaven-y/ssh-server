@@ -135,6 +135,11 @@ async function modelsCatalog(client: CodexClient): Promise<AgentModel[]> {
   return [...models.values()];
 }
 
+async function configuredModel(client: CodexClient, dir: string): Promise<string> {
+  const response = await client.request('config/read', { cwd: dir, includeLayers: false });
+  return text(record(response.config).model);
+}
+
 export async function discoverCodexCapabilities(
   dir: string,
   options: CodexRuntimeOptions = {},
@@ -142,7 +147,11 @@ export async function discoverCodexCapabilities(
   const client = await CodexClient.start({ ...options, cwd: dir });
   try {
     await client.initialize();
-    const [skills, models] = await Promise.allSettled([skillsCatalog(client, dir), modelsCatalog(client)]);
+    const [skills, models, configured] = await Promise.allSettled([
+      skillsCatalog(client, dir),
+      modelsCatalog(client),
+      configuredModel(client, dir),
+    ]);
     if (options.signal?.aborted) throw cancelled();
     const catalog: NativeCapabilityCatalog = { entries: commands(), models: [], warnings: [] };
     if (skills.status === 'fulfilled') {
@@ -151,6 +160,12 @@ export async function discoverCodexCapabilities(
     } else catalog.warnings.push('Codex 技能目录读取失败，请检查本机技能配置。');
     if (models.status === 'fulfilled') catalog.models = models.value;
     else catalog.warnings.push('Codex 模型目录读取失败，仍可手动填写模型或使用原生配置。');
+    if (
+      configured.status === 'fulfilled' &&
+      configured.value &&
+      !catalog.models.some((model) => model.id === configured.value)
+    )
+      catalog.models.unshift({ id: configured.value, label: configured.value, description: '当前原生配置中的模型' });
     return catalog;
   } finally {
     await client.close();

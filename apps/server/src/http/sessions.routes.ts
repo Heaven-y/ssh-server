@@ -46,18 +46,22 @@ function watchAbort(reply: FastifyReply) {
 }
 
 export function registerSessionRoutes(app: FastifyInstance, deps: Deps): void {
-  app.get('/api/sessions', routeOptions, async (req, reply) => {
+  async function globalList(req: FastifyRequest, reply: FastifyReply, archived: boolean) {
     const query = Query.safeParse(req.query);
     if (!query.success) return reply.code(400).send({ message: '会话请求格式不正确' });
     const watch = watchAbort(reply);
     try {
-      return await deps.sessions.unassigned(query.data.agent, watch.signal);
+      return archived
+        ? await deps.sessions.archived(query.data.agent, watch.signal)
+        : await deps.sessions.unassigned(query.data.agent, watch.signal);
     } catch (error) {
       return sendFailure(reply, error, '原生会话读取失败');
     } finally {
       watch.dispose();
     }
-  });
+  }
+  app.get('/api/sessions', routeOptions, (req, reply) => globalList(req, reply, false));
+  app.get('/api/sessions/archived', routeOptions, (req, reply) => globalList(req, reply, true));
   async function writeInProject<T>(id: string, operation: (workspace: Workspace) => Promise<T>): Promise<T> {
     // 同步取得租约再读取项目，避免管理事务先换目录、会话写操作后使用旧快照。
     const release = deps.activity?.acquire(id);

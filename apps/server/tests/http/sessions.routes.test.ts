@@ -120,6 +120,8 @@ describe('会话接口', () => {
   it.each([
     { method: 'GET' as const, url: '/api/sessions?agent=claude&extra=true' },
     { method: 'GET' as const, url: '/api/sessions?agent=claude&archived=true' },
+    { method: 'GET' as const, url: '/api/sessions/archived' },
+    { method: 'GET' as const, url: '/api/sessions/archived?agent=codex&projectId=w1' },
     { method: 'GET' as const, url: '/api/projects/w1/sessions' },
     { method: 'GET' as const, url: '/api/projects/w1/sessions/gemini/s1' },
     {
@@ -343,7 +345,7 @@ describe('会话接口', () => {
     expect((await app.inject('/api/projects/w1/sessions?agent=unknown')).statusCode).toBe(400);
   });
 
-  it.each(['list', 'read'] as const)('读取 %s 时 HTTP 断开会取消原生读取', async (operation) => {
+  it.each(['list', 'read', 'archived'] as const)('读取 %s 时 HTTP 断开会取消原生读取', async (operation) => {
     const { app, codex } = setup();
     let nativeSignal: AbortSignal | undefined;
     const waitUntilAbort = (signal?: AbortSignal) => {
@@ -352,10 +354,16 @@ describe('会话接口', () => {
         signal?.addEventListener('abort', () => reject(new Error('fixture-cancelled')), { once: true });
       });
     };
-    if (operation === 'list') vi.mocked(codex.list).mockImplementationOnce((_dir, signal) => waitUntilAbort(signal));
-    else vi.mocked(codex.read).mockImplementationOnce((_id, _dir, signal) => waitUntilAbort(signal));
+    if (operation === 'read')
+      vi.mocked(codex.read).mockImplementationOnce((_id, _dir, signal) => waitUntilAbort(signal));
+    else vi.mocked(codex.list).mockImplementationOnce((_dir, signal) => waitUntilAbort(signal));
     const origin = await app.listen({ host: '127.0.0.1', port: 0 });
-    const url = operation === 'list' ? '/api/projects/w1/sessions?agent=codex' : '/api/projects/w1/sessions/codex/s1';
+    const urls = {
+      list: '/api/projects/w1/sessions?agent=codex',
+      read: '/api/projects/w1/sessions/codex/s1',
+      archived: '/api/sessions/archived?agent=codex',
+    };
+    const url = urls[operation];
     const client = request(`${origin}${url}`);
     client.on('error', () => undefined);
     client.end();
@@ -462,5 +470,41 @@ describe('会话接口', () => {
     expect(after.json().map((row: { sessionId: string }) => row.sessionId)).toEqual(['s2']);
     expect(api.messages).not.toHaveBeenCalled();
     expect((await app.inject('/api/sessions/claude/s1')).statusCode).toBe(404);
+  });
+
+  it('全局归档包含不同项目及未归属摘要，零项目仍可读取且不获取正文', async () => {
+    const projects = [ws, other];
+    const { app, codex } = setup(projects);
+    const outside = path.join(os.tmpdir(), 'agentdeck-fixture', 'unassigned');
+    vi.mocked(codex.list).mockResolvedValue([
+      { sessionId: 'first-archived', summary: '项目一归档', lastModified: 100, cwd: ws.dir },
+      { sessionId: 'second-archived', summary: '项目二归档', lastModified: 200, cwd: other.dir },
+      { sessionId: 'orphan-archived', summary: '未登记归档', lastModified: 300, cwd: outside },
+    ]);
+    const archived = await app.inject('/api/sessions/archived?agent=codex');
+    expect(archived.statusCode).toBe(200);
+    expect(archived.headers['cache-control']).toBe('no-store');
+    expect(archived.json()).toMatchObject([
+      { sessionId: 'first-archived', projectId: ws.id, directory: ws.dir, agent: 'codex' },
+      { sessionId: 'second-archived', projectId: other.id, directory: other.dir, agent: 'codex' },
+      { sessionId: 'orphan-archived', projectId: null, directory: outside, agent: 'codex' },
+    ]);
+    expect(codex.list).toHaveBeenCalledWith(os.homedir(), expect.any(AbortSignal), true);
+    projects.splice(0);
+    const unassigned = await app.inject('/api/sessions/archived?agent=codex');
+    expect(unassigned.json()).toHaveLength(3);
+    expect(unassigned.json().every((row: { projectId: string | null }) => row.projectId === null)).toBe(true);
+    expect(codex.read).not.toHaveBeenCalled();
+    expect(codex.mutate).not.toHaveBeenCalled();
+  });
+
+  it.each(['claude', 'antigravity'])('全局归档不为 %s 伪造能力或触发普通会话枚举', async (agent) => {
+    const { app, api, codex } = setup();
+    const response = await app.inject(`/api/sessions/archived?agent=${agent}`);
+    expect(response.statusCode).toBe(400);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.json()).toMatchObject({ code: 'unsupported_action' });
+    expect(api.list).not.toHaveBeenCalled();
+    expect(codex.list).not.toHaveBeenCalled();
   });
 });

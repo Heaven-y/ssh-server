@@ -100,7 +100,7 @@ async function menuChoose(menu: string, name: string | RegExp) {
   fireEvent.click(await screen.findByRole('menuitemradio', { name }));
 }
 
-it('打开模型菜单、技能和斜杠只读缓存，点击刷新才发现能力', async () => {
+it('模型已有缓存时直接显示；技能和斜杠只读缓存，点击刷新重新发现能力', async () => {
   const refresh = vi.spyOn(api, 'refreshAgentCapabilities').mockResolvedValue({
     ...catalog,
     agent: 'claude',
@@ -128,6 +128,54 @@ it('打开模型菜单、技能和斜杠只读缓存，点击刷新才发现能�
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
   expect(await screen.findByRole('menuitemradio', { name: /新报告的模型/ })).toBeTruthy();
   expect(refresh).toHaveBeenCalledTimes(1);
+});
+
+it('首次打开模型菜单自动发现一次，复用缓存且不会发送对话', async () => {
+  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'), {
+    agent: 'claude',
+    discovered: false,
+    entries: [],
+    models: [],
+    warnings: ['打开模型菜单或点击刷新即可读取 CLI 能力。'],
+  });
+  const refresh = vi.spyOn(api, 'refreshAgentCapabilities').mockResolvedValue({
+    ...catalog,
+    agent: 'claude',
+    discovered: true,
+    models: [{ id: 'opus', label: '自定义模型', description: 'Custom Opus model' }],
+  });
+  showComposer();
+  expect(refresh).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
+  await screen.findByRole('menuitemradio', { name: /自定义模型/ });
+  expect(refresh).toHaveBeenCalledExactlyOnceWith(workspace.id, 'claude', undefined);
+  expect(screen.queryByText(/未报告可选模型/)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
+  await screen.findByRole('menuitemradio', { name: /自定义模型/ });
+  expect(refresh).toHaveBeenCalledTimes(1);
+  expect(sent).toHaveLength(0);
+});
+
+it('自动发现失败显示可重试状态，重开菜单不循环检查账号', async () => {
+  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'), {
+    agent: 'claude',
+    discovered: false,
+    entries: [],
+    models: [],
+    warnings: [],
+  });
+  const refresh = vi.spyOn(api, 'refreshAgentCapabilities').mockRejectedValue(new Error('读取失败'));
+  showComposer();
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
+  await screen.findByRole('alert');
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
+  expect(refresh).toHaveBeenCalledTimes(1);
+  refresh.mockResolvedValue({ ...catalog, agent: 'claude', discovered: true });
+  fireEvent.click(await screen.findByRole('menuitem', { name: '刷新模型列表' }));
+  await screen.findByRole('menuitemradio', { name: /候选模型/ });
+  expect(refresh).toHaveBeenCalledTimes(2);
 });
 
 it('Antigravity历史不可回放仍可续聊，保留权限说明且不伪造审批', async () => {
@@ -457,7 +505,7 @@ it('原生目录读取和空结果均有状态，不伪造默认模型候选', a
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
   await screen.findByText('正在加载模型…');
   await act(async () => resolve({ agent: 'claude', entries: [], models: [], warnings: [] }));
-  expect(await screen.findByText('原生目录未报告可选模型。')).toBeTruthy();
+  expect(await screen.findByText('CLI 未提供可选模型，可沿用原生配置或手动填写。')).toBeTruthy();
   expect(screen.getByRole('button', { name: '模型选项' }).textContent).toContain('默认模型');
   expect(screen.queryByRole('menuitemradio', { name: /默认模型/ })).toBeNull();
   expect(useChat.getState().modelOverrides.claude).toBe('');
