@@ -24,6 +24,7 @@ import type { ProjectDraft, ProjectManageAction } from './project-management';
 import { PluginNavigation } from '../features/plugins/PluginNavigation';
 import { PluginWorkspace } from '../features/plugins/PluginWorkspace';
 import { usePluginPages } from '../features/plugins/use-plugin-pages';
+import { DesktopTitleBar } from './DesktopTitleBar';
 
 const SettingsDialog = lazy(() => import('../features/settings/SettingsDialog'));
 const CommandPalette = lazy(() => import('./CommandPalette'));
@@ -185,6 +186,7 @@ export function App() {
 
   return (
     <div className="flex h-full min-w-[800px] flex-col">
+      <DesktopTitleBar />
       {serversOpen && <ServerManagerDialog onClose={() => setServersOpen(false)} />}
       <OpenPluginManager opened={plugins.managerOpen} close={() => plugins.setManagerOpen(false)} />
       <ProjectDialogs

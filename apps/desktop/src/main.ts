@@ -2,13 +2,14 @@
 // 业务代码全在后端，这里只负责启动方式与窗口生命周期。
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
 import { loadConfig } from '../../server/src/config';
 import { startServer, type StartedServer } from '../../server/src/server';
 import { acquireSingleInstance, createShutdown, resolveWindowUrl } from './lifecycle';
 import { desktopPaths, externalWebLink, navigationAllowed, rendererAddress } from './paths';
-import { SELECT_DIRECTORY_CHANNEL } from './bridge';
+import { APP_MENU_CHANNEL, SELECT_DIRECTORY_CHANNEL, TITLE_BAR_THEME_CHANNEL } from './bridge';
 import { createDirectoryPicker } from './directory-picker';
+import { applicationMenuTemplate, createWindowChrome, desktopChromeOptions } from './window-chrome';
 
 /** 安装版页面跟随 resources 分发，开发版沿用工作区构建目录。 */
 const paths = desktopPaths({
@@ -39,6 +40,7 @@ function createMainWindow(url: string): BrowserWindow {
     show: false,
     backgroundColor: '#f5f6f8',
     title: 'AgentDeck',
+    ...desktopChromeOptions(),
     webPreferences: {
       preload: paths.preload,
       // 渲染层不开 Node：业务经 HTTP 通信，桌面能力通过受限的 preload 提供。
@@ -47,12 +49,24 @@ function createMainWindow(url: string): BrowserWindow {
       sandbox: true,
     },
   });
+  const applicationMenu = Menu.buildFromTemplate(applicationMenuTemplate());
+  Menu.setApplicationMenu(applicationMenu);
+  window.setMenuBarVisibility(false);
+  const chrome = createWindowChrome(window, url, (name, position) => {
+    const menu = applicationMenu.getMenuItemById(name)?.submenu;
+    if (!menu) return Promise.reject(new Error('应用菜单不存在。'));
+    return new Promise<void>((resolve) => menu.popup({ window, ...position, callback: resolve }));
+  });
+  ipcMain.handle(APP_MENU_CHANNEL, chrome.showMenu);
+  ipcMain.handle(TITLE_BAR_THEME_CHANNEL, chrome.setTheme);
   const directoryPicker = createDirectoryPicker(window, url, (options) => dialog.showOpenDialog(window, options));
   ipcMain.handle(SELECT_DIRECTORY_CHANNEL, directoryPicker.select);
   window.once('ready-to-show', () => window.show());
   window.on('closed', () => {
     directoryPicker.invalidate();
     ipcMain.removeHandler(SELECT_DIRECTORY_CHANNEL);
+    ipcMain.removeHandler(APP_MENU_CHANNEL);
+    ipcMain.removeHandler(TITLE_BAR_THEME_CHANNEL);
     mainWindow = undefined;
   });
   window.webContents.on('did-start-navigation', (_event, _target, _inPlace, isMainFrame) => {
