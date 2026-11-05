@@ -11,8 +11,8 @@ import type {
   SessionRef,
   ProductSettings,
 } from '@agentdeck/shared';
-import { api, ApiError, queryKeys } from '../../lib/api';
-import { queryClient } from '../../lib/query-client';
+import { api, ApiError } from '../../lib/api';
+import { refreshSessionLists } from '../sessions/session-queries';
 import { connectChat, type ChatSocket, type ConnectionStatus } from '../../lib/ws';
 import { markPermissionPending, reduceChat, type ChatItem } from './chat-reducer';
 import { capabilityRestriction, selectionRestriction } from './capability-selection';
@@ -371,13 +371,7 @@ export const useChat = create<ChatState>()((set, get) => ({
         set({ sessionModels });
       }
       set({ sessionOperations: operations });
-      // 归档改变所有列表投影；先取消旧摘要，避免在途读取把已归档行填回。
-      const affectedLists = {
-        predicate: (query: { queryKey: readonly unknown[] }) =>
-          query.queryKey[0] === 'sessions' && query.queryKey[2] === session.agent,
-      };
-      await queryClient.cancelQueries(affectedLists);
-      void queryClient.invalidateQueries(affectedLists);
+      await refreshSessionLists(session.agent);
       return true;
     } catch (error) {
       set((latest) => ({
@@ -492,9 +486,10 @@ function onAgentEvent(msg: Msg<'agent.event'>): void {
     ...nativeStatus(event),
     ...reportedSession(current, event),
   });
+  if (event.type === 'session' && !current.sessionId) void refreshSessionLists(current.agent);
 }
 function onTurnFinished(msg: Msg<'turn.finished'>): void {
-  void queryClient.invalidateQueries({ queryKey: queryKeys.sessions(msg.workspaceId, msg.agent) });
+  void refreshSessionLists(msg.agent);
   const current = useChat.getState();
   if (msg.turnId !== current.turnId || msg.workspaceId !== current.workspaceId || msg.agent !== current.agent) return;
   useChat.setState({

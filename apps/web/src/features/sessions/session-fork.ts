@@ -1,6 +1,6 @@
 import { NativeSessionIdSchema, type SessionForkInput, type SessionRef } from '@agentdeck/shared';
-import { api, queryKeys } from '../../lib/api';
-import { queryClient } from '../../lib/query-client';
+import { api } from '../../lib/api';
+import { refreshSessionLists } from './session-queries';
 import { managementPending, sessionActionKey, useChat, type SessionOperation } from '../chat/chat-store';
 
 type Current = ReturnType<typeof useChat.getState>;
@@ -60,6 +60,6 @@ export async function forkSession(workspaceId: string, session: SessionRef, inpu
     });
     return false;
   } finally {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.sessions(workspaceId, session.agent) });
+    await refreshSessionLists(session.agent);
   }
 }

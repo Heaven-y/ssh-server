@@ -69,8 +69,6 @@ import { createWorkbenchPlugins } from './plugins/service';
 import { registerPluginRoutes } from './http/plugins.routes';
 import { createSshConsoleService } from './ssh-console/service';
 import { registerSshConsoleRoutes } from './http/ssh-console.routes';
-import { createSessionChanges, type SessionChangesService } from './sessions/changes';
-import { registerSessionChangesRoutes } from './http/session-changes.routes';
 import { createSessionPreferences } from './sessions/preferences';
 import { createModelSettingsService } from './settings/model-settings';
 import { registerModelSettingsRoutes } from './http/model-settings.routes';
@@ -86,8 +84,6 @@ export type StartServerOptions = {
   legacyDir?: string;
   /** Agent 探测执行器；测试注入假执行器，避免启动本机真实 CLI */
   probeRunner?: ProcessRunner;
-  /** 目录变更服务；测试注入隔离来源，避免监听用户的原生会话目录。 */
-  sessionChanges?: SessionChangesService;
   /** 启动日志；默认写控制台 */
   log?: (message: string) => void;
   logError?: (message: string) => void;
@@ -275,16 +271,14 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
     acquireWorkspace,
   });
 
-  const sessionChanges = options.sessionChanges ?? createSessionChanges();
   let app: FastifyInstance | undefined;
   let closing: Promise<void> | undefined;
   const close = (): Promise<void> => {
     closing ??= (async () => {
-      // 每个资源独立释放；一个关闭失败不能阻止其余通道和目录监听清理。
+      // 每个资源独立释放；一个关闭失败不能阻止其余通道清理。
       await Promise.allSettled(
         [
           () => antigravityManagement.dispose(),
-          () => sessionChanges.dispose(),
           () => sshConsole.dispose(),
           () => terminals.dispose(),
           () => resources.dispose(),
@@ -320,7 +314,6 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
         registerSshConsoleRoutes(a, sshConsole);
         registerProbeRoutes(a, { probes });
         registerSessionRoutes(a, { store, sessions, activity });
-        registerSessionChangesRoutes(a, sessionChanges);
         registerCapabilityRoutes(a, { store, capabilities, sessions });
         registerSshRoutes(a, { pool, profiles });
         registerSshTargetRoutes(a, profiles);

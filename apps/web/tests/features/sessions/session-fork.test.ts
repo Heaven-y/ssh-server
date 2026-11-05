@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { SessionRecord } from '@agentdeck/shared';
-import { api, queryKeys } from '../../../src/lib/api';
+import { api } from '../../../src/lib/api';
 import { queryClient } from '../../../src/lib/query-client';
 import { managementPending, sessionActionKey, useChat } from '../../../src/features/chat/chat-store';
 import { forkSession } from '../../../src/features/sessions/session-fork';
@@ -55,7 +55,7 @@ it('指定位置原生分叉仅发一次请求，复用操作锁，成功刷新�
   expect(await pending).toBe(true);
   expect(useChat.getState()).toMatchObject({ sessionId: 'forked', loadingHistory: false });
   expect(useChat.getState().sessionOperations[key]).toBeUndefined();
-  expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.sessions('workspace', 'codex') });
+  expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ predicate: expect.any(Function) });
   expect(source.sessionId).toBe('source');
 });
 
@@ -74,7 +74,7 @@ it('末尾分叉省略pointId；迟到成功只刷新列表，不能切走新的
   expect(await pending).toBe(true);
   expect(useChat.getState()).toMatchObject({ workspaceId: 'workspace', agent: 'claude', sessionId: undefined });
   expect(api.sessionEvents).not.toHaveBeenCalled();
-  expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.sessions('workspace', 'codex') });
+  expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ predicate: expect.any(Function) });
 });
 
 it('源会话运行中不发请求，已存在的管理请求也不能被覆盖', async () => {

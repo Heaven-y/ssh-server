@@ -1,6 +1,6 @@
-import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { useQueries } from '@tanstack/react-query';
 import { useLayoutEffect, useRef, useState } from 'react';
-import { Archive, ArrowLeft, RefreshCw } from 'lucide-react';
+import { Archive, ArrowLeft } from 'lucide-react';
 import { nativeSessionCapabilities, type SessionSummary, type Workspace } from '@agentdeck/shared';
 import { api, queryKeys } from '../../lib/api';
 import { buttonClass, inputClass } from '../../ui/styles';
@@ -82,7 +82,6 @@ function ArchivedRow({
 
 /** 一处查看原生与工作台归档，写操作仍复用来源项目身份校验。 */
 export default function ArchivedSessionsPage({ projects, close, addProject }: Props) {
-  const client = useQueryClient();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Selection>();
   const back = useRef<HTMLButtonElement>(null);
@@ -98,7 +97,7 @@ export default function ArchivedSessionsPage({ projects, close, addProject }: Pr
   });
   const rows = queries.flatMap((query) => query.data ?? []);
   const pending = queries.some((query) => query.isPending);
-  const errors = queries.filter((query) => query.isError).map((query) => query.error.message);
+  const failedQueries = queries.filter((query) => query.isError);
   const projectsById = new Map(projects.map((project) => [project.id, project]));
   const phrase = search.trim().toLocaleLowerCase();
   const sessions = rows
@@ -128,28 +127,28 @@ export default function ArchivedSessionsPage({ projects, close, addProject }: Pr
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
-          <button
-            type="button"
-            aria-label="刷新归档会话"
-            title="刷新归档会话"
-            disabled={queries.some((query) => query.isFetching)}
-            className={buttonClass('ghost')}
-            onClick={() => queries.forEach((query) => void query.refetch())}
-          >
-            <RefreshCw aria-hidden className="size-4" />
-          </button>
         </div>
         {pending && (
           <p role="status" className="text-sm text-muted-foreground">
             正在读取归档会话…
           </p>
         )}
-        {errors.map((error, index) => (
+        {failedQueries.map((query, index) => (
           <p key={index} role="alert" className="text-sm text-destructive-foreground">
-            {error}
+            {query.error?.message}
           </p>
         ))}
-        {!pending && !errors.length && !sessions.length && (
+        {failedQueries.length > 0 && (
+          <button
+            type="button"
+            disabled={failedQueries.some((query) => query.isFetching)}
+            className={`${buttonClass('ghost')} self-start`}
+            onClick={() => failedQueries.forEach((query) => void query.refetch())}
+          >
+            重试
+          </button>
+        )}
+        {!pending && !failedQueries.length && !sessions.length && (
           <p className="py-12 text-center text-sm text-muted-foreground">
             {phrase ? '没有匹配的归档会话' : '暂无已归档会话'}
           </p>
@@ -176,7 +175,6 @@ export default function ArchivedSessionsPage({ projects, close, addProject }: Pr
           onClose={() => setSelected(undefined)}
           onCompleted={() => {
             setSelected(undefined);
-            void client.invalidateQueries({ queryKey: ['sessions'] });
             requestAnimationFrame(() => back.current?.focus());
           }}
         />
