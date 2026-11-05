@@ -27,7 +27,7 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((a) => a.close()));
 });
 
-function setup() {
+function setup(projects = [ws, other]) {
   const api: ClaudeSessionsApi = {
     list: vi.fn(async () => [{ sessionId: 's1', summary: '调参', lastModified: 100, fileSize: 9 }]),
     info: vi.fn(async () => ({ sessionId: 's1', summary: '调参', lastModified: 100, cwd: ws.dir })),
@@ -109,7 +109,7 @@ function setup() {
         await withIdleSession(session);
         return operation();
       },
-      projects: async () => [ws, other],
+      projects: async () => projects,
     },
   );
   registerSessionRoutes(app, { store, sessions });
@@ -118,6 +118,8 @@ function setup() {
 
 describe('会话接口', () => {
   it.each([
+    { method: 'GET' as const, url: '/api/sessions?agent=claude&extra=true' },
+    { method: 'GET' as const, url: '/api/sessions?agent=claude&archived=true' },
     { method: 'GET' as const, url: '/api/projects/w1/sessions' },
     { method: 'GET' as const, url: '/api/projects/w1/sessions/gemini/s1' },
     {
@@ -198,7 +200,7 @@ describe('会话接口', () => {
     });
     expect(response.statusCode).toBe(404);
     expect(response.headers['cache-control']).toBe('no-store');
-    expect(api.info).toHaveBeenCalledWith('s1', other.dir);
+    expect(api.info).toHaveBeenCalledWith('s1');
     expect(api.delete).not.toHaveBeenCalled();
   });
 
@@ -222,7 +224,7 @@ describe('会话接口', () => {
   it('归档查询只发给Codex，Claude归档操作被拒绝', async () => {
     const { app, codex } = setup();
     expect((await app.inject('/api/projects/w1/sessions?agent=codex&archived=true')).statusCode).toBe(200);
-    expect(codex.list).toHaveBeenCalledWith(ws.dir, expect.any(AbortSignal), true);
+    expect(codex.list).toHaveBeenCalledWith(os.homedir(), expect.any(AbortSignal), true);
     expect((await app.inject('/api/projects/w1/sessions?agent=claude&archived=true')).statusCode).toBe(400);
     expect(
       (
@@ -250,7 +252,7 @@ describe('会话接口', () => {
         running: false,
       },
     ]);
-    expect(api.list).toHaveBeenCalledWith(ws.dir);
+    expect(api.list).toHaveBeenCalledWith(os.homedir());
   });
 
   it('Antigravity 按 workspace_uris 归属，未归属的行放行给「其他目录」', async () => {
@@ -370,7 +372,7 @@ describe('会话接口', () => {
     const { app, api, sessions } = setup();
     vi.mocked(api.list).mockResolvedValueOnce([
       { sessionId: 's1', summary: '本项目', lastModified: 100, cwd: ws.dir },
-      { sessionId: 'foreign', summary: '其他项目', lastModified: 200, cwd: path.join(ws.dir, 'other') },
+      { sessionId: 'foreign', summary: '其他项目', lastModified: 200, cwd: other.dir },
     ]);
     expect((await app.inject('/api/projects/w1/sessions?agent=claude')).json()).toEqual([
       {
@@ -433,7 +435,7 @@ describe('会话接口', () => {
       sessionId: 's1',
       summary: '另一个目录',
       lastModified: 100,
-      cwd: path.join(ws.dir, 'other'),
+      cwd: other.dir,
     });
     expect((await app.inject('/api/projects/w1/sessions/claude/s1')).statusCode).toBe(404);
     vi.mocked(codex.list).mockRejectedValueOnce(new Error('secret-sentinel'));
@@ -442,5 +444,23 @@ describe('会话接口', () => {
     expect(failed.body).not.toContain('secret-sentinel');
     expect(failed.headers['cache-control']).toBe('no-store');
     expect((await app.inject('/api/projects/w1/sessions?agent=claude')).statusCode).toBe(200);
+  });
+
+  it('没有项目也可枚举其他目录的元数据，登记项目后不再列为未归属', async () => {
+    const projects: Workspace[] = [];
+    const { app, api } = setup(projects);
+    vi.mocked(api.list).mockResolvedValue([
+      { sessionId: 's1', summary: '项目会话', lastModified: 100, cwd: ws.dir },
+      { sessionId: 's2', summary: '另一个目录', lastModified: 200, cwd: other.dir },
+    ]);
+    const unassigned = await app.inject('/api/sessions?agent=claude');
+    expect(unassigned.statusCode).toBe(200);
+    expect(unassigned.headers['cache-control']).toBe('no-store');
+    expect(unassigned.json().map((row: { sessionId: string }) => row.sessionId)).toEqual(['s1', 's2']);
+    projects.push(ws);
+    const after = await app.inject('/api/sessions?agent=claude');
+    expect(after.json().map((row: { sessionId: string }) => row.sessionId)).toEqual(['s2']);
+    expect(api.messages).not.toHaveBeenCalled();
+    expect((await app.inject('/api/sessions/claude/s1')).statusCode).toBe(404);
   });
 });

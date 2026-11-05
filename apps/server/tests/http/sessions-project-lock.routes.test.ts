@@ -40,7 +40,7 @@ async function fixture() {
     await finish.promise;
     return { cwd: first, session: { sessionId: 'forked', summary: '', lastModified: 1 } };
   });
-  const provider = { mutate, fork } as unknown as SessionProvider;
+  const provider = { mutate, fork, assertBelongs: async () => first } as unknown as SessionProvider;
   const sessions = createSessionsService(
     { claude: provider },
     { withIdleSession: (_session, operation) => operation() },

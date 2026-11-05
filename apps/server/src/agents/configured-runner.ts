@@ -30,7 +30,8 @@ export function createConfiguredRunner(deps: Deps): TurnRunner & { restart(): Pr
     if (existing) return existing;
     if (entries.size >= 32) throw new Error();
     const env = await deps.environment();
-    if (cancelled() || disposed) throw new Error();
+    // 环境解析期间其他会话可能先占满实例；分配前须再次核对上限。
+    if (cancelled() || disposed || entries.size >= 32) throw new Error();
     const entry = { key, native: deps.create(env) };
     entries.set(key, entry);
     return entry;

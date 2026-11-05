@@ -118,7 +118,7 @@ it('打开模型菜单、技能和斜杠只读缓存，点击刷新才发现能�
   expect(refresh).not.toHaveBeenCalled();
   expect(within(dialog).getByText(/刷新能力会启动 CLI 检查账号/)).toBeTruthy();
   fireEvent.click(within(dialog).getByRole('button', { name: '刷新能力' }));
-  await waitFor(() => expect(refresh).toHaveBeenCalledExactlyOnceWith(workspace.id, 'claude'));
+  await waitFor(() => expect(refresh).toHaveBeenCalledExactlyOnceWith(workspace.id, 'claude', undefined));
   await waitFor(() =>
     expect(
       client.getQueryData<AgentCapabilities>(queryKeys.agentCapabilities(workspace.id, 'claude'))?.models[0]?.id,
@@ -419,6 +419,7 @@ it.each([
     events: [],
   });
   await useChat.getState().openSession({ agent: 'claude', sessionId: 'history' });
+  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude', 'history'), { ...catalog, agent: 'claude' });
   showComposer();
   const trigger = screen.getByRole('button', { name: '模型选项' });
   expect(trigger.textContent).toContain(label);

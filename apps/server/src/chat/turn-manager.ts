@@ -2,14 +2,16 @@
 import { randomUUID } from 'node:crypto';
 import type { AgentEvent, AgentKind, ClientMessage, ServerMessage, SessionRef, Workspace } from '@agentdeck/shared';
 import type { AgentTurnInput, PermissionAnswer, TurnHandle, TurnRunner } from '../agents/types';
-import { SessionError, type SessionsService } from './sessions';
+import { SessionError } from './sessions';
 import type { CapabilitiesService } from './capabilities';
 
 export type Socket = { send(msg: ServerMessage): void; isOpen(): boolean };
 export type TurnManagerDeps = {
   getWorkspace(id: string): Promise<Workspace | undefined>;
   runners: Partial<Record<AgentKind, TurnRunner>>;
-  sessions: Pick<SessionsService, 'assertBelongs'>;
+  sessions: {
+    assertBelongs(ws: Workspace, agent: AgentKind, id: string, signal?: AbortSignal): Promise<Workspace | void>;
+  };
   capabilities?: Pick<CapabilitiesService, 'prepare'>;
   acquireWorkspace?: (id: string) => () => void;
 };
@@ -258,10 +260,11 @@ export class TurnManager {
 
   private async prepare(turn: Turn, msg: Send): Promise<void> {
     const { signal } = turn.controller;
-    const ws = await preparing(this.deps.getWorkspace(msg.workspaceId), signal);
+    let ws = await preparing(this.deps.getWorkspace(msg.workspaceId), signal);
     if (!ws) throw new SessionError(404, 'workspace_missing', '工作区不存在');
+    if (msg.sessionId)
+      ws = (await preparing(this.deps.sessions.assertBelongs(ws, turn.agent, msg.sessionId, signal), signal)) ?? ws;
     turn.workspace = ws;
-    if (msg.sessionId) await preparing(this.deps.sessions.assertBelongs(ws, turn.agent, msg.sessionId, signal), signal);
     if (msg.selection && !this.deps.capabilities)
       throw new SessionError(503, 'capabilities_unavailable', '当前原生能力不可用');
     const prepared = this.deps.capabilities

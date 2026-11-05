@@ -4,8 +4,13 @@ import type { NativeResourcesService } from '../settings/native-resources';
 import { NativeResourceError, resourceError } from '../settings/native-resources-errors';
 import { MAX_CONFIG_BYTES } from '../settings/safe-file';
 import type { WorkspaceStore } from '../workspaces/store';
+import { WorkspaceBusyError, type WorkspaceActivity } from '../workspaces/activity';
 
-export type NativeResourceRoutesDeps = { service: NativeResourcesService; store: Pick<WorkspaceStore, 'get'> };
+export type NativeResourceRoutesDeps = {
+  service: NativeResourcesService;
+  store: Pick<WorkspaceStore, 'get'>;
+  activity?: WorkspaceActivity;
+};
 const Id = z.string().regex(/^[a-f0-9]{64}$/);
 const Params = z.object({ agent: z.enum(['claude', 'codex', 'antigravity']), resourceId: Id.optional() }).strict();
 const Query = z.object({ projectId: z.string().min(1).max(128).optional() }).strict();
@@ -27,8 +32,22 @@ async function respond(reply: FastifyReply, operation: () => Promise<unknown>) {
   try {
     return await operation();
   } catch (error) {
+    if (error instanceof WorkspaceBusyError)
+      return reply.code(409).send({ code: 'project_busy', message: error.message });
     const failure = resourceError(error);
     return reply.code(failure.status).send({ code: failure.code, message: failure.message });
+  }
+}
+
+async function writeInProject<T>(req: FastifyRequest, deps: NativeResourceRoutesDeps, operation: () => Promise<T>) {
+  const query = Query.safeParse(req.query);
+  if (!query.success) throw new NativeResourceError('invalid_request');
+  // 写入开始前占用项目，覆盖读取目录快照和整个文件事务；客户端断开不代表原生写入回滚。
+  const release = query.data.projectId ? deps.activity?.acquire(query.data.projectId) : undefined;
+  try {
+    return await operation();
+  } finally {
+    release?.();
   }
 }
 
@@ -59,21 +78,25 @@ export function registerNativeResourceRoutes(app: FastifyInstance, deps: NativeR
     }),
   );
   app.put('/api/native-resources/:agent/:resourceId', options, (req, reply) =>
-    respond(reply, async () => {
-      const { agent, resourceId, project } = await requestContext(req, deps);
-      const input = SaveBody.safeParse(req.body);
-      if (!input.success || !resourceId) throw new NativeResourceError('invalid_request');
-      return deps.service.save(agent, resourceId, input.data, project);
-    }),
+    respond(reply, () =>
+      writeInProject(req, deps, async () => {
+        const { agent, resourceId, project } = await requestContext(req, deps);
+        const input = SaveBody.safeParse(req.body);
+        if (!input.success || !resourceId) throw new NativeResourceError('invalid_request');
+        return deps.service.save(agent, resourceId, input.data, project);
+      }),
+    ),
   );
   app.post('/api/native-resources/:agent', options, (req, reply) =>
-    respond(reply, async () => {
-      const { agent, project } = await requestContext(req, deps);
-      const input = CreateBody.safeParse(req.body);
-      if (!input.success) throw new NativeResourceError('invalid_request');
-      const saved = await deps.service.create(agent, input.data, project);
-      reply.code(201);
-      return saved;
-    }),
+    respond(reply, () =>
+      writeInProject(req, deps, async () => {
+        const { agent, project } = await requestContext(req, deps);
+        const input = CreateBody.safeParse(req.body);
+        if (!input.success) throw new NativeResourceError('invalid_request');
+        const saved = await deps.service.create(agent, input.data, project);
+        reply.code(201);
+        return saved;
+      }),
+    ),
   );
 }

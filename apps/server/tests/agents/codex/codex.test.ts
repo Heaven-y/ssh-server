@@ -1,15 +1,28 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { watch, type FSWatcher } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentEvent, Workspace } from '@agentdeck/shared';
-import type { PermissionAnswer } from '../../../src/agents/types';
-import { runCodexTurn, listCodexSessions, readCodexSession, assertCodexSession } from '../../../src/agents/codex';
+import type { PermissionAnswer, TurnHandle } from '../../../src/agents/types';
+import {
+  runCodexTurn as nativeRunCodexTurn,
+  listCodexSessions,
+  readCodexSession,
+  assertCodexSession,
+} from '../../../src/agents/codex';
 import { CodexClient } from '../../../src/agents/codex/client';
 import { CodexEventMapper } from '../../../src/agents/codex/mapper';
 
 const dirs: string[] = [];
+const watchers: FSWatcher[] = [];
+const turns: TurnHandle[] = [];
+function runCodexTurn(...args: Parameters<typeof nativeRunCodexTurn>) {
+  const handle = nativeRunCodexTurn(...args);
+  turns.push(handle);
+  return handle;
+}
 type LoggedMessage = {
   id?: string | number;
   method?: string;
@@ -21,6 +34,17 @@ const command = {
   args: ['--import', import.meta.resolve('tsx'), fileURLToPath(new URL('./fake-app-server.ts', import.meta.url))],
 };
 afterEach(async () => {
+  for (const watcher of watchers.splice(0)) watcher.close();
+  // 即使准备阶段的断言失败，也先停止本用例的进程，再清理其工作目录。
+  await Promise.allSettled(
+    turns.splice(0).map(async (handle) => {
+      try {
+        await handle.interrupt();
+      } finally {
+        await handle.done;
+      }
+    }),
+  );
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -47,8 +71,21 @@ async function setup(mode = 'normal') {
       return [];
     }
   };
-  const waitForMethod = async (method: string) =>
-    vi.waitFor(async () => expect((await messages()).some((value) => value.method === method)).toBe(true));
+  const waitForMethod = (method: string) =>
+    new Promise<void>((resolve, reject) => {
+      const inspect = async () => {
+        if (!(await messages()).some((value) => value.method === method)) return;
+        watcher.close();
+        resolve();
+      };
+      const watcher = watch(dir, () => {
+        void inspect().catch(reject);
+      });
+      watchers.push(watcher);
+      watcher.once('error', reject);
+      // 日志只在假进程真正收到 RPC 后写入；不把父进程函数入队当作请求已送达。
+      void inspect().catch(reject);
+    });
   return { dir, workspace, options, messages, waitForMethod };
 }
 
@@ -230,6 +267,10 @@ describe('Codex app-server 核心边界', () => {
     const { workspace, options, messages } = await setup('approval-command');
     const events: AgentEvent[] = [];
     let answer!: (value: PermissionAnswer) => void;
+    let requested!: () => void;
+    const awaitingAnswer = new Promise<void>((resolve) => {
+      requested = resolve;
+    });
     const handle = runCodexTurn(
       {
         workspace,
@@ -238,19 +279,31 @@ describe('Codex app-server 核心边界', () => {
         requestPermission: () =>
           new Promise((resolve) => {
             answer = resolve;
+            requested();
           }),
       },
       options,
     );
-    await vi.waitFor(() => expect(events.some((event) => event.type === 'permission_request')).toBe(true));
-    await handle.interrupt();
-    await handle.done;
-    answer({ allow: true });
-    await Promise.resolve();
-    expect((await messages()).filter((value) => value.id === 'native-approval-id')).toEqual([
-      { id: 'native-approval-id', result: { decision: 'cancel' } },
-    ]);
-    expect(events.filter((event) => event.type === 'permission_resolved')).toMatchObject([{ decision: 'cancelled' }]);
+    try {
+      await Promise.race([
+        awaitingAnswer,
+        handle.done.then(() => {
+          throw new Error('回合未请求审批就已结束');
+        }),
+      ]);
+      expect(events.some((event) => event.type === 'permission_request')).toBe(true);
+      await handle.interrupt();
+      await handle.done;
+      answer({ allow: true });
+      await Promise.resolve();
+      expect((await messages()).filter((value) => value.id === 'native-approval-id')).toEqual([
+        { id: 'native-approval-id', result: { decision: 'cancel' } },
+      ]);
+      expect(events.filter((event) => event.type === 'permission_resolved')).toMatchObject([{ decision: 'cancelled' }]);
+    } finally {
+      await handle.interrupt();
+      await handle.done;
+    }
   });
 
   it('未知服务器交互返回 JSON-RPC 不支持错误', async () => {
@@ -303,14 +356,16 @@ describe('Codex app-server 核心边界', () => {
 });
 
 describe('原生会话读取', () => {
-  it('遍历全部分页并排除其他目录与内部子代理', async () => {
+  it('遍历全部目录分页并排除内部子代理，由服务统一裁决归属', async () => {
     const { dir, options, messages } = await setup();
     expect((await listCodexSessions(dir, options)).map((value) => value.sessionId)).toEqual([
       'native-thread',
+      'foreign',
       'second',
     ]);
     const records = (await messages()).filter((value) => value.method === 'thread/list');
     expect(records).toHaveLength(2);
+    expect(records.every((entry) => entry.params?.cwd === undefined)).toBe(true);
     expect(records[0]?.params).toMatchObject({
       sourceKinds: ['cli', 'vscode', 'exec', 'appServer'],
       modelProviders: [],

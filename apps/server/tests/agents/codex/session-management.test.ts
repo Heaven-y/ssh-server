@@ -77,15 +77,19 @@ describe('Codex 原生会话管理', () => {
     ).toEqual(['thread/read']);
   });
 
-  it('已归档列表的每一页都携带 archived 参数并保持工作区过滤', async () => {
+  it('已归档列表的每一页都携带 archived 参数，保留全局目录元数据', async () => {
     const { dir, options, messages } = await setup();
     expect((await listCodexSessions(dir, { ...options, archived: true })).map((value) => value.sessionId)).toEqual([
       'native-thread',
+      'foreign',
       'second',
     ]);
     const pages = (await messages()).filter((value) => value.method === 'thread/list');
     expect(pages).toHaveLength(2);
-    for (const page of pages) expect(page.params).toMatchObject({ cwd: dir, archived: true });
+    for (const page of pages) {
+      expect(page.params).toMatchObject({ archived: true });
+      expect(page.params).not.toHaveProperty('cwd');
+    }
   });
 
   it('管理请求已发送后收到 abort，仍等原生结果而不假称回滚', async () => {

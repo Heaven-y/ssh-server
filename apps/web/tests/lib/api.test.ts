@@ -67,6 +67,13 @@ describe('api', () => {
     expect(queryKeys.agentCapabilities('w/1', 'codex')).toEqual(['agent-capabilities', 'w/1', 'codex']);
     expect(queryKeys.agentCapabilities('w/1', 'codex')).not.toEqual(queryKeys.agentCapabilities('w/1', 'claude'));
     expect(queryKeys.agentCapabilities('w/1', 'codex')).not.toEqual(queryKeys.agentCapabilities('w2', 'codex'));
+    await api.agentCapabilities('w/1', 'codex', controller.signal, 'native/id');
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe(
+      '/api/workspaces/w%2F1/agent-capabilities?agent=codex&sessionId=native%2Fid',
+    );
+    expect(queryKeys.agentCapabilities('w/1', 'codex', 'one')).not.toEqual(
+      queryKeys.agentCapabilities('w/1', 'codex', 'two'),
+    );
   });
 
   it('显式刷新能力走POST，普通读取仍是GET', async () => {

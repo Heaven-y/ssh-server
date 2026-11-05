@@ -46,7 +46,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 function setup(capabilities?: TurnManagerDeps['capabilities']) {
   const fake = fakeRunTurn();
   const codex = fakeRunTurn();
-  const sessions = { assertBelongs: vi.fn(async (): Promise<void> => undefined) };
+  const sessions = { assertBelongs: vi.fn(async (): Promise<Workspace | void> => undefined) };
   const turns = new TurnManager({
     getWorkspace: async (id) => (id === 'w1' ? ws : undefined),
     runners: { claude: fake.runTurn, codex: codex.runTurn },
@@ -125,6 +125,24 @@ it('连接关闭时中断所属运行回合，取消准备中的启动且不影�
 });
 
 describe('TurnManager', () => {
+  it('续接子目录会话时能力解析和运行均使用原生 cwd，保留项目身份', async () => {
+    const prepare = vi.fn(async () => ({ text: '继续' }));
+    const { turns, fake, sessions } = setup({ prepare });
+    const native = { ...ws, dir: path.join(ws.dir, 'child') };
+    sessions.assertBelongs.mockResolvedValueOnce(native);
+    await turns.handle(fakeSocket().socket, send({ sessionId: 'native' }));
+    expect(prepare).toHaveBeenCalledWith(
+      native,
+      'claude',
+      expect.objectContaining({ sessionId: 'native' }),
+      expect.any(AbortSignal),
+    );
+    expect(fake.turns[0]?.input.workspace).toEqual(native);
+    fake.turns[0]!.finish();
+    await flush();
+    await turns.dispose();
+  });
+
   it('原生能力解析在启动前完成，纯上下文命令照常交给适配器', async () => {
     const prepare = vi.fn(async () => ({
       text: '',

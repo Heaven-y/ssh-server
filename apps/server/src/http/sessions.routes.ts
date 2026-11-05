@@ -46,6 +46,18 @@ function watchAbort(reply: FastifyReply) {
 }
 
 export function registerSessionRoutes(app: FastifyInstance, deps: Deps): void {
+  app.get('/api/sessions', routeOptions, async (req, reply) => {
+    const query = Query.safeParse(req.query);
+    if (!query.success) return reply.code(400).send({ message: '会话请求格式不正确' });
+    const watch = watchAbort(reply);
+    try {
+      return await deps.sessions.unassigned(query.data.agent, watch.signal);
+    } catch (error) {
+      return sendFailure(reply, error, '原生会话读取失败');
+    } finally {
+      watch.dispose();
+    }
+  });
   async function writeInProject<T>(id: string, operation: (workspace: Workspace) => Promise<T>): Promise<T> {
     // 同步取得租约再读取项目，避免管理事务先换目录、会话写操作后使用旧快照。
     const release = deps.activity?.acquire(id);
@@ -66,12 +78,7 @@ export function registerSessionRoutes(app: FastifyInstance, deps: Deps): void {
     const watch = watchAbort(reply);
     try {
       const sessions = await deps.sessions.list(ws, query.data.agent, watch.signal, query.data.archived === 'true');
-      // Antigravity 的 list() 不按目录过滤，Claude/Codex 的行也可能归给别的项目（例如配置顺序更靠前的
-      // 父目录）；统一按投影出来的 projectId 裁掉不属于本项目的会话，不能把整批原生会话塞进当前项目。
-      //
-      // 但 projectId === null（归属不了任何项目）必须放行：否则前端只能按项目取数，
-      // 这类会话就永远出不了服务端，「显示其他目录的会话」与「加为项目」都拿不到数据。
-      // 未归属的行对每个项目都一样，由前端按 agent + sessionId 去重。
+      // 全局元数据按唯一归属投影；保留未归属行兼容项目列表，零项目入口由 /api/sessions 提供。
       return sessions.filter((session) => session.projectId === ws.id || session.projectId === null);
     } catch (error) {
       return sendFailure(reply, error, '原生会话读取失败');
