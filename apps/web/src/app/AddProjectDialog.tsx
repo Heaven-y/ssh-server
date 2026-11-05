@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { FolderPlus } from 'lucide-react';
 import { api, queryKeys } from '../lib/api';
 import { DetailDialog } from '../ui/DetailDialog';
+import { DirectoryInput } from '../ui/DirectoryInput';
 import { buttonClass, inputClass } from '../ui/styles';
 import { useChat } from '../features/chat/chat-store';
 import {
@@ -14,7 +15,7 @@ import {
 import type { Workspace } from '@agentdeck/shared';
 
 /**
- * 添加项目是一个动作：填绝对路径、校验存在即加入，没有分步向导与同步规则。
+ * 添加项目是一个动作：选择或输入目录、校验存在即加入，没有分步向导与同步规则。
  * 目录是否真实存在由后端判定，失败在原处说明并保留输入。
  */
 export function AddProjectDialog({
@@ -75,14 +76,12 @@ export function AddProjectDialog({
           <label htmlFor={`${ids}-dir`} className="block text-sm font-medium">
             项目目录
           </label>
-          <input
+          <DirectoryInput
             id={`${ids}-dir`}
             value={dir}
-            onChange={(event) => setDir(event.target.value)}
+            onChange={setDir}
             placeholder="E:\web\demo"
-            className={`${inputClass} font-mono text-xs`}
             autoFocus
-            required
             disabled={busy || blocked}
           />
         </div>

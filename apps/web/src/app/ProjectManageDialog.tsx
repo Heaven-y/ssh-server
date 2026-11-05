@@ -4,6 +4,7 @@ import type { Workspace } from '@agentdeck/shared';
 import { api, queryKeys } from '../lib/api';
 import { useChat } from '../features/chat/chat-store';
 import { DetailDialog } from '../ui/DetailDialog';
+import { DirectoryInput } from '../ui/DirectoryInput';
 import { buttonClass, inputClass } from '../ui/styles';
 import {
   clearProjectQueries,
@@ -172,16 +173,20 @@ function ProjectField({
       <label htmlFor={id} className="block text-sm font-medium">
         {directory ? '项目目录' : '项目名称'}
       </label>
-      <input
-        id={id}
-        className={`${inputClass} ${directory ? 'font-mono text-xs' : ''}`}
-        autoFocus
-        required
-        maxLength={directory ? undefined : 100}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => change(event.target.value)}
-      />
+      {directory ? (
+        <DirectoryInput id={id} value={value} onChange={change} disabled={disabled} autoFocus />
+      ) : (
+        <input
+          id={id}
+          className={inputClass}
+          autoFocus
+          required
+          maxLength={100}
+          value={value}
+          disabled={disabled}
+          onChange={(event) => change(event.target.value)}
+        />
+      )}
       <p className="break-all text-xs leading-5 text-muted-foreground">
         {directory
           ? `当前目录：${project.dir}。保存后重新发现会话，并清除当前项目已打开的旧会话及参数。磁盘文件不移动。`

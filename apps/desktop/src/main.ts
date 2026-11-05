@@ -2,11 +2,13 @@
 // 业务代码全在后端，这里只负责启动方式与窗口生命周期。
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { loadConfig } from '../../server/src/config';
 import { startServer, type StartedServer } from '../../server/src/server';
 import { acquireSingleInstance, createShutdown, resolveWindowUrl } from './lifecycle';
 import { desktopPaths, externalWebLink, navigationAllowed, rendererAddress } from './paths';
+import { SELECT_DIRECTORY_CHANNEL } from './bridge';
+import { createDirectoryPicker } from './directory-picker';
 
 /** 安装版页面跟随 resources 分发，开发版沿用工作区构建目录。 */
 const paths = desktopPaths({
@@ -39,15 +41,22 @@ function createMainWindow(url: string): BrowserWindow {
     title: 'AgentDeck',
     webPreferences: {
       preload: paths.preload,
-      // 渲染层不开 Node：页面只经 HTTP 与后端通信。
+      // 渲染层不开 Node：业务经 HTTP 通信，桌面能力通过受限的 preload 提供。
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
     },
   });
+  const directoryPicker = createDirectoryPicker(window, url, (options) => dialog.showOpenDialog(window, options));
+  ipcMain.handle(SELECT_DIRECTORY_CHANNEL, directoryPicker.select);
   window.once('ready-to-show', () => window.show());
   window.on('closed', () => {
+    directoryPicker.invalidate();
+    ipcMain.removeHandler(SELECT_DIRECTORY_CHANNEL);
     mainWindow = undefined;
+  });
+  window.webContents.on('did-start-navigation', (_event, _target, _inPlace, isMainFrame) => {
+    if (isMainFrame) directoryPicker.invalidate();
   });
   // 外链交给系统浏览器；窗口自身只加载本机服务。
   window.webContents.setWindowOpenHandler(({ url: target }) => {
