@@ -22,6 +22,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   client.clear();
+  delete window.agentDeck;
   vi.restoreAllMocks();
 });
 
@@ -56,6 +57,19 @@ it('项目目录必填，名称留空时取目录最后一段并选中新项目'
   await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
   expect(useChat.getState().workspaceId).toBe(created.id);
   expect(client.getQueryState(queryKeys.workspaces)?.isInvalidated).toBe(true);
+});
+
+it('桌面选择文件夹只填入路径，确认添加时才创建项目', async () => {
+  const dir = path.resolve('fixtures', 'selected-project');
+  const selectDirectory = vi.fn().mockResolvedValue(dir);
+  window.agentDeck = { platform: process.platform, selectDirectory };
+  const create = vi.spyOn(api, 'createProject').mockResolvedValue({ id: 'selected', name: 'selected-project', dir });
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: '选择文件夹' }));
+  await waitFor(() => expect(screen.getByLabelText<HTMLInputElement>('项目目录').value).toBe(dir));
+  expect(create).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '添加项目' }));
+  await waitFor(() => expect(create).toHaveBeenCalledWith({ name: 'selected-project', dir }));
 });
 
 it('其他目录添加为项目后立即刷新归属，移除原来的无归属条目', async () => {

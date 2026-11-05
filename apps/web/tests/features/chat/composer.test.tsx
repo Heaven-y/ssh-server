@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { AgentCapabilities, ClientMessage, ServerMessage, Workspace } from '@agentdeck/shared';
 import { ChatView } from '../../../src/features/chat/ChatView';
@@ -8,6 +8,8 @@ import { Composer } from '../../../src/features/chat/Composer';
 import { ManualModelDialog } from '../../../src/features/chat/ManualModelDialog';
 import { startChatConnection, useChat } from '../../../src/features/chat/chat-store';
 import { api, ApiError, queryKeys } from '../../../src/lib/api';
+import { invalidateNativeCapabilities } from '../../../src/features/settings/model-settings-api';
+import { useAgentCapabilities } from '../../../src/features/chat/use-agent-capabilities';
 
 const workspace: Workspace = {
   id: 'workspace',
@@ -176,6 +178,60 @@ it('自动发现失败显示可重试状态，重开菜单不循环检查账号'
   fireEvent.click(await screen.findByRole('menuitem', { name: '刷新模型列表' }));
   await screen.findByRole('menuitemradio', { name: /候选模型/ });
   expect(refresh).toHaveBeenCalledTimes(2);
+});
+
+it('保存原生配置后重新发现模型，旧刷新响应不能回填旧目录', async () => {
+  const empty = { agent: 'claude' as const, discovered: false, entries: [], models: [], warnings: [] };
+  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'), empty);
+  vi.spyOn(api, 'agentCapabilities').mockResolvedValue(empty);
+  let resolve!: (value: AgentCapabilities) => void;
+  const pending = new Promise<AgentCapabilities>((done) => {
+    resolve = done;
+  });
+  const fresh = {
+    ...catalog,
+    agent: 'claude' as const,
+    discovered: true,
+    models: [{ id: 'updated-model', label: '更新后的模型' }],
+  };
+  const refresh = vi.spyOn(api, 'refreshAgentCapabilities').mockReturnValueOnce(pending).mockResolvedValue(fresh);
+  showComposer();
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
+  await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+  await act(async () => {
+    await invalidateNativeCapabilities('claude', client);
+  });
+  await screen.findByRole('menuitemradio', { name: /更新后的模型/ });
+  await act(async () => {
+    resolve({ ...catalog, agent: 'claude', discovered: true });
+  });
+  expect(client.getQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'))).toEqual(fresh);
+});
+
+it('配置保存前发起的刷新不会把忙碌或失败状态带入新配置', async () => {
+  let reject!: (error: Error) => void;
+  const pending = new Promise<AgentCapabilities>((_resolve, fail) => {
+    reject = fail;
+  });
+  const fresh = { ...catalog, agent: 'claude' as const, models: [{ id: 'new-generation', label: '新配置模型' }] };
+  const refresh = vi.spyOn(api, 'refreshAgentCapabilities').mockReturnValueOnce(pending).mockResolvedValue(fresh);
+  vi.spyOn(api, 'agentCapabilities').mockResolvedValue({ ...catalog, agent: 'claude' });
+  const hook = renderHook(() => useAgentCapabilities(true), {
+    wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+  });
+  act(() => hook.result.current.refresh());
+  await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+  await act(async () => {
+    await invalidateNativeCapabilities('claude', client);
+  });
+  await waitFor(() => expect(hook.result.current.isFetching).toBe(false));
+  act(() => hook.result.current.refresh());
+  await waitFor(() => expect(hook.result.current.data).toEqual(fresh));
+  await act(async () => {
+    reject(new Error('旧配置刷新失败'));
+  });
+  await waitFor(() => expect(hook.result.current.isError).toBe(false));
+  expect(hook.result.current.data).toEqual(fresh);
 });
 
 it('Antigravity历史不可回放仍可续聊，保留权限说明且不伪造审批', async () => {
@@ -518,7 +574,7 @@ it('手填模型不把空白或默认占位符发送为型号，恢复原生必�
   expect(apply.disabled).toBe(true);
   fireEvent.change(field, { target: { value: '默认' } });
   expect(apply.disabled).toBe(true);
-  expect(screen.getByRole('alert').textContent).toContain('模型 ID');
+  expect(screen.getByRole('alert').textContent).toContain('模型名称或标识');
   fireEvent.click(apply);
   expect(useChat.getState().modelOverrides.claude).toBe('');
   expect(sent).toHaveLength(0);

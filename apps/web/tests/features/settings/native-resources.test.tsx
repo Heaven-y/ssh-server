@@ -47,7 +47,8 @@ function edit(content: string) {
   act(() => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } }));
 }
 async function openCatalog() {
-  fireEvent.click(await screen.findByRole('button', { name: '修改 Antigravity 配置' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Antigravity' }));
+  fireEvent.click(await screen.findByRole('button', { name: '修改 Antigravity 原始配置' }));
   return screen.findByRole('heading', { name: '原生配置与扩展 · Antigravity' });
 }
 beforeEach(() => {
@@ -67,6 +68,14 @@ beforeEach(() => {
     requests.push({ url, init });
     if (url === '/api/settings/product')
       return Response.json({ settings: ProductSettingsSchema.parse({}), revision: 'missing' });
+    if (url.startsWith('/api/settings/models/'))
+      return Response.json({
+        agent: url.split('/').at(-1),
+        revision: 'missing',
+        displayPath: 'settings.json',
+        fields: [],
+        warnings: [],
+      });
     if (init?.method === 'PUT') return Response.json({ resource, revision: 'next' });
     if (url.includes('/open?'))
       return Response.json({ resource, content: '# synthetic-private-rule\n', revision: 'original' });

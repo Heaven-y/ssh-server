@@ -61,6 +61,32 @@ it('环境准备中停止不投递正文，准备和运行期间不允许重启'
   await runner.dispose?.();
 });
 
+it('保存配置后新会话立即使用新环境，已有会话继续持有原快照', async () => {
+  let current = 'before-save';
+  let created = 0;
+  const used: string[] = [];
+  const runner = createConfiguredRunner({
+    environment: async () => ({ API_KEY: current }),
+    create: (env) => {
+      const sessionId = `native-${++created}`;
+      return (value) => {
+        used.push(env.API_KEY!);
+        value.emit({ type: 'session', sessionId, cwd: value.workspace.dir, model: 'fixture-model' });
+        return { done: Promise.resolve(), interrupt: async () => undefined };
+      };
+    },
+  });
+  try {
+    await runner(input()).done;
+    current = 'after-save';
+    await runner(input()).done;
+    await runner(input('native-1')).done;
+    expect(used).toEqual(['before-save', 'after-save', 'before-save']);
+  } finally {
+    await runner.dispose?.();
+  }
+});
+
 it('退出不等待永不结束的interrupt才调用原生清理', async () => {
   const dispose = vi.fn(async () => undefined);
   let started!: () => void;

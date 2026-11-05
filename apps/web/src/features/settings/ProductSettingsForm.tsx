@@ -1,20 +1,13 @@
 import { useId } from 'react';
 import { inputClass } from '../../ui/styles';
 import { type ProductSettingsDraft } from './product-settings-draft';
-import type { SettingsCategory } from './SettingsCategories';
 
 type Props = {
   draft: ProductSettingsDraft;
   disabled: boolean;
-  showErrors: boolean;
   change(patch: Partial<ProductSettingsDraft>): void;
-  validate(): void;
 };
-export function invalidSettingsCategory(): SettingsCategory {
-  return 'conversation';
-}
-
-export function ProductSettingsForm({ ...props }: Props & { category: Exclude<SettingsCategory, 'environment'> }) {
+export function ProductSettingsForm(props: Props) {
   const id = useId();
   return (
     <section className="space-y-4">

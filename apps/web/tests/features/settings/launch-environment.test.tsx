@@ -32,8 +32,8 @@ async function openEnvironment() {
       <SettingsDialog onClose={vi.fn()} />
     </QueryClientProvider>,
   );
-  fireEvent.click(await screen.findByRole('tab', { name: '运行环境' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Codex 启动环境' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Codex' }));
+  fireEvent.click(await screen.findByRole('button', { name: '启动环境与高级认证' }));
   await screen.findByRole('heading', { name: 'CLI 启动环境 · Codex' });
   return screen.findByLabelText('API 密钥模式');
 }
@@ -50,6 +50,14 @@ beforeEach(() => {
     const url = input as string;
     if (url === '/api/settings/product')
       return Response.json({ settings: ProductSettingsSchema.parse({}), revision: 'missing' });
+    if (url.startsWith('/api/settings/models/'))
+      return Response.json({
+        agent: url.split('/').at(-1),
+        revision: 'missing',
+        displayPath: 'settings.json',
+        fields: [],
+        warnings: [],
+      });
     if (url === '/api/settings/environment') return Response.json({ tools: [], checkedAt: 1 });
     if (url.endsWith('/restart')) return new Response(null, { status: 204 });
     if (init?.method === 'PUT' && conflict)
@@ -104,7 +112,7 @@ it('停用和恢复继承不发送旧密钥；冲突保留新值与未保存保�
   fireEvent.click(screen.getByRole('button', { name: '保存启动环境' }));
   await screen.findByRole('alert');
   expect(screen.getByLabelText<HTMLInputElement>('API 密钥新值').value).toBe('synthetic-retained-draft');
-  fireEvent.click(screen.getByRole('button', { name: '返回产品设置' }));
+  fireEvent.click(screen.getByRole('button', { name: '返回模型设置' }));
   expect(screen.getByRole('heading', { name: 'CLI 启动环境 · Codex' })).toBeTruthy();
   expect(window.confirm).toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText('API 密钥模式'), { target: { value: 'inherit' } });
@@ -117,7 +125,7 @@ it('加密不可用时禁止重填密钥，但允许显式停用该变量', asyn
   expect(screen.getByLabelText<HTMLInputElement>('API 密钥新值').disabled).toBe(true);
   expect(
     within(screen.getByLabelText('API 密钥模式')).getByRole<HTMLOptionElement>('option', {
-      name: '单独设置',
+      name: '在工作台中单独设置',
       hidden: true,
     }).disabled,
   ).toBe(true);

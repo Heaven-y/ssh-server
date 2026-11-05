@@ -1,278 +1,137 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { RefreshCw, Save, Settings2, X } from 'lucide-react';
-import type { AgentKind, ProductSettingsDocument } from '@agentdeck/shared';
-import { api, queryKeys } from '../../lib/api';
-import { queryClient } from '../../lib/query-client';
+import { useEffect, useId, useRef, useState } from 'react';
+import { MonitorCheck, Settings2, SlidersHorizontal, X } from 'lucide-react';
+import type { AgentKind } from '@agentdeck/shared';
+import { AgentIcon } from '../../ui/BrandIcons';
 import { buttonClass } from '../../ui/styles';
-import { ProductSettingsForm, invalidSettingsCategory } from './ProductSettingsForm';
 import { EnvironmentReport } from './EnvironmentReport';
-import { parseSettingsDraft, settingsDraft, type ProductSettingsDraft } from './product-settings-draft';
-import { SettingsCategories, type SettingsCategory } from './SettingsCategories';
+import { GeneralSettingsPanel } from './GeneralSettingsPanel';
+import { ModelSettingsPanel } from './ModelSettingsPanel';
 import { nativeAgentNames } from './native-resource-labels';
+import type { SettingsLeave } from './use-model-settings';
 
-type Phase = 'loading' | 'ready' | 'saving' | 'error';
-const errorMessage = (error: unknown, fallback: string) => (error instanceof Error ? error.message : fallback);
-function SettingsFeedback({ phase, message }: { phase: Phase; message: string }) {
-  if (!message) return null;
+export type SettingsPage = AgentKind | 'general' | 'environment';
+const agentPages: AgentKind[] = ['claude', 'codex', 'antigravity'];
+const navigationClass = (selected: boolean) =>
+  `flex w-full shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-[13px] transition-colors ${selected ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'}`;
+
+function SettingsNavigation({ page, select }: { page: SettingsPage; select(page: SettingsPage): void }) {
   return (
-    <p
-      role={phase === 'error' ? 'alert' : 'status'}
-      className={`text-sm ${phase === 'error' ? 'text-destructive-foreground' : 'text-muted-foreground'}`}
+    <nav
+      aria-label="设置分类"
+      className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-background/40 p-3 sm:w-44 sm:flex-col sm:overflow-y-auto sm:border-b-0 sm:border-r sm:p-4"
     >
-      {message}
-    </p>
-  );
-}
-
-function EnvironmentSettings({ disabled, open }: { disabled: boolean; open?: (agent: AgentKind) => void }) {
-  return (
-    <>
-      <EnvironmentReport disabled={disabled} />
-      {open && (
-        <section aria-label="CLI 启动环境" className="space-y-3 rounded-lg border border-border p-3">
-          <h3 className="text-sm font-medium">CLI 启动环境</h3>
-          <p className="text-sm leading-6 text-muted-foreground">
-            按需设置额外端点与认证变量。已有配置值只显示来源状态。
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {(['claude', 'codex', 'antigravity'] as const).map((agent) => (
-              <button
-                key={agent}
-                type="button"
-                className={buttonClass('outline')}
-                disabled={disabled}
-                onClick={() => open(agent)}
-              >
-                {nativeAgentNames[agent]} 启动环境
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-    </>
-  );
-}
-function focusInvalidField(dialog: HTMLDialogElement | null) {
-  const field = dialog?.querySelector<HTMLElement>('[aria-invalid="true"]');
-  field?.focus();
-  return !!field;
-}
-function NativeConfigEntries({ disabled, open }: { disabled: boolean; open(agent: AgentKind): void }) {
-  return (
-    <section aria-label="原生 Agent 配置" className="space-y-2 rounded-lg border border-border p-3">
-      <p className="text-sm font-medium">原生 Agent 配置</p>
-      <p className="text-xs leading-5 text-muted-foreground">
-        按所选 CLI 的实际作用域浏览配置、规则、Skills、MCP 和原生插件；模型默认值仍由原生配置管理。
-      </p>
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className={buttonClass('outline')} disabled={disabled} onClick={() => open('claude')}>
-          修改 Claude 配置
-        </button>
-        <button type="button" className={buttonClass('outline')} disabled={disabled} onClick={() => open('codex')}>
-          修改 Codex 配置
-        </button>
+      <p className="mb-2 hidden px-3 text-[11px] text-muted-foreground sm:block">模型配置</p>
+      {agentPages.map((agent) => (
         <button
+          key={agent}
           type="button"
-          className={buttonClass('outline')}
-          disabled={disabled}
-          onClick={() => open('antigravity')}
+          aria-current={page === agent ? 'page' : undefined}
+          className={navigationClass(page === agent)}
+          onClick={() => select(agent)}
         >
-          修改 Antigravity 配置
+          <AgentIcon agent={agent} className="size-4" />
+          <span className="whitespace-nowrap">{nativeAgentNames[agent]}</span>
         </button>
-      </div>
-    </section>
+      ))}
+      <p className="mb-2 mt-6 hidden px-3 text-[11px] text-muted-foreground sm:block">工作台</p>
+      <button
+        type="button"
+        aria-current={page === 'general' ? 'page' : undefined}
+        className={navigationClass(page === 'general')}
+        onClick={() => select('general')}
+      >
+        <SlidersHorizontal aria-hidden className="size-4 shrink-0" />
+        <span className="whitespace-nowrap">通用设置</span>
+      </button>
+      <button
+        type="button"
+        aria-current={page === 'environment' ? 'page' : undefined}
+        className={navigationClass(page === 'environment')}
+        onClick={() => select('environment')}
+      >
+        <MonitorCheck aria-hidden className="size-4 shrink-0" />
+        <span className="whitespace-nowrap">运行环境</span>
+      </button>
+    </nav>
   );
 }
 
+/** 常用设置保持同一个侧栏；敏感表单离开分类即卸载。 */
 export default function ProductSettingsDialog({
   onClose,
   onNative,
   onLaunchEnvironment,
+  page: controlledPage,
+  onPageChange,
+  initialPage = 'claude',
 }: {
   onClose(): void;
   onNative(agent: AgentKind): void;
   onLaunchEnvironment?(agent: AgentKind): void;
+  page?: SettingsPage;
+  onPageChange?(page: SettingsPage): void;
+  initialPage?: SettingsPage;
 }) {
   const id = useId();
   const dialog = useRef<HTMLDialogElement>(null);
-  const pending = useRef<AbortController | undefined>(undefined);
-  const saving = useRef(false);
-  const focusInvalid = useRef(false);
-  const [category, setCategory] = useState<SettingsCategory>('conversation');
-  const [document, setDocument] = useState<ProductSettingsDocument>();
-  const [draft, setDraft] = useState<ProductSettingsDraft>();
-  const [phase, setPhase] = useState<Phase>('loading');
-  const [message, setMessage] = useState('');
-  const [reload, setReload] = useState(0);
-  const [showErrors, setShowErrors] = useState(false);
-  const dirty = !!document && JSON.stringify(draft) !== JSON.stringify(settingsDraft(document.settings));
-  const busy = phase === 'saving' || phase === 'loading';
-  useLayoutEffect(() => {
-    if (!focusInvalid.current) return;
-    if (focusInvalidField(dialog.current)) focusInvalid.current = false;
-  });
+  const guardRef = useRef<SettingsLeave>((action) => action());
+  const [localPage, setLocalPage] = useState<SettingsPage>(initialPage);
+  const page = controlledPage ?? localPage;
+  const select = (next: SettingsPage) => {
+    if (next === page) return;
+    guardRef.current(() => {
+      setLocalPage(next);
+      onPageChange?.(next);
+    });
+  };
   useEffect(() => {
     const element = dialog.current;
     element?.showModal();
     return () => element?.close();
   }, []);
-  useEffect(() => {
-    const controller = new AbortController();
-    pending.current = controller;
-    void api
-      .readProductSettings(controller.signal)
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        setDocument(result);
-        setDraft(settingsDraft(result.settings));
-        setPhase('ready');
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        setMessage(errorMessage(error, '产品设置读取失败，请重试。'));
-        setPhase('error');
-      });
-    return () => pending.current?.abort();
-  }, [reload]);
-  const leave = (action: () => void) => {
-    if (saving.current || (dirty && !window.confirm('产品设置有未保存修改，确定放弃吗？'))) return;
-    action();
-  };
-  const reread = () =>
-    leave(() => {
-      pending.current?.abort();
-      setDocument(undefined);
-      setDraft(undefined);
-      setMessage('');
-      setShowErrors(false);
-      setPhase('loading');
-      setReload((current) => current + 1);
-    });
-  const save = async () => {
-    if (!document || !draft || busy || saving.current) return;
-    const parsed = parseSettingsDraft(draft);
-    setShowErrors(true);
-    if (!parsed.success) {
-      focusInvalid.current = true;
-      setCategory(invalidSettingsCategory());
-      focusInvalidField(dialog.current);
-      setMessage('请检查标出的字段。');
-      return;
-    }
-    saving.current = true;
-    const controller = new AbortController();
-    pending.current?.abort();
-    pending.current = controller;
-    setPhase('saving');
-    setMessage('');
-    try {
-      const result = await api.saveProductSettings(
-        { settings: parsed.data, revision: document.revision },
-        controller.signal,
-      );
-      if (controller.signal.aborted) return;
-      await queryClient.cancelQueries({ queryKey: queryKeys.productSettings });
-      setDocument(result);
-      setDraft(settingsDraft(result.settings));
-      setPhase('ready');
-      setMessage('产品设置已保存到本机。');
-      queryClient.setQueryData(queryKeys.productSettings, result);
-    } catch (error) {
-      if (controller.signal.aborted) return;
-      setPhase('error');
-      setMessage(errorMessage(error, '保存失败，修改已保留。'));
-    } finally {
-      saving.current = false;
-    }
-  };
   return (
     <dialog
       ref={dialog}
-      aria-labelledby={`${id}-title`}
+      aria-labelledby={id}
       onCancel={(event) => {
         event.preventDefault();
-        leave(onClose);
+        guardRef.current(onClose);
       }}
-      className="m-auto w-[min(800px,calc(100vw-32px))] max-h-[calc(100vh-40px)] overflow-hidden rounded-lg border border-border bg-card p-0 text-foreground shadow-xl backdrop:bg-black/60"
+      className="m-auto h-[min(720px,calc(100dvh-40px))] max-h-[calc(100dvh-40px)] w-[min(1000px,calc(100vw-32px))] max-w-none overflow-hidden rounded-2xl border border-border bg-card p-0 text-foreground shadow-2xl backdrop:bg-black/50"
     >
-      <div className="flex max-h-[calc(100vh-40px)] flex-col">
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-4">
-          <h2 id={`${id}-title`} className="flex items-center gap-2 font-semibold">
-            <Settings2 aria-hidden className="size-5" />
-            产品设置
+      <div className="flex h-full min-h-0 flex-col">
+        <header className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
+          <h2 id={id} className="flex items-center gap-2 text-sm font-semibold">
+            <Settings2 aria-hidden className="size-4" />
+            设置
           </h2>
           <button
             type="button"
             className={buttonClass('ghost')}
-            disabled={phase === 'saving'}
             aria-label="关闭设置"
-            onClick={() => leave(onClose)}
+            onClick={() => guardRef.current(onClose)}
           >
             <X aria-hidden className="size-4" />
           </button>
         </header>
-        <div className="space-y-5 overflow-y-auto p-5">
-          <SettingsCategories category={category} select={setCategory}>
-            {category === 'environment' ? (
-              <EnvironmentSettings
-                disabled={phase === 'saving'}
-                open={(agent) => leave(() => onLaunchEnvironment?.(agent))}
+        <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+          <SettingsNavigation page={page} select={select} />
+          <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-5 sm:p-7">
+            {page === 'general' ? (
+              <GeneralSettingsPanel guardRef={guardRef} />
+            ) : page === 'environment' ? (
+              <EnvironmentReport disabled={false} />
+            ) : (
+              <ModelSettingsPanel
+                key={page}
+                agent={page}
+                guardRef={guardRef}
+                onNative={() => onNative(page)}
+                onLaunchEnvironment={() => onLaunchEnvironment?.(page)}
               />
-            ) : phase === 'loading' ? (
-              <p role="status" className="py-8 text-center text-sm text-muted-foreground">
-                正在读取产品设置…
-              </p>
-            ) : draft ? (
-              <>
-                <ProductSettingsForm
-                  category={category}
-                  draft={draft}
-                  disabled={phase === 'saving'}
-                  showErrors={showErrors}
-                  validate={() => setShowErrors(true)}
-                  change={(patch) => {
-                    setDraft((current) => current && { ...current, ...patch });
-                    setMessage('');
-                  }}
-                />
-                {category === 'conversation' && (
-                  <NativeConfigEntries disabled={phase === 'saving'} open={(agent) => leave(() => onNative(agent))} />
-                )}
-              </>
-            ) : null}
-          </SettingsCategories>
-          <SettingsFeedback phase={phase} message={message} />
-          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-3">
-            <button type="button" className={buttonClass('ghost')} disabled={busy} onClick={reread}>
-              <RefreshCw aria-hidden className="size-4" />
-              重新读取
-            </button>
-          </div>
+            )}
+          </main>
         </div>
-        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-4">
-          <p className="text-xs text-muted-foreground">
-            {dirty ? '有未保存修改 · 保存所有分类' : '产品偏好保存在本机'}
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className={buttonClass('ghost')}
-              disabled={phase === 'saving'}
-              onClick={() => leave(onClose)}
-            >
-              关闭
-            </button>
-            <button
-              type="button"
-              className={buttonClass('primary')}
-              disabled={busy || !dirty}
-              onClick={() => void save()}
-            >
-              <Save aria-hidden className="size-4" />
-              {phase === 'saving' ? '正在保存…' : '保存设置'}
-            </button>
-          </div>
-        </footer>
       </div>
     </dialog>
   );

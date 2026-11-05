@@ -70,6 +70,8 @@ import { createSshConsoleService } from './ssh-console/service';
 import { registerSshConsoleRoutes } from './http/ssh-console.routes';
 import { createSessionChanges, type SessionChangesService } from './sessions/changes';
 import { registerSessionChangesRoutes } from './http/session-changes.routes';
+import { createModelSettingsService } from './settings/model-settings';
+import { registerModelSettingsRoutes } from './http/model-settings.routes';
 
 /** 已启动的本机服务：地址固定带尾部斜杠，close 可重复调用。 */
 export type StartedServer = { url: string; close: () => Promise<void> };
@@ -155,7 +157,10 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
   await mkdir(config.configDir, { recursive: true });
   logMigration(migration, log, logError);
   const productSettings = createProductSettings({ configDir: config.configDir });
-  const launchEnvironment = createLaunchEnvironment({ configDir: config.configDir });
+  const launchEnvironment = createLaunchEnvironment({
+    configDir: config.configDir,
+    onSaved: (agent) => capabilities.invalidate(agent),
+  });
   const probes = createAgentProbes({ run: options.probeRunner ?? createLocalRunner() });
   // 探测只用于启动日志，不阻塞窗口出现；接口被调用时会另行探测。
   const startupProbes = probes.probeAll();
@@ -217,6 +222,7 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
     antigravity: async (dir, signal) =>
       discoverAntigravityCapabilities(dir, { signal, env: await launchEnvironment.resolve('antigravity') }),
   });
+  const nativeResources = createNativeResourcesService({ onSaved: (agent) => capabilities.invalidate(agent) });
   // 会话服务与轮次管理器互相引用：会话服务里的回调只在调用时读 turns，声明顺序保持原样。
   const sessions = createSessionsService(
     {
@@ -308,8 +314,14 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
         registerSshRoutes(a, { pool, profiles });
         registerSshTargetRoutes(a, profiles);
         registerHostTrustRoutes(a, createHostTrust({ pool }));
-        registerAgentConfigRoutes(a, { service: createNativeConfigService() });
-        registerNativeResourceRoutes(a, { service: createNativeResourcesService(), store, activity });
+        registerAgentConfigRoutes(a, {
+          service: createNativeConfigService({ onSaved: (agent) => capabilities.invalidate(agent) }),
+        });
+        registerNativeResourceRoutes(a, { service: nativeResources, store, activity });
+        registerModelSettingsRoutes(
+          a,
+          createModelSettingsService({ resources: nativeResources, environment: launchEnvironment }),
+        );
         registerLaunchEnvironmentRoutes(a, {
           service: launchEnvironment,
           restart: (agent) => turns.withIdleAgent(agent, () => runners[agent].restart()),

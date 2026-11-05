@@ -86,6 +86,14 @@ export function createCapabilitiesService(providers: Partial<Record<AgentKind, C
     }
   }
   return {
+    invalidate(agent: AgentKind): void {
+      // 保存后在途的旧目录也失效，不能晚于新配置重新填回缓存。
+      for (const key of new Set([...cache.keys(), ...refreshing.keys()])) {
+        if ((JSON.parse(key) as string[])[2] !== agent) continue;
+        cache.delete(key);
+        refreshing.delete(key);
+      }
+    },
     read(ws: Workspace, agent: AgentKind): Promise<AgentCapabilities> {
       return Promise.resolve(publicCatalog(agent, cache.get(keyOf(ws, agent))));
     },
