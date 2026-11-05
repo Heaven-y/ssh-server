@@ -1,6 +1,6 @@
 {
   "name": "@agentdeck/desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Electron 桌面壳：拉起本机后端并加载其页面",
