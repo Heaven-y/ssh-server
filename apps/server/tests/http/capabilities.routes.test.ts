@@ -36,7 +36,13 @@ describe('能力目录路由', () => {
       const result = await app.inject('/api/workspaces/workspace/agent-capabilities?agent=codex');
       expect(result.statusCode).toBe(200);
       expect(result.headers['cache-control']).toBe('no-store');
-      expect(result.json()).toEqual({ agent: 'codex', models: [], entries: [], warnings: ['模型目录暂不可用'] });
+      expect(result.json()).toEqual({
+        agent: 'codex',
+        discovered: true,
+        models: [],
+        entries: [],
+        warnings: ['模型目录暂不可用'],
+      });
       expect(provider).toHaveBeenCalledWith(ws.dir, expect.any(AbortSignal));
       expect(provider).toHaveBeenCalledTimes(1);
       provider.mockRejectedValueOnce(new Error('private-config-sentinel'));

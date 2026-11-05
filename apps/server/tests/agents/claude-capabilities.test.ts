@@ -135,6 +135,28 @@ it('原生明确不支持effort时不提供档位，不把缺失元数据猜成�
   expect(catalog.models.find((model) => model.id === 'unknown')?.reasoningEfforts).toBeUndefined();
 });
 
+it('保留自定义模型的原生别名和显示名，默认选项不变成实际型号', async () => {
+  const fake = discovery(
+    async () => [],
+    [
+      { value: 'default', displayName: 'Default', description: '原生默认' },
+      { value: 'opus', resolvedModel: 'custom-model', displayName: 'custom-model', description: 'Custom Opus model' },
+      {
+        value: 'sonnet',
+        resolvedModel: 'custom-model',
+        displayName: 'custom-model',
+        description: 'Custom Sonnet model',
+      },
+    ],
+  );
+  const result = await fake.discover(directory);
+  expect(result.models.map(({ id, label }) => ({ id, label }))).toEqual([
+    { id: 'opus', label: 'custom-model' },
+    { id: 'sonnet', label: 'custom-model' },
+  ]);
+  expect(fake.calls[0]?.options).not.toHaveProperty('model');
+});
+
 it('已存在网页等价操作的命令指向具体入口，未接入不冒称原生不支持', async () => {
   const fake = discovery(async () =>
     ['model', 'config', 'clear', 'custom-command'].map((name) => ({

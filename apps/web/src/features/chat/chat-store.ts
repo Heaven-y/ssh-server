@@ -372,6 +372,7 @@ export const useChat = create<ChatState>()((set, get) => ({
       }
       set({ sessionOperations: operations });
       void queryClient.invalidateQueries({ queryKey: queryKeys.sessions(workspaceId, session.agent) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.archivedSessions(session.agent) });
       return true;
     } catch (error) {
       set((latest) => ({

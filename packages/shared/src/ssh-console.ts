@@ -4,6 +4,8 @@ import { TerminalSizeSchema } from './terminal';
 
 /** 独立 SSH 控制台只用服务器档案 alias 定位，不附带项目身份。 */
 export const SSH_CONSOLE_LIMITS = {
+  refreshMs: 2000,
+  metricsTimeoutMs: 25000,
   directoryEntries: 400,
   previewBytes: 256 * 1024,
   terminalBytes: 512 * 1024,

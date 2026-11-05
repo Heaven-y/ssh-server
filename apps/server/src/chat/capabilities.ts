@@ -52,11 +52,18 @@ export function createCapabilitiesService(providers: Partial<Record<AgentKind, C
   }
   function publicCatalog(agent: AgentKind, catalog?: NativeCapabilityCatalog): AgentCapabilities {
     if (!catalog)
-      return { agent, models: [], entries: [], warnings: ['能力尚未刷新；请点击“刷新能力”检查账号与模型清单。'] };
+      return {
+        agent,
+        discovered: false,
+        models: [],
+        entries: [],
+        warnings: ['打开模型菜单或点击刷新即可读取 CLI 能力。'],
+      };
     const visible = structuredClone(catalog);
     return {
       ...visible,
       agent,
+      discovered: true,
       entries: visible.entries.map((entry) => {
         delete entry.invocation;
         return entry;

@@ -1,4 +1,4 @@
-import { RESOURCE_LIMITS, SshConsolePathSchema, type ResourceDisk } from '@agentdeck/shared';
+import { RESOURCE_LIMITS, SSH_CONSOLE_LIMITS, SshConsolePathSchema, type ResourceDisk } from '@agentdeck/shared';
 import type { SshPool } from '../ssh/pool';
 import { runExec } from '../ssh/exec';
 import { ResourceCache } from '../resources/cache';
@@ -8,7 +8,11 @@ import { CONSOLE_PROCESS_COMMAND, parseConsoleProcesses, type ConsoleProcessData
 import { SshConsoleError } from './errors';
 import type { ConsoleAccess, ConsoleLease } from './access';
 
-const timing = { ...RESOURCE_LIMITS, intervalMs: 2000 };
+const timing = {
+  ...RESOURCE_LIMITS,
+  intervalMs: SSH_CONSOLE_LIMITS.refreshMs,
+  timeoutMs: SSH_CONSOLE_LIMITS.metricsTimeoutMs,
+};
 type Host = ReturnType<typeof parseHostResources>;
 const keyOf = (lease: ConsoleLease) =>
   JSON.stringify([lease.target.alias, lease.guard.generation, lease.guard.cacheKey]);

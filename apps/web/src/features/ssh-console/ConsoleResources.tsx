@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
-import { RESOURCE_LIMITS, resourceTiming } from '@agentdeck/shared';
-import { api, queryKeys } from '../../lib/api';
+import { SSH_CONSOLE_LIMITS } from '@agentdeck/shared';
 import { sshConsoleApi } from '../../lib/ssh-console-api';
 import { buttonClass } from '../../ui/styles';
 import { ResourceMetrics } from '../resources/ResourceMetrics';
@@ -20,16 +19,8 @@ type Props = {
 function useConsoleResources({ serverId, directory, view, active }: Props) {
   const client = useQueryClient();
   const version = useServerObservationVersion(serverId);
-  const settings = useQuery({
-    queryKey: queryKeys.productSettings,
-    queryFn: ({ signal }) => api.readProductSettings(signal),
-    enabled: active,
-    retry: false,
-  });
-  const interval = settings.data
-    ? resourceTiming(settings.data.settings.resources).intervalMs
-    : RESOURCE_LIMITS.intervalMs;
-  const enabled = active && settings.isSuccess;
+  const interval = SSH_CONSOLE_LIMITS.refreshMs;
+  const enabled = active;
   const overviewKey = ['ssh-console', serverId, 'overview', directory, version] as const;
   const processKey = ['ssh-console', serverId, 'processes', version] as const;
   const overview = useQuery({
@@ -54,12 +45,12 @@ function useConsoleResources({ serverId, directory, view, active }: Props) {
       void client.cancelQueries({ queryKey: ['ssh-console', serverId, 'processes'] });
   }, [enabled, view, client, serverId]);
   const current = view === 'overview' ? overview : processes;
-  return { current, overview, processes, settings, interval, enabled };
+  return { current, overview, processes, interval, enabled };
 }
 
 export function ConsoleResources(props: Props) {
   const { view, active } = props;
-  const { current, overview, processes, settings, interval, enabled } = useConsoleResources(props);
+  const { current, overview, processes, interval, enabled } = useConsoleResources(props);
   return (
     <section
       aria-label={view === 'overview' ? '服务器概览' : '服务器进程'}
@@ -82,11 +73,6 @@ export function ConsoleResources(props: Props) {
       {current.error && (
         <p role="alert" className="text-sm text-destructive-foreground">
           {consoleError(current.error)}
-        </p>
-      )}
-      {settings.error && (
-        <p role="alert" className="text-sm text-destructive-foreground">
-          采样设置读取失败，请重新打开页面。
         </p>
       )}
       {current.isFetching && !current.data && (

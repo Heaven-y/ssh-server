@@ -1,5 +1,5 @@
 import { Menu, MenuButton, MenuItem, useMenuStore } from '@ariakit/react';
-import { Check, Command, Ellipsis, SquarePen } from 'lucide-react';
+import { Archive, Check, Command, Ellipsis, SquarePen } from 'lucide-react';
 import type { AgentKind, Workspace } from '@agentdeck/shared';
 import { AGENT_LABELS } from '../features/chat/AgentControls';
 import { AgentIcon } from '../ui/BrandIcons';
@@ -80,11 +80,13 @@ export function SidebarMore({
   showOtherSessions,
   setShowOtherSessions,
   onOpenCommands,
+  onOpenArchive,
 }: {
   collapsed: boolean;
   showOtherSessions: boolean;
   setShowOtherSessions(show: boolean): void;
   onOpenCommands?(): void;
+  onOpenArchive?(): void;
 }) {
   const menu = useMenuStore({ placement: collapsed ? 'right-start' : 'bottom-start' });
   return (
@@ -100,6 +102,18 @@ export function SidebarMore({
         {!collapsed && <span>更多</span>}
       </MenuButton>
       <Menu store={menu} portal unmountOnHide gutter={6} aria-label="更多导航" className={sidebarMenuClass}>
+        {onOpenArchive && (
+          <MenuItem
+            className={sidebarMenuItemClass}
+            onClick={() => {
+              menu.hide();
+              onOpenArchive();
+            }}
+          >
+            <Archive aria-hidden className="size-4" />
+            已归档会话
+          </MenuItem>
+        )}
         {onOpenCommands && (
           <MenuItem
             className={sidebarMenuItemClass}

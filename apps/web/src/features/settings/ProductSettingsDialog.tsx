@@ -154,7 +154,7 @@ export default function ProductSettingsDialog({
     setShowErrors(true);
     if (!parsed.success) {
       focusInvalid.current = true;
-      setCategory(invalidSettingsCategory(draft));
+      setCategory(invalidSettingsCategory());
       focusInvalidField(dialog.current);
       setMessage('请检查标出的字段。');
       return;

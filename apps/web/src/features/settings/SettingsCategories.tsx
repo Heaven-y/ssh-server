@@ -1,10 +1,9 @@
 import { Tab, TabList, TabPanel, TabProvider } from '@ariakit/react';
 import { useId, type ReactNode } from 'react';
-import { Cpu, MessagesSquare, MonitorCheck } from 'lucide-react';
+import { MessagesSquare, MonitorCheck } from 'lucide-react';
 
 const categories = [
   { key: 'conversation', label: '对话与模型', Icon: MessagesSquare },
-  { key: 'resources', label: '服务器资源', Icon: Cpu },
   { key: 'environment', label: '运行环境', Icon: MonitorCheck },
 ] as const;
 export type SettingsCategory = (typeof categories)[number]['key'];
@@ -28,7 +27,7 @@ export function SettingsCategories({
         if (next) select(next.key);
       }}
     >
-      <TabList aria-label="设置分类" className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
+      <TabList aria-label="设置分类" className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
         {categories.map(({ key, label, Icon }) => (
           <Tab
             key={key}

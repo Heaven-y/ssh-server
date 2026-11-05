@@ -65,6 +65,7 @@ describe('原生能力解析', () => {
     const empty = await service.read(ws, 'codex');
     expect(empty.entries).toEqual([]);
     expect(empty.models).toEqual([]);
+    expect(empty.discovered).toBe(false);
     expect(empty.warnings.join('')).toContain('刷新');
     expect(provider).not.toHaveBeenCalled();
     await expect(service.prepare(ws, 'codex', { text: '/inspect' })).rejects.toMatchObject({
@@ -72,6 +73,7 @@ describe('原生能力解析', () => {
     });
     expect(provider).not.toHaveBeenCalled();
     const result = await service.refresh(ws, 'codex');
+    expect(result.discovered).toBe(true);
     expect(result.entries[0]).not.toHaveProperty('invocation');
     const input = await service.prepare(ws, 'codex', { text: '', selection: { id: 'skill' } });
     expect(input).toEqual({

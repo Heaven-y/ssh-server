@@ -39,29 +39,35 @@ function Choice({
   );
 }
 function CatalogStatus({ catalog }: { catalog: ReturnType<typeof useAgentCapabilities> }) {
+  if (catalog.isFetching)
+    return (
+      <p role="status" className="px-3 py-2 text-xs text-muted-foreground">
+        正在加载模型…
+      </p>
+    );
+  if (catalog.isError)
+    return (
+      <p role="alert" className="px-3 py-2 text-xs leading-5 text-warning">
+        模型列表加载失败，请刷新重试。
+      </p>
+    );
+  const data = catalog.data;
+  if (!data || data.discovered === false) return null;
+  if (data.warnings.length)
+    return (
+      <>
+        {data.warnings.map((warning, index) => (
+          <p key={index} className="px-3 py-1 text-xs leading-5 text-warning">
+            {warning}
+          </p>
+        ))}
+      </>
+    );
+  if (data.models.length) return null;
   return (
-    <>
-      {catalog.isFetching && (
-        <p role="status" className="px-3 py-2 text-xs text-muted-foreground">
-          正在加载模型…
-        </p>
-      )}
-      {catalog.isError && (
-        <p role="alert" className="px-3 py-2 text-xs leading-5 text-warning">
-          模型列表加载失败，请刷新重试。
-        </p>
-      )}
-      {!catalog.isFetching && !catalog.isError && catalog.data?.models.length === 0 && (
-        <p role="status" className="px-3 py-2 text-xs text-muted-foreground">
-          原生目录未报告可选模型。
-        </p>
-      )}
-      {catalog.data?.warnings.map((warning, index) => (
-        <p key={index} className="px-3 py-1 text-xs leading-5 text-warning">
-          {warning}
-        </p>
-      ))}
-    </>
+    <p role="status" className="px-3 py-2 text-xs text-muted-foreground">
+      CLI 未提供可选模型，可沿用原生配置或手动填写。
+    </p>
   );
 }
 function RefreshModels({ catalog, disabled }: { catalog: ReturnType<typeof useAgentCapabilities>; disabled: boolean }) {
@@ -74,7 +80,7 @@ function RefreshModels({ catalog, disabled }: { catalog: ReturnType<typeof useAg
       title="启动 CLI 检查账号、模型与命令清单"
     >
       <RefreshCw aria-hidden className="size-3.5" />
-      刷新能力
+      刷新模型列表
     </MenuItem>
   );
 }
@@ -109,7 +115,9 @@ function AgentChoices({ disabled }: { disabled: boolean }) {
       <p className="px-3 py-2 text-xs text-muted-foreground">{historical ? '会话 Agent' : 'Agent'}</p>
       {(['claude', 'codex', 'antigravity'] as const).map((kind) => (
         <Choice key={kind} checked={agent === kind} disabled={disabled || historical} choose={() => setAgent(kind)}>
-          <AgentIcon agent={kind} className="size-3.5" /> {AGENT_LABELS[kind]}
+          <span className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+            <AgentIcon agent={kind} className="size-3.5 shrink-0" /> {AGENT_LABELS[kind]}
+          </span>
         </Choice>
       ))}
       {agentUnavailable(environment.data, agent) && (
@@ -121,7 +129,7 @@ function AgentChoices({ disabled }: { disabled: boolean }) {
     </>
   );
 }
-function ModelActions({ disabled, catalog, model, onManual }: CatalogProps & { model: string; onManual(): void }) {
+function ModelActions({ disabled, model, onManual }: { disabled: boolean; model: string; onManual(): void }) {
   const setModel = useChat((state) => state.setModel);
   return (
     <MenuProvider placement="right-start">
@@ -137,8 +145,6 @@ function ModelActions({ disabled, catalog, model, onManual }: CatalogProps & { m
         <MenuItem className={itemClass} disabled={disabled} onClick={onManual}>
           手动填写模型
         </MenuItem>
-        <RefreshModels catalog={catalog} disabled={disabled} />
-        <p className="px-3 py-2 text-xs leading-5 text-muted-foreground">刷新会启动 CLI 检查账号、模型与命令清单。</p>
       </Menu>
     </MenuProvider>
   );
@@ -148,7 +154,7 @@ function ModelChoices({ disabled, catalog, model, onManual }: CatalogProps & { m
   return (
     <>
       <MenuGroup aria-label="可选模型">
-        <p className="px-3 py-2 text-xs text-muted-foreground">目录候选</p>
+        <p className="px-3 py-2 text-xs text-muted-foreground">模型</p>
         {catalog.data?.models.map((candidate) => (
           <Choice
             key={candidate.id}
@@ -165,7 +171,8 @@ function ModelChoices({ disabled, catalog, model, onManual }: CatalogProps & { m
       </MenuGroup>
       <CatalogStatus catalog={catalog} />
       <MenuSeparator className="my-1 border-t border-border" />
-      <ModelActions disabled={disabled} catalog={catalog} model={model} onManual={onManual} />
+      <RefreshModels catalog={catalog} disabled={disabled} />
+      <ModelActions disabled={disabled} model={model} onManual={onManual} />
     </>
   );
 }
@@ -202,7 +209,7 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
   const environment = useEnvironment();
   const version = agentVersion(environment.data, agent);
   const setModel = useChat((state) => state.setModel);
-  const catalog = useAgentCapabilities(modelOpen || effortOpen);
+  const catalog = useAgentCapabilities(modelOpen || effortOpen, modelOpen);
   const models = catalog.data?.models ?? [];
   const selected = models.find((candidate) => candidate.id === (model || presentation.label));
   return (
