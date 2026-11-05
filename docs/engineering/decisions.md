@@ -169,6 +169,8 @@
 | 已移除的停靠界面验收、旧截图与 HTML | `c686ef2:docs/guides/ui-usability-optimization-acceptance.md` 与该提交的 `docs/assets/ui-usability-optimization/` |
 | 会话管理完成后的实施记录 | `68e4ce1:docs/superpowers/plans/2026-11-04-session-management.md` |
 | 原生配置、工作台插件与本地分发的整体实施记录 | `33ffd9d:docs/superpowers/plans/2026-11-04-workbench-completion.md` |
+| DSH 界面对齐与整体审查的实施记录 | `08ed6df:docs/superpowers/plans/2026-11-05-dsh-ui-alignment.md` |
+| 本轮之前的逐阶段验收细节 | `c92cd12:docs/roadmap.md` |
 
 ```powershell
 git show c686ef2:docs/engineering/decisions.md
