@@ -82,7 +82,7 @@ it('保存发布新设置前取消旧共享GET，迟到响应不能回退偏好'
   renderHook(() => useProductSettings(), { wrapper });
   await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
   vi.spyOn(api, 'saveProductSettings').mockResolvedValue(saved);
-  render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
+  render(<ProductSettingsDialog initialPage="general" onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
   fireEvent.change(await screen.findByLabelText('默认 Agent'), { target: { value: 'codex' } });
   fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
   await screen.findByText('产品设置已保存到本机。');
@@ -92,49 +92,30 @@ it('保存发布新设置前取消旧共享GET，迟到响应不能回退偏好'
   expect(queryClient.getQueryData(queryKeys.productSettings)).toEqual(saved);
 });
 
-it('设置只保留对话和运行环境，草稿跨分类保留', async () => {
+it('设置侧栏区分三类 CLI 与工作台，通用偏好保存后可查看本机环境', async () => {
   vi.spyOn(api, 'readProductSettings').mockResolvedValue(document);
   const save = vi
     .spyOn(api, 'saveProductSettings')
     .mockImplementation(async ({ settings }) => ({ settings, revision: 'b'.repeat(64) }));
   const readEnvironment = vi.spyOn(api, 'readEnvironment').mockResolvedValue({ checkedAt: 1, tools: [] });
   const detect = vi.spyOn(api, 'detectEnvironment').mockResolvedValue({ checkedAt: 2, tools: [] });
-  render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
+  render(<ProductSettingsDialog initialPage="general" onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
   const agent = await screen.findByLabelText('默认 Agent');
-  expect(screen.getAllByRole('tab')).toHaveLength(2);
-  expect(screen.getByRole('tabpanel', { name: '对话与模型' })).toBeTruthy();
+  const navigation = screen.getByRole('navigation', { name: '设置分类' });
+  expect(within(navigation).getAllByRole('button')).toHaveLength(5);
   expect(screen.queryByLabelText(/资源检查间隔/)).toBeNull();
-  expect(screen.queryByLabelText(/自动同步间隔/)).toBeNull();
-  expect(screen.queryByRole('button', { name: '重新检测' })).toBeNull();
   expect(readEnvironment).not.toHaveBeenCalled();
   fireEvent.change(agent, { target: { value: 'codex' } });
-  const conversation = screen.getByRole('tabpanel', { name: '对话与模型' });
-  expect(within(conversation).getByRole('button', { name: '修改 Claude 配置' })).toBeTruthy();
-  expect(within(conversation).getByRole('button', { name: '修改 Codex 配置' })).toBeTruthy();
-  for (const tab of screen.getAllByRole('tab')) {
-    if (tab.textContent?.includes('对话与模型')) continue;
-    fireEvent.click(tab);
-    expect(within(screen.getByRole('tabpanel')).queryByRole('button', { name: '修改 Claude 配置' })).toBeNull();
-  }
-  fireEvent.click(screen.getByRole('tab', { name: '对话与模型' }));
-  fireEvent.click(screen.getByRole('tab', { name: '运行环境' }));
-  expect(screen.queryByLabelText(/资源检查间隔/)).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: '重新检测' }));
-  await waitFor(() => expect(detect).toHaveBeenCalledTimes(1));
-  fireEvent.click(screen.getByRole('tab', { name: '对话与模型' }));
-  expect(screen.getByLabelText<HTMLSelectElement>('默认 Agent').value).toBe('codex');
-  expect(save).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
   await screen.findByText('产品设置已保存到本机。');
-  expect(save).toHaveBeenCalledTimes(1);
   expect(save.mock.calls[0]![0]).toMatchObject({
     revision: 'missing',
-    settings: {
-      defaultAgent: 'codex',
-      resources: { intervalSeconds: 5 },
-    },
+    settings: { defaultAgent: 'codex', resources: { intervalSeconds: 5 } },
   });
   expect(save.mock.calls[0]![0].settings).not.toHaveProperty('defaultModels');
+  fireEvent.click(screen.getByRole('button', { name: '运行环境' }));
+  fireEvent.click(screen.getByRole('button', { name: '重新检测' }));
+  await waitFor(() => expect(detect).toHaveBeenCalledTimes(1));
 });
 
 it('跨分类保存冲突保留草稿，关闭、原生视图、重读与Esc均保留未保存保护', async () => {
@@ -143,21 +124,19 @@ it('跨分类保存冲突保留草稿，关闭、原生视图、重读与Esc均�
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
   const close = vi.fn();
   const native = vi.fn();
-  render(<ProductSettingsDialog onClose={close} onNative={native} />, { wrapper });
+  render(<ProductSettingsDialog initialPage="general" onClose={close} onNative={native} />, { wrapper });
   fireEvent.change(await screen.findByLabelText('默认 Agent'), { target: { value: 'codex' } });
   expect(confirm).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
   await screen.findByRole('alert');
   fireEvent.click(screen.getByRole('button', { name: '关闭设置' }));
-  fireEvent.click(screen.getByRole('tab', { name: '对话与模型' }));
-  fireEvent.click(screen.getByRole('button', { name: '修改 Claude 配置' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Claude Code' }));
   fireEvent.click(screen.getByRole('button', { name: '重新读取' }));
   fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }));
   expect(confirm).toHaveBeenCalledTimes(4);
   expect(close).not.toHaveBeenCalled();
   expect(native).not.toHaveBeenCalled();
   expect(read).toHaveBeenCalledTimes(1);
-  fireEvent.click(screen.getByRole('tab', { name: '对话与模型' }));
   expect(screen.getByLabelText<HTMLSelectElement>('默认 Agent').value).toBe('codex');
   confirm.mockReturnValue(true);
   fireEvent.click(screen.getByRole('button', { name: '重新读取' }));
@@ -173,7 +152,7 @@ it('修改默认CLI保留原有服务器参数，设置中不再暴露采样选�
   const save = vi
     .spyOn(api, 'saveProductSettings')
     .mockImplementation(async ({ settings }) => ({ settings, revision: 'c'.repeat(64) }));
-  render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
+  render(<ProductSettingsDialog initialPage="general" onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
   fireEvent.change(await screen.findByLabelText('默认 Agent'), { target: { value: 'codex' } });
   expect(screen.queryByRole('tab', { name: '服务器资源' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
@@ -200,16 +179,7 @@ it('产品草稿保存只输出现行偏好，不包含同步分类字段与已�
 
 it('对话分类保留默认Agent，不再提供网页默认模型输入', () => {
   const change = vi.fn();
-  render(
-    <ProductSettingsForm
-      category="conversation"
-      draft={productDraft}
-      disabled={false}
-      showErrors={false}
-      change={change}
-      validate={vi.fn()}
-    />,
-  );
+  render(<ProductSettingsForm draft={productDraft} disabled={false} change={change} />);
   expect(screen.getByLabelText<HTMLSelectElement>('默认 Agent').value).toBe('codex');
   expect(screen.getByRole('option', { name: 'Antigravity' })).toBeTruthy();
   fireEvent.change(screen.getByLabelText('默认 Agent'), { target: { value: 'antigravity' } });

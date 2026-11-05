@@ -7,6 +7,7 @@ import { buttonClass } from '../../ui/styles';
 import { SettingsDetailDialog } from './SettingsDetailDialog';
 import { NativeConfigHelp } from './NativeConfigHelp';
 import { confirmNativeDiscard, nativeSettingsError } from './native-resource-labels';
+import { invalidateNativeCapabilities } from './model-settings-api';
 
 function ConfigHelp({
   document,
@@ -111,6 +112,7 @@ function useNativeResourceEditor({ context, resource }: Pick<EditorProps, 'conte
         { content, revision: document.revision },
         controller.signal,
       );
+      await invalidateNativeCapabilities(agent);
       if (controller.signal.aborted) return;
       setDocument({ ...saved, content });
       setMessage('文件已保存。后续生效方式以该 CLI 为准；已有运行时可在启动环境中重新启动。');

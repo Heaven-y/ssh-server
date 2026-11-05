@@ -5,6 +5,7 @@ import { api } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
 import { SettingsDetailDialog } from './SettingsDetailDialog';
 import { confirmNativeDiscard, nativeAgentNames, nativeSettingsError } from './native-resource-labels';
+import { invalidateNativeCapabilities } from './model-settings-api';
 import {
   LaunchEnvironmentVariable,
   invalidLaunchDraft,
@@ -85,6 +86,7 @@ function useLaunchEnvironment(agent: AgentKind) {
         ...(value.mode === 'set' && value.value ? { value: value.value } : {}),
       }));
       const result = await api.saveLaunchEnvironment(agent, { revision: document.revision, variables }, signal);
+      await invalidateNativeCapabilities(agent);
       if (!signal.aborted) {
         setDocument(result);
         setDraft({});
@@ -218,6 +220,21 @@ function LaunchVariables({
   disabled: boolean;
   change(variable: LaunchVariable, patch: Partial<LaunchVariableDraft>): void;
 }) {
+  const advanced =
+    document.agent === 'antigravity'
+      ? document.variables.filter((variable) => !['GEMINI_API_KEY', 'GOOGLE_GEMINI_BASE_URL'].includes(variable.name))
+      : [];
+  const common = document.variables.filter((variable) => !advanced.includes(variable));
+  const renderVariable = (variable: LaunchVariable) => (
+    <LaunchEnvironmentVariable
+      key={variable.name}
+      variable={variable}
+      draft={draft[variable.name]}
+      encryptionAvailable={document.encryptionAvailable}
+      disabled={disabled}
+      change={(patch) => change(variable, patch)}
+    />
+  );
   return (
     <div className="space-y-3">
       <p className="text-sm leading-6 text-muted-foreground">{document.note}</p>
@@ -226,16 +243,13 @@ function LaunchVariables({
           本机加密不可用，无法保存新的密钥。仍可停用变量或恢复继承。
         </p>
       )}
-      {document.variables.map((variable) => (
-        <LaunchEnvironmentVariable
-          key={variable.name}
-          variable={variable}
-          draft={draft[variable.name]}
-          encryptionAvailable={document.encryptionAvailable}
-          disabled={disabled}
-          change={(patch) => change(variable, patch)}
-        />
-      ))}
+      {common.map(renderVariable)}
+      {advanced.length > 0 && (
+        <details className="rounded-xl border border-border px-4 py-3">
+          <summary className="cursor-pointer text-[13px] text-muted-foreground">ADC 与 Google Cloud（高级）</summary>
+          {advanced.map(renderVariable)}
+        </details>
+      )}
       {document.variables.length === 0 && (
         <p className="text-sm text-muted-foreground">当前 CLI 没有已接入的附加启动变量，请使用其原生登录和配置入口。</p>
       )}

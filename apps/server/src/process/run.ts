@@ -13,6 +13,7 @@ export class ProcessError extends Error {
 }
 
 export type ProcessOptions = {
+  cwd?: string;
   env?: NodeJS.ProcessEnv;
   input?: string | Buffer;
   timeoutMs: number;
@@ -27,6 +28,7 @@ export function runProcess(executable: string, args: string[], options: ProcessO
     const child = spawn(executable, args, {
       shell: false,
       windowsHide: true,
+      cwd: options.cwd,
       env: options.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });

@@ -55,6 +55,26 @@ function setup() {
 }
 
 describe('原生能力解析', () => {
+  it('配置保存同时清除旧缓存与在途刷新，其他 CLI 缓存保留', async () => {
+    const { service, provider, catalog } = setup();
+    await service.refresh(ws, 'claude');
+    await service.refresh(ws, 'codex');
+    let finish!: (value: NativeCapabilityCatalog) => void;
+    provider.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = service.refresh(ws, 'codex');
+    service.invalidate('codex');
+    finish(catalog);
+    await expect(pending).rejects.toMatchObject({ code: 'capabilities_refresh_superseded' });
+    expect((await service.read(ws, 'codex')).discovered).toBe(false);
+    expect((await service.read(ws, 'claude')).discovered).toBe(true);
+    await service.refresh(ws, 'codex');
+    expect((await service.read(ws, 'codex')).discovered).toBe(true);
+  });
   it('目录只返回公开元数据；普通消息不扫描，选择仅解析为当前原生路径', async () => {
     const { service, provider } = setup();
     expect(await service.prepare(ws, 'codex', { text: '查看 /tmp/example.py' })).toEqual({

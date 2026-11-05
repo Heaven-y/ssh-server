@@ -18,6 +18,7 @@
     "smol-toml": "1.9.0",
     "ssh-config": "5.3.0",
     "ssh2": "1.17.0",
+    "toml-eslint-parser": "1.0.3",
     "zod": "4.6.7"
   },
   "devDependencies": {

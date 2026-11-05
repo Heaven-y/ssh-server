@@ -1,16 +1,19 @@
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runProcess } from '../../src/process/run';
 
 describe('受限子进程', () => {
-  it('stdin 与环境只交给子进程，不放到 argv', async () => {
+  it('stdin 与环境只交给子进程，不放到 argv，并在指定目录启动', async () => {
+    const cwd = path.dirname(process.cwd());
     const result = await runProcess(
       process.execPath,
       [
         '-e',
-        "process.stdin.on('data',b=>process.stdout.write(JSON.stringify({input:b.toString(),secret:process.env.TEST_SECRET,argv:process.argv.slice(1)})))",
+        "process.stdin.on('data',b=>process.stdout.write(JSON.stringify({input:b.toString(),secret:process.env.TEST_SECRET,argv:process.argv.slice(1),cwd:process.cwd()})))",
       ],
       {
         input: 'fixture-secret',
+        cwd,
         env: { TEST_SECRET: 'obscured-fixture' },
         timeoutMs: 2000,
         outputCap: 1000,
@@ -20,6 +23,7 @@ describe('受限子进程', () => {
       input: 'fixture-secret',
       secret: 'obscured-fixture',
       argv: [],
+      cwd,
     });
     expect(result.exitCode).toBe(0);
   });

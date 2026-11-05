@@ -34,7 +34,12 @@ const Entry = z.strictObject({ mode: z.enum(['set', 'disabled']), protected: z.s
 const Entries = z.record(z.string(), Entry);
 const Stored = z.strictObject({ version: z.literal(1), claude: Entries, codex: Entries, antigravity: Entries });
 type StoredEnvironment = z.infer<typeof Stored>;
-type Deps = { configDir: string; env?: NodeJS.ProcessEnv; protector?: SecretProtector };
+type Deps = {
+  configDir: string;
+  env?: NodeJS.ProcessEnv;
+  protector?: SecretProtector;
+  onSaved?: (agent: AgentKind) => void;
+};
 const entropy = (agent: AgentKind, name: string) =>
   createHash('sha256').update(`AgentDeck:launch:${agent}:${name}`).digest();
 
@@ -165,6 +170,7 @@ export function createLaunchEnvironment(deps: Deps) {
         for (const item of input.variables) await change(agent, stored, item);
         const parents = await inspectDirectory(directory, true);
         await writeConfigFile(file, Buffer.from(JSON.stringify(stored, null, 2) + '\n'), snapshot, parents!);
+        deps.onSaved?.(agent);
         const updated = await load();
         return metadata(agent, updated.stored, updated.snapshot.revision);
       }),

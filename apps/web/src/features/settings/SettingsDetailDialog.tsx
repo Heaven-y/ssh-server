@@ -7,7 +7,7 @@ export function SettingsDetailDialog({
   title,
   children,
   footer,
-  backLabel = '返回产品设置',
+  backLabel = '返回模型设置',
   busy = false,
   onBack,
   onClose,
@@ -35,12 +35,12 @@ export function SettingsDetailDialog({
         event.preventDefault();
         if (!busy) onClose();
       }}
-      className="m-auto w-[min(960px,calc(100vw-32px))] max-h-[calc(100vh-40px)] overflow-hidden rounded-lg border border-border bg-card p-0 text-foreground shadow-xl backdrop:bg-black/60"
+      className="m-auto w-[min(1000px,calc(100vw-32px))] max-h-[calc(100dvh-40px)] overflow-hidden rounded-2xl border border-border bg-card p-0 text-foreground shadow-2xl backdrop:bg-black/50"
     >
       <div className="flex max-h-[calc(100vh-40px)] flex-col">
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-4">
-          <h2 id={id} className="flex min-w-0 items-center gap-2 font-semibold">
-            <Settings2 aria-hidden className="size-5 shrink-0" />
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3">
+          <h2 id={id} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
+            <Settings2 aria-hidden className="size-4 shrink-0" />
             {title}
           </h2>
           <button
@@ -53,7 +53,7 @@ export function SettingsDetailDialog({
             <X aria-hidden className="size-4" />
           </button>
         </header>
-        <div className="space-y-4 overflow-y-auto p-5">
+        <div className="space-y-5 overflow-y-auto p-5 sm:p-7">
           <button type="button" className={buttonClass('ghost')} disabled={busy} onClick={onBack}>
             <ArrowLeft aria-hidden className="size-4" />
             {backLabel}
