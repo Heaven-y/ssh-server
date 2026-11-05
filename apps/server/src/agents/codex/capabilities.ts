@@ -140,6 +140,10 @@ async function configuredModel(client: CodexClient, dir: string): Promise<string
   return text(record(response.config).model);
 }
 
+function skillFeedback(skills: PromiseSettledResult<{ entries: Entry[]; warnings: string[] }>): string[] {
+  return skills.status === 'fulfilled' ? skills.value.warnings : ['暂时无法读取技能。'];
+}
+
 export async function discoverCodexCapabilities(
   dir: string,
   options: CodexRuntimeOptions = {},
@@ -160,6 +164,8 @@ export async function discoverCodexCapabilities(
     } else catalog.warnings.push('Codex 技能目录读取失败，请检查本机技能配置。');
     if (models.status === 'fulfilled') catalog.models = models.value;
     else catalog.warnings.push('Codex 模型目录读取失败，仍可手动填写模型或使用原生配置。');
+    catalog.modelWarning = models.status === 'rejected' ? '暂时无法读取模型。' : '';
+    catalog.commandWarnings = skillFeedback(skills);
     if (
       configured.status === 'fulfilled' &&
       configured.value &&

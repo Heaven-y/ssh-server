@@ -280,7 +280,7 @@ export function Sidebar({
   return (
     <nav aria-label="项目与会话" className="flex h-full min-h-0 flex-col bg-sidebar p-2 text-foreground">
       <SidebarBrand collapsed={collapsed} />
-      <div className="shrink-0 space-y-0.5 pt-1">
+      <div className="flex shrink-0 flex-col gap-0.5 pt-1">
         <NewSessionMenu
           projects={projects}
           currentProjectId={selection.selectedProject}

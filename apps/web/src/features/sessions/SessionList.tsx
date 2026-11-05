@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQueries } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import type { SessionSummary } from '@agentdeck/shared';
@@ -13,27 +13,14 @@ import { useSessionPins } from './session-preferences';
 import { SessionLinkNotice, useSessionLinkCopy } from './use-session-link-copy';
 
 function useSessionSources(workspaceId: string, archived: boolean): SessionSource[] {
-  const claude = useQuery({
-    queryKey: queryKeys.sessions(workspaceId, 'claude'),
-    queryFn: () => api.listSessions(workspaceId, 'claude'),
-    enabled: !archived,
+  const agents = ['codex', 'claude', 'antigravity'] as const;
+  const queries = useQueries({
+    queries: agents.map((agent) => ({
+      queryKey: queryKeys.sessions(workspaceId, agent, archived),
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.listSessions(workspaceId, agent, archived, signal),
+    })),
   });
-  const codex = useQuery({
-    queryKey: queryKeys.sessions(workspaceId, 'codex'),
-    queryFn: () => api.listSessions(workspaceId, 'codex'),
-    enabled: !archived,
-  });
-  const archive = useQuery({
-    queryKey: queryKeys.sessions(workspaceId, 'codex', true),
-    queryFn: () => api.listSessions(workspaceId, 'codex', true),
-    enabled: archived,
-  });
-  return archived
-    ? [{ agent: 'codex', query: archive }]
-    : [
-        { agent: 'codex', query: codex },
-        { agent: 'claude', query: claude },
-      ];
+  return agents.map((agent, index) => ({ agent, query: queries[index]! }));
 }
 
 type Selection = { session: SessionSummary; archived: boolean; action: SessionDialogAction };

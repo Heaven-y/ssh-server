@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { CircleHelp } from 'lucide-react';
 import type { ModelSettingField } from '@agentdeck/shared';
 import { buttonClass, inputClass } from '../../ui/styles';
 
@@ -44,8 +45,13 @@ export function ModelSettingsField({
   const placeholder = field.secret && field.hasValue ? '已设置 · 留空保留' : '沿用原生默认';
   return (
     <div className="min-w-0 space-y-1.5">
-      <label htmlFor={id} className="block text-[13px] font-medium">
+      <label htmlFor={id} className="flex items-center gap-1.5 text-[13px] font-medium">
         {field.label}
+        {field.hint && (
+          <span title={field.hint} aria-hidden className="text-muted-foreground">
+            <CircleHelp className="size-3.5" />
+          </span>
+        )}
       </label>
       <div className="flex items-center gap-2">
         {field.options ? (
@@ -78,7 +84,6 @@ export function ModelSettingsField({
         )}
         <SecretClear field={field} cleared={cleared} disabled={disabled} change={change} />
       </div>
-      {field.hint && <p className="text-xs leading-5 text-muted-foreground">{field.hint}</p>}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { capabilityRestriction, isInvocableCapability } from './capability-selec
 import { useChat } from './chat-store';
 import { matchesCapability, slashCompletion } from './slash-completion';
 import { useAgentCapabilities } from './use-agent-capabilities';
+import { commandWarnings } from './capability-feedback';
 
 const MAX_SUGGESTIONS = 20;
 type InputProps = {
@@ -40,7 +41,7 @@ function Suggestion({ entry, select }: { entry: AgentCapability; select(): void 
 }
 
 function SuggestionsFooter({ count, catalog }: { count: number; catalog: ReturnType<typeof useAgentCapabilities> }) {
-  if (!catalog.data || catalog.isError || catalog.isFetching || catalog.data.warnings.length) return null;
+  if (!catalog.data || catalog.isError || catalog.isFetching || commandWarnings(catalog.data).length) return null;
   if (!count) return <p className="px-3 py-2 text-sm text-muted-foreground">没有匹配的技能或命令。</p>;
   return count > MAX_SUGGESTIONS ? (
     <p className="px-3 py-2 text-xs text-muted-foreground">显示前 {MAX_SUGGESTIONS} 项，继续输入可缩小范围。</p>
@@ -145,7 +146,7 @@ function ScopedInput({ id, text, onChange, onSend, placeholder, busy }: InputPro
             能力目录暂不可用，可按 Esc 关闭后继续输入。
           </p>
         )}
-        {catalog.data?.warnings.map((warning, index) => (
+        {commandWarnings(catalog.data).map((warning, index) => (
           <p key={index} role="status" className="px-3 py-2 text-xs leading-5 text-warning">
             {warning}
           </p>

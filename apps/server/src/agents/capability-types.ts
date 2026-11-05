@@ -8,6 +8,8 @@ export type NativeCapabilityCatalog = {
   entries: Array<AgentCapability & { invocation?: NativeInvocation }>;
   models: AgentModel[];
   warnings: string[];
+  modelWarning?: string;
+  commandWarnings?: string[];
 };
 export type CapabilityProvider = (dir: string, signal?: AbortSignal) => Promise<NativeCapabilityCatalog>;
 export function capabilityId(agent: AgentKind, ...identity: string[]): string {

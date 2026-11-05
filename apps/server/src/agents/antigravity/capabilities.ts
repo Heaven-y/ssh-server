@@ -25,5 +25,7 @@ export async function discoverAntigravityCapabilities(
     entries: [],
     models: [],
     warnings: [message],
+    modelWarning: requiresLogin ? '尚未登录 Antigravity。' : result.exitCode !== 0 ? '暂时无法读取模型。' : '',
+    commandWarnings: [],
   };
 }

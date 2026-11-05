@@ -10,6 +10,7 @@ import { createClaudeRunner } from './agents/claude-adapter';
 import { discoverClaudeCapabilities } from './agents/claude-capabilities';
 import { createClaudeSessions } from './agents/claude-sessions';
 import { createAntigravitySessions } from './agents/antigravity/sessions';
+import { createAntigravitySessionManagement } from './agents/antigravity/management';
 import { createAntigravityRunner } from './agents/antigravity/adapter';
 import { discoverAntigravityCapabilities } from './agents/antigravity/capabilities';
 import {
@@ -70,8 +71,10 @@ import { createSshConsoleService } from './ssh-console/service';
 import { registerSshConsoleRoutes } from './http/ssh-console.routes';
 import { createSessionChanges, type SessionChangesService } from './sessions/changes';
 import { registerSessionChangesRoutes } from './http/session-changes.routes';
+import { createSessionPreferences } from './sessions/preferences';
 import { createModelSettingsService } from './settings/model-settings';
 import { registerModelSettingsRoutes } from './http/model-settings.routes';
+import { withCapabilityDirectory } from './agents/capability-directory';
 
 /** 已启动的本机服务：地址固定带尾部斜杠，close 可重复调用。 */
 export type StartedServer = { url: string; close: () => Promise<void> };
@@ -215,19 +218,25 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
   });
   const profiles = createServerProfiles({ targets, store, pool });
   const capabilities = createCapabilitiesService({
-    claude: async (dir, signal) =>
+    claude: withCapabilityDirectory(async (dir, signal) =>
       discoverClaudeCapabilities(dir, { signal, env: await launchEnvironment.resolve('claude') }),
-    codex: async (dir, signal) =>
+    ),
+    codex: withCapabilityDirectory(async (dir, signal) =>
       discoverCodexCapabilities(dir, { signal, env: await launchEnvironment.resolve('codex') }),
-    antigravity: async (dir, signal) =>
+    ),
+    antigravity: withCapabilityDirectory(async (dir, signal) =>
       discoverAntigravityCapabilities(dir, { signal, env: await launchEnvironment.resolve('antigravity') }),
+    ),
   });
   const nativeResources = createNativeResourcesService({ onSaved: (agent) => capabilities.invalidate(agent) });
+  const antigravityManagement = createAntigravitySessionManagement({
+    environment: () => launchEnvironment.resolve('antigravity'),
+  });
   // 会话服务与轮次管理器互相引用：会话服务里的回调只在调用时读 turns，声明顺序保持原样。
   const sessions = createSessionsService(
     {
       claude: createClaudeSessions(),
-      antigravity: createAntigravitySessions(),
+      antigravity: createAntigravitySessions({ management: antigravityManagement }),
       codex: {
         list: (dir, signal, archived) => listCodexSessions(dir, { signal, archived }),
         read: (id, dir, signal) => readCodexSession(id, dir, { signal }),
@@ -241,6 +250,7 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
       isRunning: (s) => turns.isRunning(s),
       // 归属裁决要比较全部项目目录，不能只看当前项目。
       projects: () => store.list(),
+      preferences: createSessionPreferences({ configDir: config.configDir }),
     },
   );
   const runners = {
@@ -273,6 +283,7 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
       // 每个资源独立释放；一个关闭失败不能阻止其余通道和目录监听清理。
       await Promise.allSettled(
         [
+          () => antigravityManagement.dispose(),
           () => sessionChanges.dispose(),
           () => sshConsole.dispose(),
           () => terminals.dispose(),

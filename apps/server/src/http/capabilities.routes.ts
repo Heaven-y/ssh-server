@@ -4,6 +4,7 @@ import { AgentKindSchema, NativeSessionIdSchema } from '@agentdeck/shared';
 import type { CapabilitiesService } from '../chat/capabilities';
 import { SessionError, type SessionsService } from '../chat/sessions';
 import type { WorkspaceStore } from '../workspaces/store';
+import { assertCapabilityDirectory } from '../agents/capability-directory';
 
 const Params = z.object({ id: z.string().min(1) });
 const Query = z.object({ agent: AgentKindSchema, sessionId: NativeSessionIdSchema.optional() }).strict();
@@ -31,8 +32,10 @@ export function registerCapabilityRoutes(
       };
       reply.raw.once('close', closed);
       try {
-        if (query.data.sessionId)
+        if (query.data.sessionId) {
+          await assertCapabilityDirectory(ws.dir);
           ws = await deps.sessions.assertBelongs(ws, query.data.agent, query.data.sessionId, controller.signal);
+        }
         return req.method === 'POST'
           ? await deps.capabilities.refresh(ws, query.data.agent, controller.signal)
           : await deps.capabilities.read(ws, query.data.agent);

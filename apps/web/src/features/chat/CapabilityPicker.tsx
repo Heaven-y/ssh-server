@@ -7,6 +7,7 @@ import { useChat } from './chat-store';
 import { capabilityRestriction, isInvocableCapability } from './capability-selection';
 import { useAgentCapabilities } from './use-agent-capabilities';
 import { matchesCapability } from './slash-completion';
+import { commandWarnings } from './capability-feedback';
 
 function CapabilityEntry({ entry, disabled, select }: { entry: AgentCapability; disabled: boolean; select(): void }) {
   const sessionId = useChat((state) => state.sessionId);
@@ -47,7 +48,7 @@ function CapabilityEmpty({
   phrase: string;
   restrictedCount: number;
 }) {
-  if (!query.data || query.isError || query.isFetching || query.data.warnings.length || count) return null;
+  if (!query.data || query.isError || query.isFetching || commandWarnings(query.data).length || count) return null;
   return (
     <p className="text-sm text-muted-foreground">
       {phrase ? '没有匹配结果。' : restrictedCount ? '暂无可用技能或命令。' : '暂无技能或命令。'}
@@ -88,12 +89,11 @@ function CapabilityDialog({ disabled, onClose }: { disabled: boolean; onClose():
             disabled={query.isFetching}
             onClick={query.refresh}
             aria-label="刷新能力"
-            title="启动 CLI 检查账号、模型与命令清单"
+            title="重新读取技能与命令"
           >
             <RefreshCw aria-hidden className="size-4" />
           </button>
         </div>
-        <p className="text-xs leading-5 text-muted-foreground">刷新能力会启动 CLI 检查账号、模型与命令清单。</p>
         {query.isFetching && (
           <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
             <LoaderCircle aria-hidden className="size-4 motion-safe:animate-spin" />
@@ -105,7 +105,7 @@ function CapabilityDialog({ disabled, onClose }: { disabled: boolean; onClose():
             加载失败，请刷新重试。
           </p>
         )}
-        {query.data?.warnings.map((warning, index) => (
+        {commandWarnings(query.data).map((warning, index) => (
           <p key={index} className="text-xs leading-6 text-warning">
             {warning}
           </p>

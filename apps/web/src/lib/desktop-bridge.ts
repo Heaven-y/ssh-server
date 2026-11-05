@@ -10,3 +10,7 @@ declare global {
 export function desktopDirectoryPicker() {
   return window.agentDeck?.selectDirectory;
 }
+
+export function desktopChrome() {
+  return window.agentDeck?.chrome;
+}

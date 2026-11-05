@@ -49,7 +49,7 @@ function mount(items = projects) {
 }
 it('集中展示跨项目归档，恢复使用来源项目并立即更新列表', async () => {
   let entries = [row('one', 'first'), row('two', 'second')];
-  vi.spyOn(api, 'archivedSessions').mockImplementation(async () => entries);
+  vi.spyOn(api, 'archivedSessions').mockImplementation(async (agent) => (agent === 'codex' ? entries : []));
   const change = vi.spyOn(api, 'sessionAction').mockImplementation(async () => {
     entries = [entries[0]!];
   });
@@ -63,7 +63,9 @@ it('集中展示跨项目归档，恢复使用来源项目并立即更新列表'
   expect(useChat.getState().workspaceId).toBe('first');
 });
 it('零项目也显示归档，先添加可信目录才能管理', async () => {
-  vi.spyOn(api, 'archivedSessions').mockResolvedValue([row('orphan', null)]);
+  vi.spyOn(api, 'archivedSessions').mockImplementation(async (agent) =>
+    agent === 'codex' ? [row('orphan', null)] : [],
+  );
   const add = mount([]);
   await screen.findByText('归档orphan');
   expect(screen.queryByRole('button', { name: '删除' })).toBeNull();
@@ -80,11 +82,11 @@ it('归档读取失败保留重试入口，成功空结果显示空态', async (
   expect(screen.queryByText('暂无已归档会话')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '刷新归档会话' }));
   await screen.findByText('暂无已归档会话');
-  expect(read).toHaveBeenCalledTimes(2);
+  expect(read).toHaveBeenCalledTimes(6);
 });
 it('删除必须确认；归档条目变忙后阻止写入', async () => {
   const session = row('one', 'first');
-  vi.spyOn(api, 'archivedSessions').mockResolvedValue([session]);
+  vi.spyOn(api, 'archivedSessions').mockImplementation(async (agent) => (agent === 'codex' ? [session] : []));
   const change = vi.spyOn(api, 'sessionAction').mockResolvedValue(undefined);
   mount();
   fireEvent.click(await screen.findByRole('button', { name: '删除' }));
@@ -101,4 +103,33 @@ it('删除必须确认；归档条目变忙后阻止写入', async () => {
   await waitFor(() =>
     expect(change).toHaveBeenCalledWith('first', 'one', 'codex', { action: 'delete', confirmed: true }),
   );
+});
+
+it('三种来源的归档一起展示，工作台归档恢复按真实来源操作', async () => {
+  const records: SessionSummary[] = [
+    {
+      ...row('claude', 'first'),
+      agent: 'claude',
+      capabilities: { rename: true, fork: 'native', delete: 'native', archive: 'workbench' },
+    },
+    {
+      ...row('agy', 'second'),
+      agent: 'antigravity',
+      capabilities: { rename: false, fork: null, delete: null, archive: 'workbench' },
+    },
+    row('codex', 'first'),
+  ];
+  vi.spyOn(api, 'archivedSessions').mockImplementation(async (agent) =>
+    records.filter((record) => record.agent === agent),
+  );
+  const change = vi.spyOn(api, 'sessionAction').mockResolvedValue(undefined);
+  mount();
+  await screen.findByText('归档agy');
+  expect(screen.getByText('归档claude')).toBeTruthy();
+  expect(screen.getByText('归档codex')).toBeTruthy();
+  const agy = screen.getByText('归档agy').closest('li')!;
+  expect(within(agy).queryByRole('button', { name: '删除' })).toBeNull();
+  fireEvent.click(within(agy).getByRole('button', { name: '恢复' }));
+  fireEvent.click(screen.getByRole('button', { name: '恢复到会话列表' }));
+  await waitFor(() => expect(change).toHaveBeenCalledWith('second', 'agy', 'antigravity', { action: 'unarchive' }));
 });

@@ -29,7 +29,7 @@ export function SessionForkPoint({ pointId }: { pointId: string }) {
         title="从此位置创建独立会话"
       >
         <GitFork aria-hidden className="size-3.5" />
-        从此处分叉
+        从此处创建分支
       </button>
       {selected && <SessionForkDialog {...selected} pointId={pointId} onClose={() => setSelected(undefined)} />}
     </div>

@@ -1,23 +1,7 @@
 import path from 'node:path';
 import type { OpenDialogOptions, OpenDialogReturnValue } from 'electron';
-import { navigationAllowed } from './paths';
-
-type Frame = { url: string };
-type Owner = {
-  isDestroyed(): boolean;
-  webContents: { isDestroyed(): boolean; mainFrame: Frame };
-};
-type Request = { sender: unknown; senderFrame: Frame | null };
+import { desktopRequestAllowed, type DesktopOwner, type DesktopRequest } from './window-access';
 type OpenDirectory = (options: OpenDialogOptions) => Promise<OpenDialogReturnValue>;
-
-function authorized(owner: Owner, initialUrl: string, request: Request): boolean {
-  if (owner.isDestroyed() || owner.webContents.isDestroyed()) return false;
-  return (
-    request.sender === owner.webContents &&
-    request.senderFrame === owner.webContents.mainFrame &&
-    navigationAllowed(initialUrl, request.senderFrame.url)
-  );
-}
 
 function initialDirectory(input: unknown): string | undefined {
   if (input === undefined) return undefined;
@@ -29,14 +13,14 @@ function initialDirectory(input: unknown): string | undefined {
 }
 
 /** 限定为当前主页面；插件 iframe、其他窗口及导航前的请求不能取得本机路径。 */
-export function createDirectoryPicker(owner: Owner, initialUrl: string, open: OpenDirectory) {
+export function createDirectoryPicker(owner: DesktopOwner, initialUrl: string, open: OpenDirectory) {
   let pending = false;
   let generation = 0;
   const invalidate = () => {
     generation += 1;
   };
-  const select = async (request: Request, input?: unknown): Promise<string | null> => {
-    if (!authorized(owner, initialUrl, request)) throw new Error('当前页面不能选择本机文件夹。');
+  const select = async (request: DesktopRequest, input?: unknown): Promise<string | null> => {
+    if (!desktopRequestAllowed(owner, initialUrl, request)) throw new Error('当前页面不能选择本机文件夹。');
     if (pending) throw new Error('已有文件夹选择窗口，请先完成当前选择。');
     const defaultPath = initialDirectory(input);
     const current = generation;
@@ -48,7 +32,7 @@ export function createDirectoryPicker(owner: Owner, initialUrl: string, open: Op
         properties: ['openDirectory'],
         ...(defaultPath ? { defaultPath } : {}),
       });
-      if (current !== generation || !authorized(owner, initialUrl, request)) return null;
+      if (current !== generation || !desktopRequestAllowed(owner, initialUrl, request)) return null;
       const selected = result.filePaths[0];
       return !result.canceled && selected && path.isAbsolute(selected) ? selected : null;
     } catch {

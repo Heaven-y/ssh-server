@@ -35,6 +35,7 @@ export function SessionRefreshControl() {
     if (previous !== undefined && next !== previous) void client.invalidateQueries({ queryKey: ['sessions'] });
   }, [changes.data?.revision, client]);
   const notice = changes.isError ? '自动更新暂不可用，可手动刷新会话。' : changes.data?.message;
+  if (!notice) return null;
   return (
     <span className="relative inline-flex shrink-0">
       {notice && (

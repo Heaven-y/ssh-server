@@ -119,6 +119,8 @@ async function readCatalog(q: ClaudeQuery, signal: AbortSignal): Promise<NativeC
       ...(commands.status === 'rejected' ? ['Claude 技能与命令读取失败，请刷新重试'] : []),
       ...(models.status === 'rejected' ? ['Claude 模型建议读取失败，请刷新重试'] : []),
     ],
+    modelWarning: models.status === 'rejected' ? '暂时无法读取模型。' : '',
+    commandWarnings: commands.status === 'rejected' ? ['暂时无法读取技能与命令。'] : [],
   };
 }
 

@@ -14,12 +14,14 @@ import {
 import { useRef, useState } from 'react';
 import { SessionRefreshControl } from '../features/sessions/SessionRefreshControl';
 import { useUiPreferences } from '../ui/ui-preferences';
+import { desktopChrome } from '../lib/desktop-bridge';
 import { sidebarItemClass, sidebarMenuClass, sidebarMenuItemClass } from './SidebarActions';
 
 const iconButtonClass =
   'inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent';
 
 export function SidebarBrand({ collapsed }: { collapsed: boolean }) {
+  if (desktopChrome()) return null;
   const Icon = collapsed ? PanelLeftOpen : PanelLeftClose;
   const label = collapsed ? '展开侧栏' : '收起侧栏';
   return (

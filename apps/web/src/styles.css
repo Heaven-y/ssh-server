@@ -61,6 +61,66 @@
   --control-shadow: 0 0 0 0.5px #0000001a, 0 2px 6px #0000000a;
 }
 
+/* 桌面顶栏与系统按钮共用一行，交互控件退出拖动区，保留 Windows 原生贴靠与窗口菜单。 */
+.desktop-titlebar {
+  position: relative;
+  display: flex;
+  height: 40px;
+  min-height: 40px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  padding: 0 148px 0 8px;
+  background: var(--color-sidebar);
+  -webkit-app-region: drag;
+}
+.desktop-titlebar[data-platform='darwin'] {
+  padding-left: 80px;
+  padding-right: 12px;
+}
+.desktop-menubar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+.desktop-menu-button,
+.desktop-sidebar-toggle {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  padding: 0 9px;
+  font-size: 12px;
+  color: var(--color-muted-foreground);
+  -webkit-app-region: no-drag;
+}
+.desktop-sidebar-toggle {
+  width: 32px;
+  padding: 0;
+}
+.desktop-menu-button:hover,
+.desktop-menu-button[aria-expanded='true'],
+.desktop-sidebar-toggle:hover {
+  color: var(--color-foreground);
+  background: var(--control-hover);
+}
+.desktop-titlebar-error {
+  position: absolute;
+  z-index: 60;
+  top: 40px;
+  left: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-card);
+  padding: 8px 12px;
+  color: var(--color-destructive-foreground);
+  font-size: 12px;
+  -webkit-app-region: no-drag;
+}
+
 /* 主区列宽以自己的容器计算；打开右栏后仍保留消息与输入的共同轴线。 */
 .conversation {
   --conversation-width: clamp(680px, 64cqw, 920px);
