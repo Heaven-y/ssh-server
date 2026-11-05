@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { api, queryKeys } from '../../lib/api';
 import { useChat } from './chat-store';
-import type { AgentKind } from '@agentdeck/shared';
+import type { AgentCapabilities, AgentKind } from '@agentdeck/shared';
 import { nativeCapabilitiesGeneration } from '../settings/model-settings-api';
 import { currentCapabilityError } from './capability-feedback';
 
@@ -22,9 +22,12 @@ function mayDiscover(enabled: boolean, automatic: boolean, workspaceId: string |
 function isCurrentRefresh(scope: CapabilityScope, generation: number, previous?: CapabilityRefresh) {
   return previous?.generation === generation && sameTarget(scope, previous);
 }
+function wasDiscovered(data: AgentCapabilities | undefined, commands: boolean) {
+  return commands ? (data?.commandsDiscovered ?? data?.discovered) : data?.discovered;
+}
 
-/** 模型菜单首次打开可发现能力；技能和补全入口仍只读缓存。 */
-export function useAgentCapabilities(enabled: boolean, discoverOnOpen = false) {
+/** 模型复用磁盘缓存；显式打开技能时补取本进程的命令目录，补全只读取已有结果。 */
+export function useAgentCapabilities(enabled: boolean, discoverOnOpen = false, commands = false) {
   const client = useQueryClient();
   const workspaceId = useChat((state) => state.workspaceId);
   const agent = useChat((state) => state.agent);
@@ -53,8 +56,9 @@ export function useAgentCapabilities(enabled: boolean, discoverOnOpen = false) {
     },
     retry: false,
   });
-  const targetKey = JSON.stringify([key, generation]);
-  const shouldDiscover = mayDiscover(enabled, discoverOnOpen, workspaceId, query.data?.discovered);
+  const targetKey = JSON.stringify([key, generation, commands]);
+  const discovered = wasDiscovered(query.data, commands);
+  const shouldDiscover = mayDiscover(enabled, discoverOnOpen, workspaceId, discovered);
   const mutate = refresh.mutate;
   useEffect(() => {
     if (!shouldDiscover || !workspaceId || attempted.current.has(targetKey)) return;

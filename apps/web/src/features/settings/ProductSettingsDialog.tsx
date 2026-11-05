@@ -64,6 +64,7 @@ export default function ProductSettingsDialog({
   page: controlledPage,
   onPageChange,
   initialPage = 'claude',
+  projectId,
 }: {
   onClose(): void;
   onNative(agent: AgentKind): void;
@@ -71,12 +72,14 @@ export default function ProductSettingsDialog({
   page?: SettingsPage;
   onPageChange?(page: SettingsPage): void;
   initialPage?: SettingsPage;
+  projectId?: string;
 }) {
   const id = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const guardRef = useRef<SettingsLeave>((action) => action());
   const [localPage, setLocalPage] = useState<SettingsPage>(initialPage);
   const page = controlledPage ?? localPage;
+  const modelPage = page !== 'general' && page !== 'environment';
   const select = (next: SettingsPage) => {
     if (next === page) return;
     guardRef.current(() => {
@@ -116,7 +119,7 @@ export default function ProductSettingsDialog({
         </header>
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
           <SettingsNavigation page={page} select={select} />
-          <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-5 sm:p-7">
+          <main className={`min-h-0 min-w-0 flex-1 p-5 sm:p-6 ${modelPage ? 'overflow-hidden' : 'overflow-y-auto'}`}>
             {page === 'general' ? (
               <GeneralSettingsPanel guardRef={guardRef} />
             ) : page === 'environment' ? (
@@ -125,9 +128,10 @@ export default function ProductSettingsDialog({
               <ModelSettingsPanel
                 key={page}
                 agent={page}
+                projectId={projectId}
                 guardRef={guardRef}
                 onNative={() => onNative(page)}
-                onLaunchEnvironment={() => onLaunchEnvironment?.(page)}
+                onLaunchEnvironment={onLaunchEnvironment ? () => onLaunchEnvironment(page) : undefined}
               />
             )}
           </main>

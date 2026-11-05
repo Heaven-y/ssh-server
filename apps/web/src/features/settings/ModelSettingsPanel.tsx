@@ -1,5 +1,5 @@
 import { useLayoutEffect, type MutableRefObject } from 'react';
-import { ArrowUpRight, FileCode2, RefreshCw, Save } from 'lucide-react';
+import { ArrowUpRight, FileCode2, RefreshCw } from 'lucide-react';
 import type { AgentKind, ModelSettingField } from '@agentdeck/shared';
 import { AgentIcon } from '../../ui/BrandIcons';
 import { buttonClass } from '../../ui/styles';
@@ -14,9 +14,32 @@ function visibleFields(fields: ModelSettingField[], state: State) {
   const mode = modelSettingValue(auth, state.draft);
   return fields.filter((field) => {
     if (field.key === 'envKey') return mode === 'env';
-    if (field.key === 'apiKey') return mode === 'token';
+    if (field.key === 'apiKey') return mode !== 'command';
     return true;
   });
+}
+function suggestionsFor(field: ModelSettingField, state: State) {
+  const models = state.modelCatalog?.models ?? [];
+  if (field.key === 'model') return models.map((model) => ({ value: model.id, label: model.label }));
+  if (field.key !== 'reasoningEffort' || field.options) return undefined;
+  const selected = state.document?.fields.find((entry) => entry.key === 'model');
+  const modelId = selected && modelSettingValue(selected, state.draft);
+  return models.find((model) => model.id === modelId)?.reasoningEfforts?.map((value) => ({ value, label: value }));
+}
+function FetchModels({ state }: { state: State }) {
+  const hasCatalog = state.modelCatalog && state.modelCatalog.discovered !== false;
+  const label = state.dirty ? '保存并获取模型' : hasCatalog ? '重新获取' : '获取模型';
+  return (
+    <button
+      type="button"
+      className={`${buttonClass('outline')} shrink-0 rounded-lg`}
+      disabled={state.saving || state.modelsLoading}
+      onClick={() => void state.fetchModels()}
+    >
+      <RefreshCw aria-hidden className={`size-3.5 ${state.modelsLoading ? 'motion-safe:animate-spin' : ''}`} />
+      {state.modelsLoading ? '正在获取…' : label}
+    </button>
+  );
 }
 function Fields({ fields, state }: { fields: ModelSettingField[]; state: State }) {
   return fields.map((field) => (
@@ -25,88 +48,176 @@ function Fields({ fields, state }: { fields: ModelSettingField[]; state: State }
       field={field}
       value={modelSettingValue(field, state.draft)}
       cleared={state.draft[field.key] === null}
-      disabled={state.saving}
+      disabled={state.saving || state.modelsLoading}
       change={(value) => state.change(field, value)}
+      suggestions={suggestionsFor(field, state)}
+      action={field.key === 'model' ? <FetchModels state={state} /> : undefined}
     />
   ));
 }
-function ModelSettingsForm({ state }: { state: State }) {
-  if (!state.document) return null;
-  const fields = modelSettingsFields(state.document, state.draft);
-  const models = fields.filter((field) => field.group === 'model');
-  const connections = visibleFields(
-    fields.filter((field) => field.group === 'connection'),
-    state,
-  );
-  const aliases = models.filter((field) => field.key !== 'model');
+function ConnectionFields({ fields, state }: { fields: ModelSettingField[]; state: State }) {
+  const paired =
+    fields.some((field) => field.key === 'provider') && fields.some((field) => field.key === 'displayName');
   return (
-    <div className="space-y-5">
-      <section aria-label="模型选择" className="space-y-4">
-        <Fields fields={models.filter((field) => field.key === 'model')} state={state} />
-        {aliases.length > 0 && (
-          <details className="rounded-xl border border-border bg-background/30 px-4 py-3">
-            <summary className="cursor-pointer text-[13px] text-muted-foreground">模型别名映射</summary>
-            <div className="mt-4 grid gap-4">
-              <Fields fields={aliases} state={state} />
-            </div>
-          </details>
+    <div className="grid gap-3.5 sm:grid-cols-2">
+      {fields.map((field) => (
+        <div
+          key={field.key}
+          className={paired && ['provider', 'displayName'].includes(field.key) ? 'min-w-0' : 'min-w-0 sm:col-span-2'}
+        >
+          <Fields fields={[field]} state={state} />
+        </div>
+      ))}
+    </div>
+  );
+}
+function ModelSettingsForm({ state, fields }: { state: State; fields: ModelSettingField[] }) {
+  const connections = fields.filter((field) => !field.advanced && field.group === 'connection');
+  const models = fields.filter((field) => !field.advanced && field.group === 'model');
+  const parameters = models.filter((field) => ['reasoningEffort', 'contextWindow'].includes(field.key));
+  return (
+    <div className="space-y-6">
+      {connections.length > 0 && (
+        <section aria-label="服务连接" className="space-y-3.5">
+          <h4 className="text-xs font-medium text-muted-foreground">服务连接</h4>
+          <ConnectionFields fields={connections} state={state} />
+        </section>
+      )}
+      <section aria-label="模型选择" className="space-y-3.5 border-t border-border pt-5">
+        <h4 className="text-xs font-medium text-muted-foreground">模型</h4>
+        <Fields fields={models.filter((field) => !parameters.includes(field))} state={state} />
+        {state.modelsError && (
+          <p role="alert" className="text-xs leading-5 text-destructive-foreground">
+            {state.modelsError}
+          </p>
         )}
-      </section>
-      <section aria-label="服务连接" className="space-y-4 border-t border-border pt-5">
-        <h4 className="text-sm font-medium">服务连接</h4>
-        <Fields fields={connections} state={state} />
+        {state.modelMessage && (
+          <p role="status" className="text-xs text-muted-foreground">
+            {state.modelMessage}
+          </p>
+        )}
+        {parameters.length > 0 && (
+          <div className="grid gap-3.5 sm:grid-cols-2">
+            <Fields fields={parameters} state={state} />
+          </div>
+        )}
       </section>
     </div>
   );
 }
-function Feedback({ state }: { state: State }) {
+function AdvancedSettings({
+  state,
+  fields,
+  onNative,
+  onLaunchEnvironment,
+}: {
+  state: State;
+  fields: ModelSettingField[];
+  onNative(): void;
+  onLaunchEnvironment?: () => void;
+}) {
   return (
-    <>
-      {state.error && (
-        <p role="alert" className="text-sm text-destructive-foreground">
-          {state.error}
-        </p>
-      )}
-      {state.message && (
-        <p role="status" className="text-sm text-success">
-          {state.message}
-        </p>
-      )}
-      {!state.document && !state.error && (
-        <p role="status" className="py-12 text-center text-sm text-muted-foreground">
-          正在读取原生模型配置…
-        </p>
-      )}
-    </>
+    <details className="border-t border-border pt-4">
+      <summary className="cursor-pointer text-[13px] text-muted-foreground">高级设置</summary>
+      <div className="mt-4 space-y-4">
+        <Fields fields={fields.filter((field) => field.advanced)} state={state} />
+        {state.document?.warnings.map((warning) => (
+          <p key={warning} className="text-xs leading-5 text-muted-foreground">
+            {warning}
+          </p>
+        ))}
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={buttonClass('ghost')}
+            disabled={state.saving || state.modelsLoading}
+            aria-label={`修改 ${nativeAgentNames[state.document!.agent]} 原始配置`}
+            onClick={() => state.leave(onNative)}
+          >
+            <FileCode2 aria-hidden className="size-3.5" />
+            原始配置
+          </button>
+          {onLaunchEnvironment && (
+            <button
+              type="button"
+              className={buttonClass('ghost')}
+              disabled={state.saving || state.modelsLoading}
+              onClick={() => state.leave(onLaunchEnvironment)}
+            >
+              启动环境
+              <ArrowUpRight aria-hidden className="size-3.5" />
+            </button>
+          )}
+          <button
+            type="button"
+            className={buttonClass('ghost')}
+            disabled={state.saving || state.modelsLoading}
+            onClick={state.reread}
+          >
+            重新读取配置
+          </button>
+        </div>
+        <p className="break-all font-mono text-[11px] text-muted-foreground">{state.document?.displayPath}</p>
+      </div>
+    </details>
   );
 }
-function ModelSettingsWarnings({ agent, state }: { agent: AgentKind; state: State }) {
+
+function SettingsFeedback({ state }: { state: State }) {
+  if (state.error)
+    return (
+      <p role="alert" className="text-sm text-destructive-foreground">
+        {state.error}
+      </p>
+    );
+  if (!state.document)
+    return (
+      <p role="status" className="py-12 text-center text-sm text-muted-foreground">
+        正在读取配置…
+      </p>
+    );
+  return null;
+}
+function SettingsFooter({ state }: { state: State }) {
   return (
-    <>
-      {agent === 'antigravity' && <p className="text-xs text-muted-foreground">Gemini API 的地址与 Key 在下方配置。</p>}
-      {!!state.document?.warnings.length && (
-        <div className="space-y-1 border-l-2 border-border-strong pl-3 text-xs leading-6 text-muted-foreground">
-          {state.document.warnings.map((warning) => (
-            <p key={warning}>{warning}</p>
-          ))}
-        </div>
-      )}
-    </>
+    <footer className="mt-4 flex shrink-0 items-center justify-between gap-3 border-t border-border pt-4">
+      <p role={state.message ? 'status' : undefined} className="min-w-0 text-xs text-muted-foreground">
+        {state.message || (state.dirty ? '有未保存修改' : '对新会话生效')}
+      </p>
+      <div className="flex shrink-0 gap-2">
+        {!state.document && state.error && (
+          <button type="button" className={buttonClass('ghost')} disabled={state.saving} onClick={state.reread}>
+            重试
+          </button>
+        )}
+        <button
+          type="button"
+          className={`${buttonClass('primary')} rounded-lg`}
+          disabled={state.saving || state.modelsLoading || !state.dirty}
+          onClick={() => void state.save()}
+        >
+          {state.saving ? '正在保存…' : '保存配置'}
+        </button>
+      </div>
+    </footer>
   );
 }
 
 export function ModelSettingsPanel({
   agent,
+  projectId,
   guardRef,
   onNative,
   onLaunchEnvironment,
 }: {
   agent: AgentKind;
+  projectId?: string;
   guardRef: MutableRefObject<SettingsLeave>;
   onNative(): void;
-  onLaunchEnvironment(): void;
+  onLaunchEnvironment?: () => void;
 }) {
-  const state = useModelSettings(agent);
+  const state = useModelSettings(agent, projectId);
+  const fields = state.document ? visibleFields(modelSettingsFields(state.document, state.draft), state) : [];
   useLayoutEffect(() => {
     guardRef.current = state.leave;
     return () => {
@@ -115,68 +226,27 @@ export function ModelSettingsPanel({
   });
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="mb-5 flex shrink-0 flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="flex items-center gap-2.5 text-lg font-semibold">
-            <AgentIcon agent={agent} className="size-5" />
-            {nativeAgentNames[agent]}
-          </h3>
-        </div>
-        <button
-          type="button"
-          className={buttonClass('ghost')}
-          disabled={state.saving}
-          aria-label={`修改 ${nativeAgentNames[agent]} 原始配置`}
-          onClick={() => state.leave(onNative)}
-        >
-          <FileCode2 aria-hidden className="size-4" />
-          原始配置
-        </button>
+      <header className="mb-5 shrink-0">
+        <h3 className="flex items-center gap-2.5 text-base font-semibold">
+          <AgentIcon agent={agent} className="size-5" />
+          {nativeAgentNames[agent]}
+        </h3>
       </header>
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-        <Feedback state={state} />
-        <ModelSettingsForm state={state} />
-        <div className="space-y-3">
-          <ModelSettingsWarnings agent={agent} state={state} />
-          <button
-            type="button"
-            className={`${buttonClass('ghost')} -ml-3.5`}
-            disabled={state.saving}
-            onClick={() => state.leave(onLaunchEnvironment)}
-          >
-            {agent === 'antigravity' ? '配置 API 地址与 Key' : '启动环境与高级认证'}
-            <ArrowUpRight aria-hidden className="size-3.5" />
-          </button>
-        </div>
-      </div>
-      <footer className="mt-4 shrink-0 space-y-3 border-t border-border pt-4">
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-1 pb-1 pr-4 [scrollbar-gutter:stable]">
+        <SettingsFeedback state={state} />
         {state.document && (
-          <p className="break-all font-mono text-[11px] text-muted-foreground">{state.document.displayPath}</p>
+          <>
+            <ModelSettingsForm state={state} fields={fields} />
+            <AdvancedSettings
+              state={state}
+              fields={fields}
+              onNative={onNative}
+              onLaunchEnvironment={onLaunchEnvironment}
+            />
+          </>
         )}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">{state.dirty ? '有未保存修改' : '对新会话生效'}</p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className={buttonClass('ghost')}
-              disabled={state.saving || (!state.document && !state.error)}
-              onClick={state.reread}
-            >
-              <RefreshCw aria-hidden className="size-3.5" />
-              重新读取
-            </button>
-            <button
-              type="button"
-              className={buttonClass('primary')}
-              disabled={state.saving || !state.dirty}
-              onClick={() => void state.save()}
-            >
-              <Save aria-hidden className="size-3.5" />
-              {state.saving ? '正在保存…' : '保存配置'}
-            </button>
-          </div>
-        </div>
-      </footer>
+      </div>
+      <SettingsFooter state={state} />
     </div>
   );
 }

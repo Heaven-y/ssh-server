@@ -67,7 +67,7 @@ describe('原生能力解析', () => {
         }),
     );
     const pending = service.refresh(ws, 'codex');
-    service.invalidate('codex');
+    await service.invalidate('codex');
     finish(catalog);
     await expect(pending).rejects.toMatchObject({ code: 'capabilities_refresh_superseded' });
     expect((await service.read(ws, 'codex')).discovered).toBe(false);

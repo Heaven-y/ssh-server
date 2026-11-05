@@ -1,5 +1,6 @@
 import type { AgentKind, NativeModelSettingsInput } from '@agentdeck/shared';
 import { updateTomlFields } from './toml-fields';
+import { modelContextWindow, patchAntigravityModel, patchClaudeDisplayName } from './model-settings-custom';
 import {
   claudePaths,
   codexAuthMode,
@@ -15,7 +16,7 @@ export class ModelSettingsError extends Error {
   readonly status = 400;
 }
 type Changes = NativeModelSettingsInput['changes'];
-type Edit = { path: string[]; value: string | boolean | null };
+type Edit = { path: string[]; value: string | number | boolean | null };
 const owns = (changes: Changes, key: string) => Object.hasOwn(changes, key);
 const normalized = (value: string | null | undefined) => value?.trim() || null;
 
@@ -64,15 +65,46 @@ function encodeJson(content: string, config: ConfigObject) {
     newline
   );
 }
+function validateJsonChanges(
+  agent: AgentKind,
+  changes: Changes,
+  config: ConfigObject,
+  paths: Record<string, string[]>,
+) {
+  const extras = agent === 'antigravity' ? ['displayName', 'baseUrl', 'contextWindow'] : ['displayName'];
+  validateKeys(changes, [...Object.keys(paths), ...extras]);
+  if (agent === 'antigravity') validateAgyProvider(config, changes);
+  if (
+    agent === 'claude' &&
+    changes.reasoningEffort &&
+    !['low', 'medium', 'high', 'xhigh'].includes(changes.reasoningEffort)
+  )
+    throw new ModelSettingsError('Claude 的默认推理强度支持 low、medium、high 和 xhigh。');
+}
+function applyJsonChanges(config: ConfigObject, changes: Changes, paths: Record<string, string[]>) {
+  for (const [key, value] of Object.entries(changes)) {
+    // 密钥的空输入表示保留；只有 null 明确删除，避免占位符或空表单擦除认证。
+    if (preserveSecret(key, value) || !Object.hasOwn(paths, key)) continue;
+    setJson(config, paths[key]!, normalized(value));
+  }
+}
 function jsonPatch(agent: AgentKind, content: string, config: ConfigObject, changes: Changes) {
   const previous = JSON.stringify(config);
   const paths = agent === 'claude' ? claudePaths : { model: ['model'], modelProvider: ['modelProvider'] };
-  validateKeys(changes, Object.keys(paths));
-  if (agent === 'antigravity') validateAgyProvider(config, changes);
-  for (const [key, value] of Object.entries(changes)) {
-    // 密钥的空输入表示保留；只有 null 明确删除，避免占位符或空表单擦除认证。
-    if (preserveSecret(key, value)) continue;
-    setJson(config, paths[key]!, normalized(value));
+  validateJsonChanges(agent, changes, config, paths);
+  const original = structuredClone(config);
+  applyJsonChanges(config, changes, paths);
+  try {
+    if (agent === 'claude') patchClaudeDisplayName(config, changes);
+    else {
+      const custom: ConfigObject = { ...original, modelProvider: config.modelProvider };
+      if (patchAntigravityModel(custom, changes)) {
+        config.customModelsConfig = custom.customModelsConfig;
+        config.model = custom.model;
+      }
+    }
+  } catch (error) {
+    throw new ModelSettingsError((error as Error).message);
   }
   return JSON.stringify(config) === previous ? content : encodeJson(content, config);
 }
@@ -96,14 +128,17 @@ function codexAuthEdits(provider: ConfigObject, changes: Changes, prefix: string
   const touched = ['authMode', 'envKey', 'apiKey'].some((key) => owns(changes, key));
   if (!touched) return [];
   const previousMode = codexAuthMode(provider);
-  const mode = changes.authMode ?? previousMode;
+  const mode = requestedAuthMode(changes, previousMode);
   if (previousMode === 'command') throw new ModelSettingsError('已有高级认证，请在原始配置中编辑。');
   if (!['env', 'native', 'token'].includes(mode)) throw new ModelSettingsError('不支持的认证方式。');
-  const edits = owns(changes, 'authMode') ? authModeEdits(mode, prefix) : [];
+  const edits = owns(changes, 'authMode') || mode !== previousMode ? authModeEdits(mode, prefix) : [];
   if (mode === 'env') edits.push(envKeyEdit(provider, changes, prefix));
   else if (changes.envKey) throw new ModelSettingsError('请先选择环境变量认证。');
   edits.push(...apiKeyEdits(mode, changes, prefix));
   return edits;
+}
+function requestedAuthMode(changes: Changes, previous: string) {
+  return changes.authMode ?? (changes.apiKey?.trim() ? 'token' : previous);
 }
 function providerId(config: ConfigObject, changes: Changes) {
   const providers = object(config.model_providers);
@@ -129,20 +164,43 @@ function customConnectionEdits(config: ConfigObject, changes: Changes, id: strin
   const edits: Edit[] = [];
   const provider = object(object(config.model_providers)[id]);
   const prefix = ['model_providers', id];
-  const changingConnection = ['provider', 'baseUrl', 'authMode', 'envKey', 'apiKey'].some((key) => owns(changes, key));
+  const changingConnection = ['provider', 'displayName', 'baseUrl', 'authMode', 'envKey', 'apiKey'].some((key) =>
+    owns(changes, key),
+  );
   if (!changingConnection) return edits;
   if (!has(provider, 'name')) edits.push({ path: [...prefix, 'name'], value: id });
+  if (owns(changes, 'displayName'))
+    edits.push({ path: [...prefix, 'name'], value: normalized(changes.displayName) || id });
   if (!has(provider, 'wire_api')) edits.push({ path: [...prefix, 'wire_api'], value: 'responses' });
   if (owns(changes, 'baseUrl')) edits.push({ path: [...prefix, 'base_url'], value: normalized(changes.baseUrl) });
   edits.push(...codexAuthEdits(provider, changes, prefix));
   return edits;
 }
 function codexEdits(config: ConfigObject, changes: Changes): Edit[] {
-  validateKeys(changes, ['model', 'provider', 'baseUrl', 'authMode', 'envKey', 'apiKey']);
+  validateKeys(changes, [
+    'model',
+    'provider',
+    'displayName',
+    'baseUrl',
+    'authMode',
+    'envKey',
+    'apiKey',
+    'reasoningEffort',
+    'contextWindow',
+  ]);
   const id = providerId(config, changes);
   const edits: Edit[] = [];
   if (owns(changes, 'model')) edits.push({ path: ['model'], value: normalized(changes.model) });
   if (owns(changes, 'provider')) edits.push({ path: ['model_provider'], value: id === 'openai' ? null : id });
+  if (owns(changes, 'reasoningEffort'))
+    edits.push({ path: ['model_reasoning_effort'], value: normalized(changes.reasoningEffort) });
+  if (owns(changes, 'contextWindow')) {
+    try {
+      edits.push({ path: ['model_context_window'], value: modelContextWindow(changes.contextWindow) });
+    } catch (error) {
+      throw new ModelSettingsError((error as Error).message);
+    }
+  }
   edits.push(...(nativeConnectionEdits(config, changes, id) ?? customConnectionEdits(config, changes, id)));
   return edits;
 }

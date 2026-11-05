@@ -38,7 +38,7 @@ type Deps = {
   configDir: string;
   env?: NodeJS.ProcessEnv;
   protector?: SecretProtector;
-  onSaved?: (agent: AgentKind) => void;
+  onSaved?: (agent: AgentKind) => void | Promise<void>;
 };
 const entropy = (agent: AgentKind, name: string) =>
   createHash('sha256').update(`AgentDeck:launch:${agent}:${name}`).digest();
@@ -170,7 +170,7 @@ export function createLaunchEnvironment(deps: Deps) {
         for (const item of input.variables) await change(agent, stored, item);
         const parents = await inspectDirectory(directory, true);
         await writeConfigFile(file, Buffer.from(JSON.stringify(stored, null, 2) + '\n'), snapshot, parents!);
-        deps.onSaved?.(agent);
+        await deps.onSaved?.(agent);
         const updated = await load();
         return metadata(agent, updated.stored, updated.snapshot.revision);
       }),

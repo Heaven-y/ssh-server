@@ -44,6 +44,7 @@ describe('能力目录路由', () => {
       expect(result.json()).toEqual({
         agent: 'codex',
         discovered: true,
+        commandsDiscovered: true,
         models: [],
         entries: [],
         warnings: ['模型目录暂不可用'],

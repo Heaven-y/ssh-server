@@ -1,6 +1,6 @@
 # 架构
 
-更新于 2026-11-05。本文记录原生 CLI 工作台、配置、插件和桌面交付的实现边界。会话协议见[接入说明](native-dialogue.md)，验收范围见[路线图](../roadmap.md)。重整前的实现说明保存在 `c686ef2:docs/engineering/architecture.md`。
+更新于 2026-11-06。本文记录原生 CLI 工作台、配置、插件和桌面交付的实现边界。会话协议见[接入说明](native-dialogue.md)，验收范围见[路线图](../roadmap.md)。重整前的实现说明保存在 `c686ef2:docs/engineering/architecture.md`。
 
 ## 1. 分层与职责
 
@@ -92,7 +92,7 @@ Electron 负责入口、生命周期及本机目录选择。目录选择只暴�
 
 Claude/Codex 的既有运行时按会话复用，空闲回收预算为 5 分钟。缓存身份含项目、原生 id 与启动参数；关键输入变化后重新启动，崩溃实例不得再次复用，关闭应用统一 dispose。Antigravity 每轮关闭 stdin 并结束进程，下一轮用原生 id 续接；已有会话的启动环境快照独立保留，显式重启后刷新。
 
-模型/强度未选则省略参数。原生权限配置决定是否请求审批，宿主只承接答复。Antigravity 没有同等审批通道，软拒输出独立显示。能力 GET 仅返回缓存及 discovered 标记；模型菜单首次打开或手动刷新发 POST，成功后缓存复用，失败不循环重试；既有会话带 `sessionId` 解析原生目录，前端缓存区分会话。发送普通文字不依赖能力目录，调用 slash 使用已刷新能力。启动环境异步解析完成后再次核对运行实例预算，防止并发准备越过 32 个实例上限。
+模型/强度未选则省略参数。原生权限配置决定是否请求审批，宿主只承接答复。Antigravity 没有同等审批通道，软拒输出独立显示。能力 GET 返回缓存；模型菜单首次无缓存或用户重新获取时发 POST，失败不循环重试；既有会话带 `sessionId` 解析原生目录。模型缓存按规范化 cwd 与 CLI 落盘到 model-cache，每 CLI 至多 32 个目录、每目录 512 个模型、文件 256 KiB，只保存模型字段和目录摘要。commandsDiscovered 区分本进程命令目录，避免重启恢复模型时误用旧技能。保存配置作废内存与磁盘缓存，并拒绝失效请求回填。启动环境异步解析完成后再次核对实例预算，防止并发准备越过 32 个实例上限。
 
 能力发现前检查目录；既有会话在原生归属读取前先检查项目根，再按已核实的会话目录发现。失效目录返回专用错误码并连接更换目录操作。模型反馈与技能反馈分别输出，避免一个分支失败影响另一分支的界面状态。
 
@@ -156,6 +156,7 @@ API 和 WebSocket 继续校验会话及来源；主应用禁止被 iframe 嵌入
 | 原生管理 | `/api/projects/:id/sessions/:agent/:sessionId/actions`、`/fork`，来源及项目均在路径中 |
 | 探测与能力 | `/api/agents/probes`；项目下 `agent-capabilities` 缓存与显式刷新 |
 | 设置 | `/api/settings/product`、`/environment`、`/launch-environment/:agent`，原生文件由 `/api/native-resources/:agent` 提供 |
+| 模型设置 | `/api/settings/models/:agent` 读取与保存表单；`/catalog` 的 GET 只读缓存，POST 原生获取，工作目录由可选 projectId 解析 |
 | 插件 | `/api/plugins/*`，安装注册、启停、静态页面与权限内的设置存储 |
 | 对话 | `/ws`，发送、停止、审批答复及回合事件 |
 | SSH 档案 | `/api/ssh-targets`、`/api/ssh/*`，档案、认证、信任 |

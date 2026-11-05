@@ -1,7 +1,8 @@
 import path from 'node:path';
-import type { AgentCapabilities, AgentKind, CapabilitySelection, Workspace } from '@agentdeck/shared';
+import type { AgentCapabilities, AgentKind, AgentModel, CapabilitySelection, Workspace } from '@agentdeck/shared';
 import type { CapabilityProvider, NativeCapabilityCatalog, NativeInvocation } from '../agents/capability-types';
 import { SessionError } from './sessions';
+import { createModelCache } from './model-cache';
 
 type Entry = NativeCapabilityCatalog['entries'][number];
 function typedCommand(text: string): { name: string; text: string } | undefined {
@@ -43,37 +44,54 @@ function prepareEntry(entry: Entry, args: string, sessionId?: string) {
   return { text: args, invocation: structuredClone(entry.invocation) };
 }
 
-export function createCapabilitiesService(providers: Partial<Record<AgentKind, CapabilityProvider>>) {
+function retainModels(partial: AgentModel[], previous: AgentModel[]): AgentModel[] {
+  const ids = new Set(partial.map((model) => model.id));
+  return [...partial, ...previous.filter((model) => !ids.has(model.id))];
+}
+
+export function createCapabilitiesService(
+  providers: Partial<Record<AgentKind, CapabilityProvider>>,
+  options: { configDir?: string } = {},
+) {
   const cache = new Map<string, NativeCapabilityCatalog>();
+  const models = new Map<string, AgentModel[] | undefined>();
   const refreshing = new Map<string, symbol>();
-  function keyOf(ws: Workspace, agent: AgentKind) {
-    const dir = path.resolve(ws.dir);
-    return JSON.stringify([ws.id, process.platform === 'win32' ? dir.toLowerCase() : dir, agent]);
+  const revisions: Partial<Record<AgentKind, number>> = {};
+  const disk = options.configDir ? createModelCache(options.configDir) : undefined;
+  function keyOf(directory: string, agent: AgentKind) {
+    const dir = path.resolve(directory);
+    return JSON.stringify([agent, process.platform === 'win32' ? dir.toLowerCase() : dir]);
   }
-  function publicCatalog(agent: AgentKind, catalog?: NativeCapabilityCatalog): AgentCapabilities {
+  function publicCatalog(
+    agent: AgentKind,
+    catalog?: NativeCapabilityCatalog,
+    savedModels?: AgentModel[],
+  ): AgentCapabilities {
     if (!catalog)
       return {
         agent,
-        discovered: false,
-        models: [],
+        discovered: savedModels !== undefined,
+        commandsDiscovered: false,
+        models: structuredClone(savedModels ?? []),
         entries: [],
-        warnings: ['打开模型菜单或点击刷新即可读取 CLI 能力。'],
+        warnings: savedModels ? [] : ['打开模型菜单或点击刷新即可读取 CLI 能力。'],
       };
     const visible = structuredClone(catalog);
     return {
       ...visible,
       agent,
       discovered: true,
+      commandsDiscovered: true,
       entries: visible.entries.map((entry) => {
         delete entry.invocation;
         return entry;
       }),
     };
   }
-  async function discover(ws: Workspace, agent: AgentKind, signal?: AbortSignal) {
+  async function discover(directory: string, agent: AgentKind, signal?: AbortSignal) {
     try {
       signal?.throwIfAborted();
-      const catalog = await providerOf(providers, agent)(ws.dir, signal);
+      const catalog = await providerOf(providers, agent)(directory, signal);
       signal?.throwIfAborted();
       return catalog;
     } catch (error) {
@@ -85,32 +103,63 @@ export function createCapabilitiesService(providers: Partial<Record<AgentKind, C
       );
     }
   }
+  async function readDirectory(directory: string, agent: AgentKind): Promise<AgentCapabilities> {
+    const key = keyOf(directory, agent);
+    const revision = revisions[agent];
+    if (!cache.has(key) && !models.has(key)) {
+      const saved = await disk?.read(agent, key);
+      if (revision === revisions[agent]) models.set(key, saved);
+    }
+    return publicCatalog(agent, cache.get(key), models.get(key));
+  }
+  async function refreshDirectory(
+    directory: string,
+    agent: AgentKind,
+    signal?: AbortSignal,
+  ): Promise<AgentCapabilities> {
+    const key = keyOf(directory, agent);
+    const request = Symbol();
+    refreshing.set(key, request);
+    const assertCurrent = () => {
+      signal?.throwIfAborted();
+      if (refreshing.get(key) !== request)
+        throw new SessionError(409, 'capabilities_refresh_superseded', '已有较新的能力刷新请求，请读取最新目录');
+    };
+    try {
+      const catalog = structuredClone(await discover(directory, agent, signal));
+      assertCurrent();
+      if (catalog.modelWarning) {
+        catalog.models = retainModels(catalog.models, (await readDirectory(directory, agent)).models);
+      } else if (catalog.models.length || !catalog.warnings.length || catalog.modelWarning === '') {
+        await disk?.write(agent, key, catalog.models, () => refreshing.get(key) === request && !signal?.aborted);
+      }
+      assertCurrent();
+      cache.set(key, structuredClone(catalog));
+      return publicCatalog(agent, catalog);
+    } finally {
+      if (refreshing.get(key) === request) refreshing.delete(key);
+    }
+  }
   return {
-    invalidate(agent: AgentKind): void {
+    async invalidate(agent: AgentKind): Promise<void> {
+      revisions[agent] = (revisions[agent] ?? 0) + 1;
       // 保存后在途的旧目录也失效，不能晚于新配置重新填回缓存。
-      for (const key of new Set([...cache.keys(), ...refreshing.keys()])) {
-        if ((JSON.parse(key) as string[])[2] !== agent) continue;
+      for (const key of new Set([...cache.keys(), ...models.keys(), ...refreshing.keys()])) {
+        if ((JSON.parse(key) as string[])[0] !== agent) continue;
         cache.delete(key);
+        models.delete(key);
         refreshing.delete(key);
       }
+      await disk?.invalidate(agent);
     },
     read(ws: Workspace, agent: AgentKind): Promise<AgentCapabilities> {
-      return Promise.resolve(publicCatalog(agent, cache.get(keyOf(ws, agent))));
+      return readDirectory(ws.dir, agent);
     },
-    async refresh(ws: Workspace, agent: AgentKind, signal?: AbortSignal): Promise<AgentCapabilities> {
-      const key = keyOf(ws, agent);
-      const request = Symbol();
-      refreshing.set(key, request);
-      try {
-        const catalog = await discover(ws, agent, signal);
-        if (refreshing.get(key) !== request)
-          throw new SessionError(409, 'capabilities_refresh_superseded', '已有较新的能力刷新请求，请读取最新目录');
-        cache.set(key, structuredClone(catalog));
-        return publicCatalog(agent, catalog);
-      } finally {
-        if (refreshing.get(key) === request) refreshing.delete(key);
-      }
+    refresh(ws: Workspace, agent: AgentKind, signal?: AbortSignal): Promise<AgentCapabilities> {
+      return refreshDirectory(ws.dir, agent, signal);
     },
+    readDirectory,
+    refreshDirectory,
     prepare(
       ws: Workspace,
       agent: AgentKind,
@@ -122,7 +171,7 @@ export function createCapabilitiesService(providers: Partial<Record<AgentKind, C
         const command = selection ? undefined : typedCommand(text);
         if (!selection && !command) return { text };
         signal?.throwIfAborted();
-        const catalog = cache.get(keyOf(ws, agent));
+        const catalog = cache.get(keyOf(ws.dir, agent));
         if (!catalog)
           throw new SessionError(409, 'capabilities_not_refreshed', '请先点击“刷新能力”，再使用技能或斜杠命令');
         const entry = chooseEntry(catalog.entries, selection, command?.name);

@@ -25,13 +25,18 @@ export function field(
   value: unknown,
   details: Partial<ModelSettingField> = {},
 ): ModelSettingField {
-  return { key, label, value: string(value), group: 'connection', ...details };
+  return {
+    key,
+    label,
+    value: typeof value === 'number' ? String(value) : string(value),
+    group: 'connection',
+    ...details,
+  };
 }
 const secret = (key: string, label: string, value: unknown) =>
   field(key, label, '', {
     secret: true,
     hasValue: !!string(value),
-    hint: '留空保留已有密钥；替换后直接保存在原生文件中。',
   });
 
 export const claudePaths: Record<string, string[]> = {
@@ -42,24 +47,43 @@ export const claudePaths: Record<string, string[]> = {
   sonnetModel: ['env', 'ANTHROPIC_DEFAULT_SONNET_MODEL'],
   opusModel: ['env', 'ANTHROPIC_DEFAULT_OPUS_MODEL'],
   haikuModel: ['env', 'ANTHROPIC_DEFAULT_HAIKU_MODEL'],
+  reasoningEffort: ['effortLevel'],
 };
 export function claudeFields(config: ConfigObject): ModelSettingField[] {
   const env = object(config.env);
+  const picker = object(config.modelPicker).options;
+  const selected = Array.isArray(picker) ? picker.map(object).find((entry) => entry.model === config.model) : undefined;
   return [
+    field('displayName', '模型名称', selected?.label, { group: 'model', placeholder: '与模型 ID 相同' }),
     field('model', '默认模型', config.model, { group: 'model', hint: '沿用 CLI 的模型名或别名；留空使用原生默认。' }),
+    field('reasoningEffort', '推理强度', config.effortLevel, {
+      group: 'model',
+      options: ['', 'low', 'medium', 'high', 'xhigh'].map((value) => ({ value, label: value || '自动' })),
+    }),
+    field('contextWindow', '上下文窗口', '由模型决定', { group: 'model', readOnly: true }),
     ...(['sonnet', 'opus', 'haiku'] as const).map((name) =>
       field(
         `${name}Model`,
         `${name[0]!.toUpperCase()}${name.slice(1)} 映射`,
         env[`ANTHROPIC_DEFAULT_${name.toUpperCase()}_MODEL`],
-        { group: 'model' },
+        { group: 'model', advanced: true },
       ),
     ),
     field('baseUrl', '服务地址', env.ANTHROPIC_BASE_URL, {
       hint: '写入原生 env.ANTHROPIC_BASE_URL；留空使用默认地址。',
     }),
-    secret('apiKey', 'API Key', env.ANTHROPIC_API_KEY),
-    secret('authToken', 'Auth Token', env.ANTHROPIC_AUTH_TOKEN),
+    {
+      ...secret('apiKey', 'API Key', env.ANTHROPIC_API_KEY),
+      advanced: !!env.ANTHROPIC_AUTH_TOKEN && !env.ANTHROPIC_API_KEY,
+    },
+    {
+      ...secret(
+        'authToken',
+        env.ANTHROPIC_AUTH_TOKEN && !env.ANTHROPIC_API_KEY ? 'API Key' : 'Auth Token',
+        env.ANTHROPIC_AUTH_TOKEN,
+      ),
+      advanced: !env.ANTHROPIC_AUTH_TOKEN || !!env.ANTHROPIC_API_KEY,
+    },
   ];
 }
 
@@ -90,14 +114,16 @@ function codexProviderFields(config: ConfigObject, id: string): ModelSettingFiel
   const provider = object(object(config.model_providers)[id]);
   const mode = codexAuthMode(provider);
   return [
+    field('displayName', '服务名称', provider.name, { placeholder: '自定义服务' }),
     field('baseUrl', '服务地址', provider.base_url, { hint: '使用兼容 Responses API 的服务地址。' }),
     field('authMode', '认证方式', mode, {
+      advanced: true,
       options:
         mode === 'command'
           ? [{ value: 'command', label: '沿用高级认证' }]
           : [
-              { value: 'token', label: 'API Key · 写入原生配置' },
-              { value: 'env', label: '环境变量 · 原生推荐' },
+              { value: 'token', label: 'API Key' },
+              { value: 'env', label: '环境变量' },
               { value: 'native', label: '沿用 OpenAI 登录' },
             ],
       hint:
@@ -106,6 +132,7 @@ function codexProviderFields(config: ConfigObject, id: string): ModelSettingFiel
           : '直接填写 Key 使用原生 experimental_bearer_token；原生文件中为明文。',
     }),
     field('envKey', '密钥环境变量名', provider.env_key, {
+      advanced: true,
       hint: '填写变量名，例如 OPENAI_API_KEY；变量值由启动 CLI 的环境提供。',
     }),
     secret('apiKey', 'API Key', provider.experimental_bearer_token),
@@ -129,6 +156,12 @@ export function codexFields(config: ConfigObject): Pick<NativeModelSettingsDocum
         group: 'model',
         hint: '填写 CLI 或服务商支持的模型名称；留空使用原生默认。',
       }),
+      field('reasoningEffort', '推理强度', config.model_reasoning_effort, { group: 'model', placeholder: '自动' }),
+      field('contextWindow', '上下文窗口', config.model_context_window, {
+        group: 'model',
+        inputType: 'number',
+        placeholder: '由模型决定（tokens）',
+      }),
       field('provider', '服务商', selected, { options: providers.map(({ id, label }) => ({ value: id, label })) }),
     ],
     providers,
@@ -136,10 +169,22 @@ export function codexFields(config: ConfigObject): Pick<NativeModelSettingsDocum
 }
 export function antigravityFields(config: ConfigObject): ModelSettingField[] {
   const provider = string(config.modelProvider);
+  const custom = selectedAntigravityModel(config);
   return [
-    field('model', '默认模型', config.model, {
+    field('displayName', '模型名称', custom?.label, { group: 'model', placeholder: '与模型 ID 相同' }),
+    field('model', '默认模型', custom ? string(custom.modelName).split('/models/').at(-1) : config.model, {
       group: 'model',
       hint: '填写 agy /model 中的模型显示名称；留空使用原生默认。',
+    }),
+    field('reasoningEffort', '推理强度', '随模型选择', {
+      group: 'model',
+      readOnly: true,
+      hint: '选择原生模型列表中的不同强度版本。',
+    }),
+    field('contextWindow', '上下文窗口', custom?.maxTokens, {
+      group: 'model',
+      inputType: 'number',
+      placeholder: '由模型决定（tokens）',
     }),
     field('modelProvider', '连接方式', provider, {
       options: [
@@ -147,7 +192,21 @@ export function antigravityFields(config: ConfigObject): ModelSettingField[] {
         { value: 'gemini', label: 'Gemini API Key' },
         ...(provider && provider !== 'gemini' ? [{ value: provider, label: `${provider} · 已有原生值` }] : []),
       ],
-      hint: 'Gemini 模式还需要 GEMINI_API_KEY；服务地址使用 GOOGLE_GEMINI_BASE_URL，在启动环境中配置。',
+      hint: '自定义地址使用 Gemini API 协议。',
     }),
   ];
+}
+
+export function selectedAntigravityModel(config: ConfigObject): ConfigObject | undefined {
+  const models = object(object(config.customModelsConfig).customModels);
+  const matches = Object.entries(models)
+    .map(([key, value]): ConfigObject => ({ ...object(value), key }))
+    .filter(
+      (entry) =>
+        entry.key === config.model ||
+        entry.label === config.model ||
+        entry.modelName === config.model ||
+        string(entry.modelName).split('/models/').at(-1) === config.model,
+    );
+  return matches.length === 1 ? matches[0] : undefined;
 }

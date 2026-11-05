@@ -1,31 +1,34 @@
 import type { NativeCapabilityCatalog } from '../capability-types';
-import { resolveLocalCommand } from '../../process/executable';
-import { runProcess } from '../../process/run';
+import { configuredAntigravityModels, readAntigravityModelSettings } from './model-catalog';
+import { discoverGeminiModels } from './model-discovery';
 
-/** agy 当前只公开文本目录，不猜测标识或把 TUI 命令冒充可调用能力。 */
+/** 模型发现不启动真实工作区的 MCP；账号目录缺口不表示无法使用 API Key 对话。 */
 export async function discoverAntigravityCapabilities(
-  dir: string,
-  options: { signal?: AbortSignal; env?: NodeJS.ProcessEnv } = {},
+  _dir: string,
+  options: { signal?: AbortSignal; env?: NodeJS.ProcessEnv; homeDir?: string } = {},
 ): Promise<NativeCapabilityCatalog> {
-  const command = resolveLocalCommand('agy', options.env ?? process.env);
-  const result = await runProcess(command.command, [...command.args, 'models'], {
-    cwd: dir,
-    timeoutMs: 15000,
-    outputCap: 256 * 1024,
-    signal: options.signal,
-    env: options.env,
-  });
-  const requiresLogin = /please sign in to view available models/i.test(result.stderr.toString('utf8'));
-  const message = requiresLogin
-    ? '请先在本机 agy 登录，再刷新模型列表。'
-    : result.exitCode !== 0
-      ? 'Antigravity 模型列表读取失败，请检查本机登录与配置。'
-      : '当前 agy 提供文本模型清单，可用 agy models 查看并手动填写原生模型名称，或沿用原生配置。';
-  return {
+  options.signal?.throwIfAborted();
+  const settings = await readAntigravityModelSettings(options);
+  const env = options.env ?? process.env;
+  const configured = configuredAntigravityModels(settings);
+  const catalog: NativeCapabilityCatalog = {
     entries: [],
-    models: [],
-    warnings: [message],
-    modelWarning: requiresLogin ? '尚未登录 Antigravity。' : result.exitCode !== 0 ? '暂时无法读取模型。' : '',
+    models: configured,
+    warnings: [],
+    modelWarning: '',
     commandWarnings: [],
   };
+  if (settings.modelProvider !== 'gemini') return catalog;
+  if (!env.GEMINI_API_KEY?.trim()) return { ...catalog, modelWarning: '请在模型设置中填写 API Key。' };
+  try {
+    const models = await discoverGeminiModels(settings, env, options.signal);
+    const ids = new Set(models.flatMap((model) => [model.id, model.label]));
+    return {
+      ...catalog,
+      models: [...models, ...configured.filter((model) => !ids.has(model.id) && !ids.has(model.label))],
+    };
+  } catch {
+    options.signal?.throwIfAborted();
+    return { ...catalog, modelWarning: '暂时无法读取模型，已保留配置中的模型。' };
+  }
 }

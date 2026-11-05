@@ -1,6 +1,6 @@
 import { getStaticTOMLValue, parseTOML, type AST } from 'toml-eslint-parser';
 
-export type TomlFieldEdit = { path: string[]; value: string | boolean | null };
+export type TomlFieldEdit = { path: string[]; value: string | number | boolean | null };
 type Field = { path: string[]; node: AST.TOMLKeyValue };
 type Container = {
   path: string[];

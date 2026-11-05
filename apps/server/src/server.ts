@@ -72,6 +72,7 @@ import { registerSshConsoleRoutes } from './http/ssh-console.routes';
 import { createSessionPreferences } from './sessions/preferences';
 import { createModelSettingsService } from './settings/model-settings';
 import { registerModelSettingsRoutes } from './http/model-settings.routes';
+import { registerModelCatalogRoutes } from './http/model-catalog.routes';
 import { withCapabilityDirectory } from './agents/capability-directory';
 
 /** 已启动的本机服务：地址固定带尾部斜杠，close 可重复调用。 */
@@ -213,17 +214,20 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
     onCorrupt: (name) => logError(`文件任务记录损坏，已保留原文件，未重放操作：${name}`),
   });
   const profiles = createServerProfiles({ targets, store, pool });
-  const capabilities = createCapabilitiesService({
-    claude: withCapabilityDirectory(async (dir, signal) =>
-      discoverClaudeCapabilities(dir, { signal, env: await launchEnvironment.resolve('claude') }),
-    ),
-    codex: withCapabilityDirectory(async (dir, signal) =>
-      discoverCodexCapabilities(dir, { signal, env: await launchEnvironment.resolve('codex') }),
-    ),
-    antigravity: withCapabilityDirectory(async (dir, signal) =>
-      discoverAntigravityCapabilities(dir, { signal, env: await launchEnvironment.resolve('antigravity') }),
-    ),
-  });
+  const capabilities = createCapabilitiesService(
+    {
+      claude: withCapabilityDirectory(async (dir, signal) =>
+        discoverClaudeCapabilities(dir, { signal, env: await launchEnvironment.resolve('claude') }),
+      ),
+      codex: withCapabilityDirectory(async (dir, signal) =>
+        discoverCodexCapabilities(dir, { signal, env: await launchEnvironment.resolve('codex') }),
+      ),
+      antigravity: withCapabilityDirectory(async (dir, signal) =>
+        discoverAntigravityCapabilities(dir, { signal, env: await launchEnvironment.resolve('antigravity') }),
+      ),
+    },
+    { configDir: config.configDir },
+  );
   const nativeResources = createNativeResourcesService({ onSaved: (agent) => capabilities.invalidate(agent) });
   const antigravityManagement = createAntigravitySessionManagement({
     environment: () => launchEnvironment.resolve('antigravity'),
@@ -315,6 +319,7 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
         registerProbeRoutes(a, { probes });
         registerSessionRoutes(a, { store, sessions, activity });
         registerCapabilityRoutes(a, { store, capabilities, sessions });
+        registerModelCatalogRoutes(a, { store, capabilities });
         registerSshRoutes(a, { pool, profiles });
         registerSshTargetRoutes(a, profiles);
         registerHostTrustRoutes(a, createHostTrust({ pool }));

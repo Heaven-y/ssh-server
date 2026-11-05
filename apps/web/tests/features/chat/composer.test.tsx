@@ -159,6 +159,27 @@ it('首次打开模型菜单自动发现一次，复用缓存且不会发送对�
   expect(sent).toHaveLength(0);
 });
 
+it('重启恢复的模型缓存不重复获取，打开技能时补取命令目录', async () => {
+  const persisted = { ...catalog, discovered: true, commandsDiscovered: false, entries: [] };
+  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'), persisted);
+  const refresh = vi
+    .spyOn(api, 'refreshAgentCapabilities')
+    .mockResolvedValue({ ...catalog, discovered: true, commandsDiscovered: true });
+  showComposer();
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
+  await screen.findByRole('menuitemradio', { name: /候选模型/ });
+  expect(refresh).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
+  fireEvent.click(screen.getByRole('button', { name: '技能与命令' }));
+  await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+  await waitFor(() =>
+    expect(
+      client.getQueryData<AgentCapabilities>(queryKeys.agentCapabilities(workspace.id, 'claude'))?.commandsDiscovered,
+    ).toBe(true),
+  );
+  expect(sent).toHaveLength(0);
+});
+
 it('自动发现失败显示可重试状态，重开菜单不循环检查账号', async () => {
   client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'), {
     agent: 'claude',

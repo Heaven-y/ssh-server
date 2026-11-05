@@ -1,6 +1,6 @@
 # 文档导航
 
-更新于 2026-11-05。按产品、实现、开发和进度组织当前资料；旧方案与历史验收通过 Git 查询，避免与现行规则并列。
+更新于 2026-11-06。按产品、实现、开发和进度组织当前资料；旧方案与历史验收通过 Git 查询，避免与现行规则并列。
 
 | 阅读顺序 | 文档 | 负责说明 |
 |---|---|---|
@@ -18,6 +18,7 @@
 |---|---|
 | [原生对话接入](engineering/native-dialogue.md) | 三 CLI 主流程的本轮边界与接口选择 |
 | [原生配置与启动环境](engineering/native-configuration.md) | 各 CLI 配置入口、显式正文编辑和启动变量的边界 |
+| [CLI 用量与执行轨迹评估](engineering/cli-observability.md) | tok/s、上下文、原生轨迹的能力对照、缺口及建议顺序，尚未实施 |
 | [工作台插件接口](engineering/workbench-plugins.md) | 自有 v1 插件格式、宿主接口、SSH Console 与兼容边界 |
 | [本地安装与打包](guides/local-installation.md) | 安装版、便携版、数据保存、构建和隔离验收 |
 

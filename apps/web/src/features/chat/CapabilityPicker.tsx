@@ -60,7 +60,7 @@ function CapabilityDialog({ disabled, onClose }: { disabled: boolean; onClose():
   const id = useId();
   const [search, setSearch] = useState('');
   const [showUnavailable, setShowUnavailable] = useState(false);
-  const query = useAgentCapabilities(true);
+  const query = useAgentCapabilities(true, true, true);
   const select = useChat((state) => state.selectCapability);
   const phrase = search.trim().toLocaleLowerCase();
   const matches = (query.data?.entries ?? []).filter((entry) => matchesCapability(entry, phrase));

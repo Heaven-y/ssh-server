@@ -11,6 +11,10 @@ export type ModelSettingField = {
   hasValue?: boolean;
   hint?: string;
   options?: Array<{ value: string; label: string }>;
+  advanced?: boolean;
+  inputType?: 'number';
+  readOnly?: boolean;
+  placeholder?: string;
 };
 export type NativeModelSettingsDocument = {
   agent: AgentKind;

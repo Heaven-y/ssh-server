@@ -21,6 +21,8 @@ export type AgentCapabilities = {
   agent: AgentKind;
   /** false 表示尚未向 CLI 读取；缺省兼容已取得的目录。 */
   discovered?: boolean;
+  /** 模型可从磁盘恢复；技能与命令须在本进程从相同目录重新发现。 */
+  commandsDiscovered?: boolean;
   entries: AgentCapability[];
   models: AgentModel[];
   warnings: string[];

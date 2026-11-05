@@ -33,7 +33,8 @@ async function openEnvironment() {
     </QueryClientProvider>,
   );
   fireEvent.click(await screen.findByRole('button', { name: 'Codex' }));
-  fireEvent.click(await screen.findByRole('button', { name: '启动环境与高级认证' }));
+  fireEvent.click(await screen.findByText('高级设置'));
+  fireEvent.click(await screen.findByRole('button', { name: '启动环境' }));
   await screen.findByRole('heading', { name: 'CLI 启动环境 · Codex' });
   return screen.findByLabelText('API 密钥模式');
 }

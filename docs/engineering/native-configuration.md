@@ -16,21 +16,27 @@
 
 ## 模型与服务连接
 
-设置左侧分别提供 Claude Code、Codex、Antigravity，右侧显示模型和连接字段。表单不另存一份模型默认，不读取 CC Switch 的私有数据库，也不代理模型请求。
+设置左侧分别提供 Claude Code、Codex、Antigravity，右侧按服务连接、模型、运行参数排列。常用字段使用同一套输入控件，认证变量和原始文件收进高级设置；只有表单内容滚动，保存按钮固定。表单仍修改原生配置，不另存模型默认，也不读取 CC Switch 数据库。
 
 | CLI | 表单写入 | 认证与地址 |
 |---|---|---|
-| Claude | 用户 settings.json 的 model，以及 env 中的 Sonnet/Opus/Haiku 模型映射 | ANTHROPIC_BASE_URL、ANTHROPIC_API_KEY、ANTHROPIC_AUTH_TOKEN 写原生 env；账号登录继续由 CLI 管理 |
-| Codex | 用户 config.toml 的 model、model_provider 与所选 model_providers 表 | 自定义服务的 base_url 与 Responses 协议；Key 可写 experimental_bearer_token，或用 env_key 引用原生推荐的环境变量；OpenAI 登录凭据不改写 |
-| Antigravity | 全局 settings.json 的 model、modelProvider | 默认模型按原生显示名称填写；Gemini 模式同时需要 GEMINI_API_KEY，地址为 GOOGLE_GEMINI_BASE_URL；两者在启动环境入口配置 |
+| Claude | model、modelPicker.options 中选中模型的 label、effortLevel；别名映射收进高级设置 | 原生 env 中的 ANTHROPIC_BASE_URL 与 API Key/Auth Token；账号登录由 CLI 管理 |
+| Codex | model、model_provider、服务商 name、model_reasoning_effort、整数 model_context_window | 自定义 provider 的 base_url 与 Responses 协议；直接填写 Key 使用 experimental_bearer_token，原生高级认证保留 |
+| Antigravity | model、modelProvider、自定义模型的 label/modelName/maxTokens | 同页配置 Gemini API URL 与 Key，分别映射 GOOGLE_GEMINI_BASE_URL、GEMINI_API_KEY，经加密启动环境交给新进程 |
+
+三者共用模型输入、缓存候选和“获取模型”操作。Claude 的模型名称是 picker label；Codex 的名称是服务商名称，不伪造模型别名。Claude 默认推理强度可保存 low/medium/high/xhigh，max 只用于会话；Codex 按模型目录建议并允许原生强度字符串。Antigravity 默认强度由原生模型变体表示，不写不存在的顶层 effort 字段。
+
+上下文窗口按实际语义显示：Codex 可写数字 token 上限；Antigravity 自定义模型写 maxTokens；Claude 默认显示“由模型决定”。Claude 的条件性网关窗口覆盖与压缩阈值继续留在原始配置，不自动关闭压缩，也不将压缩阈值冒充模型窗口。
 
 Codex 的 provider、端点与认证放在用户配置。当前原生版本会忽略项目 .codex/config.toml 中的这些字段，不能把项目表单当作有效服务商切换。已有高级认证命令、认证请求头、云认证以及内置服务商保持原生配置；简单 Key 表单不能覆盖。TOML 使用 AST 范围修改指定字段，保留注释、未知表、换行和 BOM；不能安全修改的结构转原文编辑，不整体重新序列化。JSON 表单保留未知字段、缩进与换行习惯。
 
-`/api/settings/models/:agent` 返回允许的表单字段及密钥是否存在，秘密值不回填、不进入查询缓存；保存只提交字段变化与 revision。密码输入留空表示保留，清除必须单独操作。直接写入 Claude/Codex 原生文件的 Key 遵循其明文文件格式；与工作台启动环境的 DPAPI 密文存储不同。保存复用资源服务的路径核对、文件锁与原子替换。
+`/api/settings/models/:agent` 返回允许的字段及密钥存在状态；界面用圆点占位，输入新值替换、清除按钮删除。秘密值不回填或进入模型缓存，空输入保留旧值。Claude/Codex 遵循原生文件格式；Antigravity URL/Key 从同一表单保存到启动环境，使用原生文件与环境的复合 revision，原生写入冲突时恢复本次连接改动。
 
 保存后，新的 CLI 进程读取更新文件；当前会话显式模型、托管规则或原生更高优先级配置仍可能覆盖默认值，运行中的进程不会被强制切换。服务端与前端同时清理对应 CLI 的模型能力缓存，并拒绝旧刷新结果回填；下一次打开菜单按原生接口重新发现。
 
-Antigravity 的自定义 Gemini 模型位于 `customModelsConfig.customModels`，每项使用原生 `gemini-api://<base_url>/models/<model>` 与可选 label；可从原始配置编辑。它仅在 Gemini 模式且 Key 存在时启用，账号模式不读取。工作台没有从 `agy models` 的人读清单猜测稳定 ID。
+Antigravity 的 customModelsConfig.customModels 是对象映射，每个条目使用 `gemini-api://<base_url>/models/<model>`、label 和可选 maxTokens。模型表单可编辑当前自定义模型；其他模型保留。仅 Gemini 模式使用这些条目，不能把 OpenAI Responses 地址当作 Gemini 地址。旧数组形式的说明已纠正，历史可从 `5d5d0c6` 追溯。
+
+模型目录按 CLI 与实际目录持久缓存，成功结果在应用重启后继续使用；用户可点击重新获取，填写过配置时明确显示“保存并获取模型”。设置 GET `/api/settings/models/:agent/catalog` 只读缓存，POST 使用原生接口获取；不会探测任意服务的 /v1/models 或发送对话。Claude 使用 supportedModels，Codex 使用 model/list 并补入原生当前自定义 ID。模型列表是否列全由原生协议决定，始终允许手输。
 
 ## 读取与编辑边界
 
@@ -52,7 +58,7 @@ Antigravity 的自定义 Gemini 模型位于 `customModelsConfig.customModels`�
 
 Antigravity 的 Gemini 密钥还需要原生 `modelProvider: "gemini"`；ADC 使用 `AGY_ADC_AUTH=true`。不把 GOOGLE_API_KEY、.env 或 SDK 专用变量当作 CLI 的同等接口。
 
-配置区分继承、显式配置、停用与未设置。保存不修改当前进程的全局环境，不打断正在运行的回合；新会话使用新的启动快照，已有会话在空闲回收或用户点击「重新启动 CLI」后重新加载。重启入口不发送消息，忙时返回 409。
+高级启动环境仍保留继承、设置和停用的原生语义，常用模型页面不要求用户操作这些状态。保存不修改全局进程环境或打断回合；新会话使用新的启动快照，已有会话可在空闲时通过高级入口重新启动 CLI。
 
 这些变量只传给工作台新启动的进程。用户在另一个终端直接执行 CLI 时，仍使用那个终端的环境；工作台不会修改系统环境变量。设置页会标明已有工作台覆盖，避免把原生文件中的值误当作最终有效值。
 

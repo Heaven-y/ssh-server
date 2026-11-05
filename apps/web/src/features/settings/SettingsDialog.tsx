@@ -17,6 +17,7 @@ export default function SettingsDialog({ onClose, project }: { onClose(): void; 
         onLaunchEnvironment={setLaunch}
         page={page}
         onPageChange={setPage}
+        projectId={project?.id}
       />
     );
   return (
