@@ -83,9 +83,7 @@ it('保存发布新设置前取消旧共享GET，迟到响应不能回退偏好'
   await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
   vi.spyOn(api, 'saveProductSettings').mockResolvedValue(saved);
   render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
-  fireEvent.click(screen.getByRole('tab', { name: '服务器资源' }));
-  const input = await screen.findByLabelText(/资源检查间隔/);
-  fireEvent.change(input, { target: { value: '7' } });
+  fireEvent.change(await screen.findByLabelText('默认 Agent'), { target: { value: 'codex' } });
   fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
   await screen.findByText('产品设置已保存到本机。');
   await act(async () => {
@@ -94,7 +92,7 @@ it('保存发布新设置前取消旧共享GET，迟到响应不能回退偏好'
   expect(queryClient.getQueryData(queryKeys.productSettings)).toEqual(saved);
 });
 
-it('三类设置只显示当前内容，跨类草稿统一保存且默认作用域清楚', async () => {
+it('设置只保留对话和运行环境，草稿跨分类保留', async () => {
   vi.spyOn(api, 'readProductSettings').mockResolvedValue(document);
   const save = vi
     .spyOn(api, 'saveProductSettings')
@@ -103,7 +101,7 @@ it('三类设置只显示当前内容，跨类草稿统一保存且默认作用�
   const detect = vi.spyOn(api, 'detectEnvironment').mockResolvedValue({ checkedAt: 2, tools: [] });
   render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
   const agent = await screen.findByLabelText('默认 Agent');
-  expect(screen.getAllByRole('tab')).toHaveLength(3);
+  expect(screen.getAllByRole('tab')).toHaveLength(2);
   expect(screen.getByRole('tabpanel', { name: '对话与模型' })).toBeTruthy();
   expect(screen.queryByLabelText(/资源检查间隔/)).toBeNull();
   expect(screen.queryByLabelText(/自动同步间隔/)).toBeNull();
@@ -119,10 +117,6 @@ it('三类设置只显示当前内容，跨类草稿统一保存且默认作用�
     expect(within(screen.getByRole('tabpanel')).queryByRole('button', { name: '修改 Claude 配置' })).toBeNull();
   }
   fireEvent.click(screen.getByRole('tab', { name: '对话与模型' }));
-  fireEvent.click(screen.getByRole('tab', { name: '服务器资源' }));
-  expect(screen.queryByLabelText('默认 Agent')).toBeNull();
-  expect(screen.getByText(/设置所有工作区的资源检查频率/)).toBeTruthy();
-  fireEvent.change(screen.getByLabelText(/资源检查间隔/), { target: { value: '4' } });
   fireEvent.click(screen.getByRole('tab', { name: '运行环境' }));
   expect(screen.queryByLabelText(/资源检查间隔/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '重新检测' }));
@@ -137,29 +131,10 @@ it('三类设置只显示当前内容，跨类草稿统一保存且默认作用�
     revision: 'missing',
     settings: {
       defaultAgent: 'codex',
-      resources: { intervalSeconds: 4 },
+      resources: { intervalSeconds: 5 },
     },
   });
   expect(save.mock.calls[0]![0].settings).not.toHaveProperty('defaultModels');
-});
-
-it('其他分类存在无效草稿时保存定位回错误字段，不丢弃跨类修改', async () => {
-  vi.spyOn(api, 'readProductSettings').mockResolvedValue(document);
-  const save = vi.spyOn(api, 'saveProductSettings');
-  render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
-  await screen.findByLabelText('默认 Agent');
-  fireEvent.click(screen.getByRole('tab', { name: '服务器资源' }));
-  fireEvent.change(screen.getByLabelText(/资源检查间隔/), { target: { value: '1' } });
-  fireEvent.click(screen.getByRole('tab', { name: '对话与模型' }));
-  fireEvent.change(screen.getByLabelText('默认 Agent'), { target: { value: 'codex' } });
-  fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
-  expect(save).not.toHaveBeenCalled();
-  expect(screen.getByRole('tabpanel', { name: '服务器资源' })).toBeTruthy();
-  const invalid = screen.getByLabelText(/资源检查间隔/);
-  expect(invalid.getAttribute('aria-invalid')).toBe('true');
-  await waitFor(() => expect(globalThis.document.activeElement).toBe(invalid));
-  fireEvent.click(screen.getByRole('tab', { name: '对话与模型' }));
-  expect(screen.getByLabelText<HTMLSelectElement>('默认 Agent').value).toBe('codex');
 });
 
 it('跨分类保存冲突保留草稿，关闭、原生视图、重读与Esc均保留未保存保护', async () => {
@@ -170,7 +145,6 @@ it('跨分类保存冲突保留草稿，关闭、原生视图、重读与Esc均�
   const native = vi.fn();
   render(<ProductSettingsDialog onClose={close} onNative={native} />, { wrapper });
   fireEvent.change(await screen.findByLabelText('默认 Agent'), { target: { value: 'codex' } });
-  fireEvent.click(screen.getByRole('tab', { name: '服务器资源' }));
   expect(confirm).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
   await screen.findByRole('alert');
@@ -190,38 +164,21 @@ it('跨分类保存冲突保留草稿，关闭、原生视图、重读与Esc均�
   await waitFor(() => expect(screen.getByLabelText<HTMLSelectElement>('默认 Agent').value).toBe('claude'));
 });
 
-it('资源采样缺省显示5秒，保存明确2到60的修改不重置其他分类', async () => {
-  vi.spyOn(api, 'readProductSettings').mockResolvedValue(document);
-  const save = vi.spyOn(api, 'saveProductSettings').mockImplementation(async ({ settings }) => ({
-    settings,
-    revision: 'c'.repeat(64),
-  }));
-  const view = render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
-  fireEvent.click(screen.getByRole('tab', { name: '服务器资源' }));
-  expect((await screen.findByLabelText<HTMLInputElement>(/资源检查间隔/)).value).toBe('5');
-  view.unmount();
-  const custom: ProductSettingsDocument = {
-    settings: ProductSettingsSchema.parse({
-      resources: { intervalSeconds: 30, timeoutSeconds: 8 },
-      defaultAgent: 'codex',
-    }),
-    revision: 'b'.repeat(64),
+it('修改默认CLI保留原有服务器参数，设置中不再暴露采样选项', async () => {
+  const existing = {
+    ...document,
+    settings: { ...document.settings, resources: { intervalSeconds: 30, timeoutSeconds: 9 } },
   };
-  vi.mocked(api.readProductSettings).mockResolvedValue(custom);
+  vi.spyOn(api, 'readProductSettings').mockResolvedValue(existing);
+  const save = vi
+    .spyOn(api, 'saveProductSettings')
+    .mockImplementation(async ({ settings }) => ({ settings, revision: 'c'.repeat(64) }));
   render(<ProductSettingsDialog onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
-  fireEvent.click(screen.getByRole('tab', { name: '服务器资源' }));
-  const input = await screen.findByLabelText<HTMLInputElement>(/资源检查间隔/);
-  await waitFor(() => expect(input.value).toBe('30'));
-  fireEvent.change(input, { target: { value: '5' } });
+  fireEvent.change(await screen.findByLabelText('默认 Agent'), { target: { value: 'codex' } });
+  expect(screen.queryByRole('tab', { name: '服务器资源' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
   await screen.findByText('产品设置已保存到本机。');
-  expect(save).toHaveBeenCalledExactlyOnceWith(
-    {
-      settings: { ...custom.settings, resources: { ...custom.settings.resources, intervalSeconds: 5 } },
-      revision: custom.revision,
-    },
-    expect.any(AbortSignal),
-  );
+  expect(save.mock.calls[0]![0].settings.resources).toEqual(existing.settings.resources);
 });
 
 const productDraft = {

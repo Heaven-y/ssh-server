@@ -19,6 +19,8 @@ export type AgentCapability = {
 export type AgentModel = { id: string; label: string; description?: string; reasoningEfforts?: string[] };
 export type AgentCapabilities = {
   agent: AgentKind;
+  /** false 表示尚未向 CLI 读取；缺省兼容已取得的目录。 */
+  discovered?: boolean;
   entries: AgentCapability[];
   models: AgentModel[];
   warnings: string[];

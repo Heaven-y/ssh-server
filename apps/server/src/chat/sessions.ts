@@ -103,9 +103,9 @@ export function createSessionsService(
     archived = false,
   ): Promise<SessionSummary[]> {
     return safeOperation(agent, async () => {
-      const provider = providerOf(providers, agent);
       if (archived && agent !== 'codex')
         throw new SessionError(400, 'unsupported_action', `${AGENT_LABELS[agent]} 不支持归档会话`);
+      const provider = providerOf(providers, agent);
       // 全局枚举不依赖任何已登记目录仍然存在，也不加载某个项目作为发现范围。
       const sessions = await catalog.read(
         agent,
@@ -137,6 +137,9 @@ export function createSessionsService(
     },
     async unassigned(agent: AgentKind, signal?: AbortSignal): Promise<SessionSummary[]> {
       return (await list(undefined, agent, signal)).filter((session) => session.projectId === null);
+    },
+    archived(agent: AgentKind, signal?: AbortSignal): Promise<SessionSummary[]> {
+      return list(undefined, agent, signal, true);
     },
     read(ws: Workspace, agent: AgentKind, id: string, signal?: AbortSignal): Promise<SessionHistory> {
       return safeOperation(agent, async () => {

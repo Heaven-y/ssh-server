@@ -383,10 +383,13 @@ export const api = {
       `/api/projects/${encodeURIComponent(workspaceId)}/sessions/${agent}/${encodeURIComponent(sessionId)}`,
       { signal, cache: 'no-store' },
     ),
+  archivedSessions: (agent: AgentKind, signal?: AbortSignal) =>
+    request<SessionSummary[]>(`/api/sessions/archived?agent=${agent}`, { signal, cache: 'no-store' }),
 };
 
 /** react-query 的缓存键，集中定义便于失效刷新 */
 export const queryKeys = {
+  archivedSessions: (agent: AgentKind) => ['sessions', 'archived', agent] as const,
   productSettings: ['product-settings'] as const,
   environment: ['environment'] as const,
   sshImportOptions: ['ssh-import-options'] as const,

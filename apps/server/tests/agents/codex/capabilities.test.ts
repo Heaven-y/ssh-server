@@ -99,6 +99,7 @@ describe('Codex 原生能力目录与发送', () => {
       unavailableReason: expect.stringContaining('本机 CLI'),
     });
     expect(catalog.models).toEqual([
+      { id: 'native-model', label: 'native-model', description: '当前原生配置中的模型' },
       {
         id: 'suggested-model',
         label: '建议模型',
@@ -123,7 +124,8 @@ describe('Codex 原生能力目录与发送', () => {
   it.each(['skills-fail', 'models-fail', 'model-loop'])('%s 只产生对应分支警告，不抹掉另一分支', async (mode) => {
     const { dir, options } = await setup(mode);
     const result = await discoverCodexCapabilities(dir, options);
-    expect(result.models.length > 0).toBe(mode === 'skills-fail');
+    expect(result.models.some((model) => model.id === 'native-model')).toBe(true);
+    expect(result.models.some((model) => model.id === 'suggested-model')).toBe(mode === 'skills-fail');
     expect(result.entries.some((entry) => entry.kind === 'skill')).toBe(mode !== 'skills-fail');
     expect(result.warnings).toHaveLength(1);
     expect(JSON.stringify(result.warnings)).not.toContain('fixture-private-diagnostic');

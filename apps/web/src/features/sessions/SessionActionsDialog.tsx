@@ -130,6 +130,7 @@ function SessionActionError({
         className={buttonClass('outline')}
         onClick={() => {
           void client.invalidateQueries({ queryKey: queryKeys.sessions(workspaceId, session.agent) });
+          void client.invalidateQueries({ queryKey: queryKeys.archivedSessions(session.agent) });
         }}
       >
         重新读取列表

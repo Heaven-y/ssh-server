@@ -214,7 +214,8 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
       discoverClaudeCapabilities(dir, { signal, env: await launchEnvironment.resolve('claude') }),
     codex: async (dir, signal) =>
       discoverCodexCapabilities(dir, { signal, env: await launchEnvironment.resolve('codex') }),
-    antigravity: discoverAntigravityCapabilities,
+    antigravity: async (dir, signal) =>
+      discoverAntigravityCapabilities(dir, { signal, env: await launchEnvironment.resolve('antigravity') }),
   });
   // 会话服务与轮次管理器互相引用：会话服务里的回调只在调用时读 turns，声明顺序保持原样。
   const sessions = createSessionsService(
