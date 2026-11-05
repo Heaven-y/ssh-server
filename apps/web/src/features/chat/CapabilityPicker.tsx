@@ -151,11 +151,11 @@ function ScopedPicker({ disabled }: { disabled: boolean }) {
         title="技能与命令（也可输入 /）"
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+        className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
         disabled={disabled}
         onClick={() => setOpen(true)}
       >
-        <Plus aria-hidden className="size-5" />
+        <Plus aria-hidden className="size-[18px]" />
       </button>
       {selection && (
         <span className="flex min-w-0 max-w-40 items-center gap-2 rounded-full bg-muted px-2 py-1 text-xs">

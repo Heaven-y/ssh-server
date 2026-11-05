@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 
 const SIZES = {
-  sidebarWidth: [240, 200, 320],
+  sidebarWidth: [280, 264, 420],
   fileWidth: [420, 360, 960],
   resourceWidth: [320, 280, 640],
-  rightWidth: [420, 360, 720],
+  rightWidth: [420, 300, 720],
   wideToolsWidth: [760, 646, 1400],
   resourceShare: [43, 20, 80],
   resourceHeight: [40, 20, 80],
@@ -12,7 +12,7 @@ const SIZES = {
 type SizeKey = keyof typeof SIZES;
 export type UiWidthKey = Exclude<SizeKey, 'resourceShare' | 'resourceHeight'>;
 type SplitKey = 'resourceShare' | 'resourceHeight';
-/** 右侧服务器面板的展开状态：null 表示还没表过态，按窗口宽度决定首屏。 */
+/** dockCollapsed 仅保留旧兼容工具偏好；新会话右栏独立且每次启动关闭。 */
 type UiPreferences = { theme: 'dark' | 'light'; sidebarCollapsed: boolean; dockCollapsed: boolean | null } & Record<
   SizeKey,
   number
@@ -34,7 +34,7 @@ function isPreferences(value: unknown): value is UiPreferences & { version: 1 } 
     fields.version === 1 &&
     (fields.theme === 'dark' || fields.theme === 'light') &&
     typeof fields.sidebarCollapsed === 'boolean' &&
-    bounded(fields.sidebarWidth, 200, 320) &&
+    bounded(fields.sidebarWidth, 200, 420) &&
     bounded(fields.fileWidth, 360, 960)
   );
 }

@@ -5,7 +5,12 @@ import { api, queryKeys } from '../lib/api';
 import { DetailDialog } from '../ui/DetailDialog';
 import { buttonClass, inputClass } from '../ui/styles';
 import { useChat } from '../features/chat/chat-store';
-import { projectChatBusy, projectFolderName, useProjectChatBusy } from './project-management';
+import {
+  projectChatBusy,
+  projectFolderName,
+  refreshProjectSessionLists,
+  useProjectChatBusy,
+} from './project-management';
 import type { Workspace } from '@agentdeck/shared';
 
 /**
@@ -43,6 +48,7 @@ export function AddProjectDialog({
         created,
       ]);
       await client.invalidateQueries({ queryKey: queryKeys.workspaces });
+      await refreshProjectSessionLists(client);
       const current = useChat.getState();
       if (current.conversationVersion === selection && !projectChatBusy()) current.selectWorkspace(created.id);
       onClose();

@@ -83,7 +83,7 @@ export function ContextStatus() {
         render={<button type="button" />}
         aria-label="上下文用量"
         title={usageTitle(usage, summary)}
-        className={`${buttonClass('ghost')} min-w-0 max-w-full flex-wrap gap-1 rounded-full px-2 text-xs text-muted-foreground`}
+        className={`${buttonClass('ghost')} min-w-0 max-w-full flex-wrap gap-1 rounded-lg px-2 text-[13px] text-muted-foreground`}
       >
         {summary && <span className="whitespace-nowrap">上下文 {summary}</span>}
         {compaction && <span>{compactionTitle(compaction, incomplete)}</span>}
@@ -95,7 +95,7 @@ export function ContextStatus() {
         unmountOnHide
         gutter={8}
         aria-label="上下文用量详情"
-        className="z-50 max-h-[min(360px,var(--popover-available-height))] w-80 max-w-[calc(100vw-32px)] space-y-2 overflow-y-auto rounded-xl border border-border-strong bg-card p-3 text-xs leading-6 text-muted-foreground shadow-xl"
+        className="z-50 max-h-[min(360px,var(--popover-available-height))] w-80 max-w-[calc(100vw-32px)] space-y-2 overflow-y-auto rounded-2xl border border-border bg-card p-3 text-[13px] leading-6 text-muted-foreground shadow-lg"
       >
         {usage ? <UsageDetails usage={usage} /> : <p>尚无上下文用量报告</p>}
         {compaction && <CompactionStatus state={compaction} incomplete={incomplete} />}

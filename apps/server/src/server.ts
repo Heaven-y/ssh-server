@@ -303,12 +303,12 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
         registerProbeRoutes(a, { probes });
         registerSessionRoutes(a, { store, sessions, activity });
         registerSessionChangesRoutes(a, sessionChanges);
-        registerCapabilityRoutes(a, { store, capabilities });
+        registerCapabilityRoutes(a, { store, capabilities, sessions });
         registerSshRoutes(a, { pool, profiles });
         registerSshTargetRoutes(a, profiles);
         registerHostTrustRoutes(a, createHostTrust({ pool }));
         registerAgentConfigRoutes(a, { service: createNativeConfigService() });
-        registerNativeResourceRoutes(a, { service: createNativeResourcesService(), store });
+        registerNativeResourceRoutes(a, { service: createNativeResourcesService(), store, activity });
         registerLaunchEnvironmentRoutes(a, {
           service: launchEnvironment,
           restart: (agent) => turns.withIdleAgent(agent, () => runners[agent].restart()),

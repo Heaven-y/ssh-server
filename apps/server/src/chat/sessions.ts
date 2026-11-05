@@ -9,8 +9,10 @@ import {
   type Workspace,
 } from '@agentdeck/shared';
 import type { NativeSessionFork, NativeSessionRead, NativeSessionRow } from '../agents/types';
-import { sameSessionDirectory } from '../agents/session-scope';
+import { homedir } from 'node:os';
+import { sameSessionDirectory, sessionDirectoryWithin } from '../agents/session-scope';
 import { nativeSessionDirectory, resolveProjectId } from '../sessions/ownership';
+import { createSessionCatalog } from './session-catalog';
 
 const AGENT_LABELS: Record<AgentKind, string> = {
   claude: 'Claude Code',
@@ -21,7 +23,12 @@ const AGENT_LABELS: Record<AgentKind, string> = {
 export type SessionProvider = {
   list(dir: string, signal?: AbortSignal, archived?: boolean): Promise<NativeSessionRow[]>;
   read(id: string, dir: string, signal?: AbortSignal): Promise<NativeSessionRead>;
-  assertBelongs(id: string, dir: string, signal?: AbortSignal): Promise<void>;
+  /** 返回已核实的原生目录；多目录 CLI 同时保留完整归属元数据。 */
+  assertBelongs(
+    id: string,
+    dir: string,
+    signal?: AbortSignal,
+  ): Promise<void | string | { cwd: string; workspaceUris: string }>;
   mutate(id: string, dir: string, input: SessionActionInput): Promise<void>;
   fork(id: string, dir: string, input: SessionForkInput): Promise<NativeSessionFork>;
 };
@@ -67,47 +74,81 @@ export function createSessionsService(
   providers: Partial<Record<AgentKind, SessionProvider>>,
   operations: SessionOperations,
 ) {
-  return {
-    list(ws: Workspace, agent: AgentKind, signal?: AbortSignal, archived = false): Promise<SessionSummary[]> {
-      return safeOperation(agent, async () => {
-        const provider = providerOf(providers, agent);
-        if (archived && agent !== 'codex')
-          throw new SessionError(400, 'unsupported_action', `${AGENT_LABELS[agent]} 不支持归档会话`);
-        const sessions = await provider.list(ws.dir, signal, archived);
-        const projects = operations.projects ? await operations.projects() : [ws];
-        return sessions.map((session) => ({
+  const catalog = createSessionCatalog();
+  async function projectsFor(ws?: Workspace) {
+    return operations.projects ? operations.projects() : ws ? [ws] : [];
+  }
+  async function scopedWorkspace(
+    ws: Workspace,
+    agent: AgentKind,
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<Workspace> {
+    signal?.throwIfAborted();
+    const scope = await providerOf(providers, agent).assertBelongs(id, ws.dir, signal);
+    signal?.throwIfAborted();
+    if (scope === undefined) return ws;
+    const location = typeof scope === 'string' ? { cwd: scope } : scope;
+    const directory = location.cwd;
+    const projects = await projectsFor(ws);
+    const ownership = 'workspaceUris' in location ? { workspaceUris: location.workspaceUris } : { cwd: directory };
+    if (!sessionDirectoryWithin(directory, ws.dir) || resolveProjectId({ ...ownership, projects }) !== ws.id)
+      throw new SessionError(404, 'session_missing', '该 Agent 在当前项目目录中没有此会话');
+    return { ...ws, dir: directory };
+  }
+  async function list(
+    ws: Workspace | undefined,
+    agent: AgentKind,
+    signal?: AbortSignal,
+    archived = false,
+  ): Promise<SessionSummary[]> {
+    return safeOperation(agent, async () => {
+      const provider = providerOf(providers, agent);
+      if (archived && agent !== 'codex')
+        throw new SessionError(400, 'unsupported_action', `${AGENT_LABELS[agent]} 不支持归档会话`);
+      // 全局枚举不依赖任何已登记目录仍然存在，也不加载某个项目作为发现范围。
+      const sessions = await catalog.read(
+        agent,
+        archived,
+        (abort) => provider.list(homedir(), abort, archived),
+        signal,
+      );
+      const projects = await projectsFor(ws);
+      return sessions.map((session) => {
+        const location = {
+          ...(agent === 'antigravity' ? {} : { cwd: session.cwd }),
+          workspaceUris: session.workspaceUris,
+        };
+        return {
           agent,
           sessionId: session.sessionId,
-          projectId: resolveProjectId({
-            // 按会话自己记录的 cwd 裁决，不能用「当前查的是哪个项目」的目录兜底。
-            // 老 Claude 会话可能没有 cwd，兜底会让同一条会话在每个项目下都出现且都能打开，
-            // 违反「一个会话只属于一个项目」；判不出来就是未归属（null），
-            // 由界面放进「其他目录的会话」，用户仍能打开并加为项目。
-            // Antigravity 的列表不随目录变化，只能按 workspaceUris 裁决。
-            ...(agent === 'antigravity' ? {} : { cwd: session.cwd }),
-            workspaceUris: session.workspaceUris,
-            projects,
-          }),
+          projectId: resolveProjectId({ ...location, projects }),
           title: session.summary,
           updatedAt: new Date(session.lastModified).toISOString(),
           running: operations.isRunning?.({ agent, sessionId: session.sessionId }) ?? false,
-          directory: nativeSessionDirectory({
-            ...(agent === 'antigravity' ? {} : { cwd: session.cwd }),
-            workspaceUris: session.workspaceUris,
-          }),
-        }));
+          directory: nativeSessionDirectory(location),
+        };
       });
+    });
+  }
+  return {
+    list(ws: Workspace, agent: AgentKind, signal?: AbortSignal, archived = false): Promise<SessionSummary[]> {
+      return list(ws, agent, signal, archived);
+    },
+    async unassigned(agent: AgentKind, signal?: AbortSignal): Promise<SessionSummary[]> {
+      return (await list(undefined, agent, signal)).filter((session) => session.projectId === null);
     },
     read(ws: Workspace, agent: AgentKind, id: string, signal?: AbortSignal): Promise<SessionHistory> {
       return safeOperation(agent, async () => {
-        const record = await providerOf(providers, agent).read(id, ws.dir, signal);
-        if (record.session.sessionId !== id || !(await sameSessionDirectory(record.cwd, ws.dir)))
+        const native = await scopedWorkspace(ws, agent, id, signal);
+        const record = await providerOf(providers, agent).read(id, native.dir, signal);
+        if (record.session.sessionId !== id || !(await sameSessionDirectory(record.cwd, native.dir)))
           throw new SessionError(404, 'session_missing', '该 Agent 在当前项目目录中没有此会话');
         return { session: { ...record.session, agent }, events: record.events, actualModel: record.actualModel };
       });
     },
-    assertBelongs(ws: Workspace, agent: AgentKind, id: string, signal?: AbortSignal): Promise<void> {
-      return safeOperation(agent, () => providerOf(providers, agent).assertBelongs(id, ws.dir, signal));
+    assertBelongs(ws: Workspace, agent: AgentKind, id: string, signal?: AbortSignal): Promise<Workspace> {
+      return safeOperation(agent, () => scopedWorkspace(ws, agent, id, signal));
     },
     fork(ws: Workspace, agent: AgentKind, id: string, input: SessionForkInput): Promise<SessionHistory['session']> {
       return safeOperation(
@@ -115,9 +156,10 @@ export function createSessionsService(
         () =>
           operations.withIdleSession({ agent, sessionId: id }, async () => {
             // 提供方在锁内核验源与分叉点；原生返回后仍在锁内复核新身份。
-            const result = await providerOf(providers, agent).fork(id, ws.dir, input);
+            const native = await scopedWorkspace(ws, agent, id);
+            const result = await providerOf(providers, agent).fork(id, native.dir, input);
             const newId = NativeSessionIdSchema.safeParse(result.session.sessionId);
-            if (!newId.success || newId.data === id || !(await sameSessionDirectory(result.cwd, ws.dir)))
+            if (!newId.success || newId.data === id || !(await sameSessionDirectory(result.cwd, native.dir)))
               throw new SessionError(503, 'session_runtime_failed', '原生分叉返回了无效的新会话');
             return { ...result.session, agent };
           }),
@@ -131,7 +173,10 @@ export function createSessionsService(
           const provider = providerOf(providers, agent);
           if (agent !== 'codex' && (input.action === 'archive' || input.action === 'unarchive'))
             throw new SessionError(400, 'unsupported_action', `${AGENT_LABELS[agent]} 不支持归档会话`);
-          await operations.withIdleSession({ agent, sessionId: id }, () => provider.mutate(id, ws.dir, input));
+          await operations.withIdleSession({ agent, sessionId: id }, async () => {
+            const native = await scopedWorkspace(ws, agent, id);
+            await provider.mutate(id, native.dir, input);
+          });
         },
         '操作',
       );

@@ -292,7 +292,10 @@ describe('Antigravity 会话提供方', () => {
         },
       ],
     });
-    await expect(provider.assertBelongs('c1', dir)).resolves.toBeUndefined();
+    await expect(provider.assertBelongs('c1', dir)).resolves.toEqual({
+      cwd: dir,
+      workspaceUris: pathToFileURL(dir).href,
+    });
     await expect(provider.assertBelongs('c1', path.join(dir, 'other'))).rejects.toMatchObject({
       status: 404,
       code: 'session_missing',

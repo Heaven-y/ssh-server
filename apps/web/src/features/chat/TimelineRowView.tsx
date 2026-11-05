@@ -16,7 +16,7 @@ export function TimelineRowView({
   setOpen(id: string, open: boolean): void;
 }) {
   return (
-    <div data-chat-row={row.id} className="mx-auto w-full max-w-3xl px-4 py-3 sm:px-6">
+    <div data-chat-row={row.id} className="conversation-row">
       {row.kind === 'message' ? (
         <MessageItem
           item={row.item}

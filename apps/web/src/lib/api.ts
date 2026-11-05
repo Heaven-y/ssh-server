@@ -218,17 +218,23 @@ export const api = {
       method: 'DELETE',
       keepalive: true,
     }),
-  agentCapabilities: (workspaceId: string, agent: AgentKind, signal?: AbortSignal) =>
-    request<AgentCapabilities>(`/api/workspaces/${encodeURIComponent(workspaceId)}/agent-capabilities?agent=${agent}`, {
-      signal,
-      cache: 'no-store',
-    }),
-  refreshAgentCapabilities: (workspaceId: string, agent: AgentKind) =>
-    request<AgentCapabilities>(`/api/workspaces/${encodeURIComponent(workspaceId)}/agent-capabilities?agent=${agent}`, {
-      method: 'POST',
-      cache: 'no-store',
-      body: '{}',
-    }),
+  agentCapabilities: (workspaceId: string, agent: AgentKind, signal?: AbortSignal, sessionId?: string) =>
+    request<AgentCapabilities>(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/agent-capabilities?agent=${agent}${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ''}`,
+      {
+        signal,
+        cache: 'no-store',
+      },
+    ),
+  refreshAgentCapabilities: (workspaceId: string, agent: AgentKind, sessionId?: string) =>
+    request<AgentCapabilities>(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/agent-capabilities?agent=${agent}${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ''}`,
+      {
+        method: 'POST',
+        cache: 'no-store',
+        body: '{}',
+      },
+    ),
   /** 原生配置内容只能由显式打开的编辑区持有，不接入查询缓存或持久存储。 */
   readAgentConfig: (agent: NativeConfigAgent, signal?: AbortSignal) =>
     request<NativeConfigDocument>(`/api/agent-config/${agent}`, { signal, cache: 'no-store' }),
@@ -355,6 +361,8 @@ export const api = {
     ),
   sessionChanges: (signal?: AbortSignal) =>
     request<SessionChangesSnapshot>('/api/session-changes', { signal, cache: 'no-store' }),
+  orphanSessions: (agent: AgentKind, signal?: AbortSignal) =>
+    request<SessionSummary[]>(`/api/sessions?agent=${agent}`, { signal, cache: 'no-store' }),
   /** 原生管理请求不因面板关闭而取消；结果以运行时响应和重新读取为准。 */
   sessionAction: (workspaceId: string, sessionId: string, agent: AgentKind, input: SessionActionInput) =>
     request<void>(
@@ -382,7 +390,10 @@ export const queryKeys = {
   productSettings: ['product-settings'] as const,
   environment: ['environment'] as const,
   sshImportOptions: ['ssh-import-options'] as const,
-  agentCapabilities: (workspaceId: string, agent: AgentKind) => ['agent-capabilities', workspaceId, agent] as const,
+  agentCapabilities: (workspaceId: string, agent: AgentKind, sessionId?: string) =>
+    sessionId
+      ? (['agent-capabilities', workspaceId, agent, sessionId] as const)
+      : (['agent-capabilities', workspaceId, agent] as const),
   workspaces: ['workspaces'] as const,
   sshHosts: ['ssh-targets'] as const,
   sshCredentials: (sshHost: string) => ['ssh-credentials', sshHost] as const,

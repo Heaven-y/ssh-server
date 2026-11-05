@@ -1,5 +1,5 @@
 import { Menu, MenuButton, MenuItem, useMenuStore } from '@ariakit/react';
-import { FolderOpen, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { FolderOpen, Link2, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { useRef } from 'react';
 import type { Workspace } from '@agentdeck/shared';
 import { buttonClass } from '../ui/styles';
@@ -14,10 +14,12 @@ export function ProjectMenu({
   project,
   running,
   choose,
+  bindServer,
 }: {
   project: Workspace;
   running: boolean;
-  choose(action: ProjectManageAction): void;
+  choose?(action: ProjectManageAction): void;
+  bindServer?(): void;
 }) {
   const busy = useProjectChatBusy(project.id);
   const disabled = busy || running;
@@ -32,7 +34,7 @@ export function ProjectMenu({
         disabled={disabled}
         aria-label={`管理项目“${project.name}”`}
         title={disabled ? '会话运行或操作中，结束后可管理项目' : '项目管理'}
-        className={`${buttonClass('ghost')} shrink-0 px-1.5`}
+        className={`${buttonClass('ghost')} mr-1 shrink-0 px-1.5 opacity-0 group-hover:opacity-100 focus:opacity-100 aria-expanded:opacity-100`}
       >
         <MoreHorizontal aria-hidden className="size-4" />
       </MenuButton>
@@ -44,21 +46,37 @@ export function ProjectMenu({
         aria-label="项目操作"
         className="z-50 min-w-40 rounded-xl border border-border-strong bg-card p-1.5 text-foreground shadow-xl"
       >
-        {actions.map(({ action, label, Icon }) => (
+        <p className="max-w-64 px-3 py-2 font-mono text-[11px] break-all text-muted-foreground">{project.dir}</p>
+        {bindServer && (
           <MenuItem
-            key={action}
             disabled={disabled}
-            className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none data-active-item:bg-muted data-active-item:ring-1 data-active-item:ring-accent ${action === 'remove' ? 'text-destructive-foreground' : ''}`}
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none data-active-item:bg-muted data-active-item:ring-1 data-active-item:ring-accent"
             onClick={() => {
               menu.hide();
               trigger.current?.focus();
-              choose(action);
+              bindServer();
             }}
           >
-            <Icon aria-hidden className="size-4" />
-            {label}
+            <Link2 aria-hidden className="size-4" />
+            {project.server ? '修改服务器绑定' : '绑定服务器'}
           </MenuItem>
-        ))}
+        )}
+        {choose &&
+          actions.map(({ action, label, Icon }) => (
+            <MenuItem
+              key={action}
+              disabled={disabled}
+              className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none data-active-item:bg-muted data-active-item:ring-1 data-active-item:ring-accent ${action === 'remove' ? 'text-destructive-foreground' : ''}`}
+              onClick={() => {
+                menu.hide();
+                trigger.current?.focus();
+                choose(action);
+              }}
+            >
+              <Icon aria-hidden className="size-4" />
+              {label}
+            </MenuItem>
+          ))}
       </Menu>
     </>
   );

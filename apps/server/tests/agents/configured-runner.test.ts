@@ -78,3 +78,31 @@ it('退出不等待永不结束的interrupt才调用原生清理', async () => {
   await runner.dispose?.();
   expect(dispose).toHaveBeenCalledOnce();
 });
+
+it('并发完成启动环境解析时仍限制32个原生实例，重启后可重新分配', async () => {
+  let release!: (env: NodeJS.ProcessEnv) => void;
+  const environment = new Promise<NodeJS.ProcessEnv>((resolve) => {
+    release = resolve;
+  });
+  const executed: string[] = [];
+  const runner = createConfiguredRunner({
+    environment: () => environment,
+    create: () => (value) => {
+      executed.push(value.sessionId!);
+      return { done: Promise.resolve(), interrupt: async () => undefined };
+    },
+  });
+  const inputs = Array.from({ length: 33 }, (_, index) => input(`session-${index}`));
+  try {
+    const handles = inputs.map(runner);
+    release({});
+    await Promise.all(handles.map((handle) => handle.done));
+    expect(executed).toHaveLength(32);
+    expect(inputs[32]!.emit).toHaveBeenCalledWith({ type: 'turn_end', isError: true });
+    await runner.restart();
+    await runner(input('after-restart')).done;
+    expect(executed.at(-1)).toBe('after-restart');
+  } finally {
+    await runner.dispose?.();
+  }
+});

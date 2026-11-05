@@ -256,11 +256,21 @@ it('重复提交只创建一个已持久化任务，执行仍传入原始配置�
 });
 
 it('首次阶段前断线保留待核对，核对同文件系统移动后确认结果而不重放', async () => {
-  const fixture = await tasksFixture(async () => {
-    throw new Error('连接中断');
+  let settled!: () => void;
+  const finished = new Promise<void>((resolve) => {
+    settled = resolve;
   });
+  const fixture = await tasksFixture(
+    async () => {
+      throw new Error('连接中断');
+    },
+    actionFixture(),
+    () => settled,
+  );
   const task = await fixture.tasks.submit(ws.id, fixture.action.public.id);
-  await vi.waitFor(async () => expect((await fixture.tasks.status(ws.id, task.id)).phase).toBe('needs_check'));
+  // 内存阶段先于落盘和 controller 清理；租约释放才代表执行已真正收尾，可以核对结果。
+  await finished;
+  expect((await fixture.tasks.status(ws.id, task.id)).phase).toBe('needs_check');
   fixture.executor.run.mockResolvedValue({
     source: { exists: false },
     destination: {

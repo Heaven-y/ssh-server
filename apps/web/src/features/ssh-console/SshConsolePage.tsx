@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type Ref } from 'react';
 import { Plus, Server, Settings2 } from 'lucide-react';
 import { api, queryKeys } from '../../lib/api';
 import { buttonClass } from '../../ui/styles';
@@ -11,6 +11,9 @@ import { consoleError, useConsoleVisible, type ConsoleServerTab } from './consol
 export type SshConsolePageProps = {
   visible: boolean;
   onManageServers(): void;
+  onLegacyTools?(): void;
+  legacyToolsRef?: Ref<HTMLButtonElement>;
+  legacyToolsOpen?: boolean;
   initialServer?: string;
   initialDirectory?: string;
 };
@@ -35,6 +38,9 @@ function useConsoleNavigation(initialServer?: string, initialDirectory = '~') {
 export default function SshConsolePage({
   visible,
   onManageServers,
+  onLegacyTools,
+  legacyToolsRef,
+  legacyToolsOpen = false,
   initialServer,
   initialDirectory,
 }: SshConsolePageProps) {
@@ -50,11 +56,11 @@ export default function SshConsolePage({
   });
   return (
     <section aria-label="SSH Console" hidden={!visible} className="flex h-full min-h-0 min-w-0 flex-col bg-background">
-      <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-5 py-4">
-        <h2 className="mr-auto flex items-center gap-2 font-semibold">
-          <Server aria-hidden className="size-5" />
-          SSH Console
-        </h2>
+      <div
+        role="group"
+        aria-label="控制台工具"
+        className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2"
+      >
         <button type="button" className={buttonClass('outline')} onClick={() => setPicker(true)}>
           <Plus aria-hidden className="size-4" />
           连接其他服务器
@@ -63,7 +69,19 @@ export default function SshConsolePage({
           <Settings2 aria-hidden className="size-4" />
           服务器档案
         </button>
-      </header>
+        {onLegacyTools && (
+          <button
+            ref={legacyToolsRef}
+            type="button"
+            aria-controls="legacy-server-tools"
+            aria-expanded={legacyToolsOpen}
+            className={`${buttonClass('ghost')} ml-auto`}
+            onClick={onLegacyTools}
+          >
+            项目服务器工具
+          </button>
+        )}
+      </div>
       {servers.error && (
         <p role="alert" className="px-5 py-3 text-sm text-destructive-foreground">
           {consoleError(servers.error)}

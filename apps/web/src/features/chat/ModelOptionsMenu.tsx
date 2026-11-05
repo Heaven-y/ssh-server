@@ -3,7 +3,7 @@ import { Check, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import type { AgentKind, AgentModel } from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
-import { agentUnavailable, useEnvironment } from '../settings/use-environment';
+import { agentUnavailable, agentVersion, useEnvironment } from '../settings/use-environment';
 import { sessionActionKey, useChat } from './chat-store';
 import { useAgentCapabilities } from './use-agent-capabilities';
 import { AgentIcon } from '../../ui/BrandIcons';
@@ -15,10 +15,10 @@ export const AGENT_LABELS: Record<AgentKind, string> = {
   antigravity: 'Antigravity',
 };
 const menuClass =
-  'z-50 max-h-[min(440px,var(--popover-available-height))] w-72 overflow-y-auto rounded-xl border border-border-strong bg-card p-1.5 text-foreground shadow-xl';
+  'z-50 max-h-[min(440px,var(--popover-available-height))] w-72 overflow-y-auto rounded-2xl border border-border bg-card p-1 text-foreground shadow-lg';
 const itemClass =
-  'flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-sm outline-none data-active-item:bg-muted data-active-item:ring-1 data-active-item:ring-accent aria-disabled:cursor-not-allowed aria-disabled:opacity-45';
-const triggerClass = `${buttonClass('ghost')} min-w-0 gap-1 rounded-full px-2 text-xs`;
+  'flex w-full cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[13px] outline-none data-active-item:bg-muted data-active-item:ring-1 data-active-item:ring-border-strong aria-disabled:cursor-not-allowed aria-disabled:opacity-45';
+const triggerClass = `${buttonClass('ghost')} min-h-7 min-w-0 gap-1 rounded-lg px-2 text-[13px]`;
 
 function Choice({
   checked,
@@ -199,6 +199,8 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
   const model = useChat((state) => state.modelOverrides[state.agent]);
   const effort = useChat((state) => state.reasoningEfforts[state.agent]);
   const presentation = useModelPresentation(model);
+  const environment = useEnvironment();
+  const version = agentVersion(environment.data, agent);
   const setModel = useChat((state) => state.setModel);
   const catalog = useAgentCapabilities(modelOpen || effortOpen);
   const models = catalog.data?.models ?? [];
@@ -210,11 +212,13 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
         render={<button type="button" />}
         aria-label="模型选项"
         disabled={disabled}
-        className={`${triggerClass} max-w-56`}
-        title={presentation.title}
+        className={`${triggerClass} max-w-64`}
+        title={`${AGENT_LABELS[agent]}${version ? ` · 本机探测版本 ${version}` : ''} · ${presentation.title}`}
       >
         <AgentIcon agent={agent} className="size-3.5" />
-        <span className="truncate">{presentation.label}</span>
+        <span className="truncate">
+          {AGENT_LABELS[agent]} · {presentation.label}
+        </span>
         <ChevronDown aria-hidden className="size-3.5 shrink-0" />
       </MenuButton>
       <MenuButton

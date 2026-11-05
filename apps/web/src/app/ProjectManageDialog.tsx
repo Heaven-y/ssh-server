@@ -8,6 +8,7 @@ import { buttonClass, inputClass } from '../ui/styles';
 import {
   clearProjectQueries,
   projectIsBusy,
+  refreshProjectSessionLists,
   updateProjectCache,
   useProjectBusy,
   type ProjectManageAction,
@@ -53,6 +54,7 @@ function useProjectManage({ project, action, onClose }: Props) {
     useChat.getState().removeWorkspace(project.id, remaining[0]?.id);
     client.setQueryData(queryKeys.workspaces, remaining);
     await clearProjectQueries(client, project.id);
+    await refreshProjectSessionLists(client);
     void client.invalidateQueries({ queryKey: queryKeys.workspaces });
   };
   const save = async () => {
@@ -64,6 +66,7 @@ function useProjectManage({ project, action, onClose }: Props) {
       await clearProjectQueries(client, project.id);
     }
     await updateProjectCache(client, updated);
+    if (action === 'directory') await refreshProjectSessionLists(client);
   };
   const submit = async () => {
     if (lock.current || projectIsBusy(client, project.id)) return;

@@ -5,8 +5,18 @@ import { DetailDialog } from '../../ui/DetailDialog';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { pluginApi, pluginsKey } from './plugin-api';
 import { useWorkbenchPlugins } from './use-workbench-plugins';
+import { closeTerminalTab, useTerminalStore } from '../terminal/terminal-store';
 
 const permissions = { storage: '插件自己的本机设置', 'project-context': '当前项目名称和目录' };
+async function togglePlugin(plugin: WorkbenchPlugin, revision: string) {
+  const catalog = await pluginApi.setEnabled(plugin.manifest.id, !plugin.enabled, revision);
+  if (plugin.enabled && plugin.manifest.id === 'ssh-console') {
+    // 停用成功后清理旧终端及待绑定操作，重新启用时由用户新建 shell。
+    for (const tab of useTerminalStore.getState().tabs) closeTerminalTab(tab.id);
+  }
+  return catalog;
+}
+
 function PluginEntry({
   plugin,
   busy,
@@ -68,11 +78,11 @@ export default function PluginManager({ onClose }: { onClose(): void }) {
   };
   const toggle = (plugin: WorkbenchPlugin) => {
     if (!query.data) return;
+    const ended = plugin.manifest.id === 'ssh-console' ? '，包括项目服务器工具中的终端' : '';
     const text = plugin.enabled
-      ? `停用“${plugin.manifest.name}”将关闭它的页面与资源，SSH Console 的终端也会结束。继续吗？`
+      ? `停用“${plugin.manifest.name}”将关闭它的页面与资源${ended}。服务器档案、项目和任务记录保留。继续吗？`
       : `启用“${plugin.manifest.name}”，允许访问：${plugin.manifest.permissions.map((item) => permissions[item]).join('、') || '仅插件页面'}？`;
-    if (window.confirm(text))
-      void perform(() => pluginApi.setEnabled(plugin.manifest.id, !plugin.enabled, query.data.revision));
+    if (window.confirm(text)) void perform(() => togglePlugin(plugin, query.data.revision));
   };
   const remove = (plugin: WorkbenchPlugin) => {
     if (query.data && window.confirm(`卸载“${plugin.manifest.name}”？这会清理插件副本与插件自己的设置。`))

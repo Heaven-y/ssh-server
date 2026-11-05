@@ -26,7 +26,7 @@ function Suggestion({ entry, select }: { entry: AgentCapability; select(): void 
       setValueOnClick={false}
       selectValueOnClick={false}
       onClick={select}
-      className="cursor-pointer rounded-lg px-3 py-2 text-sm outline-none data-active-item:bg-muted data-active-item:ring-1 data-active-item:ring-accent aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
+      className="cursor-pointer rounded-xl px-3 py-2 text-[13px] outline-none data-active-item:bg-muted data-active-item:ring-1 data-active-item:ring-border-strong aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
     >
       <div className="flex flex-wrap items-baseline gap-x-2">
         <span className="break-all font-medium">/{entry.name}</span>
@@ -127,7 +127,7 @@ function ScopedInput({ id, text, onChange, onSend, placeholder, busy }: InputPro
           onSend();
         }}
         placeholder={placeholder}
-        className="max-h-60 min-h-20 w-full min-w-0 resize-none bg-transparent px-1 text-base leading-7 text-foreground placeholder:text-muted-foreground focus-visible:outline-none [field-sizing:content]"
+        className="composer-input"
       />
       <ComboboxPopover
         store={store}
@@ -135,7 +135,7 @@ function ScopedInput({ id, text, onChange, onSend, placeholder, busy }: InputPro
         gutter={12}
         sameWidth
         aria-label="原生命令补全"
-        className="z-50 max-h-[min(360px,var(--popover-available-height))] overflow-y-auto rounded-xl border border-border-strong bg-card p-2 text-foreground shadow-xl"
+        className="z-50 max-h-[min(360px,var(--popover-available-height))] overflow-y-auto rounded-2xl border border-border bg-card p-1.5 text-foreground shadow-lg"
       >
         <p role="status" className="px-3 py-2 text-xs leading-5 text-muted-foreground">
           {catalog.isFetching ? '正在读取原生能力…' : '↑ ↓ 选择 · Enter 确认 · Esc 关闭'}

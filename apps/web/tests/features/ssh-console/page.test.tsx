@@ -152,7 +152,7 @@ afterEach(async () => {
 it('独立服务器页面不用项目身份，只对当前可见概览或进程采样，隐藏后停止读取', async () => {
   const view = render(page());
   await tick();
-  expect(screen.getByRole('heading', { name: 'SSH Console' })).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'SSH Console' })).toBeTruthy();
   expect(calls.some(({ url }) => url.startsWith('/api/ssh-console/my-server/overview'))).toBe(true);
   expect(calls.some(({ url }) => url.includes('/workspaces/'))).toBe(false);
   fireEvent.click(screen.getByRole('tab', { name: '进程' }));

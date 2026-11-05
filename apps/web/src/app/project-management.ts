@@ -55,6 +55,11 @@ export async function clearProjectQueries(client: QueryClient, projectId: string
   await client.cancelQueries({ predicate });
   client.removeQueries({ predicate });
 }
+/** 项目映射变化会改变其他目录及重叠项目的归属，取消旧读取后统一刷新摘要。 */
+export async function refreshProjectSessionLists(client: QueryClient) {
+  await client.cancelQueries({ queryKey: ['sessions'] });
+  await client.invalidateQueries({ queryKey: ['sessions'] });
+}
 export async function updateProjectCache(client: QueryClient, updated: Workspace) {
   await client.cancelQueries({ queryKey: queryKeys.workspaces });
   client.setQueryData<Workspace[]>(queryKeys.workspaces, (projects) =>

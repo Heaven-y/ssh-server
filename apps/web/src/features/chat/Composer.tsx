@@ -33,7 +33,7 @@ function ComposerActions({ disabled }: { disabled: boolean }) {
           type="button"
           aria-label={stopping ? '正在停止' : '停止'}
           title={stopping ? '正在停止…' : '停止'}
-          className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-colors hover:bg-foreground/80 disabled:cursor-not-allowed disabled:opacity-45"
+          className="composer-submit"
           disabled={stopping}
           onClick={interrupt}
         >
@@ -41,13 +41,7 @@ function ComposerActions({ disabled }: { disabled: boolean }) {
           <span className="sr-only">{stopping ? '正在停止…' : '停止'}</span>
         </button>
       ) : (
-        <button
-          type="submit"
-          aria-label="发送"
-          title="发送"
-          className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-colors hover:bg-foreground/80 disabled:cursor-not-allowed disabled:opacity-35"
-          disabled={disabled}
-        >
+        <button type="submit" aria-label="发送" title="发送" className="composer-submit" disabled={disabled}>
           <ArrowUp aria-hidden className="size-5" />
         </button>
       )}
@@ -84,8 +78,8 @@ export function Composer() {
   };
 
   return (
-    <form onSubmit={submit} className="shrink-0 space-y-2 px-4 pt-2 pb-4 sm:px-6">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 rounded-[28px] border border-border-strong bg-card p-3 shadow-sm transition-colors focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/15 sm:p-4">
+    <form onSubmit={submit} className="composer">
+      <div className="composer-card">
         <label htmlFor={id} className="sr-only">
           输入消息
         </label>
@@ -100,10 +94,10 @@ export function Composer() {
           busy={busy}
           placeholder={placeholder(connected, selection?.argumentHint)}
         />
-        {restriction && <p className="text-xs leading-5 text-warning">{restriction}</p>}
-        <div role="group" aria-label="消息选项" className="flex flex-wrap items-center gap-2">
+        {restriction && <p className="px-4 text-xs leading-5 text-warning">{restriction}</p>}
+        <div role="group" aria-label="消息选项" className="composer-toolbar">
           <CapabilityPicker disabled={busy} />
-          <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">
+          <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5">
             <AgentControls disabled={busy} />
             <ComposerActions disabled={blocked} />
           </div>

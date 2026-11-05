@@ -1,9 +1,13 @@
 ﻿param(
-    [string]$Installer = (Join-Path $PSScriptRoot '../../release/AgentDeck-0.1.0-x64-setup.exe')
+    [string]$Installer = ''
 )
 
 $ErrorActionPreference = 'Stop'
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+if ([string]::IsNullOrWhiteSpace($Installer)) {
+    $package = Get-Content -LiteralPath (Join-Path $repository 'apps/desktop/package.json') -Raw | ConvertFrom-Json
+    $Installer = Join-Path $repository ("release/AgentDeck-{0}-x64-setup.exe" -f $package.version)
+}
 $installerPath = [IO.Path]::GetFullPath($Installer)
 $nodeExecutable = (Get-Command node).Source
 $uninstallRoots = @(

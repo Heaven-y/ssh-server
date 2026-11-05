@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AddProjectDialog } from '../../src/app/AddProjectDialog';
 import { api, queryKeys } from '../../src/lib/api';
 import { useChat } from '../../src/features/chat/chat-store';
+import { useOtherSessions } from '../../src/app/use-project-sessions';
 
 let client: QueryClient;
 beforeEach(() => {
@@ -24,11 +25,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mount(initialDir?: string) {
+function OtherSessionTitles() {
+  const { sessions } = useOtherSessions(true);
+  return <div aria-label="其他目录会话">{sessions.map((session) => session.title).join(',')}</div>;
+}
+
+function mount(initialDir?: string, showOthers = false) {
   const close = vi.fn();
   render(
     <QueryClientProvider client={client}>
       <AddProjectDialog initialDir={initialDir} onClose={close} />
+      {showOthers && <OtherSessionTitles />}
     </QueryClientProvider>,
   );
   return close;
@@ -49,6 +56,35 @@ it('项目目录必填，名称留空时取目录最后一段并选中新项目'
   await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
   expect(useChat.getState().workspaceId).toBe(created.id);
   expect(client.getQueryState(queryKeys.workspaces)?.isInvalidated).toBe(true);
+});
+
+it('其他目录添加为项目后立即刷新归属，移除原来的无归属条目', async () => {
+  const dir = path.resolve('fixtures', 'discovered');
+  let assigned = false;
+  vi.spyOn(api, 'orphanSessions').mockImplementation(async (agent) =>
+    agent === 'claude' && !assigned
+      ? [
+          {
+            agent,
+            sessionId: 'native',
+            title: '待归属会话',
+            updatedAt: '2026-11-05T00:00:00Z',
+            projectId: null,
+            running: false,
+            directory: dir,
+          },
+        ]
+      : [],
+  );
+  vi.spyOn(api, 'createProject').mockImplementation(async () => {
+    assigned = true;
+    return { id: 'discovered', name: 'discovered', dir };
+  });
+  const close = mount(dir, true);
+  await waitFor(() => expect(screen.getByLabelText('其他目录会话').textContent).toBe('待归属会话'));
+  fireEvent.click(screen.getByRole('button', { name: '添加项目' }));
+  await waitFor(() => expect(close).toHaveBeenCalledOnce());
+  expect(screen.getByLabelText('其他目录会话').textContent).toBe('');
 });
 
 it('后端拒绝时保留输入并把原因写在原处', async () => {

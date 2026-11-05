@@ -4,11 +4,13 @@ import { readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractFile, listPackage } from '@electron/asar';
+import { z } from 'zod';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const release = path.join(root, 'release');
 const digest = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
 const hashFile = async (file: string) => digest(await readFile(file));
+const PackageVersion = z.object({ version: z.string().min(1) });
 const sourceFolders = [
   'apps/desktop/src/',
   'apps/desktop/assets/',
@@ -43,8 +45,10 @@ async function sourceFingerprint() {
   return { sha256: digest(entries.map((entry) => `${entry.path}\0${entry.sha256}`).join('\n')), files: entries };
 }
 
-async function verifyRuntime() {
+async function verifyRuntime(version: string) {
   const archive = path.join(release, 'win-unpacked/resources/app.asar');
+  const packagedVersion = PackageVersion.parse(JSON.parse(extractFile(archive, 'package.json').toString())).version;
+  if (packagedVersion !== version) throw new Error('打包的桌面版本与当前清单不一致');
   const mainHash = digest(extractFile(archive, path.join('out', 'main', 'main.js')));
   const helperHash = digest(extractFile(archive, path.join('out', 'main', 'remote-helper.py')));
   const preloadHash = digest(extractFile(archive, path.join('out', 'preload', 'preload.cjs')));
@@ -63,21 +67,23 @@ async function verifyRuntime() {
   return { main: mainHash, preload: preloadHash, remoteHelper: helperHash, webIndex, archive: await hashFile(archive) };
 }
 
+const version = PackageVersion.parse(
+  JSON.parse(await readFile(path.join(root, 'apps/desktop/package.json'), 'utf8')),
+).version;
 const source = await sourceFingerprint();
-const runtime = await verifyRuntime();
+const runtime = await verifyRuntime(version);
 const artifacts = [];
-for (const name of (await readdir(release))
-  .filter((file) => /^AgentDeck-.+-(setup|portable)\.exe$/.test(file))
-  .sort()) {
+const expectedArtifacts = new Set(['setup', 'portable'].map((kind) => `AgentDeck-${version}-x64-${kind}.exe`));
+for (const name of (await readdir(release)).filter((file) => expectedArtifacts.has(file)).sort()) {
   const file = path.join(release, name);
   artifacts.push({ file: name, bytes: (await stat(file)).size, sha256: await hashFile(file) });
 }
-if (artifacts.length !== 2) throw new Error('缺少安装版或便携版产物');
+if (artifacts.length !== 2) throw new Error(`缺少 ${version} 安装版或便携版产物`);
 const gitCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-const record = { recordedAt: new Date().toISOString(), gitCommit, source, runtime, artifacts };
+const record = { recordedAt: new Date().toISOString(), version, gitCommit, source, runtime, artifacts };
 await writeFile(path.join(release, 'verification/build-record.json'), JSON.stringify(record, null, 2) + '\n');
 await writeFile(
   path.join(release, 'SHA256SUMS.txt'),
   artifacts.map((artifact) => `${artifact.sha256}  ${artifact.file}\n`).join(''),
 );
-console.log(JSON.stringify({ gitCommit, sourceFingerprint: source.sha256, runtime, artifacts }));
+console.log(JSON.stringify({ version, gitCommit, sourceFingerprint: source.sha256, runtime, artifacts }));

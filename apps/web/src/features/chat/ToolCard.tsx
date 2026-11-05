@@ -50,17 +50,17 @@ export function ToolCard({ item, expanded, onExpandedChange }: { item: ToolItem 
 
   return (
     <details
-      className="group/tool min-w-0 rounded-lg text-sm open:bg-card"
+      className="group/tool min-w-0 rounded-lg text-[13px]"
       open={expanded}
       onToggle={(event) => {
         if (event.currentTarget.open !== expanded) onExpandedChange?.(event.currentTarget.open);
       }}
     >
-      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 rounded-lg px-3 py-2.5 marker:hidden hover:bg-muted/50">
-        <Wrench aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+      <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-1 marker:hidden hover:bg-muted/50">
+        <Wrench aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="min-w-0 max-w-full break-words font-medium">{name}</span>
+            <span className="min-w-0 max-w-full break-words">{name}</span>
             {arg && (
               <code title={arg} className="min-w-0 max-w-full truncate font-mono text-xs text-muted-foreground">
                 {arg}
@@ -79,17 +79,17 @@ export function ToolCard({ item, expanded, onExpandedChange }: { item: ToolItem 
           className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open/tool:rotate-90"
         />
       </summary>
-      <div className="mx-3 mb-3 flex min-w-0 flex-col gap-3 border-l border-border py-1 pl-4">
+      <div className="mt-1 mr-2 mb-2 ml-3.5 flex min-w-0 flex-col gap-3 border-l border-border py-1 pl-4">
         <div className="min-w-0">
-          <p className="mb-1.5 text-xs text-muted-foreground">输入</p>
-          <pre className="max-h-48 overflow-auto font-mono text-xs leading-6 whitespace-pre-wrap break-words text-muted-foreground">
+          <p className="mb-1 text-xs text-muted-foreground">输入</p>
+          <pre className="max-h-48 overflow-auto font-mono text-xs leading-5 whitespace-pre-wrap break-words text-muted-foreground">
             {JSON.stringify(item.input, null, 2)}
           </pre>
         </div>
         {item.output !== undefined && (
           <div className="min-w-0">
-            <p className="mb-1.5 text-xs text-muted-foreground">输出</p>
-            <pre className="max-h-96 overflow-auto rounded-md bg-background p-3 font-mono text-xs leading-6 whitespace-pre-wrap break-words">
+            <p className="mb-1 text-xs text-muted-foreground">输出</p>
+            <pre className="max-h-96 overflow-auto rounded-lg bg-sidebar p-3 font-mono text-xs leading-5 whitespace-pre-wrap break-words">
               {item.output || '（无输出）'}
             </pre>
           </div>
