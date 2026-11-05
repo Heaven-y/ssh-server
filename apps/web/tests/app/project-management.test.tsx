@@ -14,6 +14,7 @@ let client: QueryClient;
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(queryKeys.workspaces, [project, other]);
+  client.setQueryData(['sessions', 'unassigned', 'claude'], []);
   useChat.setState(useChat.getInitialState(), true);
   useChat.getState().selectWorkspace(project.id);
   HTMLDialogElement.prototype.showModal = function () {
@@ -82,6 +83,7 @@ it('换目录清当前旧会话、模型和能力缓存，不删除其他项目�
   expect(client.getQueryData(historyKey)).toBeUndefined();
   expect(client.getQueryData(capabilitiesKey)).toBeUndefined();
   expect(client.getQueryData(queryKeys.agentCapabilities(other.id, 'codex'))).toEqual({ models: ['other-model'] });
+  expect(client.getQueryState(['sessions', 'unassigned', 'claude'])?.isInvalidated).toBe(true);
 });
 
 it('运行或发送准备中禁用；迟到成功不切走后来选中的项目', async () => {
@@ -160,4 +162,5 @@ it('移除只调用项目记录接口，确认前不删除，当前选择切到�
   expect(remove).toHaveBeenCalledWith(project.id);
   expect(useChat.getState().workspaceId).toBe(other.id);
   expect(client.getQueryData(queryKeys.workspaces)).toEqual([other]);
+  expect(client.getQueryState(['sessions', 'unassigned', 'claude'])?.isInvalidated).toBe(true);
 });

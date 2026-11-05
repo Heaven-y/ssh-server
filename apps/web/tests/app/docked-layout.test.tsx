@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { WorkspaceLayout } from '../../src/app/WorkspaceLayout';
 import { dockSizing } from '../../src/app/WorkspaceColumns';
 import { ServerDock, type ServerDockView } from '../../src/app/ServerDock';
-import { AppearanceActions } from '../../src/app/TopBar';
+
 import { useUiPreferences } from '../../src/ui/ui-preferences';
 
 let width = 1920;
@@ -31,7 +31,7 @@ beforeEach(() => {
   useUiPreferences.setState({
     sidebarCollapsed: false,
     sidebarAutoCollapsed: false,
-    sidebarWidth: 240,
+    sidebarWidth: 280,
     rightWidth: 420,
   });
 });
@@ -55,7 +55,7 @@ function Example() {
   };
   return (
     <>
-      <AppearanceActions />
+      <button onClick={() => useUiPreferences.getState().setSidebarCollapsed(false)}>展开侧栏</button>
       <button onClick={() => setDock(!dockOpen)}>切换服务器面板</button>
       <WorkspaceLayout
         dockOpen={dockOpen}
@@ -78,7 +78,7 @@ it('宽屏同时停靠左栏、对话与服务器面板，分隔线具有明确�
   const dock = screen.getByRole('complementary', { name: '服务器面板' });
   expect(within(dock).getByRole('tab', { name: '资源' }).getAttribute('aria-selected')).toBe('true');
   expect(screen.getByRole('separator', { name: '调整侧栏宽度' })).toBeTruthy();
-  const separator = screen.getByRole('separator', { name: '调整服务器面板宽度' });
+  const separator = screen.getByRole('separator', { name: '调整右侧边栏宽度' });
   expect(separator.getAttribute('aria-orientation')).toBe('vertical');
   expect(separator.tabIndex).toBe(0);
 });
@@ -98,7 +98,8 @@ it('收起服务器面板只隐藏，不重建对话节点；重新展开仍是�
 it('960px 自动收起项目侧栏但允许主动展开，回到宽屏不覆写用户原偏好', () => {
   render(<Example />);
   resize(960);
-  expect(screen.queryByRole('navigation', { name: '项目与会话' })).toBeNull();
+  expect(screen.getByRole('navigation', { name: '项目与会话' })).toBeTruthy();
+  expect(useUiPreferences.getState().sidebarAutoCollapsed).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: '展开侧栏' }));
   expect(screen.getByRole('navigation', { name: '项目与会话' })).toBeTruthy();
   resize(1920);
@@ -120,5 +121,5 @@ it('服务器面板是同一停靠区的互斥视图，切换不叠盖也不重�
 });
 
 it('右侧面板只有一条宽度约束，收起时不占宽度', () => {
-  expect(dockSizing()).toEqual({ key: 'rightWidth', min: 360, max: 720 });
+  expect(dockSizing()).toEqual({ key: 'rightWidth', min: 300, max: 720 });
 });

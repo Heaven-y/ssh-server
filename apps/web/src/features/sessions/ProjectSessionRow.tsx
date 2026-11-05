@@ -4,6 +4,7 @@ import { AGENT_LABELS } from '../chat/AgentControls';
 import { relativeTime } from '../../ui/relative-time';
 import { SessionMenu, type SessionDialogAction } from './SessionMenu';
 import { useSessionBusy } from './use-session-busy';
+import { AgentIcon } from '../../ui/BrandIcons';
 
 const fullTime = new Intl.DateTimeFormat('zh-CN', {
   year: 'numeric',
@@ -54,6 +55,9 @@ function RowContent({ session, running }: { session: SessionSummary; running: bo
   const { updated, time, title } = rowDetails(session, running);
   return (
     <>
+      <span className="flex size-4 shrink-0 items-center justify-center" title={AGENT_LABELS[session.agent]}>
+        <AgentIcon agent={session.agent} className="size-3.5" />
+      </span>
       {running && <LoaderCircle aria-hidden className="size-3.5 shrink-0 motion-safe:animate-spin text-accent" />}
       <span className="min-w-0 flex-1 truncate leading-5">{title}</span>
       {time && (
@@ -85,7 +89,7 @@ export function ProjectSessionRow({
   const { label } = rowDetails(session, running);
   const content = <RowContent session={session} running={running} />;
   const className =
-    'flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md border-l-2 border-transparent px-2 py-1 text-left text-[13px] text-muted-foreground transition-colors aria-[current]:border-accent aria-[current]:bg-muted aria-[current]:text-foreground';
+    'flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-1 text-left text-[13px] text-muted-foreground transition-colors aria-[current]:bg-muted aria-[current]:text-foreground focus-visible:outline-2 focus-visible:outline-accent';
   return (
     <li className="flex min-w-0 items-center gap-0.5">
       {select && !archived ? (

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useWorkbenchPlugins } from './use-workbench-plugins';
+import { allowConversationNavigation } from '../chat/chat-store';
 
 export function usePluginPages() {
   const [id, select] = useState<string>();
   const [managerOpen, setManagerOpen] = useState(false);
   const [command, setCommand] = useState<{ pluginId: string; id: string; sequence: number }>();
   const show = (value?: string) => {
+    if (value && !allowConversationNavigation()) return;
     select(value);
     setCommand(undefined);
   };
@@ -19,6 +21,7 @@ export function usePluginPages() {
         id: `${plugin.manifest.id}:${entry.id}`,
         label: entry.title,
         run: () => {
+          if (!allowConversationNavigation()) return false;
           select(plugin.manifest.id);
           setCommand((current) => ({
             pluginId: plugin.manifest.id,

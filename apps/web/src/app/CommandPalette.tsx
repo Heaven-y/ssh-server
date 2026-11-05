@@ -11,9 +11,9 @@ import { useUiPreferences } from '../ui/ui-preferences';
 export type PaletteActions = {
   conversation?(): boolean;
   plugins?: Array<{ id: string; label: string; run(): boolean }>;
-  terminal(): boolean;
+  terminal?(): boolean;
   settings(): boolean;
-  resources(id: string): boolean;
+  resources?(id: string): boolean;
 };
 type Action = { id: string; label: string; workspace?: boolean; run(): boolean };
 const itemClass =
@@ -31,8 +31,10 @@ function commonActions(actions: PaletteActions, id: string): Action[] {
         return true;
       },
     },
-    { id: 'terminal', label: '打开终端', workspace: true, run: actions.terminal },
-    { id: 'resources', label: '查看资源详情', workspace: true, run: () => actions.resources(id) },
+    ...(actions.terminal ? [{ id: 'terminal', label: '打开 SSH Console 终端', run: actions.terminal }] : []),
+    ...(actions.resources
+      ? [{ id: 'resources', label: '查看服务器资源', workspace: true, run: () => actions.resources!(id) }]
+      : []),
     { id: 'settings', label: '打开设置', run: actions.settings },
     {
       id: 'theme',

@@ -12,11 +12,11 @@ import { ServerManagerDialog } from '../features/ssh/ServerManagerDialog';
 import { EnvironmentSummary } from '../features/settings/EnvironmentReport';
 import { Sidebar } from './Sidebar';
 import { SessionPane } from './SessionPane';
-import { ServerDock } from './ServerDock';
+import { ConversationSidebar } from './ConversationSidebar';
 import { WorkspaceLayout } from './WorkspaceLayout';
 import { useProjectNavigation } from './use-project-navigation';
-import { useProjectSessions } from './use-project-sessions';
-import { useServerDock } from './use-server-dock';
+import { useOtherSessions, useProjectSessions } from './use-project-sessions';
+import { useConversationSidebar } from './use-conversation-sidebar';
 import { AddProjectDialog } from './AddProjectDialog';
 import { BindServerDialog } from './BindServerDialog';
 import { ProjectManageDialog } from './ProjectManageDialog';
@@ -113,7 +113,7 @@ function ProjectDialogs({
   );
 }
 
-/** 三段式外壳：顶栏 / 左栏项目与会话 / 主区会话 / 右侧服务器面板。 */
+/** 工作区导航贯穿左列；会话与插件使用中间主区，右侧上下文按需打开。 */
 export function App() {
   const palette = useCommandPalette();
   const theme = useUiPreferences((state) => state.theme);
@@ -133,7 +133,7 @@ export function App() {
   const [managingProject, setManagingProject] = useState<{ project: Workspace; action: ProjectManageAction }>();
   // 绑定服务器要拿到具体的项目对象，不能只记一个开关。
   const [bindingProject, setBindingProject] = useState<Workspace | undefined>(undefined);
-  const dock = useServerDock();
+  const dock = useConversationSidebar();
   const projects = useQuery({
     queryKey: queryKeys.workspaces,
     queryFn: ({ signal }) => api.listWorkspaces(signal),
@@ -141,7 +141,14 @@ export function App() {
   const projectId = useChat((s) => s.workspaceId);
   useProjectNavigation(projects.data);
   const current = projects.data?.find((project) => project.id === projectId);
-  const { sessionsByProject, loading: sessionsLoading } = useProjectSessions(projects.data);
+  const {
+    sessionsByProject,
+    loading: sessionsLoading,
+    errorsByProject,
+    retryProject,
+  } = useProjectSessions(projects.data);
+  const [showOtherSessions, setShowOtherSessions] = useState(false);
+  const others = useOtherSessions(showOtherSessions);
   const openSession = (targetProject: string, session: SessionSummary) => {
     if (!allowConversationNavigation()) return;
     plugins.show(undefined);
@@ -157,20 +164,7 @@ export function App() {
   };
 
   return (
-    <div className="flex h-full min-w-[960px] flex-col">
-      <TopBar
-        workspace={current}
-        onOpenCommands={palette.open}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onOpenServers={() => setServersOpen(true)}
-        onOpenPlugins={() => plugins.setManagerOpen(true)}
-        terminalOpen={dock.open && dock.view === 'terminal'}
-        onOpenTerminal={() => {
-          plugins.show(undefined);
-          dock.reveal('terminal');
-        }}
-      />
-      <EnvironmentSummary onOpenSettings={() => setSettingsOpen(true)} />
+    <div className="flex h-full min-w-[800px] flex-col">
       {serversOpen && <ServerManagerDialog onClose={() => setServersOpen(false)} />}
       <OpenPluginManager opened={plugins.managerOpen} close={() => plugins.setManagerOpen(false)} />
       <ProjectDialogs
@@ -193,19 +187,8 @@ export function App() {
             plugins.show(undefined);
             return true;
           },
-          terminal: () => {
-            plugins.show(undefined);
-            dock.reveal('terminal');
-            return true;
-          },
           settings: () => {
             setSettingsOpen(true);
-            return true;
-          },
-          resources: (id) => {
-            if (id !== current?.id) return false;
-            plugins.show(undefined);
-            dock.reveal('resources');
             return true;
           },
         }}
@@ -214,13 +197,11 @@ export function App() {
       <WorkspaceLayout
         dockOpen={dock.open && !activePlugin}
         dock={
-          <ServerDock
+          <ConversationSidebar
             workspace={current}
             open={dock.open && !activePlugin}
-            view={dock.view}
-            loaded={dock.loaded}
-            onSelectView={dock.select}
-            onHide={dock.hide}
+            close={dock.hide}
+            settings={() => setSettingsOpen(true)}
           />
         }
         navigation={
@@ -235,12 +216,24 @@ export function App() {
             }
             projects={projects.data ?? []}
             sessionsByProject={sessionsByProject}
+            sessionErrorsByProject={errorsByProject}
+            onRetrySessions={retryProject}
+            otherSessions={others.sessions}
+            loadingOtherSessions={others.loading}
+            otherSessionsError={others.error}
+            onShowOtherSessions={setShowOtherSessions}
             loadingSessions={sessionsLoading}
             currentProjectId={current?.id}
             onAddProject={(initial) => setAddingProject(initial ?? {})}
             onManageProject={(project, action) => setManagingProject({ project, action })}
             onNewSession={startSession}
-            onSelectProject={(id) => useChat.getState().selectWorkspace(id)}
+            onSelectProject={(id) => {
+              if (!allowConversationNavigation()) return;
+              plugins.show(undefined);
+              if (useChat.getState().workspaceId !== id) useChat.getState().selectWorkspace(id);
+            }}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenCommands={palette.open}
             onSelectSession={openSession}
             onBindServer={(project) => {
               if (allowConversationNavigation()) setBindingProject(project);
@@ -254,6 +247,8 @@ export function App() {
             inert={!!activePlugin}
             className={activePlugin ? 'hidden' : 'flex h-full min-h-0 flex-col'}
           >
+            <TopBar workspace={current} sidebarOpen={dock.open} onToggleSidebar={dock.toggle} />
+            <EnvironmentSummary onOpenSettings={() => setSettingsOpen(true)} />
             <SessionPane
               project={current}
               pending={projects.isPending}
@@ -267,6 +262,7 @@ export function App() {
             project={current}
             close={() => plugins.show(undefined)}
             manageServers={() => setServersOpen(true)}
+            bindServer={() => current && setBindingProject(current)}
             command={plugins.command}
           />
         </div>
