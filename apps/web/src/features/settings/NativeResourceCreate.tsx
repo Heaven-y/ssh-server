@@ -6,6 +6,7 @@ import { CodeEditor } from '../../ui/CodeEditor';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { SettingsDetailDialog } from './SettingsDetailDialog';
 import { confirmNativeDiscard, nativeSettingsError } from './native-resource-labels';
+import { invalidateNativeCapabilities } from './model-settings-api';
 
 type CreateProps = {
   context: NativeResourceContext;
@@ -55,6 +56,7 @@ function useNativeResourceCreate({ context, root }: Pick<CreateProps, 'context' 
         { rootId: root.id, name: name.trim(), content: text },
         controller.signal,
       );
+      await invalidateNativeCapabilities(context.agent);
       if (!controller.signal.aborted) setSaved(result);
     } catch (reason) {
       if (!controller.signal.aborted) setError(nativeSettingsError(reason));

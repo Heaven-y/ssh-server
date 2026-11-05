@@ -31,26 +31,29 @@ export function LaunchEnvironmentVariable({ variable, draft, encryptionAvailable
   const mode = draft?.mode ?? variable.mode;
   const secretUnavailable = variable.sensitive && !encryptionAvailable;
   return (
-    <section className="space-y-3 rounded-lg border border-border p-3" aria-label={variable.label}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-medium">{variable.label}</h3>
-        <span className="text-xs text-muted-foreground">{sourceNames[variable.source]}</span>
+    <section className="space-y-3 border-b border-border py-4 last:border-b-0" aria-label={variable.label}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
+          <h3 className="text-sm font-medium">{variable.label}</h3>
+          <p className="break-all font-mono text-[11px] text-muted-foreground">{variable.name}</p>
+        </div>
+        <span className="rounded-md bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+          {sourceNames[variable.source]}
+        </span>
       </div>
-      <p className="break-all font-mono text-xs text-muted-foreground">{variable.name}</p>
       <label className="block space-y-1 text-sm">
-        <span className="text-muted-foreground">使用方式</span>
         <select
-          className={inputClass}
+          className={`${inputClass} max-w-sm`}
           aria-label={`${variable.label}模式`}
           value={mode}
           disabled={disabled}
           onChange={(event) => change({ mode: event.target.value as LaunchVariableMode, value: '' })}
         >
-          <option value="inherit">继承</option>
+          <option value="inherit">继承 CLI 启动时的环境</option>
           <option value="set" disabled={secretUnavailable}>
-            单独设置
+            在工作台中单独设置
           </option>
-          <option value="disabled">停用</option>
+          <option value="disabled">停用此变量</option>
         </select>
       </label>
       {mode === 'set' && (

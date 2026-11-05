@@ -38,11 +38,11 @@ export function ManualModelDialog({
           />
         </label>
         <p id={`${id}-hint`} className="text-sm leading-6 text-muted-foreground">
-          填写原生模型 ID，仅设置当前覆盖；恢复原生配置请使用“清除模型覆盖”。
+          填写所选 CLI 支持的原生模型名称或标识，仅设置当前覆盖；恢复原生配置请使用“清除模型覆盖”。
         </p>
         {invalid && (
           <p id={`${id}-error`} role="alert" className="text-sm text-destructive-foreground">
-            请填写有效的原生模型 ID，不要填写“默认”等占位词。
+            请填写有效的原生模型名称或标识，不要填写“默认”等占位词。
           </p>
         )}
         <div className="flex justify-end gap-2">

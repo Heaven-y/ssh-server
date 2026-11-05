@@ -22,6 +22,6 @@ it.each([
   expect(runProcess).toHaveBeenCalledWith(
     'agy',
     ['models'],
-    expect.objectContaining({ signal, outputCap: 256 * 1024 }),
+    expect.objectContaining({ cwd: 'project', signal, outputCap: 256 * 1024 }),
   );
 });

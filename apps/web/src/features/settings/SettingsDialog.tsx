@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react';
-import ProductSettingsDialog from './ProductSettingsDialog';
+import ProductSettingsDialog, { type SettingsPage } from './ProductSettingsDialog';
 import type { AgentKind, Workspace } from '@agentdeck/shared';
 
 const NativeResourcesDialog = lazy(() => import('./NativeResourcesDialog'));
@@ -8,8 +8,17 @@ const LaunchEnvironmentPanel = lazy(() => import('./LaunchEnvironmentPanel'));
 export default function SettingsDialog({ onClose, project }: { onClose(): void; project?: Workspace }) {
   const [native, setNative] = useState<AgentKind | null>(null);
   const [launch, setLaunch] = useState<AgentKind | null>(null);
+  const [page, setPage] = useState<SettingsPage>('claude');
   if (!native && !launch)
-    return <ProductSettingsDialog onClose={onClose} onNative={setNative} onLaunchEnvironment={setLaunch} />;
+    return (
+      <ProductSettingsDialog
+        onClose={onClose}
+        onNative={setNative}
+        onLaunchEnvironment={setLaunch}
+        page={page}
+        onPageChange={setPage}
+      />
+    );
   return (
     <Suspense
       fallback={

@@ -27,7 +27,7 @@ Windows 10/11、Node.js 22+ 与 Git 是开发基础。按需安装 `claude`、`c
 | SSH | ssh2、ssh-config | 连接/PTY/SFTP 与 OpenSSH Host 解析；known_hosts 小型校验保留本地实现，覆盖哈希和吊销条目 |
 | 数据与连接 | TanStack Query、zustand、partysocket | 分离服务缓存和交互状态；关闭 WS 发送缓冲避免重发 |
 | 消息 | streamdown、react-virtuoso | 流式 Markdown、动态高度列表和滚动跟随 |
-| 配置 | CodeMirror 6、smol-toml | 高亮和语法校验，保存原文保留未知字段与格式 |
+| 配置 | CodeMirror 6、smol-toml、toml-eslint-parser | 原文高亮与校验，模型表单通过 TOML AST 定点编辑并保留注释与未知配置 |
 | 终端 | xterm.js、addon-fit、addon-search | 处理真实 PTY 画面、尺寸和本机回滚查找，不自造终端解析器 |
 | 交互 | Ariakit、cmdk、react-resizable-panels | 弹层、补全、命令面板与分栏的键盘行为 |
 | 图标与字体 | lucide-react、fontsource | 随包分发，避免外部字体请求 |

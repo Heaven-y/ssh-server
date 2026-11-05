@@ -28,6 +28,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   client.clear();
+  delete window.agentDeck;
   vi.restoreAllMocks();
 });
 function mount(action: 'rename' | 'directory' | 'remove', target = project) {
@@ -54,6 +55,8 @@ it('改名只提交名称，目录离线也不触碰目录或原生会话', asyn
 
 it('换目录清当前旧会话、模型和能力缓存，不删除其他项目缓存', async () => {
   const dir = path.resolve('fixtures', 'replacement');
+  const selectDirectory = vi.fn().mockResolvedValue(dir);
+  window.agentDeck = { platform: process.platform, selectDirectory };
   vi.spyOn(api, 'updateProject').mockResolvedValue({ ...project, dir });
   const historyKey = queryKeys.sessionHistory(project.id, 'codex', 'native-session');
   const capabilitiesKey = queryKeys.agentCapabilities(project.id, 'codex');
@@ -69,7 +72,9 @@ it('换目录清当前旧会话、模型和能力缓存，不删除其他项目�
     sessionModels: { [key]: { actualModel: 'old-model' } },
   });
   const close = mount('directory');
-  fireEvent.change(screen.getByLabelText('项目目录'), { target: { value: dir } });
+  fireEvent.click(screen.getByRole('button', { name: '选择文件夹' }));
+  await waitFor(() => expect(screen.getByLabelText<HTMLInputElement>('项目目录').value).toBe(dir));
+  expect(selectDirectory).toHaveBeenCalledWith(project.dir);
   fireEvent.click(screen.getByRole('button', { name: '更换目录' }));
   await waitFor(() => expect(close).toHaveBeenCalled());
   expect(useChat.getState()).toMatchObject({

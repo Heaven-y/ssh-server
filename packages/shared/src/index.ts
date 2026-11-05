@@ -97,3 +97,4 @@ export type {
   ContextUsage,
   CompactionState,
 } from './capabilities';
+export * from './model-settings';
