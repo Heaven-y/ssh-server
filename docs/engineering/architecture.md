@@ -27,7 +27,7 @@ Electron 负责入口、生命周期及本机目录选择。目录选择只暴�
 | 后端 | Fastify 5、WebSocket、zod 参数和配置校验 |
 | Claude | Agent SDK 作为协议客户端；本机可执行程序作为驱动目标 |
 | Codex | 本机 `codex app-server`，stdio JSON-RPC |
-| Antigravity | 本机 `agy` 的流式子进程；Node 内置 SQLite 只读原生摘要 |
+| Antigravity | 本机 `agy` 流式子进程与独立原生管理服务；Node 内置 SQLite 只读摘要 |
 | SSH | `ssh2`，exec、SFTP 和远端 PTY 共用连接但独占通道 |
 | 前端 | React 19、Vite 8、Tailwind 4、Ariakit、cmdk、react-resizable-panels |
 | 状态与通信 | zustand、TanStack Query、partysocket |
@@ -78,7 +78,7 @@ Electron 负责入口、生命周期及本机目录选择。目录选择只暴�
 |---|---|---|
 | Claude | SDK 会话列表、历史、改名/删除/分叉 | 探测与回合共同定位本机程序；SDK 仅作为协议客户端，界面承接原生审批 |
 | Codex | app-server 原生会话、工具与审批 | 省略未选择的参数，按需加载能力，回合和管理均绑定原生身份 |
-| Antigravity | SQLite 摘要、时间和 `workspace_uris`，历史不可回放 | 新建、`--conversation` 续接、流式事件、中断及软拒提示 |
+| Antigravity | SQLite 摘要、时间和 `workspace_uris`，历史不可回放 | 新建、续接、流式、中断；后台会话服务提供改名/分支/删除 |
 
 探测运行本地版本/帮助命令，Codex 另检查生成的协议 schema；每个 CLI 单次探测超时为 5 秒，输出有独立上限。stdout 与 stderr 一起核对，四态结果不意味着登录成功或真实模型请求已通过。
 
@@ -93,6 +93,8 @@ Electron 负责入口、生命周期及本机目录选择。目录选择只暴�
 Claude/Codex 的既有运行时按会话复用，空闲回收预算为 5 分钟。缓存身份含项目、原生 id 与启动参数；关键输入变化后重新启动，崩溃实例不得再次复用，关闭应用统一 dispose。Antigravity 每轮关闭 stdin 并结束进程，下一轮用原生 id 续接；已有会话的启动环境快照独立保留，显式重启后刷新。
 
 模型/强度未选则省略参数。原生权限配置决定是否请求审批，宿主只承接答复。Antigravity 没有同等审批通道，软拒输出独立显示。能力 GET 仅返回缓存及 discovered 标记；模型菜单首次打开或手动刷新发 POST，成功后缓存复用，失败不循环重试；既有会话带 `sessionId` 解析原生目录，前端缓存区分会话。发送普通文字不依赖能力目录，调用 slash 使用已刷新能力。启动环境异步解析完成后再次核对运行实例预算，防止并发准备越过 32 个实例上限。
+
+能力发现前检查目录；既有会话在原生归属读取前先检查项目根，再按已核实的会话目录发现。失效目录返回专用错误码并连接更换目录操作。模型反馈与技能反馈分别输出，避免一个分支失败影响另一分支的界面状态。
 
 ### 4.4 历史与前端状态
 
@@ -121,6 +123,8 @@ partysocket 退避从 1 秒到 15 秒，关闭发送缓冲，防止断开时积�
 资源目录由各 CLI 的已知文件和有界扫描生成，浏览器只提交服务端资源 id 和可选项目 id，不提交任意绝对路径。Claude 区分用户、共享项目与个人项目；Codex 配置、规则、共享 Skills 保留各自位置；Antigravity 不补造项目 settings。具体入口见[原生配置说明](native-configuration.md)。
 
 `safe-file.ts` 逐层核对目录和文件身份；内容按 UTF-8 读取，revision 使用 SHA-256，同目录原子替换前再次校验。JSON/TOML 检查语法，其余规则原文留给 CLI 解释。目录 GET 只返回元数据，显式 POST open 才读取完整正文，保存响应不回显内容；旧两文件接口与资源接口共用按路径串行队列。扫描、文件大小与创建约束由原生配置说明维护，当前没有自动备份目录。
+
+工作台归档使用 `session-preferences.json`，仅保存 agent 与原生会话 id，不复制标题或正文。读写共用文件身份检查和路径事务；坏索引不覆盖。列表在原生枚举后按标记过滤，恢复撤销标记；已归档会话拒绝从旧选择继续发送或创建分支。原生删除成功后清理本地标记，附属清理失败不将已完成删除误报成失败。
 
 启动环境对每种 CLI 单独限定变量，所有显式值使用系统加密，不修改本机服务的全局 `process.env`。新运行器持有启动快照，保存不终止现有会话；显式重启仅在空闲时释放该 CLI 运行器，使后续发送重新启动。状态响应不包含旧值，原生文件编辑器则仅在显式打开期间持有正文。
 
@@ -159,7 +163,7 @@ API 和 WebSocket 继续校验会话及来源；主应用禁止被 iframe 嵌入
 | SSH Console | `/api/ssh-console/:serverId/*`，alias 定位资源、进程、只读文件和终端 |
 | 现有服务器工具 | `/api/workspaces/:id/terminal*`、`/resources`、`/slurm`、`/remote-files/*` |
 
-会话正文和管理只使用项目路径，全局发现不提供正文或写入入口；`/api/sessions/archived?agent=codex` 汇总全局原生归档，恢复和删除仍走项目身份校验；旧工作区会话别名返回 404，服务器工具路径暂时保持。会话接口在进入解析前设置 no-store，写入确认和原生会话锁仍由服务层维护。前端构建由 Fastify 托管，接口路径不回退为 HTML。
+会话正文和管理只使用项目路径，全局发现不提供正文或写入入口；`/api/sessions/archived?agent=...` 汇总各来源的归档，恢复和删除仍走项目身份校验；旧工作区会话别名返回 404，服务器工具路径暂时保持。会话接口在进入解析前设置 no-store，写入确认和原生会话锁仍由服务层维护。前端构建由 Fastify 托管，接口路径不回退为 HTML。
 
 安装版与静态预览的 Electron 主进程用端口 0 启动服务后加载实际地址；preload 仅暴露窄系统信息，`nodeIntegration: false`、`contextIsolation: true`。单实例锁让第二次启动聚焦已有窗口，关窗和退出都先释放服务，最长关闭等待 8 秒。后端清理终端、资源/Slurm、SSH、轮次和 HTTP；进程退出不留下后台业务实例。
 

@@ -83,12 +83,7 @@ function Feedback({ state }: { state: State }) {
 function ModelSettingsWarnings({ agent, state }: { agent: AgentKind; state: State }) {
   return (
     <>
-      {agent === 'antigravity' && (
-        <div className="rounded-xl border border-border bg-muted/40 p-4 text-xs leading-6 text-muted-foreground">
-          Gemini API 的地址和 Key 由环境变量提供；下方启动环境只用于工作台启动的 agy。 使用 Antigravity 账号时，沿用 agy
-          原生登录。
-        </div>
-      )}
+      {agent === 'antigravity' && <p className="text-xs text-muted-foreground">Gemini API 的地址与 Key 在下方配置。</p>}
       {!!state.document?.warnings.length && (
         <div className="space-y-1 border-l-2 border-border-strong pl-3 text-xs leading-6 text-muted-foreground">
           {state.document.warnings.map((warning) => (
@@ -126,9 +121,6 @@ export function ModelSettingsPanel({
             <AgentIcon agent={agent} className="size-5" />
             {nativeAgentNames[agent]}
           </h3>
-          <p className="mt-2 text-[13px] leading-6 text-muted-foreground">
-            使用 CLI 的原生配置，设置会同步供本机 CLI 读取。
-          </p>
         </div>
         <button
           type="button"
@@ -162,9 +154,7 @@ export function ModelSettingsPanel({
           <p className="break-all font-mono text-[11px] text-muted-foreground">{state.document.displayPath}</p>
         )}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">
-            {state.dirty ? '有未保存修改' : '新会话读取最新配置；会话内选择和更高层配置优先。'}
-          </p>
+          <p className="text-xs text-muted-foreground">{state.dirty ? '有未保存修改' : '对新会话生效'}</p>
           <div className="flex gap-2">
             <button
               type="button"

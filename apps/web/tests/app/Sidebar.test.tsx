@@ -324,7 +324,7 @@ it('侧栏只展示CLI原生管理动作，Antigravity没有无效管理入口',
   menuButton.focus();
   expect(document.activeElement).toBe(menuButton);
   fireEvent.click(menuButton);
-  expect(await screen.findByRole('menuitem', { name: '分叉会话' })).toBeTruthy();
+  expect(await screen.findByRole('menuitem', { name: '创建分支' })).toBeTruthy();
   expect(screen.getByRole('menuitem', { name: '删除' })).toBeTruthy();
   expect(screen.queryByRole('menuitem', { name: '归档' })).toBeNull();
   expect(screen.queryByRole('menuitem', { name: /置顶|复制/ })).toBeNull();
@@ -385,9 +385,9 @@ it('当前项目分叉经确认后读取并选中新原生身份', async () => {
   const fork = vi.spyOn(api, 'sessionFork').mockResolvedValue({ session: forked });
   const read = vi.spyOn(api, 'sessionEvents').mockResolvedValue({ session: forked, events: [] });
   managedSidebar();
-  await actionFor(claudeSession.title, '分叉会话');
+  await actionFor(claudeSession.title, '创建分支');
   expect(fork).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: '确认分叉' }));
+  fireEvent.click(screen.getByRole('button', { name: '创建分支' }));
   await waitFor(() => expect(useChat.getState().sessionId).toBe('forked'));
   expect(fork).toHaveBeenCalledExactlyOnceWith(project.id, claudeSession.sessionId, 'claude', {});
   expect(read).toHaveBeenCalledWith(project.id, 'forked', 'claude', expect.any(AbortSignal));

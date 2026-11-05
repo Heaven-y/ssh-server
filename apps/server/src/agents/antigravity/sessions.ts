@@ -5,6 +5,9 @@ import { SessionError } from '../../chat/sessions';
 import type { NativeSessionSummary } from '../types';
 import { readSummaries, type SummaryRow } from './summaries';
 import { nativeSessionDirectory, resolveProjectId } from '../../sessions/ownership';
+import { NativeSessionIdSchema } from '@agentdeck/shared';
+import { sameSessionDirectory } from '../session-scope';
+import type { AntigravitySessionManagement } from './session-management-types';
 
 /** Antigravity 在用户目录下维护自己的会话摘要库，不随项目目录变化。 */
 export const ANTIGRAVITY_DB_PATH = path.join(homedir(), '.gemini', 'antigravity-cli', 'conversation_summaries.db');
@@ -12,6 +15,7 @@ export const ANTIGRAVITY_DB_PATH = path.join(homedir(), '.gemini', 'antigravity-
 export type AntigravitySessionsApi = {
   dbPath: string;
   readSummaries(dbPath: string): SummaryRow[];
+  management?: AntigravitySessionManagement;
 };
 
 function epochMs(value: string): number {
@@ -57,7 +61,23 @@ export function createAntigravitySessions(api: Partial<AntigravitySessionsApi> =
     }
   }
 
+  function belongs(id: string, dir: string): SummaryRow {
+    const found = rows().find((row) => row.conversationId === id);
+    if (
+      found &&
+      resolveProjectId({ workspaceUris: found.workspaceUris, projects: [{ id: 'current', name: '', dir }] }) ===
+        'current'
+    )
+      return found;
+    throw new SessionError(404, 'session_missing', 'Antigravity 在当前工作区中没有此会话');
+  }
+
   return {
+    capabilities: {
+      rename: !!api.management?.rename,
+      fork: api.management ? 'native' : null,
+      delete: api.management ? 'native' : null,
+    },
     list(_dir, _signal, archived = false) {
       if (archived) return Promise.reject(new SessionError(400, 'unsupported_action', 'Antigravity 不支持归档会话'));
       return Promise.resolve(rows().map(nativeSummary));
@@ -73,25 +93,35 @@ export function createAntigravitySessions(api: Partial<AntigravitySessionsApi> =
     },
     assertBelongs(id, dir, signal) {
       signal?.throwIfAborted();
-      const found = rows().find((row) => row.conversationId === id);
-      if (
-        found &&
-        resolveProjectId({
-          workspaceUris: found.workspaceUris,
-          projects: [{ id: 'current', name: '', dir }],
-        }) === 'current'
-      )
-        return Promise.resolve({
+      return Promise.resolve().then(() => {
+        const found = belongs(id, dir);
+        return {
           cwd: nativeSessionDirectory({ workspaceUris: found.workspaceUris }) ?? dir,
           workspaceUris: found.workspaceUris,
-        });
-      return Promise.reject(new SessionError(404, 'session_missing', 'Antigravity 在当前工作区中没有此会话'));
+        };
+      });
     },
-    mutate() {
-      return Promise.reject(new SessionError(400, 'unsupported_action', 'Antigravity 会话暂不支持重命名、归档或删除'));
+    async mutate(id, dir, input) {
+      if (!api.management || input.action === 'archive' || input.action === 'unarchive')
+        throw new SessionError(400, 'unsupported_action', '此 Antigravity 会话操作尚不可用');
+      belongs(id, dir);
+      if (input.action === 'rename') {
+        if (!api.management.rename) throw new SessionError(400, 'unsupported_action', 'Antigravity 重命名尚不可用');
+        return api.management.rename(id, dir, input.title);
+      }
+      return api.management.delete(id, dir);
     },
-    fork() {
-      return Promise.reject(new SessionError(400, 'unsupported_action', 'Antigravity 会话暂不支持分叉'));
+    async fork(id, dir, input) {
+      if (!api.management) throw new SessionError(400, 'unsupported_action', 'Antigravity 创建分支尚不可用');
+      belongs(id, dir);
+      const created = await api.management.fork(id, dir, input);
+      if (!NativeSessionIdSchema.safeParse(created.sessionId).success || created.sessionId === id)
+        throw new SessionError(503, 'session_runtime_failed', 'Antigravity 未返回有效的新会话');
+      const found = rows().find((row) => row.conversationId === created.sessionId);
+      const cwd = found && nativeSessionDirectory({ workspaceUris: found.workspaceUris });
+      if (!found || !cwd || !(await sameSessionDirectory(cwd, dir)))
+        throw new SessionError(503, 'session_runtime_failed', 'Antigravity 新会话的目录不匹配');
+      return { session: nativeSummary(found), cwd };
     },
   };
 }

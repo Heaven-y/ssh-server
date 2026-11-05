@@ -85,8 +85,22 @@ export { AgentKindSchema, NativeSessionIdSchema, SessionActionSchema, SessionFor
 export { ManualServerInputSchema, ManagedServerSchema, HostTrustConfirmationSchema } from './setup';
 export type { ManualServerInput, ManagedServer, HostTrustStatus, HostTrustConfirmation } from './setup';
 export type { AgentKind, SessionActionInput, SessionForkInput } from './agents';
-export { AgentProbeSchema, ProbeStatusSchema, SessionSummarySchema } from './session';
-export type { AgentProbe, ProbeStatus, SessionHistory, SessionRecord, SessionRef, SessionSummary } from './session';
+export {
+  AgentProbeSchema,
+  ProbeStatusSchema,
+  SessionSummarySchema,
+  SessionCapabilitiesSchema,
+  nativeSessionCapabilities,
+} from './session';
+export type {
+  AgentProbe,
+  ProbeStatus,
+  SessionHistory,
+  SessionRecord,
+  SessionRef,
+  SessionSummary,
+  SessionCapabilities,
+} from './session';
 export type { SessionChangesSnapshot } from './session-changes';
 export { CapabilitySelectionSchema } from './capabilities';
 export type {

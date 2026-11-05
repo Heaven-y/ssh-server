@@ -29,8 +29,8 @@ it('把连续文本增量合并成一条助手消息，并让流式状态落定'
     />,
   );
   expect(screen.getByText('答案')).toBeTruthy();
-  // M1 只读：历史里不出现「从此处分叉」这类交互入口。
-  expect(screen.queryByText('从此处分叉')).toBeNull();
+  // M1 只读：历史里不出现「从此处创建分支」这类交互入口。
+  expect(screen.queryByText('从此处创建分支')).toBeNull();
 });
 
 it('工具调用与结果复用既有工具卡片', () => {

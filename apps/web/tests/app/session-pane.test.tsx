@@ -18,7 +18,7 @@ function mount(node: React.ReactElement) {
 it('没有项目时引导先添加项目，不画空对话框', () => {
   const add = vi.fn();
   mount(<SessionPane onAddProject={add} />);
-  expect(screen.getByText('先在左栏添加项目目录')).toBeTruthy();
+  expect(screen.getByText('选择一个工作区，开始对话')).toBeTruthy();
   expect(screen.queryByRole('textbox', { name: '输入消息' })).toBeNull();
   screen.getByRole('button', { name: '添加项目目录' }).click();
   expect(add).toHaveBeenCalledTimes(1);
@@ -33,7 +33,7 @@ it('项目列表读取失败时在原处说明原因', () => {
 it('加载中只显示进度，不闪空态', () => {
   mount(<SessionPane pending />);
   expect(screen.getByRole('status').textContent).toBe('正在加载项目…');
-  expect(screen.queryByText('先在左栏添加项目目录')).toBeNull();
+  expect(screen.queryByText('选择一个工作区，开始对话')).toBeNull();
 });
 
 it('有当前项目时挂载新会话输入，不再停留在只读历史空态', () => {

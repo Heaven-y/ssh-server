@@ -4,6 +4,7 @@ import { api, queryKeys } from '../../lib/api';
 import { useChat } from './chat-store';
 import type { AgentKind } from '@agentdeck/shared';
 import { nativeCapabilitiesGeneration } from '../settings/model-settings-api';
+import { currentCapabilityError } from './capability-feedback';
 
 type CapabilityScope = { workspaceId: string; agent: AgentKind; sessionId?: string };
 type CapabilityRefresh = CapabilityScope & { generation: number };
@@ -67,6 +68,7 @@ export function useAgentCapabilities(enabled: boolean, discoverOnOpen = false) {
   );
   return {
     ...query,
+    error: currentCapabilityError(currentRefresh, refresh, query.error),
     isFetching: query.isFetching || (currentRefresh && refresh.isPending),
     isError: query.isError || (currentRefresh && refresh.isError),
     refresh: () => {

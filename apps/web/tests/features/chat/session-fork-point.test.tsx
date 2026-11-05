@@ -34,10 +34,10 @@ function mount() {
 it('已结束位置打开分叉确认，确认只传原生pointId及当前源身份', async () => {
   const fork = vi.spyOn(operations, 'forkSession').mockResolvedValue(true);
   mount();
-  fireEvent.click(screen.getByRole('button', { name: '从此处分叉' }));
+  fireEvent.click(screen.getByRole('button', { name: '从此处创建分支' }));
   expect(fork).not.toHaveBeenCalled();
   expect(screen.getByRole('dialog').textContent).toContain('保留截至所选位置的对话历史');
-  fireEvent.click(screen.getByRole('button', { name: '确认分叉' }));
+  fireEvent.click(screen.getByRole('button', { name: '创建分支' }));
   await waitFor(() =>
     expect(fork).toHaveBeenCalledWith('workspace', expect.objectContaining({ agent: 'codex', sessionId: 'source' }), {
       pointId: 'native-turn-1',
@@ -48,7 +48,7 @@ it('已结束位置打开分叉确认，确认只传原生pointId及当前源身
 it('运行中不可从历史位置分叉，结束后恢复入口', () => {
   useChat.setState({ running: true });
   mount();
-  const button = screen.getByRole<HTMLButtonElement>('button', { name: '从此处分叉' });
+  const button = screen.getByRole<HTMLButtonElement>('button', { name: '从此处创建分支' });
   expect(button.disabled).toBe(true);
   fireEvent.click(button);
   expect(screen.queryByRole('dialog')).toBeNull();

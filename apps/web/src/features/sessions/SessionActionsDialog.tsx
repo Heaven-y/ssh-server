@@ -1,12 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { SessionActionInput, SessionSummary } from '@agentdeck/shared';
+import { nativeSessionCapabilities, type SessionActionInput, type SessionSummary } from '@agentdeck/shared';
 import { queryKeys } from '../../lib/api';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { AGENT_LABELS } from '../chat/AgentControls';
 import { sessionActionKey, useChat } from '../chat/chat-store';
-import { useSessionModel } from '../chat/use-session-model';
 import { useSessionBusy } from './use-session-busy';
 
 type Action = SessionActionInput['action'];
@@ -15,7 +14,7 @@ const ACTION_LABELS: Record<Action | 'fork', string> = {
   delete: '删除',
   archive: '归档',
   unarchive: '恢复',
-  fork: '分叉',
+  fork: '创建分支',
 };
 type Props = {
   workspaceId: string;
@@ -57,12 +56,15 @@ function RenameSession({ session, submit }: { session: SessionSummary; submit: S
     </form>
   );
 }
-function ArchiveSession({ archived, submit }: { archived: boolean; submit: Submit }) {
+function ArchiveSession({ archived, local, submit }: { archived: boolean; local: boolean; submit: Submit }) {
   return (
     <section className="space-y-3 border-t border-border pt-4" aria-label={archived ? '恢复会话' : '归档会话'}>
-      <h3 className="text-sm font-medium">{archived ? '恢复会话' : '归档会话'}</h3>
       <p className="text-xs leading-6 text-muted-foreground">
-        {archived ? '恢复后可从会话列表继续对话或重命名。' : '归档同时作用于派生子会话，可在“已归档”列表恢复。'}
+        {archived
+          ? '恢复到工作区会话列表。'
+          : local
+            ? '移到工作台归档，CLI 中的记录保留。'
+            : '移到已归档会话；由它启动的子会话也会归档。'}
       </p>
       <button
         type="button"
@@ -74,15 +76,17 @@ function ArchiveSession({ archived, submit }: { archived: boolean; submit: Submi
     </section>
   );
 }
-function DeleteSession({ submit }: { submit: Submit }) {
+function DeleteSession({ session, submit }: { session: SessionSummary; submit: Submit }) {
   const id = useId();
   const [confirmed, setConfirmed] = useState(false);
+  const description = {
+    codex: '删除本机记录及由它启动的子会话，无法撤销。',
+    claude: '删除本机会话及其子代理记录，无法撤销。',
+    antigravity: '删除这条本机会话记录，无法撤销。',
+  }[session.agent];
   return (
     <section className="space-y-3 border-t border-border pt-4" aria-label="删除会话">
-      <h3 className="text-sm font-medium text-destructive-foreground">删除原生会话</h3>
-      <p className="text-xs leading-6 text-muted-foreground">
-        删除会影响本机原生记录及相关子会话。本网页不另存对话副本，无法从这里撤销删除。
-      </p>
+      <p className="text-xs leading-6 text-muted-foreground">{description}</p>
       <label htmlFor={id} className="flex items-start gap-2 text-sm leading-6">
         <input
           id={id}
@@ -91,7 +95,7 @@ function DeleteSession({ submit }: { submit: Submit }) {
           onChange={(event) => setConfirmed(event.target.checked)}
           className="mt-1 accent-accent"
         />
-        我确认删除这条原生记录及相关子会话
+        确认删除
       </label>
       <button
         type="button"
@@ -122,9 +126,6 @@ function SessionActionError({
       <p role="alert" className="text-sm leading-6 text-destructive-foreground">
         {error}
       </p>
-      <p className="text-xs leading-5 text-muted-foreground">
-        请求未确认时，操作可能已生效；可重新读取原生列表核对实际状态。
-      </p>
       <button
         type="button"
         className={buttonClass('outline')}
@@ -150,15 +151,20 @@ function SessionActionForm({
       return archived ? null : <RenameSession session={session} submit={submit} />;
     case 'archive':
     case 'unarchive':
-      return session.agent === 'codex' ? <ArchiveSession archived={action === 'unarchive'} submit={submit} /> : null;
+      return (
+        <ArchiveSession
+          archived={action === 'unarchive'}
+          local={(session.capabilities ?? nativeSessionCapabilities(session.agent)).archive === 'workbench'}
+          submit={submit}
+        />
+      );
     case 'delete':
-      return <DeleteSession submit={submit} />;
+      return <DeleteSession session={session} submit={submit} />;
   }
 }
 
 export function SessionActionsDialog({ workspaceId, session, archived, action, onClose, onCompleted }: Props) {
   const key = sessionActionKey(workspaceId, session);
-  const { description } = useSessionModel(workspaceId, session);
   const operation = useChat((state) => state.sessionOperations[key]);
   const manage = useChat((state) => state.manageSession);
   const { running } = useSessionBusy(workspaceId, session);
@@ -182,10 +188,9 @@ export function SessionActionsDialog({ workspaceId, session, archived, action, o
         <div>
           <p className="text-sm font-medium wrap-anywhere">{session.title || '无标题会话'}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            运行来源：{AGENT_LABELS[session.agent]}
+            {AGENT_LABELS[session.agent]}
             {archived ? ' · 已归档' : ''}
           </p>
-          <p className="mt-1 text-xs leading-6 wrap-anywhere text-muted-foreground">{description}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             最后更新：
             <time dateTime={session.updatedAt}>{new Date(session.updatedAt).toLocaleString('zh-CN')}</time>
@@ -193,7 +198,7 @@ export function SessionActionsDialog({ workspaceId, session, archived, action, o
         </div>
         {busy && (
           <p role="status" className="text-sm text-muted-foreground">
-            正在{ACTION_LABELS[operation.action]}原生会话，请等待结果…
+            正在{ACTION_LABELS[operation.action]}…
           </p>
         )}
         {running && (

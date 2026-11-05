@@ -24,6 +24,9 @@ export type AgentCapabilities = {
   entries: AgentCapability[];
   models: AgentModel[];
   warnings: string[];
+  /** 分组反馈；空串代表模型正常，技能提示不能混进模型菜单。 */
+  modelWarning?: string;
+  commandWarnings?: string[];
 };
 
 /** 原生统计与原生估算均保留来源；没有给出的窗口或比例不推算。 */

@@ -371,8 +371,13 @@ export const useChat = create<ChatState>()((set, get) => ({
         set({ sessionModels });
       }
       set({ sessionOperations: operations });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions(workspaceId, session.agent) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.archivedSessions(session.agent) });
+      // 归档改变所有列表投影；先取消旧摘要，避免在途读取把已归档行填回。
+      const affectedLists = {
+        predicate: (query: { queryKey: readonly unknown[] }) =>
+          query.queryKey[0] === 'sessions' && query.queryKey[2] === session.agent,
+      };
+      await queryClient.cancelQueries(affectedLists);
+      void queryClient.invalidateQueries(affectedLists);
       return true;
     } catch (error) {
       set((latest) => ({

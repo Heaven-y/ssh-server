@@ -101,7 +101,7 @@ export function SidebarMore({
         <Ellipsis aria-hidden className="size-4 shrink-0" />
         {!collapsed && <span>更多</span>}
       </MenuButton>
-      <Menu store={menu} portal unmountOnHide gutter={6} aria-label="更多导航" className={sidebarMenuClass}>
+      <Menu store={menu} portal fixed unmountOnHide gutter={6} aria-label="更多导航" className={sidebarMenuClass}>
         {onOpenArchive && (
           <MenuItem
             className={sidebarMenuItemClass}

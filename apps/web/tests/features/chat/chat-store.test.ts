@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryObserver } from '@tanstack/react-query';
 import { ProductSettingsSchema } from '@agentdeck/shared';
 import type {
   AgentCapability,
@@ -227,7 +228,7 @@ describe('原生会话管理状态', () => {
     await expect(request).resolves.toBe(true);
     expect(useChat.getState()).toMatchObject({ ...session, items: [{ kind: 'user', text: '当前对话' }] });
     expect(useChat.getState().sessionOperations[key]).toBeUndefined();
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.sessions('w1', 'codex') });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ predicate: expect.any(Function) });
     expect(useChat.getState().send('继续')).toBe(true);
   });
 
@@ -248,6 +249,39 @@ describe('原生会话管理状态', () => {
     expect(useChat.getState().send('失败后继续')).toBe(true);
   });
 
+  it('归档时另一项目首次加载被取消后重新读取，不停留在 pending/idle', async () => {
+    vi.mocked(queryClient.invalidateQueries).mockRestore();
+    vi.spyOn(api, 'sessionAction').mockResolvedValue(undefined);
+    const queryKey = queryKeys.sessions('other-loading', 'codex');
+    const unrelatedKey = queryKeys.sessions('other-loading', 'claude');
+    const original = deferred<string[]>();
+    let originalSignal: AbortSignal | undefined;
+    const read = vi.fn(({ signal }: { signal: AbortSignal }) => {
+      originalSignal ??= signal;
+      return read.mock.calls.length === 1 ? original.promise : Promise.resolve(['latest-session']);
+    });
+    queryClient.setQueryData(unrelatedKey, ['unrelated-session']);
+    const observer = new QueryObserver(queryClient, { queryKey, queryFn: read, retry: false, staleTime: Infinity });
+    const unsubscribe = observer.subscribe(() => undefined);
+    try {
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(observer.getCurrentResult()).toMatchObject({ status: 'pending', fetchStatus: 'fetching' });
+      await expect(useChat.getState().manageSession('w1', session, { action: 'archive' })).resolves.toBe(true);
+      await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+      expect(originalSignal?.aborted).toBe(true);
+      await vi.waitFor(() =>
+        expect(observer.getCurrentResult()).toMatchObject({ status: 'success', data: ['latest-session'] }),
+      );
+      expect(queryClient.getQueryState(unrelatedKey)?.isInvalidated).toBe(false);
+    } finally {
+      original.resolve(['obsolete-session']);
+      unsubscribe();
+      await queryClient.cancelQueries({ queryKey });
+      queryClient.removeQueries({ queryKey });
+      queryClient.removeQueries({ queryKey: unrelatedKey });
+    }
+  });
+
   it.each(removeActions)('$action 成功时清空仍匹配的当前对话并刷新来源列表', async (input) => {
     useChat.getState().setModel('old-model');
     useChat.getState().setReasoningEffort('high');
@@ -257,7 +291,7 @@ describe('原生会话管理状态', () => {
     expect(useChat.getState().sessionOperations[key]).toBeUndefined();
     expect(useChat.getState().modelOverrides.codex).toBe('');
     expect(useChat.getState().reasoningEfforts.codex).toBe('');
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.sessions('w1', 'codex') });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ predicate: expect.any(Function) });
   });
 
   it.each([
@@ -286,7 +320,7 @@ describe('原生会话管理状态', () => {
         items: [{ kind: 'user', text: '新目标可以发送' }],
       });
       expect(useChat.getState().sessionOperations[key]).toBeUndefined();
-      expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.sessions('w1', 'codex') });
+      expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ predicate: expect.any(Function) });
     },
   );
 });

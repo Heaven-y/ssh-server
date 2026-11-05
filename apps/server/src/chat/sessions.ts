@@ -1,11 +1,13 @@
 import {
   NativeSessionIdSchema,
+  nativeSessionCapabilities,
   type SessionForkInput,
   type AgentKind,
   type SessionActionInput,
   type SessionHistory,
   type SessionRef,
   type SessionSummary,
+  type SessionCapabilities,
   type Workspace,
 } from '@agentdeck/shared';
 import type { NativeSessionFork, NativeSessionRead, NativeSessionRow } from '../agents/types';
@@ -13,6 +15,7 @@ import { homedir } from 'node:os';
 import { sameSessionDirectory, sessionDirectoryWithin } from '../agents/session-scope';
 import { nativeSessionDirectory, resolveProjectId } from '../sessions/ownership';
 import { createSessionCatalog } from './session-catalog';
+import { SessionPreferencesError, type SessionPreferences } from '../sessions/preferences';
 
 const AGENT_LABELS: Record<AgentKind, string> = {
   claude: 'Claude Code',
@@ -21,6 +24,7 @@ const AGENT_LABELS: Record<AgentKind, string> = {
 };
 
 export type SessionProvider = {
+  capabilities?: Partial<SessionCapabilities>;
   list(dir: string, signal?: AbortSignal, archived?: boolean): Promise<NativeSessionRow[]>;
   read(id: string, dir: string, signal?: AbortSignal): Promise<NativeSessionRead>;
   /** 返回已核实的原生目录；多目录 CLI 同时保留完整归属元数据。 */
@@ -38,6 +42,7 @@ type SessionOperations = {
   isRunning?(session: SessionRef): boolean;
   /** 已配置项目列表，用于把原生会话归属到项目；省略时只按当前工作区判定。 */
   projects?(): Promise<Workspace[]>;
+  preferences?: SessionPreferences;
 };
 
 export class SessionError extends Error {
@@ -55,6 +60,7 @@ async function safeOperation<T>(agent: AgentKind, operation: () => Promise<T>, v
     return await operation();
   } catch (error) {
     if (error instanceof SessionError) throw error;
+    if (error instanceof SessionPreferencesError) throw new SessionError(error.status, error.code, error.message);
     throw new SessionError(
       503,
       'session_runtime_failed',
@@ -75,8 +81,17 @@ export function createSessionsService(
   operations: SessionOperations,
 ) {
   const catalog = createSessionCatalog();
+  function capabilities(agent: AgentKind): SessionCapabilities {
+    const actions = { ...nativeSessionCapabilities(agent), ...providers[agent]?.capabilities };
+    if (!actions.archive && operations.preferences) actions.archive = 'workbench';
+    return actions;
+  }
   async function projectsFor(ws?: Workspace) {
     return operations.projects ? operations.projects() : ws ? [ws] : [];
+  }
+  async function assertNotArchived(agent: AgentKind, id: string) {
+    if (capabilities(agent).archive === 'workbench' && (await operations.preferences!.archived(agent)).has(id))
+      throw new SessionError(409, 'session_archived', '请先恢复这条归档会话。');
   }
   async function scopedWorkspace(
     ws: Workspace,
@@ -103,18 +118,24 @@ export function createSessionsService(
     archived = false,
   ): Promise<SessionSummary[]> {
     return safeOperation(agent, async () => {
-      if (archived && agent !== 'codex')
+      const actions = capabilities(agent);
+      if (archived && !actions.archive)
         throw new SessionError(400, 'unsupported_action', `${AGENT_LABELS[agent]} 不支持归档会话`);
       const provider = providerOf(providers, agent);
+      const nativeArchived = archived && actions.archive === 'native';
       // 全局枚举不依赖任何已登记目录仍然存在，也不加载某个项目作为发现范围。
       const sessions = await catalog.read(
         agent,
-        archived,
-        (abort) => provider.list(homedir(), abort, archived),
+        nativeArchived,
+        (abort) => provider.list(homedir(), abort, nativeArchived),
         signal,
       );
+      const localArchives = actions.archive === 'workbench' ? await operations.preferences!.archived(agent) : undefined;
+      const visible = localArchives
+        ? sessions.filter((session) => localArchives.has(session.sessionId) === archived)
+        : sessions;
       const projects = await projectsFor(ws);
-      return sessions.map((session) => {
+      return visible.map((session) => {
         const location = {
           ...(agent === 'antigravity' ? {} : { cwd: session.cwd }),
           workspaceUris: session.workspaceUris,
@@ -127,6 +148,7 @@ export function createSessionsService(
           updatedAt: new Date(session.lastModified).toISOString(),
           running: operations.isRunning?.({ agent, sessionId: session.sessionId }) ?? false,
           directory: nativeSessionDirectory(location),
+          capabilities: actions,
         };
       });
     });
@@ -144,6 +166,7 @@ export function createSessionsService(
     read(ws: Workspace, agent: AgentKind, id: string, signal?: AbortSignal): Promise<SessionHistory> {
       return safeOperation(agent, async () => {
         const native = await scopedWorkspace(ws, agent, id, signal);
+        await assertNotArchived(agent, id);
         const record = await providerOf(providers, agent).read(id, native.dir, signal);
         if (record.session.sessionId !== id || !(await sameSessionDirectory(record.cwd, native.dir)))
           throw new SessionError(404, 'session_missing', '该 Agent 在当前项目目录中没有此会话');
@@ -151,7 +174,11 @@ export function createSessionsService(
       });
     },
     assertBelongs(ws: Workspace, agent: AgentKind, id: string, signal?: AbortSignal): Promise<Workspace> {
-      return safeOperation(agent, () => scopedWorkspace(ws, agent, id, signal));
+      return safeOperation(agent, async () => {
+        const native = await scopedWorkspace(ws, agent, id, signal);
+        await assertNotArchived(agent, id);
+        return native;
+      });
     },
     fork(ws: Workspace, agent: AgentKind, id: string, input: SessionForkInput): Promise<SessionHistory['session']> {
       return safeOperation(
@@ -160,6 +187,7 @@ export function createSessionsService(
           operations.withIdleSession({ agent, sessionId: id }, async () => {
             // 提供方在锁内核验源与分叉点；原生返回后仍在锁内复核新身份。
             const native = await scopedWorkspace(ws, agent, id);
+            await assertNotArchived(agent, id);
             const result = await providerOf(providers, agent).fork(id, native.dir, input);
             const newId = NativeSessionIdSchema.safeParse(result.session.sessionId);
             if (!newId.success || newId.data === id || !(await sameSessionDirectory(result.cwd, native.dir)))
@@ -174,11 +202,20 @@ export function createSessionsService(
         agent,
         async () => {
           const provider = providerOf(providers, agent);
-          if (agent !== 'codex' && (input.action === 'archive' || input.action === 'unarchive'))
+          const actions = capabilities(agent);
+          const archiveAction = input.action === 'archive' || input.action === 'unarchive';
+          if (archiveAction && !actions.archive)
             throw new SessionError(400, 'unsupported_action', `${AGENT_LABELS[agent]} 不支持归档会话`);
           await operations.withIdleSession({ agent, sessionId: id }, async () => {
             const native = await scopedWorkspace(ws, agent, id);
-            await provider.mutate(id, native.dir, input);
+            if (archiveAction && actions.archive === 'workbench') {
+              await operations.preferences!.setArchived({ agent, sessionId: id }, input.action === 'archive');
+            } else {
+              await provider.mutate(id, native.dir, input);
+              // 原生删除已经成功；清理本地标记失败不能将已完成的删除报告成可重试失败。
+              if (input.action === 'delete')
+                await operations.preferences?.remove({ agent, sessionId: id }).catch(() => undefined);
+            }
           });
         },
         '操作',
