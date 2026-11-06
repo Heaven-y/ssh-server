@@ -52,3 +52,5 @@ DSH 界面对齐和整体验证计划归档至 `08ed6df:docs/superpowers/plans/2
 原生权限与质量门禁适配已完成，执行计划保存在 `ebfbf21:docs/superpowers/plans/2026-11-06-native-permissions.md`。各 CLI 权限映射与恢复语义见原生对话接入，覆盖率分域与扫描范围见开发指南，验证结果在路线图记录。
 
 后台会话与自由导航已完成，计划与验收步骤保存在 `45edc9c:docs/superpowers/plans/2026-11-06-background-conversations.md`。当前运行边界由原生对话与架构说明维护，页面入口见交互文档，修复与验证证据见路线图。
+
+会话分页与缓存优化已完成，计划保存在 `6d5bafa:docs/superpowers/plans/2026-11-06-session-cache-optimization.md`。分页及缓存预算由架构说明维护，实际界面与验证记录分别见交互文档和路线图。

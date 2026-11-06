@@ -1,4 +1,5 @@
 import { sessionsKeys } from './api';
+import { invalidateSessionPages } from './session-queries';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -137,6 +138,7 @@ function SessionActionError({
         onClick={() => {
           void client.invalidateQueries({ queryKey: sessionsKeys.sessions(workspaceId, session.agent) });
           void client.invalidateQueries({ queryKey: sessionsKeys.archivedSessions(session.agent) });
+          void invalidateSessionPages(client, { queryKey: ['sessions', 'pages', session.agent] });
         }}
       >
         重新读取列表

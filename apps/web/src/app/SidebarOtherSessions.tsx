@@ -10,12 +10,14 @@ export function SidebarOtherSessions({
   addProject,
   loading,
   error,
+  incomplete = false,
 }: {
   sessions: SessionSummary[];
   activeKey: string;
   addProject(initial?: ProjectDraft): void;
   loading: boolean;
   error?: string;
+  incomplete?: boolean;
 }) {
   const busy = useProjectChatBusy();
   return (
@@ -33,7 +35,7 @@ export function SidebarOtherSessions({
           {error}
         </p>
       )}
-      {!loading && !error && sessions.length === 0 && (
+      {!loading && !error && !incomplete && sessions.length === 0 && (
         <p className="px-3 py-1 text-xs text-muted-foreground">暂无其他目录的会话</p>
       )}
       <ul className="flex flex-col gap-0.5">

@@ -4,6 +4,7 @@ import type { Workspace } from '@agentdeck/shared/projects';
 import type { CapabilityProvider, NativeCapabilityCatalog, NativeInvocation } from '../agents/capability-types';
 import { SessionError } from '../agents/errors';
 import { createModelCache, type CachedModelCatalog } from './model-cache';
+import { createCapabilityRetention } from './capability-memory';
 
 type Entry = NativeCapabilityCatalog['entries'][number];
 function typedCommand(text: string): { name: string; text: string } | undefined {
@@ -57,8 +58,23 @@ export function createCapabilitiesService(
   const cache = new Map<string, NativeCapabilityCatalog>();
   const models = new Map<string, CachedModelCatalog | undefined>();
   const refreshing = new Map<string, symbol>();
+  const reading = new Map<string, Promise<void>>();
+  const restoring = new Map<string, Promise<AgentCapabilities>>();
+  // 只记曾经发现的目录身份，正文目录回收后可在显式执行时重新校验命令。
+  const evictedCommands = new Set<string>();
   const revisions: Partial<Record<AgentKind, number>> = {};
   const disk = options.configDir ? createModelCache(options.configDir) : undefined;
+  const retention = createCapabilityRetention(
+    (key) => refreshing.has(key) || reading.has(key),
+    (key) => {
+      if (cache.has(key)) {
+        evictedCommands.add(key);
+        if (evictedCommands.size > 128) evictedCommands.delete(evictedCommands.values().next().value!);
+      }
+      cache.delete(key);
+      models.delete(key);
+    },
+  );
   function keyOf(directory: string, agent: AgentKind) {
     const dir = path.resolve(directory);
     return JSON.stringify([agent, process.platform === 'win32' ? dir.toLowerCase() : dir]);
@@ -106,12 +122,27 @@ export function createCapabilitiesService(
   }
   async function readDirectory(directory: string, agent: AgentKind): Promise<AgentCapabilities> {
     const key = keyOf(directory, agent);
-    const revision = revisions[agent];
     if (!cache.has(key) && !models.has(key)) {
-      const saved = await disk?.read(agent, key);
-      if (revision === revisions[agent]) models.set(key, saved);
+      let pending = reading.get(key);
+      if (!pending) {
+        pending = readSaved(key, agent);
+        reading.set(key, pending);
+      }
+      await pending;
     }
+    retention.touch(key);
     return publicCatalog(agent, cache.get(key), models.get(key));
+  }
+  async function readSaved(key: string, agent: AgentKind) {
+    const revision = revisions[agent];
+    const saved = await disk?.read(agent, key);
+    if (revision === revisions[agent] && !cache.has(key)) {
+      models.set(key, saved);
+      retention.record(key, agent, saved);
+    }
+    // 失效后新发起的读取不能被旧 Promise 清理；旧结果也不登记内存。
+    if (revision === revisions[agent]) reading.delete(key);
+    retention.trim(agent);
   }
   async function refreshDirectory(
     directory: string,
@@ -140,20 +171,52 @@ export function createCapabilitiesService(
       }
       assertCurrent();
       cache.set(key, structuredClone(catalog));
+      evictedCommands.delete(key);
+      models.delete(key);
+      retention.record(key, agent, catalog);
       return publicCatalog(agent, catalog);
     } finally {
       if (refreshing.get(key) === request) refreshing.delete(key);
+      retention.trim(agent);
     }
+  }
+  async function commandCatalog(directory: string, agent: AgentKind, signal?: AbortSignal) {
+    const key = keyOf(directory, agent);
+    if (!cache.has(key) && evictedCommands.has(key)) {
+      let pending = restoring.get(key);
+      if (!pending) {
+        pending = refreshDirectory(directory, agent).finally(() => {
+          if (restoring.get(key) === pending) restoring.delete(key);
+        });
+        restoring.set(key, pending);
+      }
+      await pending;
+    }
+    signal?.throwIfAborted();
+    const catalog = cache.get(key);
+    if (!catalog) throw new SessionError(409, 'capabilities_not_refreshed', '请先点击“刷新能力”，再使用技能或斜杠命令');
+    retention.touch(key);
+    return catalog;
   }
   return {
     async invalidate(agent: AgentKind): Promise<void> {
       revisions[agent] = (revisions[agent] ?? 0) + 1;
       // 保存后在途的旧目录也失效，不能晚于新配置重新填回缓存。
-      for (const key of new Set([...cache.keys(), ...models.keys(), ...refreshing.keys()])) {
+      for (const key of new Set([
+        ...cache.keys(),
+        ...models.keys(),
+        ...refreshing.keys(),
+        ...reading.keys(),
+        ...evictedCommands,
+      ])) {
         if ((JSON.parse(key) as string[])[0] !== agent) continue;
         cache.delete(key);
         models.delete(key);
         refreshing.delete(key);
+        reading.delete(key);
+        retention.delete(key);
+        evictedCommands.delete(key);
+        restoring.delete(key);
       }
       await disk?.invalidate(agent);
     },
@@ -171,14 +234,12 @@ export function createCapabilitiesService(
       input: { text: string; selection?: CapabilitySelection; sessionId?: string },
       signal?: AbortSignal,
     ): Promise<{ text: string; invocation?: NativeInvocation }> {
-      return Promise.resolve().then(() => {
+      return Promise.resolve().then(async () => {
         const { text, selection, sessionId } = input;
         const command = selection ? undefined : typedCommand(text);
         if (!selection && !command) return { text };
         signal?.throwIfAborted();
-        const catalog = cache.get(keyOf(ws.dir, agent));
-        if (!catalog)
-          throw new SessionError(409, 'capabilities_not_refreshed', '请先点击“刷新能力”，再使用技能或斜杠命令');
+        const catalog = await commandCatalog(ws.dir, agent, signal);
         const entry = chooseEntry(catalog.entries, selection, command?.name);
         return prepareEntry(entry, command ? command.text : text, sessionId);
       });

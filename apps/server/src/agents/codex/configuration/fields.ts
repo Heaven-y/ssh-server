@@ -69,7 +69,7 @@ export function codexFields(config: ConfigObject): Pick<NativeModelSettingsDocum
         group: 'model',
         hint: '填写 CLI 或服务商支持的模型名称；留空使用原生默认。',
       }),
-      field('reasoningEffort', '推理强度', config.model_reasoning_effort, { group: 'model', placeholder: '自动' }),
+      field('reasoningEffort', '推理强度', config.model_reasoning_effort, { group: 'model', placeholder: '原生默认' }),
       field('contextWindow', '上下文窗口', config.model_context_window, {
         group: 'model',
         placeholder: '由模型决定，如 128K / 1M',

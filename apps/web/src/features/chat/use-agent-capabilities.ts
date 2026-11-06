@@ -51,7 +51,8 @@ export function useAgentCapabilities(enabled: boolean, discoverOnOpen = false, c
     queryFn: ({ signal }) => chatApi.agentCapabilities(workspaceId ?? '', agent, signal, sessionId),
     enabled: enabled && !!workspaceId,
     staleTime: Infinity,
-    gcTime: Infinity,
+    // 非活跃会话只暂存十分钟；再次打开先读取服务端/磁盘缓存，不重新发现模型。
+    gcTime: 10 * 60 * 1000,
     retryOnMount: false,
     retry: false,
   });
@@ -66,6 +67,15 @@ export function useAgentCapabilities(enabled: boolean, discoverOnOpen = false, c
     onSuccess: (data, target) => {
       if (target.generation !== nativeCapabilitiesGeneration(target.agent)) return;
       client.setQueryData(chatKeys.agentCapabilities(target.workspaceId, target.agent, target.sessionId), data);
+      // 成功后由缓存决定是否发现；缓存回收后应允许重新读取，失败尝试仍不循环重试。
+      for (const commands of [false, true])
+        attempted.delete(
+          JSON.stringify([
+            chatKeys.agentCapabilities(target.workspaceId, target.agent, target.sessionId),
+            target.generation,
+            commands,
+          ]),
+        );
     },
     retry: false,
   });

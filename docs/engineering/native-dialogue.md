@@ -65,7 +65,7 @@ Claude 上下文沿用 summary 查询，回合用量取原生结果；计时在�
 
 会话菜单在应用内提供已接入的管理操作，使用同一项目归属校验、空闲锁、确认与分支对话框。Claude 使用 SDK，Codex 使用 app-server；Antigravity 借助本机 agy 启动的原生会话服务完成操作，不要求打开终端，也不手动复制轨迹或删摘要行。
 
-会话列表仍为 `GET /api/projects/:id/sessions?agent=...`，归档查询追加 `archived=true`。读取和写入统一以 `/api/projects/:id/sessions/:agent/:sessionId` 定位，写入分别追加 `/actions`、`/fork`；旧 `/api/workspaces` 下的会话路由删除，SSH 的旧路径不在本轮迁移范围。动作、历史和分叉不接受查询字段，响应统一禁止缓存。
+主界面通过 `GET /api/sessions/page` 分页，scope 区分活动、归档与无归属；search 检索未加载的原生摘要，cursor 继续读取。旧项目列表保留兼容，分页预算见架构。读取和写入统一以 `/api/projects/:id/sessions/:agent/:sessionId` 定位，写入分别追加 `/actions`、`/fork`；旧 `/api/workspaces` 下的会话路由删除，SSH 的旧路径不在本轮迁移范围。动作、历史和分叉不接受查询字段，响应统一禁止缓存。
 
 归档页同时查询三个来源。Codex 仍按原生归档/恢复执行；Claude、Antigravity 使用工作台身份标记，不改 CLI 历史。归档会话必须恢复后续聊或创建分支。删除需确认实际范围；会话忙时拒绝管理。分支成功只在原选择代次仍有效时打开新记录，其他情况刷新来源列表。
 

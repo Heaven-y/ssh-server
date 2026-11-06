@@ -50,7 +50,7 @@ function mount(items = projects) {
 }
 it('集中展示跨项目归档，恢复使用来源项目并立即更新列表', async () => {
   let entries = [row('one', 'first'), row('two', 'second')];
-  vi.spyOn(sessionsApi, 'archivedSessions').mockImplementation(async (agent) => (agent === 'codex' ? entries : []));
+  vi.spyOn(sessionsApi, 'page').mockImplementation(async ({ agent }) => ({ items: agent === 'codex' ? entries : [] }));
   const change = vi.spyOn(sessionsApi, 'sessionAction').mockImplementation(async () => {
     entries = [entries[0]!];
   });
@@ -64,9 +64,9 @@ it('集中展示跨项目归档，恢复使用来源项目并立即更新列表'
   expect(useChat.getState().workspaceId).toBe('first');
 });
 it('零项目也显示归档，先添加可信目录才能管理', async () => {
-  vi.spyOn(sessionsApi, 'archivedSessions').mockImplementation(async (agent) =>
-    agent === 'codex' ? [row('orphan', null)] : [],
-  );
+  vi.spyOn(sessionsApi, 'page').mockImplementation(async ({ agent }) => ({
+    items: agent === 'codex' ? [row('orphan', null)] : [],
+  }));
   const add = mount([]);
   await screen.findByText('归档orphan');
   expect(screen.queryByRole('button', { name: '删除' })).toBeNull();
@@ -75,9 +75,9 @@ it('零项目也显示归档，先添加可信目录才能管理', async () => {
 });
 it('归档读取失败保留重试入口，成功空结果显示空态', async () => {
   const read = vi
-    .spyOn(sessionsApi, 'archivedSessions')
+    .spyOn(sessionsApi, 'page')
     .mockRejectedValueOnce(new Error('原生列表暂不可用'))
-    .mockResolvedValue([]);
+    .mockResolvedValue({ items: [] });
   mount();
   await screen.findByRole('alert');
   expect(screen.queryByText('暂无已归档会话')).toBeNull();
@@ -88,18 +88,30 @@ it('归档读取失败保留重试入口，成功空结果显示空态', async (
 });
 it('删除必须确认；归档条目变忙后阻止写入', async () => {
   const session = row('one', 'first');
-  vi.spyOn(sessionsApi, 'archivedSessions').mockImplementation(async (agent) => (agent === 'codex' ? [session] : []));
+  vi.spyOn(sessionsApi, 'page').mockImplementation(async ({ agent }) => ({
+    items: agent === 'codex' ? [session] : [],
+  }));
   const change = vi.spyOn(sessionsApi, 'sessionAction').mockResolvedValue(undefined);
   mount();
   fireEvent.click(await screen.findByRole('button', { name: '删除' }));
   const submit = screen.getByRole<HTMLButtonElement>('button', { name: '确认删除会话' });
   expect(submit.disabled).toBe(true);
   fireEvent.click(screen.getByRole('checkbox'));
-  await act(() => queryClient.setQueryData(sessionsKeys.archivedSessions('codex'), [{ ...session, running: true }]));
+  await act(() =>
+    queryClient.setQueryData(sessionsKeys.pages('codex', 'archived'), {
+      pages: [{ items: [{ ...session, running: true }] }],
+      pageParams: [undefined],
+    }),
+  );
   await screen.findByText('当前会话正在运行，结束后才能管理。');
   fireEvent.click(submit);
   expect(change).not.toHaveBeenCalled();
-  await act(() => queryClient.setQueryData(sessionsKeys.archivedSessions('codex'), [session]));
+  await act(() =>
+    queryClient.setQueryData(sessionsKeys.pages('codex', 'archived'), {
+      pages: [{ items: [session] }],
+      pageParams: [undefined],
+    }),
+  );
   await waitFor(() => expect(screen.queryByText('当前会话正在运行，结束后才能管理。')).toBeNull());
   fireEvent.click(submit);
   await waitFor(() =>
@@ -121,9 +133,9 @@ it('三种来源的归档一起展示，工作台归档恢复按真实来源操�
     },
     row('codex', 'first'),
   ];
-  vi.spyOn(sessionsApi, 'archivedSessions').mockImplementation(async (agent) =>
-    records.filter((record) => record.agent === agent),
-  );
+  vi.spyOn(sessionsApi, 'page').mockImplementation(async ({ agent }) => ({
+    items: records.filter((record) => record.agent === agent),
+  }));
   const change = vi.spyOn(sessionsApi, 'sessionAction').mockResolvedValue(undefined);
   mount();
   await screen.findByText('归档agy');

@@ -116,7 +116,7 @@ it('模型已有缓存时直接显示；技能和斜杠只读缓存，点击刷�
   });
   showChat();
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
-  await screen.findByRole('menuitemradio', { name: /候选模型/ });
+  await screen.findByRole('menuitemradio', { name: /native-model/ });
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
   fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '/' } });
   await screen.findByRole('listbox', { name: '原生命令补全' });
@@ -134,7 +134,7 @@ it('模型已有缓存时直接显示；技能和斜杠只读缓存，点击刷�
   );
   fireEvent.click(screen.getByRole('button', { name: '关闭技能与命令' }));
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
-  expect(await screen.findByRole('menuitemradio', { name: /新报告的模型/ })).toBeTruthy();
+  expect(await screen.findByRole('menuitemradio', { name: /fresh-model/ })).toBeTruthy();
   expect(refresh).toHaveBeenCalledTimes(1);
 });
 
@@ -155,12 +155,12 @@ it('首次打开模型菜单自动发现一次，复用缓存且不会发送对�
   showComposer();
   expect(refresh).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
-  await screen.findByRole('menuitemradio', { name: /自定义模型/ });
+  await screen.findByRole('menuitemradio', { name: /opus/ });
   expect(refresh).toHaveBeenCalledExactlyOnceWith(workspace.id, 'claude', undefined);
   expect(screen.queryByText(/未报告可选模型/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
-  await screen.findByRole('menuitemradio', { name: /自定义模型/ });
+  await screen.findByRole('menuitemradio', { name: /opus/ });
   expect(refresh).toHaveBeenCalledTimes(1);
   expect(sent).toHaveLength(0);
 });
@@ -176,20 +176,21 @@ it('当前会话提前读取缓存，重建输入区及重开菜单不重新请�
     }),
   );
   showComposer();
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: '模型选项' }).textContent).toContain('候选模型 · native-model'),
-  );
+  await waitFor(() => expect(screen.getByRole('button', { name: '模型选项' }).textContent).toBe('native-model'));
   expect(read).toHaveBeenCalledTimes(1);
   cleanup();
   showComposer();
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
-  await screen.findByRole('menuitemradio', { name: /^候选模型/ });
+  expect((await screen.findByRole('menuitemradio', { name: /^native-model/ })).getAttribute('aria-checked')).toBe(
+    'true',
+  );
+  expect(useChat.getState().modelOverrides.claude).toBe('');
   expect(read).toHaveBeenCalledTimes(1);
   expect(refresh).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('menuitem', { name: '刷新模型列表' }));
   await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
   expect(screen.queryByText('正在加载模型…')).toBeNull();
-  expect(screen.getByRole('menuitemradio', { name: /^候选模型/ })).toBeTruthy();
+  expect(screen.getByRole('menuitemradio', { name: /^native-model/ })).toBeTruthy();
   await act(async () => resolve(cached));
 });
 
@@ -213,7 +214,7 @@ it('首次打开强度也能发现默认型号，Claude [1m] 选择原样发送�
   fireEvent.click(await screen.findByRole('menuitemradio', { name: 'high' }));
   expect(screen.getByRole('button', { name: '模型选项' }).textContent).toContain('claude-sonnet-4-6[1m]');
   expect(useChat.getState().modelOverrides.claude).toBe('');
-  await menuChoose('模型选项', /^长上下文模型/);
+  await menuChoose('模型选项', /^claude-sonnet-4-6/);
   expect(useChat.getState().reasoningEfforts.claude).toBe('');
   await menuChoose('推理强度', 'max');
   fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '测试选择' } });
@@ -270,7 +271,7 @@ it('重启恢复的模型缓存不重复获取，打开技能时补取命令目�
     .mockResolvedValue({ ...catalog, discovered: true, commandsDiscovered: true });
   showComposer();
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
-  await screen.findByRole('menuitemradio', { name: /候选模型/ });
+  await screen.findByRole('menuitemradio', { name: /native-model/ });
   expect(refresh).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
   fireEvent.click(screen.getByRole('button', { name: '技能与命令' }));
@@ -300,7 +301,7 @@ it('自动发现失败显示可重试状态，重开菜单不循环检查账号'
   expect(refresh).toHaveBeenCalledTimes(1);
   refresh.mockResolvedValue({ ...catalog, agent: 'claude', discovered: true });
   fireEvent.click(await screen.findByRole('menuitem', { name: '重试' }));
-  await screen.findByRole('menuitemradio', { name: /候选模型/ });
+  await screen.findByRole('menuitemradio', { name: /native-model/ });
   expect(refresh).toHaveBeenCalledTimes(2);
 });
 
@@ -325,7 +326,7 @@ it('保存原生配置后重新发现模型，旧刷新响应不能回填旧目�
   await act(async () => {
     await invalidateNativeCapabilities('claude', client);
   });
-  await screen.findByRole('menuitemradio', { name: /更新后的模型/ });
+  await screen.findByRole('menuitemradio', { name: /updated-model/ });
   await act(async () => {
     resolve({ ...catalog, agent: 'claude', discovered: true });
   });
@@ -396,7 +397,7 @@ it('历史读取失败保留可编辑草稿，重读成功才恢复发送', asyn
 
 it('更换模型清除旧模型的强度覆盖，避免发送不支持的参数', async () => {
   showChat();
-  await menuChoose('模型选项', /候选模型/);
+  await menuChoose('模型选项', /native-model/);
   await menuChoose('推理强度', 'high');
   await modelAction('手动填写模型');
   fireEvent.change(screen.getByLabelText('模型名称'), { target: { value: 'another-model' } });
@@ -445,11 +446,12 @@ it.each(['claude', 'codex'] as const)('一体输入底栏用菜单设置%s模型
   expect(screen.queryByLabelText('模型名称')).toBeNull();
   expect(screen.queryByText(/Enter 发送/)).toBeNull();
   const plus = within(controls).getByRole('button', { name: '技能与命令' });
+  const permission = within(controls).getByRole('button', { name: '权限模式' });
   expect(
-    plus.compareDocumentPosition(within(controls).getByRole('button', { name: '模型选项' })) &
+    permission.compareDocumentPosition(within(controls).getByRole('button', { name: '模型选项' })) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
-  await menuChoose('模型选项', /候选模型/);
+  await menuChoose('模型选项', /native-model/);
   await menuChoose('推理强度', 'high');
   fireEvent.click(plus);
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /demo/ }));
@@ -491,7 +493,7 @@ it('历史固定Agent，载入期间禁用选项；ShiftEnter与IME不发送且�
   useChat.setState({ sessionId: 'history', loadingHistory: true });
   showChat();
   expect(screen.getByRole('button', { name: '模型选项' }).getAttribute('disabled')).not.toBeNull();
-  expect(screen.getByRole('button', { name: '模型选项' }).textContent).toContain('正在读取型号');
+  expect(screen.getByRole('button', { name: '模型选项' }).getAttribute('aria-busy')).toBe('true');
   const input = screen.getByLabelText('输入消息');
   fireEvent.change(input, { target: { value: '保留草稿' } });
   fireEvent.keyDown(input, { key: 'Enter' });
@@ -514,12 +516,12 @@ it('历史固定Agent，载入期间禁用选项；ShiftEnter与IME不发送且�
 
 it('强度菜单只列当前模型实际报告的档位，默认不覆盖', async () => {
   showChat();
-  expect(screen.getByRole('button', { name: '推理强度' }).textContent).toBe('自动');
+  expect(screen.getByRole('button', { name: '推理强度' }).textContent).toBe('跟随配置');
   fireEvent.click(screen.getByRole('button', { name: '推理强度' }));
-  expect(await screen.findByRole('menuitemradio', { name: '自动' })).toBeTruthy();
+  expect(await screen.findByRole('menuitemradio', { name: '跟随配置' })).toBeTruthy();
   expect(screen.queryByRole('menuitemradio', { name: 'high' })).toBeNull();
-  fireEvent.click(screen.getByRole('menuitemradio', { name: '自动' }));
-  await menuChoose('模型选项', /候选模型/);
+  fireEvent.click(screen.getByRole('menuitemradio', { name: '跟随配置' }));
+  await menuChoose('模型选项', /native-model/);
   fireEvent.click(screen.getByRole('button', { name: '推理强度' }));
   expect(await screen.findByRole('menuitemradio', { name: 'low' })).toBeTruthy();
   expect(screen.getByRole('menuitemradio', { name: 'high' })).toBeTruthy();
@@ -541,7 +543,7 @@ it.each(['claude', 'codex', 'antigravity'] as const)('%s手填模型且目录失
     expect(client.getQueryState(chatKeys.agentCapabilities(workspace.id, agent))?.status).toBe('error'),
   );
   expect(screen.queryByRole('menuitemradio', { name: 'max' })).toBeNull();
-  fireEvent.click(screen.getByRole('menuitemradio', { name: '自动' }));
+  fireEvent.click(screen.getByRole('menuitemradio', { name: '跟随配置' }));
   fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '保留我的模型' } });
   fireEvent.click(screen.getByRole('button', { name: '发送' }));
   expect(sent.at(-1)).toMatchObject({ agent, model: 'manual-model', reasoningEffort: undefined });
@@ -559,6 +561,67 @@ it('Codex保留目录提供的扩展强度，不被常用档位覆盖', async ()
   fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '扩展强度' } });
   fireEvent.click(screen.getByRole('button', { name: '发送' }));
   expect(sent.at(-1)).toMatchObject({ agent: 'codex', model: 'custom-model', reasoningEffort: 'custom-effort' });
+});
+
+it('显示原生配置的具体强度，清除显式选择后恢复显示但不发送覆盖参数', async () => {
+  useChat.getState().setAgent('codex');
+  useChat.getState().setModel('native-model');
+  client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'codex'), {
+    ...catalog,
+    defaultModel: 'native-model',
+    defaultReasoningEffort: 'high',
+    models: [{ ...catalog.models[0], defaultReasoningEffort: 'low' }],
+  });
+  showComposer();
+  expect(screen.getByRole('button', { name: '推理强度' }).textContent).toBe('high');
+  expect(useChat.getState().reasoningEfforts.codex).toBe('');
+  await menuChoose('推理强度', 'low');
+  expect(screen.getByRole('button', { name: '推理强度' }).textContent).toBe('low');
+  await menuChoose('推理强度', '跟随配置 · high');
+  expect(screen.getByRole('button', { name: '推理强度' }).textContent).toBe('high');
+  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '继续处理' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  expect(JSON.parse(JSON.stringify(sent[0]))).not.toHaveProperty('reasoningEffort');
+});
+
+it('未知能力仍可跟随配置，原生明确不支持后隐藏入口并清除旧强度选择', async () => {
+  useChat.getState().setModel('custom-model');
+  client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'claude'), {
+    ...catalog,
+    agent: 'claude',
+    models: [{ id: 'custom-model', label: '自定义模型' }],
+  });
+  showComposer();
+  expect(screen.getByRole('button', { name: '推理强度' }).textContent).toBe('跟随配置');
+  act(() => {
+    useChat.getState().setReasoningEffort('high');
+    client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'claude'), {
+      ...catalog,
+      agent: 'claude',
+      models: [{ id: 'custom-model', label: '自定义模型', reasoningEfforts: [] }],
+    });
+  });
+  await waitFor(() => expect(screen.queryByRole('button', { name: '推理强度' })).toBeNull());
+  expect(useChat.getState().reasoningEfforts.claude).toBe('');
+  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '继续处理' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  expect(JSON.parse(JSON.stringify(sent[0]))).not.toHaveProperty('reasoningEffort');
+});
+
+it('只有原生报告的 auto 才显示自动，并按真实档位发送', async () => {
+  useChat.getState().setAgent('codex');
+  useChat.getState().setModel('custom-model');
+  client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'codex'), {
+    ...catalog,
+    models: [{ id: 'custom-model', label: '自定义模型', reasoningEfforts: ['auto', 'high'] }],
+  });
+  showComposer();
+  expect(screen.getByRole('button', { name: '推理强度' }).textContent).toBe('跟随配置');
+  await menuChoose('推理强度', '自动');
+  expect(screen.getByRole('button', { name: '推理强度' }).textContent).toBe('自动');
+  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '使用原生档位' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  expect(sent.at(-1)).toMatchObject({ agent: 'codex', reasoningEffort: 'auto' });
 });
 
 it('手填模型只在次级对话框，Enter不隐式发送，确认后仍能由正文发送', async () => {
@@ -623,25 +686,25 @@ it('原生目录部分读取失败显示警告，不把失败呈现为无技能'
   expect(within(completion).queryByText('没有匹配的技能或命令。')).toBeNull();
 });
 
-it('常规模型菜单只列真实候选，清除覆盖放次级操作且发送不带默认字样', async () => {
+it('模型按钮与列表只显示真实型号，清除覆盖放次级操作且发送不带默认字样', async () => {
   showComposer();
   const trigger = screen.getByRole('button', { name: '模型选项' });
-  expect(trigger.textContent).toContain('选择模型');
+  expect(trigger.textContent).toBe('');
   fireEvent.click(trigger);
-  const candidate = await screen.findByRole('menuitemradio', { name: /候选模型/ });
-  expect(screen.getByRole('menuitemradio', { name: '沿用原生配置' })).toBeTruthy();
+  const candidate = await screen.findByRole('menuitemradio', { name: /native-model/ });
+  expect(screen.queryByRole('menuitemradio', { name: '沿用原生配置' })).toBeNull();
+  expect(screen.queryByText('候选模型')).toBeNull();
+  expect(screen.queryByText('默认模型')).toBeNull();
+  expect(screen.getByRole('menuitemradio', { name: 'Codex' }).textContent).toBe('');
   expect(screen.queryByRole('menuitem', { name: '手动填写模型' })).toBeNull();
   expect(screen.queryByRole('menuitem', { name: '清除模型覆盖' })).toBeNull();
-  expect(within(screen.getByRole('group', { name: '可选模型' })).getAllByRole('menuitemradio')).toEqual([
-    screen.getByRole('menuitemradio', { name: '沿用原生配置' }),
-    candidate,
-  ]);
+  expect(within(screen.getByRole('group', { name: '可选模型' })).getAllByRole('menuitemradio')).toEqual([candidate]);
   fireEvent.click(candidate);
   expect(useChat.getState().modelOverrides.claude).toBe('native-model');
-  expect(trigger.textContent).toContain('native-model');
+  expect(trigger.textContent).toBe('native-model');
   await modelAction('清除模型覆盖');
   expect(useChat.getState().modelOverrides.claude).toBe('');
-  expect(trigger.textContent).toContain('选择模型');
+  expect(trigger.textContent).toBe('');
   fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '沿用原生配置' } });
   fireEvent.click(screen.getByRole('button', { name: '发送' }));
   expect(JSON.parse(JSON.stringify(sent[0]))).not.toHaveProperty('model');
@@ -657,12 +720,18 @@ it.each([
     events: [],
   });
   await useChat.getState().openSession({ agent: 'claude', sessionId: 'history' });
-  client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'claude', 'history'), { ...catalog, agent: 'claude' });
+  client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'claude', 'history'), {
+    ...catalog,
+    agent: 'claude',
+    defaultModel: 'configured-history',
+    defaultReasoningEffort: 'high',
+  });
   showComposer();
   const trigger = screen.getByRole('button', { name: '模型选项' });
   expect(trigger.textContent).toContain(label);
+  expect(screen.getByRole('button', { name: '推理强度' }).textContent).toBe('跟随配置');
   expect(useChat.getState().modelOverrides.claude).toBe('');
-  await menuChoose('模型选项', /候选模型/);
+  await menuChoose('模型选项', /native-model/);
   expect(trigger.textContent).toContain('native-model');
   expect(trigger.title).toContain('当前覆盖：native-model');
   await modelAction('清除模型覆盖');
@@ -677,12 +746,12 @@ it('读取历史时明确显示读取状态，不将候选模型当作已取得�
   useChat.setState({ sessionId: 'history', loadingHistory: true });
   showComposer();
   const trigger = screen.getByRole<HTMLButtonElement>('button', { name: '模型选项' });
-  expect(trigger.textContent).toContain('正在读取型号');
+  expect(trigger.getAttribute('aria-busy')).toBe('true');
   expect(trigger.disabled).toBe(true);
   expect(trigger.textContent).not.toContain('native-model');
 });
 
-it('原生目录读取显示进度，空结果保留默认模型而不堆叠说明', async () => {
+it('原生目录读取显示进度，空结果只保留图标而不生成占位型号', async () => {
   client.removeQueries({ queryKey: chatKeys.agentCapabilities(workspace.id, 'claude') });
   let resolve!: (value: AgentCapabilities) => void;
   vi.spyOn(chatApi, 'agentCapabilities').mockImplementation(
@@ -696,8 +765,8 @@ it('原生目录读取显示进度，空结果保留默认模型而不堆叠说�
   await screen.findByText('正在加载模型…');
   await act(async () => resolve({ agent: 'claude', entries: [], models: [], warnings: [] }));
   expect(screen.queryByText('CLI 未提供可选模型，可沿用原生配置或手动填写。')).toBeNull();
-  expect(screen.getByRole('button', { name: '模型选项' }).textContent).toContain('选择模型');
-  expect(screen.getByRole('menuitemradio', { name: '沿用原生配置' }).getAttribute('aria-checked')).toBe('true');
+  expect(screen.getByRole('button', { name: '模型选项' }).textContent).toBe('');
+  expect(within(screen.getByRole('group', { name: '可选模型' })).queryAllByRole('menuitemradio')).toHaveLength(0);
   expect(useChat.getState().modelOverrides.claude).toBe('');
 });
 
@@ -728,7 +797,7 @@ it('模型菜单不显示技能错误；失效目录保留真实原因并能打�
   );
   showComposer();
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
-  await screen.findByRole('menuitemradio', { name: /候选模型/ });
+  await screen.findByRole('menuitemradio', { name: /native-model/ });
   expect(within(screen.getByRole('menu', { name: '模型选项菜单' })).queryByText('技能读取失败')).toBeNull();
   fireEvent.click(screen.getByRole('menuitem', { name: '刷新模型列表' }));
   await screen.findByText('工作区目录不可用，请重新选择文件夹。');
@@ -737,7 +806,7 @@ it('模型菜单不显示技能错误；失效目录保留真实原因并能打�
   expect(await screen.findByRole('dialog', { name: '更换项目目录' })).toBeTruthy();
 });
 
-it.each(['claude', 'codex'] as const)('输入区%s自动强度省略字段，并使用各自目录报告的档位', async (agent) => {
+it.each(['claude', 'codex'] as const)('输入区%s跟随配置时省略强度字段，并使用各自目录报告的档位', async (agent) => {
   useChat.getState().setAgent(agent);
   useChat.getState().setModel('native-model');
   client.setQueryData(chatKeys.agentCapabilities(workspace.id, agent), {
@@ -747,10 +816,10 @@ it.each(['claude', 'codex'] as const)('输入区%s自动强度省略字段，并
   });
   showComposer();
   fireEvent.click(screen.getByRole('button', { name: '推理强度' }));
-  await screen.findByRole('menuitemradio', { name: '自动' });
+  await screen.findByRole('menuitemradio', { name: '跟随配置' });
   expect(!!screen.queryByRole('menuitemradio', { name: 'custom-effort' })).toBe(agent === 'codex');
-  fireEvent.click(screen.getByRole('menuitemradio', { name: '自动' }));
-  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '使用原生自动强度' } });
+  fireEvent.click(screen.getByRole('menuitemradio', { name: '跟随配置' }));
+  fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '使用原生配置强度' } });
   fireEvent.click(screen.getByRole('button', { name: '发送' }));
   expect(JSON.parse(JSON.stringify(sent[0]))).not.toHaveProperty('reasoningEffort');
 });

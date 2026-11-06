@@ -1,8 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
 import { LoaderCircle, PanelRightClose, PanelRightOpen, RefreshCw, WifiOff } from 'lucide-react';
 import type { Workspace } from '@agentdeck/shared/projects';
 import { reconnectChat, useChat } from '../features/chat/chat-store';
-import { sessionListQuery } from '../features/sessions/use-sessions';
+import { conversationTitle } from '../features/chat/conversations';
 
 /** 会话标题栏位于中央列，不让服务器和全局工具占据对话导航。 */
 export function TopBar({
@@ -14,11 +13,8 @@ export function TopBar({
   sidebarOpen: boolean;
   onToggleSidebar(): void;
 }) {
-  const agent = useChat((state) => state.agent);
-  const sessionId = useChat((state) => state.sessionId);
   const running = useChat((state) => state.running);
-  const sessions = useQuery({ ...sessionListQuery(workspace?.id ?? '', agent), enabled: !!workspace });
-  const title = conversationTitle(sessionId, sessions.data);
+  const title = useChat((state) => state.title || conversationTitle(state));
   const SidebarIcon = sidebarOpen ? PanelRightClose : PanelRightOpen;
   return (
     <header id="workspace-topbar" className="flex h-12 shrink-0 items-center gap-3 px-5">
@@ -69,12 +65,4 @@ function ConnectionStatus() {
       {connection === 'closed' ? '连接已断开' : '连接中'}
     </button>
   );
-}
-
-function conversationTitle(
-  sessionId: string | null | undefined,
-  sessions?: Array<{ sessionId: string; title: string }>,
-) {
-  if (!sessionId) return '新会话';
-  return sessions?.find((item) => item.sessionId === sessionId)?.title || '历史会话';
 }

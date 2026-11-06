@@ -1,4 +1,5 @@
 import { sessionsKeys } from './api';
+import { invalidateSessionPages } from './session-queries';
 import { useEffect, useRef } from 'react';
 import type { SessionRef } from '@agentdeck/shared/conversation';
 import { useQueryClient } from '@tanstack/react-query';
@@ -66,6 +67,7 @@ export function SessionForkDialog({ workspaceId, session, pointId, onClose }: Pr
               className={buttonClass('outline')}
               onClick={() => {
                 void client.invalidateQueries({ queryKey: sessionsKeys.sessions(workspaceId, session.agent) });
+                void invalidateSessionPages(client, { queryKey: ['sessions', 'pages', session.agent] });
               }}
             >
               重新读取列表

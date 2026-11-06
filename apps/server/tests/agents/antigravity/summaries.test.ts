@@ -85,6 +85,15 @@ const sampleRow: FixtureRow = {
 };
 
 describe('Antigravity 会话摘要读取', () => {
+  it('摘要数据库按页读取，非法行不让后面的有效会话提前消失', async () => {
+    const dbPath = await makeNullableDb([
+      { ...sampleRow, id: null, time: '2026-11-06 00:00:00' },
+      { ...sampleRow, id: 'newer', time: '2026-11-05 00:00:00' },
+      { ...sampleRow, id: 'older', time: '2026-11-04 00:00:00' },
+    ]);
+    expect(readSummaries(dbPath, { limit: 1 }).map((row) => row.conversationId)).toEqual(['newer']);
+    expect(readSummaries(dbPath, { limit: 1, cursor: '1' }).map((row) => row.conversationId)).toEqual(['older']);
+  });
   it('读出会话 id、标题、时间与 workspace_uris', async () => {
     const dbPath = await makeFixtureDb([sampleRow]);
     const rows = readSummaries(dbPath);

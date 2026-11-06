@@ -68,7 +68,7 @@ function useProjectManage({ project, action, onClose }: Props) {
       await clearProjectQueries(client, project.id);
     }
     await updateProjectCache(client, updated);
-    if (action === 'directory') await refreshProjectSessionLists(client);
+    await refreshProjectSessionLists(client);
   };
   const submit = async () => {
     if (lock.current || projectIsBusy(client, project.id)) return;

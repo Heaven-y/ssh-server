@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { nativeSessionDirectory, resolveProjectId } from '../common/session-ownership';
 import { sameSessionDirectory } from '../common/session-scope';
-import type { NativeSessionSummary, SessionProvider } from '../contracts';
+import type { NativeSessionSummary, SessionProvider, NativeSessionPageInput } from '../contracts';
 import { SessionError } from '../errors';
 import { antigravityHistory } from './history';
 import type { AntigravitySessionManagement } from './session-management-types';
@@ -14,7 +14,7 @@ export const ANTIGRAVITY_DB_PATH = path.join(homedir(), '.gemini', 'antigravity-
 
 export type AntigravitySessionsApi = {
   dbPath: string;
-  readSummaries(dbPath: string): SummaryRow[];
+  readSummaries(dbPath: string, page?: NativeSessionPageInput): SummaryRow[];
   management?: AntigravitySessionManagement;
 };
 
@@ -53,9 +53,9 @@ export function createAntigravitySessions(api: Partial<AntigravitySessionsApi> =
   const dbPath = api.dbPath ?? ANTIGRAVITY_DB_PATH;
   const read = api.readSummaries ?? readSummaries;
 
-  function rows(): SummaryRow[] {
+  function rows(page?: NativeSessionPageInput): SummaryRow[] {
     try {
-      return read(dbPath);
+      return read(dbPath, page);
     } catch {
       return [];
     }
@@ -81,6 +81,15 @@ export function createAntigravitySessions(api: Partial<AntigravitySessionsApi> =
     list(_dir, _signal, archived = false) {
       if (archived) return Promise.reject(new SessionError(400, 'unsupported_action', 'Antigravity 不支持归档会话'));
       return Promise.resolve(rows().map(nativeSummary));
+    },
+    page(_dir, page, signal, archived = false) {
+      signal?.throwIfAborted();
+      if (archived) return Promise.reject(new SessionError(400, 'unsupported_action', 'Antigravity 不支持原生归档'));
+      const entries = rows(page);
+      return Promise.resolve({
+        items: entries.map(nativeSummary),
+        nextCursor: entries.length === page.limit ? String(Number(page.cursor ?? 0) + page.limit) : undefined,
+      });
     },
     async read(id, dir, signal) {
       signal?.throwIfAborted();

@@ -24,7 +24,7 @@
 | Codex | model、model_provider、服务商 name、model_reasoning_effort、整数 model_context_window、model_auto_compact_token_limit | 自定义 provider 的 base_url 与 Responses 协议；直接填写 Key 使用 experimental_bearer_token，原生高级认证保留 |
 | Antigravity | model、modelProvider、自定义模型的 label/modelName/maxTokens | 同页配置 Gemini API URL 与 Key，分别映射 GOOGLE_GEMINI_BASE_URL、GEMINI_API_KEY，经加密启动环境交给新进程 |
 
-三者共用模型输入、缓存候选和“获取模型”操作。工作台分开保留 CLI 选择值、显示名称和底层真实型号；模型菜单显示两者，发送时使用原始选择值。Claude 的 `[1m]` 后缀在匹配模型能力时单独处理，不会从发送值中删除。推理强度优先采用模型目录报告，未报告时只按已核对的精确型号补全；没有显式选择就省略字段并显示“自动”。Claude、Codex 与 Antigravity 的档位不能互相套用，详细表见[模型身份与推理强度](model-capabilities.md)。 Claude 的名称仍是 picker label，Codex 的名称仍是服务商名称；Claude 持久默认可写 low/medium/high/xhigh，max 仅用于会话。Antigravity 默认强度仍通过模型变体表示，不写不存在的顶层 effort 字段。
+三者共用模型输入、缓存候选和“获取模型”操作。工作台分开保留 CLI 选择值、显示名称和底层真实型号；模型入口显示具体型号，名称仍可用于搜索，发送时使用原始选择值。Claude 的 `[1m]` 后缀在匹配模型能力时单独处理，不会从发送值中删除。推理强度优先采用模型目录报告，未报告时只按已核对的精确型号补全；未手动选择时省略覆盖参数，有适用的默认值则显示其档位，否则显示“跟随配置”；这不等于原生 `auto`。Claude、Codex 与 Antigravity 的档位不能互相套用，详细表见[模型身份与推理强度](model-capabilities.md)。 Claude 的名称仍是 picker label，Codex 的名称仍是服务商名称；Claude 持久默认可写 low/medium/high/xhigh，max 仅用于会话。Antigravity 默认强度仍通过模型变体表示，不写不存在的顶层 effort 字段。
 
 上下文窗口按实际语义显示：Codex 可写数字 token 上限，自动压缩阈值独立填写 token 数并写入原生 model_auto_compact_token_limit，留空移除该覆盖；Antigravity 自定义模型写 maxTokens；Claude 默认显示“由模型决定”。Claude 的条件性网关窗口覆盖与压缩阈值继续留在原始配置，不自动关闭压缩，也不将压缩阈值冒充模型窗口。
 

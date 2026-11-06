@@ -1,4 +1,5 @@
 import type { ChatState } from './chat-state';
+import type { SessionRef, SessionActionInput } from '@agentdeck/shared/conversation';
 import {
   DEFAULT_REASONING_EFFORTS,
   EMPTY_MODEL_OVERRIDES,
@@ -23,6 +24,7 @@ import {
   retainConversation,
   sessionIsRunning,
   updateConversation,
+  needsHistory,
 } from './conversations';
 
 const LAST_WORKSPACE_KEY = 'agentdeck.lastProject';
@@ -49,6 +51,11 @@ function cannotSend(current: ChatState, text: string): boolean {
 }
 function sendRestriction(current: ChatState, text: string): string | undefined {
   return selectionRestriction(current.selectedCapability, current.sessionId, text);
+}
+function renamedConversation(current: ChatState, workspaceId: string, session: SessionRef, input: SessionActionInput) {
+  if (input.action !== 'rename') return {};
+  const view = conversationForSession(current, workspaceId, session);
+  return view ? updateConversation(current, view, { title: input.title }) : {};
 }
 function newDefaults(current: ChatState) {
   return {
@@ -124,7 +131,7 @@ export const useChat = create<ChatState>()((set, get) => {
         set({ ...saved, background, unread: false, initialDefaultsEligible: false });
       }
       // 离开时取消了历史请求；回来后重读，不能永远停在加载状态。
-      if (saved.loadingHistory && saved.sessionId)
+      if ((saved.loadingHistory || saved.historyReloadNeeded) && saved.sessionId)
         void get().openSession({ agent: saved.agent, sessionId: saved.sessionId }, { preserveDraft: true });
     },
     removeWorkspace(id, nextId) {
@@ -187,8 +194,9 @@ export const useChat = create<ChatState>()((set, get) => {
         set({ ...saved, background, unread: false, initialDefaultsEligible: false });
       }
       if (saved) {
+        if (session.title) set({ title: session.title });
         if (conversationBusy(saved)) return;
-        if (!saved.loadingHistory && !saved.historyError && !options) return;
+        if (!needsHistory(saved) && !options) return;
         options = { preserveDraft: true };
       }
       await history.read(workspaceId, session, options);
@@ -252,6 +260,7 @@ export const useChat = create<ChatState>()((set, get) => {
       set({ sessionOperations: { ...current.sessionOperations, [key]: { action: input.action, pending: true } } });
       try {
         await sessionsApi.sessionAction(workspaceId, session.sessionId, session.agent, input);
+        set(renamedConversation(get(), workspaceId, session, input));
         if (input.action === 'delete' || input.action === 'archive') {
           if (sameSession(get(), workspaceId, session)) {
             const conversationVersion = history.changeSelection();

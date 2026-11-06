@@ -30,6 +30,14 @@ beforeEach(() => {
   vi.mocked(deleteSession).mockResolvedValue(undefined);
 });
 
+it('摘要分页只调用SDK请求的一页，不遍历其他记录', async () => {
+  vi.mocked(listSessions).mockResolvedValue([metadata]);
+  const page = await createClaudeSessions().page!(dir, { limit: 1, cursor: '50' });
+  expect(listSessions).toHaveBeenCalledExactlyOnceWith({ includeWorktrees: false, limit: 1, offset: 50 });
+  expect(page.nextCursor).toBe('51');
+  expect(page.items[0]?.sessionId).toBe(id);
+});
+
 describe('Claude 原生会话管理', () => {
   it('重命名和删除均先校验 metadata，且 SDK 操作固定传入当前目录', async () => {
     const provider = createClaudeSessions();

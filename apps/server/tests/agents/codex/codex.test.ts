@@ -10,6 +10,7 @@ import type { PermissionAnswer, TurnHandle } from '../../../src/agents/contracts
 import {
   runCodexTurn as nativeRunCodexTurn,
   listCodexSessions,
+  pageCodexSessions,
   readCodexSession,
   assertCodexSession,
 } from '../../../src/agents/codex';
@@ -35,6 +36,16 @@ const command = {
   command: process.execPath,
   args: ['--import', import.meta.resolve('tsx'), fileURLToPath(new URL('./fake-app-server.ts', import.meta.url))],
 };
+it('原生列表分页一次只请求指定页，后续页由调用方触发', async () => {
+  const f = await setup();
+  const first = await pageCodexSessions(f.workspace.dir, { limit: 50 }, f.options);
+  expect(first.items.map((row) => row.sessionId)).toEqual(['native-thread', 'foreign']);
+  expect(first.nextCursor).toBe('page-2');
+  expect((await f.messages()).filter((message) => message.method === 'thread/list')).toHaveLength(1);
+  const second = await pageCodexSessions(f.workspace.dir, { limit: 50, cursor: first.nextCursor }, f.options);
+  expect(second.items[0]?.sessionId).toBe('second');
+  expect(second.nextCursor).toBeUndefined();
+});
 afterEach(async () => {
   for (const watcher of watchers.splice(0)) watcher.close();
   // 即使准备阶段的断言失败，也先停止本用例的进程，再清理其工作目录。

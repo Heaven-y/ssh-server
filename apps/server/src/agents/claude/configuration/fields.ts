@@ -19,7 +19,7 @@ export function claudeFields(config: ConfigObject): ModelSettingField[] {
     field('model', '默认模型', config.model, { group: 'model', hint: '沿用 CLI 的模型名或别名；留空使用原生默认。' }),
     field('reasoningEffort', '推理强度', config.effortLevel, {
       group: 'model',
-      options: ['', 'low', 'medium', 'high', 'xhigh'].map((value) => ({ value, label: value || '自动' })),
+      options: ['', 'low', 'medium', 'high', 'xhigh'].map((value) => ({ value, label: value || '原生默认' })),
     }),
     field('contextWindow', '上下文窗口', '由模型决定', { group: 'model', readOnly: true }),
     ...(['sonnet', 'opus', 'haiku'] as const).map((name) =>

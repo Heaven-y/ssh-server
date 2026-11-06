@@ -8,6 +8,7 @@ import {
   type SessionHistory,
   type SessionRef,
   type SessionSummary,
+  type SessionPageQuery,
 } from '@agentdeck/shared/conversation';
 import { type Workspace } from '@agentdeck/shared/projects';
 import { homedir } from 'node:os';
@@ -15,7 +16,8 @@ import { sameSessionDirectory, sessionDirectoryWithin } from '../agents/common/s
 import type { SessionProvider } from '../agents/contracts';
 import { SessionError } from '../agents/errors';
 import { createSessionCatalog } from './catalog';
-import { nativeSessionDirectory, resolveProjectId } from '../agents/common/session-ownership';
+import { createSessionPaging, projectSummary } from './paging';
+import { resolveProjectId } from '../agents/common/session-ownership';
 import { SessionPreferencesError, type SessionPreferences } from './preferences';
 
 const AGENT_LABELS: Record<AgentKind, string> = {
@@ -59,6 +61,7 @@ export function createSessionsService(
   operations: SessionOperations,
 ) {
   const catalog = createSessionCatalog();
+  const paging = createSessionPaging();
   function capabilities(agent: AgentKind): SessionCapabilities {
     const actions = { ...legacySessionCapabilities(agent), ...providers[agent]?.capabilities };
     if (!actions.archive && operations.preferences) actions.archive = 'workbench';
@@ -113,25 +116,34 @@ export function createSessionsService(
         ? sessions.filter((session) => localArchives.has(session.sessionId) === archived)
         : sessions;
       const projects = await projectsFor(ws);
-      return visible.map((session) => {
-        const location = {
-          ...(agent === 'antigravity' ? {} : { cwd: session.cwd }),
-          workspaceUris: session.workspaceUris,
-        };
-        return {
-          agent,
-          sessionId: session.sessionId,
-          projectId: resolveProjectId({ ...location, projects }),
-          title: session.summary,
-          updatedAt: new Date(session.lastModified).toISOString(),
-          running: operations.isRunning?.({ agent, sessionId: session.sessionId }) ?? false,
-          directory: nativeSessionDirectory(location),
-          capabilities: actions,
-        };
-      });
+      return visible.map((session) =>
+        projectSummary(
+          session,
+          { query: { agent, scope: archived ? 'archived' : 'active' }, projects, actions },
+          operations.isRunning?.({ agent, sessionId: session.sessionId }) ?? false,
+        ),
+      );
     });
   }
   return {
+    invalidate: paging.invalidate,
+    page(query: SessionPageQuery, signal?: AbortSignal) {
+      return safeOperation(query.agent, async () => {
+        const actions = capabilities(query.agent);
+        if (query.scope === 'archived' && !actions.archive) return { items: [] };
+        const projects = await projectsFor();
+        if (query.projectId && !projects.some((project) => project.id === query.projectId))
+          throw new SessionError(404, 'workspace_missing', '项目不存在');
+        const archives =
+          actions.archive === 'workbench' ? await operations.preferences!.archived(query.agent) : undefined;
+        return paging.read(
+          { query, projects, actions, archives },
+          providerOf(providers, query.agent),
+          (row) => operations.isRunning?.(row) ?? false,
+          signal,
+        );
+      });
+    },
     list(ws: Workspace, agent: AgentKind, signal?: AbortSignal, archived = false): Promise<SessionSummary[]> {
       return list(ws, agent, signal, archived);
     },
@@ -173,7 +185,7 @@ export function createSessionsService(
             return { ...result.session, agent };
           }),
         '分叉',
-      );
+      ).finally(() => paging.invalidate(agent));
     },
     mutate(ws: Workspace, agent: AgentKind, id: string, input: SessionActionInput): Promise<void> {
       return safeOperation(
@@ -197,7 +209,7 @@ export function createSessionsService(
           });
         },
         '操作',
-      );
+      ).finally(() => paging.invalidate(agent));
     },
   };
 }

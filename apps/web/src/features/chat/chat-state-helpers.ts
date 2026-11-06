@@ -66,6 +66,7 @@ export function reportedModel(model?: string): string | undefined {
 }
 
 export const emptyConversation = {
+  title: undefined,
   draft: '',
   unread: false,
   view: 'chat' as const,
@@ -81,6 +82,8 @@ export const emptyConversation = {
   pendingClientTurnId: undefined,
   interruptRequested: false,
   loadingHistory: false,
+  historyReloadNeeded: false,
+  historyReplayable: false,
   historyError: undefined,
   historyNotice: undefined,
   banner: undefined,

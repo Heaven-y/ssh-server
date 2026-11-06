@@ -6,6 +6,7 @@ const fields = [
   'workspaceId',
   'agent',
   'sessionId',
+  'title',
   'modelOverrides',
   'reasoningEfforts',
   'permission',
@@ -21,6 +22,8 @@ const fields = [
   'pendingClientTurnId',
   'interruptRequested',
   'loadingHistory',
+  'historyReloadNeeded',
+  'historyReplayable',
   'historyError',
   'historyNotice',
   'banner',
@@ -65,7 +68,50 @@ export function retainConversation(state: ChatState): ChatState['background'] {
   )
     return state.background;
   const snapshot = Object.fromEntries(fields.map((field) => [field, state[field]])) as ConversationView;
-  return { ...state.background, [state.conversationId]: snapshot };
+  const next = { ...state.background };
+  delete next[state.conversationId];
+  next[state.conversationId] = snapshot;
+  return trimConversationBodies(next);
+}
+
+function canReload(view: ConversationView) {
+  if (!view.sessionId || !view.items.length || conversationBusy(view)) return false;
+  if (
+    [
+      view.unread,
+      view.loadingHistory,
+      view.draft,
+      view.selectedCapability,
+      view.historyError,
+      view.historyNotice,
+      waitingPermission(view),
+    ].some(Boolean)
+  )
+    return false;
+  return view.agent !== 'antigravity' || view.historyReplayable;
+}
+export const needsHistory = (view: ConversationView) =>
+  view.loadingHistory || !!view.historyError || view.historyReloadNeeded;
+/** 参数和身份保留，只有原生可重读的空闲已读正文受预算约束。 */
+function trimConversationBodies(background: ChatState['background']) {
+  const candidates = Object.values(background).filter(canReload);
+  const sizes = candidates.map((view) => JSON.stringify(view.items).length * 2);
+  let bytes = sizes.reduce((sum, size) => sum + size, 0);
+  let count = candidates.length;
+  for (const [index, view] of candidates.entries()) {
+    if (count <= 8 && bytes <= 4 * 1024 * 1024) break;
+    background[view.conversationId] = {
+      ...view,
+      items: [],
+      contextUsage: undefined,
+      compaction: undefined,
+      inspectedItemId: undefined,
+      historyReloadNeeded: true,
+    };
+    count--;
+    bytes -= sizes[index]!;
+  }
+  return background;
 }
 export function updateConversation(
   state: ChatState,
@@ -77,6 +123,7 @@ export function updateConversation(
     : { background: { ...state.background, [view.conversationId]: { ...view, ...patch } } };
 }
 export function conversationTitle(view: ConversationView): string {
+  if (view.title) return view.title;
   const first = view.items.find((item) => item.kind === 'user');
   return first?.kind === 'user' ? first.text.slice(0, 60) : view.draft.slice(0, 60) || '新会话';
 }

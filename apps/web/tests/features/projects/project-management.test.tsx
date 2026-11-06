@@ -11,7 +11,7 @@ import type { Workspace } from '@agentdeck/shared/projects';
 import { ProjectManageDialog } from '../../../src/features/projects/ProjectManageDialog';
 
 import { sessionActionKey, useChat } from '../../../src/features/chat/chat-store';
-import { projectChatBusy } from '../../../src/features/projects/project-management';
+import { projectChatBusy, projectIsBusy } from '../../../src/features/projects/project-management';
 
 const project: Workspace = { id: 'demo', name: '原项目', dir: path.resolve('fixtures', 'demo') };
 const other: Workspace = { id: 'other', name: '其他项目', dir: path.resolve('fixtures', 'other') };
@@ -59,6 +59,8 @@ it('后台运行只锁定所属项目的目录管理，其他项目可以修改'
 it('改名只提交名称，目录离线也不触碰目录或原生会话', async () => {
   const update = vi.spyOn(projectsApi, 'updateProject').mockResolvedValue({ ...project, name: '新的名称' });
   useChat.setState({ sessionId: 'native-session' });
+  const searchKey = sessionsKeys.pages('claude', 'active', '新的名称');
+  client.setQueryData(searchKey, { pages: [{ items: [] }], pageParams: [undefined] });
   const close = mount('rename');
   fireEvent.change(screen.getByLabelText('项目名称'), { target: { value: '新的名称' } });
   fireEvent.click(screen.getByRole('button', { name: '保存项目名称' }));
@@ -66,6 +68,31 @@ it('改名只提交名称，目录离线也不触碰目录或原生会话', asyn
   expect(update).toHaveBeenCalledWith(project.id, { name: '新的名称' });
   expect(useChat.getState().sessionId).toBe('native-session');
   expect(client.getQueryData<Workspace[]>(projectsKeys.workspaces)?.[0]?.name).toBe('新的名称');
+  expect(client.getQueryState(searchKey)?.isInvalidated).toBe(true);
+});
+
+it('失效搜索里的旧运行态不锁定已经结束的项目', async () => {
+  const searchKey = sessionsKeys.pages('claude', 'active', '旧搜索');
+  client.setQueryData(searchKey, {
+    pages: [
+      {
+        items: [
+          {
+            agent: 'claude',
+            sessionId: 'old',
+            projectId: project.id,
+            title: '任务',
+            updatedAt: '2026-11-06T00:00:00Z',
+            running: true,
+          },
+        ],
+      },
+    ],
+    pageParams: [undefined],
+  });
+  expect(projectIsBusy(client, project.id)).toBe(true);
+  await client.invalidateQueries({ queryKey: searchKey });
+  expect(projectIsBusy(client, project.id)).toBe(false);
 });
 
 it('换目录清当前旧会话、模型和能力缓存，不删除其他项目缓存', async () => {

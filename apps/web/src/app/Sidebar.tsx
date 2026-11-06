@@ -15,10 +15,15 @@ import { SidebarBrand, SidebarFooter, SidebarWorkspaces } from './SidebarChrome'
 import { SidebarOtherSessions } from './SidebarOtherSessions';
 import type { ProjectDraft, ProjectManageAction } from '../features/projects/project-management';
 import type { SessionListFailure } from '../features/projects/use-project-sessions';
+import { LoadMoreSessions } from '../features/sessions/LoadMoreSessions';
 import { BackgroundConversations } from '../features/chat/BackgroundConversations';
 
 export type SidebarProps = {
   pages?: ReactNode;
+  search?: string;
+  onSearch?(value: string): void;
+  sessionPages?: { hasMore: boolean; loadingMore: boolean; more(): void };
+  otherPages?: { hasMore: boolean; loadingMore: boolean; more(): void };
   projects: Workspace[];
   /** 按项目 id 归集的会话；未归属会话由侧栏去重后按需展示。 */
   sessionsByProject: Record<string, SessionSummary[]>;
@@ -45,9 +50,12 @@ export type SidebarProps = {
 
 const EMPTY_SESSIONS: SessionSummary[] = [];
 const EMPTY_FAILURES: SessionListFailure[] = [];
+const agentSearchNames = { claude: 'Claude Code', codex: 'Codex', antigravity: 'Antigravity AGY' };
 const newestFirst = (a: SessionSummary, b: SessionSummary) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
 const matchesSession = (session: SessionSummary, query: string) =>
-  `${session.title} ${AGENT_LABELS[session.agent]}`.toLocaleLowerCase().includes(query);
+  `${session.title} ${session.sessionId} ${session.directory ?? ''} ${AGENT_LABELS[session.agent]} ${agentSearchNames[session.agent]}`
+    .toLocaleLowerCase()
+    .includes(query);
 
 function unassignedSessions(sessions: Record<string, SessionSummary[]>, extra: SessionSummary[]) {
   const entries = new Map<string, SessionSummary>();
@@ -72,6 +80,7 @@ function ProjectItem({
   expanded,
   current,
   loading,
+  incomplete,
   failures,
   retry,
   running,
@@ -87,6 +96,7 @@ function ProjectItem({
   expanded: boolean;
   current: boolean;
   loading: boolean;
+  incomplete: boolean;
   failures: SessionListFailure[];
   retry?: () => void;
   running: boolean;
@@ -113,7 +123,9 @@ function ProjectItem({
             className={`size-3.5 shrink-0 text-muted-foreground motion-safe:transition-transform ${expanded ? 'rotate-90' : ''}`}
           />
           <span className="min-w-0 flex-1 truncate font-medium">{project.name}</span>
-          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{sessions.length}</span>
+          <span title="已加载会话数" className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+            {sessions.length}
+          </span>
         </button>
         <ProjectMenu
           project={project}
@@ -124,7 +136,13 @@ function ProjectItem({
       </div>
       {expanded && (
         <section aria-label={`${project.name}会话`} className="mb-2 pl-3">
-          <ProjectSessionStatus loading={loading} empty={sessions.length === 0} failures={failures} retry={retry} />
+          <ProjectSessionStatus
+            loading={loading}
+            incomplete={incomplete}
+            empty={sessions.length === 0}
+            failures={failures}
+            retry={retry}
+          />
           {sessions.length > 0 && (
             <ul className="flex flex-col gap-0.5">
               {sessions.map((session) => (
@@ -147,11 +165,13 @@ function ProjectItem({
 
 function ProjectSessionStatus({
   loading,
+  incomplete,
   empty,
   failures,
   retry,
 }: {
   loading: boolean;
+  incomplete: boolean;
   empty: boolean;
   failures: SessionListFailure[];
   retry?: () => void;
@@ -171,7 +191,7 @@ function ProjectSessionStatus({
         )}
       </div>
     );
-  if (!empty) return null;
+  if (!empty || incomplete) return null;
   return (
     <p role={loading ? 'status' : undefined} className="px-3 py-2 text-xs text-muted-foreground">
       {loading ? '正在读取会话…' : '暂无会话'}
@@ -195,14 +215,16 @@ function EmptyProjects({ addProject }: { addProject(): void }) {
 function WorkspaceListNotice({
   projects,
   visibleCount,
+  incomplete,
   addProject,
 }: {
   projects: Workspace[];
   visibleCount: number;
+  incomplete: boolean;
   addProject(): void;
 }) {
   if (projects.length === 0) return <EmptyProjects addProject={addProject} />;
-  if (visibleCount > 0) return null;
+  if (visibleCount > 0 || incomplete) return null;
   return <p className="px-3 py-5 text-xs text-muted-foreground">没有匹配的工作区或会话</p>;
 }
 
@@ -228,10 +250,21 @@ function useSidebarSelection(projects: Workspace[], currentProjectId?: string) {
     },
   };
 }
+function useSidebarSearch(controlled?: string, change?: (value: string) => void) {
+  const [local, setLocal] = useState('');
+  return [controlled ?? local, change ?? setLocal] as const;
+}
+function MoreSessions({ page }: { page?: SidebarProps['sessionPages'] }) {
+  return page ? <LoadMoreSessions {...page} loading={page.loadingMore} /> : null;
+}
 
 /** 左栏只读取摘要与导航；原生会话写操作始终使用被点击行的完整身份。 */
 export function Sidebar({
   pages,
+  search: controlledSearch,
+  onSearch,
+  sessionPages,
+  otherPages,
   projects,
   sessionsByProject,
   sessionErrorsByProject,
@@ -255,7 +288,7 @@ export function Sidebar({
 }: SidebarProps) {
   const collapsed = useUiPreferences((state) => state.sidebarCollapsed || state.sidebarAutoCollapsed);
   const selection = useSidebarSelection(projects, currentProjectId);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useSidebarSearch(controlledSearch, onSearch);
   const query = search.trim().toLocaleLowerCase();
   const [showOtherSessions, setShowOtherSessions] = useState(false);
   const [managing, setManaging] = useState<ProjectSessionSelection | undefined>(undefined);
@@ -311,7 +344,12 @@ export function Sidebar({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {!collapsed && (
           <>
-            <WorkspaceListNotice projects={projects} visibleCount={visible.length} addProject={() => onAddProject()} />
+            <WorkspaceListNotice
+              projects={projects}
+              visibleCount={visible.length}
+              incomplete={Boolean(sessionPages?.hasMore)}
+              addProject={() => onAddProject()}
+            />
             <ul className="flex flex-col gap-0.5">
               {visible.map(({ project, sessions }) => (
                 <ProjectItem
@@ -321,6 +359,7 @@ export function Sidebar({
                   expanded={Boolean(query) || selection.isExpanded(project.id)}
                   current={selection.selectedProject === project.id}
                   loading={loadingSessions}
+                  incomplete={Boolean(sessionPages?.hasMore)}
                   failures={sessionErrorsByProject?.[project.id] ?? EMPTY_FAILURES}
                   retry={onRetrySessions ? () => onRetrySessions(project.id) : undefined}
                   running={projectSessions[project.id]!.some((session) => session.running)}
@@ -338,14 +377,19 @@ export function Sidebar({
                 />
               ))}
             </ul>
+            <MoreSessions page={sessionPages} />
             {showOtherSessions && (
-              <SidebarOtherSessions
-                sessions={otherSessions.filter((session) => matchesSession(session, query))}
-                activeKey={selection.activeKey}
-                addProject={onAddProject}
-                loading={loadingOtherSessions}
-                error={otherSessionsError}
-              />
+              <>
+                <SidebarOtherSessions
+                  sessions={otherSessions.filter((session) => matchesSession(session, query))}
+                  activeKey={selection.activeKey}
+                  addProject={onAddProject}
+                  loading={loadingOtherSessions}
+                  incomplete={Boolean(otherPages?.hasMore)}
+                  error={otherSessionsError}
+                />
+                <MoreSessions page={otherPages} />
+              </>
             )}
           </>
         )}

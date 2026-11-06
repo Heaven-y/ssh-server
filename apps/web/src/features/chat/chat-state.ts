@@ -26,6 +26,7 @@ export type ChatState = {
   workspaceId?: string;
   agent: AgentKind;
   sessionId?: string;
+  title?: string;
   modelOverrides: Record<AgentKind, string>;
   defaults: Pick<ProductSettings, 'defaultAgent'>;
   initialDefaultsEligible: boolean;
@@ -49,6 +50,8 @@ export type ChatState = {
   pendingClientTurnId?: string;
   interruptRequested: boolean;
   loadingHistory: boolean;
+  historyReloadNeeded: boolean;
+  historyReplayable: boolean;
   historyError?: string;
   historyNotice?: string;
   banner?: string;
@@ -59,7 +62,7 @@ export type ChatState = {
   resetWorkspaceConversation(id: string, expectedVersion: number): void;
   newSession(agent?: AgentKind): void;
   setAgent(agent: AgentKind): void;
-  openSession(session: SessionRef, options?: { preserveDraft?: boolean }): Promise<void>;
+  openSession(session: SessionRef & { title?: string }, options?: { preserveDraft?: boolean }): Promise<void>;
   setModel(model: string): void;
   setDefaults(settings: ProductSettings): void;
   touchDraft(): void;
@@ -78,6 +81,7 @@ export type ConversationView = Pick<
   | 'workspaceId'
   | 'agent'
   | 'sessionId'
+  | 'title'
   | 'modelOverrides'
   | 'reasoningEfforts'
   | 'permission'
@@ -93,6 +97,8 @@ export type ConversationView = Pick<
   | 'pendingClientTurnId'
   | 'interruptRequested'
   | 'loadingHistory'
+  | 'historyReloadNeeded'
+  | 'historyReplayable'
   | 'historyError'
   | 'historyNotice'
   | 'banner'

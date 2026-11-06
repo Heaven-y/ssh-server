@@ -39,6 +39,8 @@ export type NativeSessionSummary = Omit<SessionRecord, 'agent'> & {
  * 哪个项目，必须判为未归属，而不是拿「当前查的是哪个项目」的目录兜底。
  */
 export type NativeSessionRow = NativeSessionSummary & { cwd?: string };
+export type NativeSessionPageInput = { cursor?: string; limit: number };
+export type NativeSessionPage = { items: NativeSessionRow[]; nextCursor?: string };
 export type NativeSessionRead = {
   session: NativeSessionSummary;
   cwd: string;
@@ -51,6 +53,12 @@ export type NativeSessionFork = Pick<NativeSessionRead, 'session' | 'cwd'>;
 export type SessionProvider = {
   capabilities?: Partial<SessionCapabilities>;
   list(dir: string, signal?: AbortSignal, archived?: boolean): Promise<NativeSessionRow[]>;
+  page?(
+    dir: string,
+    input: NativeSessionPageInput,
+    signal?: AbortSignal,
+    archived?: boolean,
+  ): Promise<NativeSessionPage>;
   read(id: string, dir: string, signal?: AbortSignal): Promise<NativeSessionRead>;
   /** 返回已核实的原生目录；多目录 CLI 同时保留完整归属元数据。 */
   assertBelongs(

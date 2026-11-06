@@ -1,10 +1,11 @@
 import { projectsKeys } from './api';
 import { useSyncExternalStore } from 'react';
-import { useQueryClient, type QueryClient } from '@tanstack/react-query';
-import type { SessionSummary } from '@agentdeck/shared/conversation';
+import { useQueryClient, type QueryClient, type InfiniteData } from '@tanstack/react-query';
+import type { SessionSummary, SessionPage } from '@agentdeck/shared/conversation';
 import type { Workspace } from '@agentdeck/shared/projects';
 import { useChat } from '../chat/chat-store';
 import { projectIsRunning } from '../chat/conversations';
+import { invalidateSessionPages } from '../sessions/session-queries';
 
 export type ProjectManageAction = 'rename' | 'directory' | 'remove';
 export type ProjectDraft = { dir?: string; name?: string };
@@ -33,8 +34,14 @@ export function useProjectChatBusy(projectId?: string) {
 }
 function projectSummaryBusy(client: QueryClient, projectId: string) {
   return client
-    .getQueriesData<SessionSummary[]>({ queryKey: ['sessions', projectId] })
-    .some(([, sessions]) => sessions?.some((session) => session.projectId === projectId && session.running));
+    .getQueriesData<SessionSummary[] | InfiniteData<SessionPage>>({
+      queryKey: ['sessions'],
+      predicate: (query) => !query.state.isInvalidated,
+    })
+    .some(([, data]) => {
+      const rows = Array.isArray(data) ? data : data?.pages.flatMap((page) => page.items);
+      return rows?.some((session) => session.projectId === projectId && session.running);
+    });
 }
 export function useProjectBusy(projectId: string) {
   const client = useQueryClient();
@@ -59,8 +66,7 @@ export async function clearProjectQueries(client: QueryClient, projectId: string
 }
 /** 项目映射变化会改变其他目录及重叠项目的归属，取消旧读取后统一刷新摘要。 */
 export async function refreshProjectSessionLists(client: QueryClient) {
-  await client.cancelQueries({ queryKey: ['sessions'] });
-  await client.invalidateQueries({ queryKey: ['sessions'] });
+  await invalidateSessionPages(client, { queryKey: ['sessions'] });
 }
 export async function updateProjectCache(client: QueryClient, updated: Workspace) {
   await client.cancelQueries({ queryKey: projectsKeys.workspaces });

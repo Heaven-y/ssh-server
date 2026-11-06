@@ -22,8 +22,5 @@ export function displayId(id: string, candidate?: AgentModel): string {
 }
 
 export function modelDisplay(id: string, candidate?: AgentModel): string {
-  if (!id) return '选择模型';
-  const resolved = displayId(id, candidate);
-  const label = candidate?.label;
-  return label && label !== resolved ? `${label} · ${resolved}` : resolved;
+  return id ? displayId(id, candidate) : '';
 }

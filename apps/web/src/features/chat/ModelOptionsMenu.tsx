@@ -4,21 +4,24 @@ import { ClaudeContextChoices } from '../../cli/claude/ContextChoices';
 import { ApiError } from '../../lib/http';
 import { projectsKeys } from '../projects/api';
 import { Menu, MenuButton, MenuGroup, MenuItem, MenuProvider, MenuSeparator, useMenuStore } from '@ariakit/react';
-import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
-import { useState } from 'react';
+import { ChevronDown, ChevronRight, LoaderCircle, RefreshCw } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AgentCapabilities, AgentKind } from '@agentdeck/shared/conversation';
 import type { Workspace } from '@agentdeck/shared/projects';
 
 import { ProjectManageDialog } from '../projects/ProjectManageDialog';
 import { buttonClass } from '../../ui/styles';
-import { agentUnavailable, agentVersion, useEnvironment } from '../settings/use-environment';
+import { agentUnavailable, useEnvironment } from '../settings/use-environment';
 import { sessionActionKey, useChat } from './chat-store';
 import { useAgentCapabilities } from './use-agent-capabilities';
 import { AgentIcon } from '../../ui/BrandIcons';
 import { ManualModelDialog } from './ManualModelDialog';
 import { findModel, modelDisplay } from '../../cli/shared/model-identity';
-import { modelDefaultEffort, modelEfforts } from '../../cli/model-capabilities';
+import { configuredModelEffort, modelEfforts } from '../../cli/model-capabilities';
+import { ModelCandidateLabel } from './ModelCandidateLabel';
+import { ModelSearchDialog } from './ModelSearchDialog';
+import { modelCandidates } from './model-candidates';
 
 const menuClass =
   'z-50 max-h-[min(440px,var(--popover-available-height))] w-72 overflow-y-auto rounded-2xl border border-border bg-card p-1 text-foreground shadow-lg';
@@ -65,13 +68,10 @@ function modelOrigin(model: string, native?: string, actual?: string, configured
   if (actual) return `最近实际运行：${actual}`;
   return configured ? `原生配置：${configured}` : '沿用原生配置';
 }
-function inheritedEffort(agent: AgentKind, id: string, catalog?: AgentCapabilities) {
-  return catalog?.defaultReasoningEffort ?? modelDefaultEffort(agent, id, catalog?.models ?? []);
-}
 function inheritedModel(native?: string, actual?: string, configured?: string) {
   return native || actual || configured || '';
 }
-function useModelPresentation(model: string, catalog?: AgentCapabilities) {
+function useModelPresentation(model: string, catalog: AgentCapabilities | undefined, fetching: boolean) {
   const agent = useChat((state) => state.agent);
   const actual = useChat((state) => state.actualModel);
   const native = useChat((state) => {
@@ -80,24 +80,25 @@ function useModelPresentation(model: string, catalog?: AgentCapabilities) {
       ?.nativeModel;
   });
   const reading = useChat((state) => state.loadingHistory);
+  const historical = useChat((state) => !!state.sessionId);
   // 下一轮配置与上一轮实际报告分开；没有配置证据时才以最近报告说明会话。
   const configured = catalog?.defaultModel;
   const inherited = inheritedModel(native, actual, configured);
   const id = model || inherited;
   const models = catalog?.models ?? [];
   const candidate = findModel(models, id);
-  const label = reading && !id ? '正在读取型号…' : modelDisplay(id, candidate);
   return {
     id,
-    label,
+    label: modelDisplay(id, candidate),
+    loading: !id && (reading || fetching),
     title: modelOrigin(model, native, actual, configured),
     actual,
-    defaultEffort: model ? modelDefaultEffort(agent, id, models) : inheritedEffort(agent, id, catalog),
-    inheritedLabel: modelDisplay(inherited, findModel(models, inherited)),
+    // 旧会话未报告原生强度，不能用新会话的目录默认冒充其有效值。
+    defaultEffort: historical ? undefined : configuredModelEffort(agent, id, catalog),
   };
 }
-function effortLabel(effort: string) {
-  return effort || '自动';
+function effortLabel(effort?: string) {
+  return effort === 'auto' ? '自动' : effort || '跟随配置';
 }
 function ExtendedContextLabel({ label }: { label: string }) {
   if (!/\[1m\]$/i.test(label)) return null;
@@ -107,6 +108,17 @@ function ExtendedContextLabel({ label }: { label: string }) {
     </span>
   );
 }
+function ModelButtonContent({ agent, label, loading }: { agent: AgentKind; label: string; loading: boolean }) {
+  return (
+    <>
+      <AgentIcon agent={agent} className="size-3.5 shrink-0" />
+      {label && <span className="truncate">{label}</span>}
+      {loading && <LoaderCircle aria-hidden className="size-3.5 shrink-0 motion-safe:animate-spin" />}
+      <ExtendedContextLabel label={label} />
+      <ChevronDown aria-hidden className="size-3.5 shrink-0" />
+    </>
+  );
+}
 function AgentChoices({ disabled }: { disabled: boolean }) {
   const agent = useChat((state) => state.agent);
   const historical = useChat((state) => !!state.sessionId);
@@ -114,14 +126,22 @@ function AgentChoices({ disabled }: { disabled: boolean }) {
   const environment = useEnvironment();
   return (
     <>
-      <p className="px-3 py-2 text-xs text-muted-foreground">{historical ? '会话 Agent' : 'Agent'}</p>
-      {(['claude', 'codex', 'antigravity'] as const).map((kind) => (
-        <Choice key={kind} checked={agent === kind} disabled={disabled || historical} choose={() => setAgent(kind)}>
-          <span className="flex min-w-0 items-center gap-2 whitespace-nowrap">
-            <AgentIcon agent={kind} className="size-3.5 shrink-0" /> {AGENT_LABELS[kind]}
-          </span>
-        </Choice>
-      ))}
+      <MenuGroup aria-label="CLI" className="flex items-center gap-1 px-2 py-1">
+        {(['claude', 'codex', 'antigravity'] as const).map((kind) => (
+          <MenuItem
+            key={kind}
+            role="menuitemradio"
+            aria-checked={agent === kind}
+            aria-label={AGENT_LABELS[kind]}
+            title={AGENT_LABELS[kind]}
+            disabled={disabled || historical}
+            onClick={() => setAgent(kind)}
+            className="flex size-9 cursor-pointer items-center justify-center rounded-lg outline-none data-active-item:ring-1 data-active-item:ring-border-strong aria-checked:bg-muted aria-disabled:cursor-not-allowed aria-disabled:opacity-45"
+          >
+            <AgentIcon agent={kind} className="size-4" />
+          </MenuItem>
+        ))}
+      </MenuGroup>
       {agentUnavailable(environment.data, agent) && (
         <p role="status" className="px-3 py-2 text-xs leading-5 text-warning">
           当前 Agent 不可用，请在设置中检查。
@@ -156,46 +176,49 @@ function ModelChoices({
   catalog,
   model,
   currentModel,
-  inheritedLabel,
   onManual,
+  onSearch,
   onRepair,
-}: CatalogProps & { model: string; currentModel: string; inheritedLabel: string; onManual(): void; onRepair(): void }) {
+}: CatalogProps & {
+  model: string;
+  currentModel: string;
+  onManual(): void;
+  onSearch(): void;
+  onRepair(): void;
+}) {
   const setModel = useChat((state) => state.setModel);
   const agent = useChat((state) => state.agent);
   const effort = useChat((state) => state.reasoningEfforts[state.agent]);
   const setEffort = useChat((state) => state.setReasoningEffort);
+  const models = catalog.data?.models ?? [];
+  const candidates = modelCandidates(models, currentModel);
+  const selected = findModel(candidates, currentModel)?.id;
   return (
     <>
       <MenuGroup aria-label="可选模型">
         <p className="px-3 py-2 text-xs text-muted-foreground">模型</p>
-        <Choice checked={!model} disabled={disabled} choose={() => setModel('')}>
-          <span className="block">沿用原生配置</span>
-          {inheritedLabel !== '选择模型' && (
-            <span className="block truncate text-xs text-muted-foreground">{inheritedLabel}</span>
-          )}
-        </Choice>
-        {catalog.data?.models.map((candidate) => (
+        {candidates.slice(0, 20).map((candidate) => (
           <Choice
             key={candidate.id}
-            checked={!!model && findModel(catalog.data.models, model)?.id === candidate.id}
+            checked={selected === candidate.id}
             disabled={disabled}
             choose={() => setModel(candidate.id)}
           >
-            <span className="block truncate">{candidate.label}</span>
-            <span className="block truncate font-mono text-xs text-muted-foreground" title={candidate.description}>
-              {candidate.modelId && candidate.modelId !== candidate.id
-                ? `${candidate.id} → ${candidate.modelId}`
-                : candidate.id}
-            </span>
+            <ModelCandidateLabel model={candidate} />
           </Choice>
         ))}
       </MenuGroup>
+      {candidates.length > 20 && (
+        <MenuItem className={itemClass} disabled={disabled} onClick={onSearch}>
+          搜索全部模型
+        </MenuItem>
+      )}
       <CatalogStatus catalog={catalog} />
       {agent === 'claude' && (
         <ClaudeContextChoices
           disabled={disabled}
           model={currentModel}
-          models={catalog.data?.models ?? []}
+          models={models}
           choose={(id) => {
             setModel(id);
             setEffort(effort);
@@ -231,65 +254,100 @@ function EffortChoices({
       <p className="px-3 py-2 text-xs text-muted-foreground">推理强度</p>
       {efforts.map((value) => (
         <Choice key={value} checked={effort === value} disabled={disabled} choose={() => setEffort(value)}>
-          {value}
+          {effortLabel(value)}
         </Choice>
       ))}
       <MenuSeparator className="my-1 border-t border-border" />
       <Choice checked={!effort} disabled={disabled} choose={() => setEffort('')}>
-        {defaultEffort ? `沿用配置 · ${defaultEffort}` : '自动'}
+        {defaultEffort ? `跟随配置 · ${effortLabel(defaultEffort)}` : '跟随配置'}
       </Choice>
     </>
   );
 }
 
-/** 模型菜单只表达下一轮选择，不把候选或覆盖值冒充实际模型报告。 */
-export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
-  const [modelOpen, setModelOpen] = useState(false);
-  const [effortOpen, setEffortOpen] = useState(false);
-  const [manual, setManual] = useState(false);
-  const [repairProject, setRepairProject] = useState<Workspace>();
-  const client = useQueryClient();
-  const modelMenu = useMenuStore({ open: modelOpen, setOpen: setModelOpen, placement: 'top-end' });
-  const effortMenu = useMenuStore({ open: effortOpen, setOpen: setEffortOpen, placement: 'top-end' });
+function EffortControls({
+  disabled,
+  catalog,
+  model,
+  defaultEffort,
+  store,
+}: CatalogProps & { model: string; defaultEffort?: string; store: ReturnType<typeof useMenuStore> }) {
   const agent = useChat((state) => state.agent);
-  const model = useChat((state) => state.modelOverrides[state.agent]);
   const effort = useChat((state) => state.reasoningEfforts[state.agent]);
-  // 选中会话即读本地缓存；只有首次打开菜单且无缓存时才向 CLI 发现。
-  const catalog = useAgentCapabilities(true, modelOpen || effortOpen);
-  const presentation = useModelPresentation(model, catalog.data);
-  const environment = useEnvironment();
-  const version = agentVersion(environment.data, agent);
-  const setModel = useChat((state) => state.setModel);
+  const setEffort = useChat((state) => state.setReasoningEffort);
   const models = catalog.data?.models ?? [];
-  const efforts = modelEfforts(agent, presentation.id, models);
+  const unsupported = findModel(models, model)?.reasoningEfforts?.length === 0;
+  const efforts = modelEfforts(agent, model, models);
+  useEffect(() => {
+    if (!unsupported) return;
+    store.setOpen(false);
+    if (!disabled && effort) setEffort('');
+  }, [unsupported, disabled, effort, setEffort, store]);
+  if (unsupported) return null;
   return (
     <>
       <MenuButton
-        store={modelMenu}
-        render={<button type="button" />}
-        aria-label="模型选项"
-        disabled={disabled}
-        className={`${triggerClass} max-w-64`}
-        title={`${AGENT_LABELS[agent]}${version ? ` · 本机探测版本 ${version}` : ''} · ${presentation.title} · ${presentation.label}`}
-      >
-        <AgentIcon agent={agent} className="size-3.5 shrink-0" />
-        <span className="truncate">
-          {AGENT_LABELS[agent]} · {presentation.label}
-        </span>
-        <ExtendedContextLabel label={presentation.label} />
-        <ChevronDown aria-hidden className="size-3.5 shrink-0" />
-      </MenuButton>
-      <MenuButton
-        store={effortMenu}
+        store={store}
         render={<button type="button" />}
         aria-label="推理强度"
         disabled={disabled}
         className={`${triggerClass} max-w-36`}
         title="选择推理强度"
       >
-        <span className="truncate">{effortLabel(effort)}</span>
+        <span className="truncate">{effortLabel(effort || defaultEffort)}</span>
         <ChevronDown aria-hidden className="size-3.5 shrink-0" />
       </MenuButton>
+      <Menu store={store} portal unmountOnHide gutter={8} aria-label="推理强度菜单" className={menuClass}>
+        <EffortChoices disabled={disabled} efforts={efforts} effort={effort} defaultEffort={defaultEffort} />
+        {!efforts.length && <CatalogStatus catalog={catalog} />}
+      </Menu>
+    </>
+  );
+}
+
+/** 模型菜单只表达下一轮选择，不把候选或覆盖值冒充实际模型报告。 */
+export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [modelOpen, setModelOpen] = useState(false);
+  const [effortOpen, setEffortOpen] = useState(false);
+  const [manual, setManual] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const closeSearch = () => {
+    setSearchOpen(false);
+    requestAnimationFrame(() => trigger.current?.focus());
+  };
+  const [repairProject, setRepairProject] = useState<Workspace>();
+  const client = useQueryClient();
+  const modelMenu = useMenuStore({ open: modelOpen, setOpen: setModelOpen, placement: 'top-end' });
+  const effortMenu = useMenuStore({ open: effortOpen, setOpen: setEffortOpen, placement: 'top-end' });
+  const agent = useChat((state) => state.agent);
+  const model = useChat((state) => state.modelOverrides[state.agent]);
+  // 选中会话即读本地缓存；只有首次打开菜单且无缓存时才向 CLI 发现。
+  const catalog = useAgentCapabilities(true, modelOpen || effortOpen);
+  const presentation = useModelPresentation(model, catalog.data, catalog.isFetching);
+  const setModel = useChat((state) => state.setModel);
+  const models = catalog.data?.models ?? [];
+  return (
+    <>
+      <MenuButton
+        store={modelMenu}
+        ref={trigger}
+        render={<button type="button" />}
+        aria-label="模型选项"
+        aria-busy={presentation.loading}
+        disabled={disabled}
+        className={`${triggerClass} max-w-64`}
+        title={[AGENT_LABELS[agent], presentation.label, presentation.title].filter(Boolean).join(' · ')}
+      >
+        <ModelButtonContent agent={agent} label={presentation.label} loading={presentation.loading} />
+      </MenuButton>
+      <EffortControls
+        store={effortMenu}
+        disabled={disabled}
+        catalog={catalog}
+        model={presentation.id}
+        defaultEffort={presentation.defaultEffort}
+      />
       <Menu store={modelMenu} portal unmountOnHide gutter={8} aria-label="模型选项菜单" className={menuClass}>
         <AgentChoices disabled={disabled} />
         <ModelChoices
@@ -297,8 +355,8 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
           catalog={catalog}
           model={model}
           currentModel={presentation.id}
-          inheritedLabel={presentation.inheritedLabel}
           onManual={() => setManual(true)}
+          onSearch={() => setSearchOpen(true)}
           onRepair={() => {
             const project = client
               .getQueryData<Workspace[]>(projectsKeys.workspaces)
@@ -310,15 +368,6 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
           <p className="px-3 pt-2 pb-1 text-xs leading-5 text-muted-foreground">最近实际运行：{presentation.actual}</p>
         )}
       </Menu>
-      <Menu store={effortMenu} portal unmountOnHide gutter={8} aria-label="推理强度菜单" className={menuClass}>
-        <EffortChoices
-          disabled={disabled}
-          efforts={efforts}
-          effort={effort}
-          defaultEffort={presentation.defaultEffort}
-        />
-        {!efforts.length && <CatalogStatus catalog={catalog} />}
-      </Menu>
       {manual && (
         <ManualModelDialog
           model={model}
@@ -328,6 +377,18 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
             setManual(false);
           }}
           onClose={() => setManual(false)}
+        />
+      )}
+      {searchOpen && (
+        <ModelSearchDialog
+          models={modelCandidates(models, presentation.id)}
+          current={presentation.id}
+          disabled={disabled}
+          choose={(id) => {
+            setModel(id);
+            closeSearch();
+          }}
+          close={closeSearch}
         />
       )}
       {repairProject && (

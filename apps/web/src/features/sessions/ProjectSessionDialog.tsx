@@ -1,6 +1,4 @@
-import { sessionsApi, sessionsKeys } from './api';
 import type { SessionSummary } from '@agentdeck/shared/conversation';
-import { useQuery } from '@tanstack/react-query';
 
 import { SessionActionsDialog } from './SessionActionsDialog';
 import { SessionForkDialog } from './SessionForkDialog';
@@ -23,15 +21,8 @@ export function ProjectSessionDialog({
   sessions: SessionSummary[];
   close(): void;
 }) {
-  // 只订阅现有列表缓存；归档页刷新摘要后，已打开的确认框也要立即遵守最新运行态。
-  const cached = useQuery({
-    queryKey: sessionsKeys.sessions(selected.workspaceId, selected.session.agent, selected.archived),
-    queryFn: ({ signal }) =>
-      sessionsApi.listSessions(selected.workspaceId, selected.session.agent, selected.archived, signal),
-    enabled: false,
-  });
   const session =
-    (cached.data ?? sessions).find(
+    sessions.find(
       (entry) => entry.agent === selected.session.agent && entry.sessionId === selected.session.sessionId,
     ) ?? selected.session;
   if (selected.action === 'fork')

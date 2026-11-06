@@ -162,14 +162,18 @@ export function App() {
   const projectId = useChat((s) => s.workspaceId);
   useProjectNavigation(projects.data);
   const current = projects.data?.find((project) => project.id === projectId);
+  const [sessionSearch, setSessionSearch] = useState('');
   const {
     sessionsByProject,
     loading: sessionsLoading,
     errorsByProject,
     retryProject,
-  } = useProjectSessions(projects.data);
+    hasMore,
+    loadingMore,
+    more,
+  } = useProjectSessions(projects.data, sessionSearch);
   const [showOtherSessions, setShowOtherSessions] = useState(false);
-  const others = useOtherSessions(showOtherSessions);
+  const others = useOtherSessions(showOtherSessions, sessionSearch);
   const openSession = (targetProject: string, session: SessionSummary) => {
     setArchiveOpen(false);
     plugins.show(undefined);
@@ -242,6 +246,10 @@ export function App() {
                 manage={() => plugins.setManagerOpen(true)}
               />
             }
+            search={sessionSearch}
+            onSearch={setSessionSearch}
+            sessionPages={{ hasMore, loadingMore, more }}
+            otherPages={others}
             projects={projects.data ?? []}
             sessionsByProject={sessionsByProject}
             sessionErrorsByProject={errorsByProject}

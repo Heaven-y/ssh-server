@@ -1,7 +1,6 @@
 import { ArrowUp, Square } from 'lucide-react';
 import { useId, type FormEvent } from 'react';
 import { managementPending, useChat } from './chat-store';
-import { CapabilityPicker } from './CapabilityPicker';
 import { selectionRestriction } from './capability-selection';
 import { ComposerInput } from './ComposerInput';
 import type { AgentCapability } from '@agentdeck/shared/conversation';
@@ -94,11 +93,9 @@ export function Composer() {
         />
         {restriction && <p className="px-4 text-xs leading-5 text-warning">{restriction}</p>}
         <div role="group" aria-label="消息选项" className="composer-toolbar">
-          <CapabilityPicker disabled={busy} />
-          <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5">
-            <AgentControls disabled={busy} />
+          <AgentControls disabled={busy}>
             <ComposerActions disabled={blocked} />
-          </div>
+          </AgentControls>
         </div>
       </div>
       <ComposerStatus />

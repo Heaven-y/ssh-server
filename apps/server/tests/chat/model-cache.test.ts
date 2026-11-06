@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { NativeCapabilityCatalog } from '../../src/agents/capability-types';
 import { createCapabilitiesService } from '../../src/chat/capabilities';
 import * as files from '../../src/platform/files/safe-file';
+import { createHash } from 'node:crypto';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -142,23 +143,63 @@ it('刷新模型失败保留已有模型，错误和未登录状态不会代替�
   expect((await createCapabilitiesService({}, f.options).read(f.ws, 'claude')).models).toEqual(f.catalog.models);
 });
 
-it('旧 v1 缓存先显示已有模型，下一次打开菜单补取元数据，不将第一项猜成默认模型', async () => {
+it.each([1, 2])('读取旧 v%i 缓存并保留目录，刷新后写入去重格式', async (version) => {
   const f = await fixture();
   await createCapabilitiesService({ claude: f.provider }, f.options).refresh(f.ws, 'claude');
   const file = path.join(f.root, 'model-cache', 'claude.json');
-  const stored = JSON.parse(await readFile(file, 'utf8')) as {
-    version: number;
-    catalogs: Array<{ key: string; models: unknown[]; defaultModel?: string; defaultReasoningEffort?: string }>;
-  };
-  delete stored.catalogs[0]!.defaultModel;
-  delete stored.catalogs[0]!.defaultReasoningEffort;
-  stored.version = 1;
-  stored.catalogs[0]!.models = [{ id: 'legacy-model', label: '旧缓存模型' }];
+  const directory = process.platform === 'win32' ? f.ws.dir.toLowerCase() : f.ws.dir;
+  const key = createHash('sha256')
+    .update(JSON.stringify(['claude', directory]))
+    .digest('hex');
+  const stored = { version, catalogs: [{ key, models: [{ id: 'legacy-model', label: '旧缓存模型' }] }] };
   await writeFile(file, JSON.stringify(stored));
   const cached = await createCapabilitiesService({}, f.options).read(f.ws, 'claude');
-  expect(cached).toMatchObject({ discovered: false, models: [{ id: 'legacy-model', label: '旧缓存模型' }] });
+  expect(cached).toMatchObject({ discovered: version === 2, models: [{ id: 'legacy-model', label: '旧缓存模型' }] });
   expect(cached.defaultModel).toBeUndefined();
   expect(cached.defaultReasoningEffort).toBeUndefined();
+  const other = { ...f.ws, dir: path.join(f.root, 'other') };
+  await createCapabilitiesService({ claude: f.provider }, f.options).refresh(other, 'claude');
+  const upgraded = createCapabilitiesService({}, f.options);
+  expect((await upgraded.read(f.ws, 'claude')).discovered).toBe(version === 2);
+  expect((await upgraded.read(other, 'claude')).models).toEqual(f.catalog.models);
+});
+
+it('较大的正常模型目录完整缓存，相同内容只存一份且修改一个目录不影响另一个', async () => {
+  const f = await fixture();
+  f.catalog.models = Array.from({ length: 600 }, (_, index) => ({ id: `model-${index}`, label: `模型${index}` }));
+  const service = createCapabilitiesService({ claude: f.provider }, f.options);
+  const other = { ...f.ws, dir: path.join(f.root, 'other') };
+  await service.refresh(f.ws, 'claude');
+  await service.refresh(other, 'claude');
+  const file = path.join(f.root, 'model-cache', 'claude.json');
+  const stored = await readFile(file, 'utf8');
+  expect(stored.match(/"id":"model-599"/g)).toHaveLength(1);
+  const restarted = createCapabilitiesService({}, f.options);
+  expect((await restarted.read(f.ws, 'claude')).models).toHaveLength(600);
+  expect((await restarted.read(other, 'claude')).models.at(-1)?.id).toBe('model-599');
+  f.catalog.models = [{ id: 'project-only', label: '项目专属模型' }];
+  await service.refresh(other, 'claude');
+  const updated = createCapabilitiesService({}, f.options);
+  expect((await updated.read(f.ws, 'claude')).models).toHaveLength(600);
+  expect((await updated.read(other, 'claude')).models).toEqual(f.catalog.models);
+});
+
+it('同目录并发读取共享磁盘请求，超出文件预算的新目录不截断或擦除旧缓存', async () => {
+  const f = await fixture();
+  const service = createCapabilitiesService({ claude: f.provider }, f.options);
+  await service.refresh(f.ws, 'claude');
+  const read = vi.spyOn(files, 'readConfigFile');
+  const restarted = createCapabilitiesService({}, f.options);
+  const results = await Promise.all(Array.from({ length: 8 }, () => restarted.read(f.ws, 'claude')));
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(results.every((result) => result.models[0]?.id === 'native-model')).toBe(true);
+  f.catalog.models = Array.from({ length: 150 }, (_, index) => ({
+    id: `large-${index}`,
+    label: '完整目录',
+    description: 'x'.repeat(2048),
+  }));
+  expect((await service.refresh(f.ws, 'claude')).models).toHaveLength(150);
+  expect((await createCapabilitiesService({}, f.options).read(f.ws, 'claude')).models[0]?.id).toBe('native-model');
 });
 
 it('损坏缓存按首次使用处理且可被新的成功目录修复', async () => {
@@ -170,4 +211,34 @@ it('损坏缓存按首次使用处理且可被新的成功目录修复', async (
   expect((await service.read(f.ws, 'claude')).discovered).toBe(false);
   await service.refresh(f.ws, 'claude');
   expect((await createCapabilitiesService({}, f.options).read(f.ws, 'claude')).models).toEqual(f.catalog.models);
+});
+
+it('配置失效与磁盘读取交错时不回填旧目录，后续读取不复用旧 Promise', async () => {
+  const f = await fixture();
+  await createCapabilitiesService({ claude: f.provider }, f.options).refresh(f.ws, 'claude');
+  const service = createCapabilitiesService({}, f.options);
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const readFile = files.readConfigFile;
+  vi.spyOn(files, 'readConfigFile').mockImplementationOnce(async (...args) => {
+    const snapshot = await readFile(...args);
+    entered();
+    await gate;
+    return snapshot;
+  });
+  const old = service.read(f.ws, 'claude');
+  await started;
+  const invalidating = service.invalidate('claude');
+  const fresh = service.read(f.ws, 'claude');
+  release();
+  await invalidating;
+  expect((await old).discovered).toBe(false);
+  expect((await fresh).discovered).toBe(false);
+  expect((await service.read(f.ws, 'claude')).models).toEqual([]);
 });

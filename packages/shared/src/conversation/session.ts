@@ -41,6 +41,20 @@ export const SessionSummarySchema = z.object({
 });
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
 
+/** 页面只取得一段摘要；nextCursor 表示仍可继续加载，空页不代表已到末尾。 */
+export const SessionPageQuerySchema = z
+  .object({
+    agent: AgentKindSchema,
+    scope: z.enum(['active', 'archived', 'unassigned']).default('active'),
+    projectId: z.string().min(1).max(200).optional(),
+    reader: z.string().min(1).max(100).optional(),
+    search: z.string().max(200).optional(),
+    cursor: z.string().min(1).max(8192).optional(),
+  })
+  .strict();
+export type SessionPageQuery = z.infer<typeof SessionPageQuerySchema>;
+export type SessionPage = { items: SessionSummary[]; nextCursor?: string };
+
 /** 各 CLI 原生存储里的会话行：只有原生元数据，不含项目归属与运行态。 */
 export type SessionRecord = SessionRef & {
   summary: string;

@@ -1,6 +1,13 @@
 import { NativeSessionIdSchema, type SessionActionInput, type SessionForkInput } from '@agentdeck/shared/conversation';
 import { sameSessionDirectory, sessionDirectoryWithin } from '../common/session-scope';
-import type { NativeSessionFork, NativeSessionRead, NativeSessionRow, NativeSessionSummary } from '../contracts';
+import type {
+  NativeSessionFork,
+  NativeSessionRead,
+  NativeSessionRow,
+  NativeSessionSummary,
+  NativeSessionPageInput,
+  NativeSessionPage,
+} from '../contracts';
 import { SessionError } from '../errors';
 import { CodexClient } from './client';
 import { CodexEventMapper, codexForkPoint } from './mapper';
@@ -130,6 +137,27 @@ export async function listCodexSessions(
       if (cursor) cursors.add(cursor);
     } while (cursor);
     return [...sessions.values()].sort((left, right) => right.lastModified - left.lastModified);
+  });
+}
+
+export async function pageCodexSessions(
+  dir: string,
+  page: NativeSessionPageInput,
+  options: CodexRuntimeOptions & { archived?: boolean } = {},
+): Promise<NativeSessionPage> {
+  return withClient(dir, options, async (client) => {
+    const response = await client.request('thread/list', {
+      limit: page.limit,
+      cursor: page.cursor,
+      sortKey: 'updated_at',
+      modelProviders: [],
+      sourceKinds: ['cli', 'vscode', 'exec', 'appServer'],
+      archived: options.archived ?? false,
+    });
+    if (!Array.isArray(response.data)) throw new CodexError('Codex 未返回有效的会话列表。');
+    const nextCursor = text(response.nextCursor) || undefined;
+    if (nextCursor && nextCursor === page.cursor) throw new CodexError('Codex 会话分页游标重复。');
+    return { items: matchingSummaries(response.data), nextCursor };
   });
 }
 

@@ -264,6 +264,42 @@ it('跨项目从普通列表返回已完成的AGY会话直接恢复内存，显�
   expect(JSON.stringify(useChat.getState().items)).toContain('后台执行结果');
 });
 
+it('空闲已读正文超过预算后按需重读，参数、草稿和不可回放内容保留', async () => {
+  const read = vi.spyOn(sessionsApi, 'sessionEvents').mockImplementation(async (_workspace, sessionId, agent) => ({
+    session: { agent, sessionId, summary: sessionId, lastModified: 1 },
+    events: [{ type: 'text', delta: `正文${sessionId}` }],
+  }));
+  await useChat.getState().openSession({ agent: 'codex', sessionId: 'first' });
+  const first = useChat.getState().conversationId;
+  useChat.getState().setModel('selected-model');
+  useChat.getState().setPermission({ agent: 'codex', mode: 'ask' });
+  useChat.getState().newSession('antigravity');
+  useChat.setState({
+    sessionId: 'unreplayable',
+    items: [{ kind: 'assistant', id: 'text', text: '唯一正文', streaming: false }],
+    historyNotice: '不能回放',
+  });
+  const agy = useChat.getState().conversationId;
+  useChat.getState().newSession('claude');
+  useChat.getState().setDraft('不能丢的草稿');
+  const draft = useChat.getState().conversationId;
+  for (let index = 0; index < 12; index++)
+    await useChat.getState().openSession({ agent: 'codex', sessionId: `later-${index}` });
+  expect(useChat.getState().background[first]).toMatchObject({
+    items: [],
+    historyReloadNeeded: true,
+    modelOverrides: { codex: 'selected-model' },
+    permission: { agent: 'codex', mode: 'ask' },
+  });
+  expect(JSON.stringify(useChat.getState().background[agy]?.items)).toContain('唯一正文');
+  expect(useChat.getState().background[draft]?.draft).toBe('不能丢的草稿');
+  const calls = read.mock.calls.length;
+  useChat.getState().openConversation(first);
+  await vi.waitFor(() => expect(useChat.getState().loadingHistory).toBe(false));
+  expect(read).toHaveBeenCalledTimes(calls + 1);
+  expect(JSON.stringify(useChat.getState().items)).toContain('正文first');
+});
+
 it('准备期间离开后可找回和停止，迟到开始与结束不抢占新页面', () => {
   useChat.getState().send('准备A');
   const clientTurnId = useChat.getState().pendingClientTurnId!;

@@ -1,4 +1,4 @@
-import type { AgentKind, AgentModel } from '@agentdeck/shared/conversation';
+import type { AgentCapabilities, AgentKind, AgentModel } from '@agentdeck/shared/conversation';
 import { findModel } from './shared/model-identity';
 import { standardEfforts } from './shared/documented-models';
 import { claudeEfforts } from './claude/model-policy';
@@ -20,4 +20,20 @@ export function modelDefaultEffort(agent: AgentKind, id: string, models: AgentMo
   if (selected?.defaultReasoningEffort) return selected.defaultReasoningEffort;
   if (agent === 'antigravity' && !selected?.modelId) return variant(id)?.[2];
   return undefined;
+}
+
+function sameConfiguredModel(id: string, configured: string | undefined, models: AgentModel[]): boolean {
+  if (!configured) return false;
+  if (id === configured) return true;
+  const selected = findModel(models, id);
+  return !!selected && selected === findModel(models, configured);
+}
+
+/** 目录默认只用于对应型号；切到另一型号后不猜配置档位是否仍然适用。 */
+export function configuredModelEffort(agent: AgentKind, id: string, catalog?: AgentCapabilities): string | undefined {
+  const models = catalog?.models ?? [];
+  if (sameConfiguredModel(id, catalog?.defaultModel, models))
+    return catalog?.defaultReasoningEffort ?? modelDefaultEffort(agent, id, models);
+  if (catalog?.defaultReasoningEffort) return undefined;
+  return modelDefaultEffort(agent, id, models);
 }

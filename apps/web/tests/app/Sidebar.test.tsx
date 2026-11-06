@@ -278,12 +278,12 @@ function ProjectSessionsSidebar() {
 
 it('项目会话单个CLI读取失败时保留其他来源，错误按项目展示且只重试失败来源', async () => {
   let failed = true;
-  const list = vi.spyOn(sessionsApi, 'listSessions').mockImplementation(async (id, agent) => {
-    if (id === project.id && agent === 'codex') {
+  const list = vi.spyOn(sessionsApi, 'page').mockImplementation(async ({ agent }) => {
+    if (agent === 'codex') {
       if (failed) throw new ApiError(503, '原生目录暂不可用');
-      return [codexSession];
+      return { items: [codexSession] };
     }
-    return id === project.id && agent === 'claude' ? [claudeSession] : [];
+    return { items: agent === 'claude' ? [claudeSession] : [] };
   });
   render(<ProjectSessionsSidebar />);
   const group = within(screen.getByRole('region', { name: '示例项目会话' }));
@@ -292,19 +292,21 @@ it('项目会话单个CLI读取失败时保留其他来源，错误按项目展�
   expect(group.queryByText('暂无会话')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /^另一个项目/ }));
   const otherGroup = within(screen.getByRole('region', { name: '另一个项目会话' }));
-  expect(otherGroup.queryByRole('alert')).toBeNull();
-  expect(otherGroup.getByText('暂无会话')).toBeTruthy();
-  expect(list).toHaveBeenCalledTimes(6);
+  expect(otherGroup.getByRole('alert').textContent).toContain('Codex');
+  expect(list).toHaveBeenCalledTimes(3);
   failed = false;
   fireEvent.click(group.getByRole('button', { name: '重新读取会话' }));
   expect(await group.findByText(codexSession.title)).toBeTruthy();
   expect(group.queryByRole('alert')).toBeNull();
-  expect(list).toHaveBeenCalledTimes(7);
-  expect(list).toHaveBeenLastCalledWith(project.id, 'codex', false, expect.any(AbortSignal));
+  expect(list).toHaveBeenCalledTimes(4);
+  expect(list).toHaveBeenLastCalledWith(
+    expect.objectContaining({ agent: 'codex', scope: 'active' }),
+    expect.any(AbortSignal),
+  );
 });
 
 it('所有会话来源读取失败时不能显示暂无会话', async () => {
-  vi.spyOn(sessionsApi, 'listSessions').mockRejectedValue(new ApiError(503, '原生目录暂不可用'));
+  vi.spyOn(sessionsApi, 'page').mockRejectedValue(new ApiError(503, '原生目录暂不可用'));
   render(<ProjectSessionsSidebar />);
   const group = within(screen.getByRole('region', { name: '示例项目会话' }));
   expect(await group.findAllByRole('alert')).toHaveLength(3);

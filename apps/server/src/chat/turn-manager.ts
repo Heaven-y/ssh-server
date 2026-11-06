@@ -12,6 +12,7 @@ export type TurnManagerDeps = {
   runners: Partial<Record<AgentKind, TurnRunner>>;
   sessions: {
     assertBelongs(ws: Workspace, agent: AgentKind, id: string, signal?: AbortSignal): Promise<Workspace | void>;
+    invalidate?(agent: AgentKind): void;
   };
   capabilities?: Pick<CapabilitiesService, 'prepare'>;
   acquireWorkspace?: (id: string) => () => void;
@@ -173,6 +174,7 @@ export class TurnManager {
   private event(turn: Turn, event: AgentEvent): void {
     if (turn.finished) return;
     if (event.type === 'session') {
+      this.deps.sessions.invalidate?.(turn.agent);
       if (!this.bindSession(turn, event.sessionId)) return;
       event = { ...event, agent: turn.agent };
     }
@@ -297,6 +299,7 @@ export class TurnManager {
   private finish(turn: Turn): void {
     if (turn.finished) return;
     turn.finished = true;
+    this.deps.sessions.invalidate?.(turn.agent);
     for (const [id, pending] of this.pending) {
       if (pending.turn === turn) {
         this.pending.delete(id);

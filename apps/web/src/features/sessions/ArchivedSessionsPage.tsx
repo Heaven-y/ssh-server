@@ -1,5 +1,5 @@
-import { sessionsApi, sessionsKeys } from './api';
-import { useQueries } from '@tanstack/react-query';
+import { useSessionPages } from './use-session-pages';
+import { LoadMoreSessions } from './LoadMoreSessions';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Archive, ArrowLeft } from 'lucide-react';
 import { legacySessionCapabilities, type SessionSummary } from '@agentdeck/shared/conversation';
@@ -43,6 +43,9 @@ function latestSelection(rows: SessionSummary[] | undefined, selected?: Selectio
   return rows?.find(
     (session) => session.agent === selected.session.agent && session.sessionId === selected.session.sessionId,
   );
+}
+function isEmpty(page: ReturnType<typeof useSessionPages>) {
+  return !page.loading && !page.errors.length && !page.hasMore && !page.sessions.length;
 }
 
 function ArchivedRow({
@@ -90,25 +93,12 @@ export default function ArchivedSessionsPage({ projects, close, addProject }: Pr
   useLayoutEffect(() => {
     back.current?.focus();
   }, []);
-  const queries = useQueries({
-    queries: (['codex', 'claude', 'antigravity'] as const).map((agent) => ({
-      queryKey: sessionsKeys.archivedSessions(agent),
-      queryFn: ({ signal }: { signal: AbortSignal }) => sessionsApi.archivedSessions(agent, signal),
-      retry: false,
-    })),
-  });
-  const rows = queries.flatMap((query) => query.data ?? []);
-  const pending = queries.some((query) => query.isPending);
-  const failedQueries = queries.filter((query) => query.isError);
+  const page = useSessionPages({ scope: 'archived', search });
+  const rows = page.sessions;
+  const pending = page.loading;
   const projectsById = new Map(projects.map((project) => [project.id, project]));
-  const phrase = search.trim().toLocaleLowerCase();
-  const sessions = rows
-    .filter((session) =>
-      `${session.title} ${session.directory ?? ''} ${projectsById.get(session.projectId ?? '')?.name ?? ''} ${AGENT_LABELS[session.agent]}`
-        .toLocaleLowerCase()
-        .includes(phrase),
-    )
-    .toSorted((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+  const phrase = search.trim();
+  const sessions = rows;
   const selectedSession = latestSelection(rows, selected);
   return (
     <section aria-label="已归档会话页面" className="flex h-full min-h-0 flex-col">
@@ -135,22 +125,22 @@ export default function ArchivedSessionsPage({ projects, close, addProject }: Pr
             正在读取归档会话…
           </p>
         )}
-        {failedQueries.map((query, index) => (
+        {page.errors.map((query, index) => (
           <p key={index} role="alert" className="text-sm text-destructive-foreground">
-            {query.error?.message}
+            {query.message}
           </p>
         ))}
-        {failedQueries.length > 0 && (
+        {page.errors.length > 0 && (
           <button
             type="button"
-            disabled={failedQueries.some((query) => query.isFetching)}
+            disabled={page.loading}
             className={`${buttonClass('ghost')} self-start`}
-            onClick={() => failedQueries.forEach((query) => void query.refetch())}
+            onClick={page.retry}
           >
             重试
           </button>
         )}
-        {!pending && !failedQueries.length && !sessions.length && (
+        {isEmpty(page) && (
           <p className="py-12 text-center text-sm text-muted-foreground">
             {phrase ? '没有匹配的归档会话' : '暂无已归档会话'}
           </p>
@@ -166,6 +156,7 @@ export default function ArchivedSessionsPage({ projects, close, addProject }: Pr
             />
           ))}
         </ul>
+        <LoadMoreSessions hasMore={page.hasMore} loading={page.loadingMore} more={page.more} />
       </div>
       {selected && selectedSession?.projectId && (
         <SessionActionsDialog

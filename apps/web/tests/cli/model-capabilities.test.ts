@@ -1,12 +1,12 @@
 import { expect, it } from 'vitest';
 import { claudeContextModels } from '../../src/cli/claude/context-models';
 import { findModel, modelDisplay } from '../../src/cli/shared/model-identity';
-import { modelDefaultEffort, modelEfforts } from '../../src/cli/model-capabilities';
+import { configuredModelEffort, modelDefaultEffort, modelEfforts } from '../../src/cli/model-capabilities';
 
 it('Claude 的别名和 [1m] 匹配同一型号能力，但显示和发送身份保持原样', () => {
   const model = { id: 'sonnet', label: '工作模型', modelId: 'claude-sonnet-4-6', reasoningEfforts: ['low', 'high'] };
   expect(findModel([model], 'sonnet[1m]')).toBe(model);
-  expect(modelDisplay('sonnet[1m]', model)).toBe('工作模型 · claude-sonnet-4-6[1m]');
+  expect(modelDisplay('sonnet[1m]', model)).toBe('claude-sonnet-4-6[1m]');
   expect(modelEfforts('claude', 'sonnet[1m]', [model])).toEqual(['low', 'high']);
   expect(modelEfforts('claude', 'claude-opus-4-6[1m]', [])).toEqual(['low', 'medium', 'high', 'max']);
   expect(model.id).toBe('sonnet');
@@ -40,6 +40,26 @@ it('明确不支持与原生限制优先于文档，未报告才补充 GPT 6 型
   expect(modelEfforts('codex', 'unknown-model', [])).toEqual([]);
 });
 
+it('配置档位优先于型号默认，别名对应同一配置，切换其他型号不沿用不确定的默认', () => {
+  const catalog = {
+    agent: 'codex' as const,
+    defaultModel: 'configured-model',
+    defaultReasoningEffort: 'high',
+    entries: [],
+    warnings: [],
+    models: [
+      { id: 'configured-model', label: '配置模型', modelId: 'native-id', defaultReasoningEffort: 'low' },
+      { id: 'other-model', label: '其他模型', defaultReasoningEffort: 'medium' },
+    ],
+  };
+  expect(configuredModelEffort('codex', 'configured-model', catalog)).toBe('high');
+  expect(configuredModelEffort('codex', 'native-id', catalog)).toBe('high');
+  expect(configuredModelEffort('codex', 'other-model', catalog)).toBeUndefined();
+  expect(configuredModelEffort('codex', 'other-model', { ...catalog, defaultReasoningEffort: undefined })).toBe(
+    'medium',
+  );
+});
+
 it('按已核实型号补充分档，不把思考开关或第三方重命名模型当作通用 effort', () => {
   expect(modelEfforts('claude', 'deepseek-flash', [])).toEqual(['low', 'high', 'max']);
   expect(modelEfforts('claude', 'kimi-k3[1m]', [])).toEqual(['low', 'high', 'max']);
@@ -55,6 +75,6 @@ it('AGY 只使用目录中的同族变体，自定义键不借用底层 API 的�
   expect(modelEfforts('antigravity', models[0]!.id, models)).toEqual(['low', 'high']);
   expect(modelDefaultEffort('antigravity', models[0]!.id, models)).toBe('low');
   const custom = { id: 'my-model', label: '我的模型', modelId: 'gemini-3.1-flash' };
-  expect(modelDisplay(custom.id, custom)).toBe('我的模型 · gemini-3.1-flash');
+  expect(modelDisplay(custom.id, custom)).toBe('gemini-3.1-flash');
   expect(modelEfforts('antigravity', custom.id, [...models, custom])).toEqual([]);
 });

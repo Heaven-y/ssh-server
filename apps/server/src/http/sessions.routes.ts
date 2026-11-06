@@ -6,6 +6,7 @@ import {
   NativeSessionIdSchema,
   SessionActionSchema,
   SessionForkSchema,
+  SessionPageQuerySchema,
 } from '@agentdeck/shared/conversation';
 import { type Workspace } from '@agentdeck/shared/projects';
 import { SessionError } from '../agents/errors';
@@ -47,6 +48,18 @@ function watchAbort(reply: FastifyReply) {
 }
 
 export function registerSessionRoutes(app: FastifyInstance, deps: Deps): void {
+  app.get('/api/sessions/page', routeOptions, async (req, reply) => {
+    const query = SessionPageQuerySchema.safeParse(req.query);
+    if (!query.success) return reply.code(400).send({ message: '会话分页请求格式不正确' });
+    const watch = watchAbort(reply);
+    try {
+      return await deps.sessions.page(query.data, watch.signal);
+    } catch (error) {
+      return sendFailure(reply, error, '原生会话读取失败');
+    } finally {
+      watch.dispose();
+    }
+  });
   async function globalList(req: FastifyRequest, reply: FastifyReply, archived: boolean) {
     const query = Query.safeParse(req.query);
     if (!query.success) return reply.code(400).send({ message: '会话请求格式不正确' });

@@ -14,6 +14,7 @@ import {
   discoverCodexCapabilities,
   forkCodexSession,
   listCodexSessions,
+  pageCodexSessions,
   mutateCodexSession,
   readCodexSession,
 } from '../agents/codex';
@@ -77,6 +78,7 @@ export function createCliServices({
       antigravity: createAntigravitySessions({ management: antigravityManagement }),
       codex: {
         list: (dir, signal, archived) => listCodexSessions(dir, { signal, archived }),
+        page: (dir, input, signal, archived) => pageCodexSessions(dir, input, { signal, archived }),
         read: (id, dir, signal) => readCodexSession(id, dir, { signal }),
         assertBelongs: (id, dir, signal) => assertCodexSession(id, dir, { signal }),
         mutate: (id, dir, input) => mutateCodexSession(id, dir, input),

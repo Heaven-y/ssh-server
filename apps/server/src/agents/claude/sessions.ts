@@ -8,14 +8,14 @@ import {
   type SDKSessionInfo,
 } from '@anthropic-ai/claude-agent-sdk';
 import { NativeSessionIdSchema, type SessionForkInput } from '@agentdeck/shared/conversation';
-import type { NativeSessionFork } from '../contracts';
+import type { NativeSessionFork, NativeSessionPageInput } from '../contracts';
 import { SessionError } from '../errors';
 import { type SessionProvider } from '../contracts';
 import { ClaudeEventMapper, claudeHistoryForkPoint } from './mapper';
 import { sameSessionDirectory, sessionDirectoryWithin } from '../common/session-scope';
 
 export type ClaudeSessionsApi = {
-  list(dir: string): Promise<SDKSessionInfo[]>;
+  list(dir: string, page?: NativeSessionPageInput): Promise<SDKSessionInfo[]>;
   info(id: string, dir?: string): Promise<SDKSessionInfo | undefined>;
   messages(id: string, dir: string): Promise<unknown[]>;
   rename(id: string, title: string, dir: string): Promise<void>;
@@ -24,7 +24,8 @@ export type ClaudeSessionsApi = {
 };
 
 const nativeApi: ClaudeSessionsApi = {
-  list: () => listSessions({ includeWorktrees: false }),
+  list: (_dir, page) =>
+    listSessions({ includeWorktrees: false, ...(page ? { limit: page.limit, offset: Number(page.cursor ?? 0) } : {}) }),
   info: (id, dir) => getSessionInfo(id, dir ? { dir } : undefined),
   messages: (id, dir) => getSessionMessages(id, { dir, includeSystemMessages: true }),
   rename: (id, title, dir) => renameSession(id, title, { dir }),
@@ -75,6 +76,21 @@ export function createClaudeSessions(api: ClaudeSessionsApi = nativeApi): Sessio
     };
   }
   return {
+    async page(dir, page, signal, archived = false) {
+      signal?.throwIfAborted();
+      if (archived) throw new SessionError(400, 'unsupported_action', 'Claude Code 不支持原生归档');
+      const records = await api.list(dir, page);
+      signal?.throwIfAborted();
+      return {
+        items: records.map(({ sessionId, summary, lastModified, cwd }) => ({
+          sessionId,
+          summary,
+          lastModified,
+          ...(cwd ? { cwd } : {}),
+        })),
+        nextCursor: records.length === page.limit ? String(Number(page.cursor ?? 0) + page.limit) : undefined,
+      };
+    },
     async list(dir, _signal, archived = false) {
       if (archived) throw new SessionError(400, 'unsupported_action', 'Claude Code 不支持归档会话');
       const records = await api.list(dir);

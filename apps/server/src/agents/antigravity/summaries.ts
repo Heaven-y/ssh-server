@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import type { NativeSessionPageInput } from '../contracts';
 
 /** Antigravity 摘要表的一行；字段名保持数据库原样，映射交给会话提供方。 */
 export type SummaryRow = {
@@ -29,7 +30,11 @@ const FILTERS: { column: string; clause: string }[] = [
 ];
 
 function queryFor(columns: Set<string>): string {
-  const filters = FILTERS.filter((filter) => columns.has(filter.column)).map((filter) => filter.clause);
+  const filters = [
+    "trim(coalesce(cast(conversation_id as text), '')) <> ''",
+    "trim(coalesce(cast(last_modified_time as text), '')) <> ''",
+    ...FILTERS.filter((filter) => columns.has(filter.column)).map((filter) => filter.clause),
+  ];
   const where = filters.length ? `\nwhere ${filters.join('\n  and ')}` : '';
   return `select ${BASE_COLUMNS.join(', ')}\nfrom conversation_summaries${where}\norder by last_modified_time desc`;
 }
@@ -75,11 +80,14 @@ function toSummaryRow(value: unknown): SummaryRow | undefined {
  * 只读读取 Antigravity 的会话摘要。
  * 库不存在、表结构变化、文件损坏或锁冲突都按「没有可展示的会话」处理，绝不向调用方抛错。
  */
-export function readSummaries(dbPath: string): SummaryRow[] {
+export function readSummaries(dbPath: string, page?: NativeSessionPageInput): SummaryRow[] {
   let db: DatabaseSync | undefined;
   try {
     db = new DatabaseSync(dbPath, { readOnly: true });
-    const rows = db.prepare(queryFor(tableColumns(db))).all();
+    const sql = queryFor(tableColumns(db));
+    const rows = page
+      ? db.prepare(`${sql}, conversation_id asc limit ? offset ?`).all(page.limit, Number(page.cursor ?? 0))
+      : db.prepare(sql).all();
     const result: SummaryRow[] = [];
     for (const row of rows) {
       const summary = toSummaryRow(row);

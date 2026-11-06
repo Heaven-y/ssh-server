@@ -120,6 +120,15 @@ function setup(projects = [ws, other]) {
 }
 
 describe('会话接口', () => {
+  it('分页接口校验来源和筛选，返回统一摘要页而不读取正文', async () => {
+    const f = setup();
+    const response = await f.app.inject('/api/sessions/page?agent=antigravity&scope=active');
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items.map((row: { sessionId: string }) => row.sessionId)).toEqual(['a1', 'a2']);
+    expect(f.api.messages).not.toHaveBeenCalled();
+    expect((await f.app.inject('/api/sessions/page?agent=claude&scope=wrong')).statusCode).toBe(400);
+    expect((await f.app.inject('/api/sessions/page?agent=claude&cursor=invalid')).statusCode).toBe(409);
+  });
   it.each([
     { method: 'GET' as const, url: '/api/sessions?agent=claude&extra=true' },
     { method: 'GET' as const, url: '/api/sessions?agent=claude&archived=true' },

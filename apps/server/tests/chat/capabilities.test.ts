@@ -55,6 +55,47 @@ function setup() {
 }
 
 describe('原生能力解析', () => {
+  it('已发现命令目录被回收后执行时补取，配置失效仍拒绝旧选择', async () => {
+    const { service, provider } = setup();
+    await service.refresh(ws, 'codex');
+    for (let index = 0; index < 33; index++)
+      await service.refresh({ ...ws, dir: path.join(ws.dir, String(index)) }, 'codex');
+    const prepared = await Promise.all([
+      service.prepare(ws, 'codex', { text: '/inspect task' }),
+      service.prepare(ws, 'codex', { text: '/inspect another' }),
+    ]);
+    expect(prepared[0]).toMatchObject({
+      text: 'task',
+      invocation: { kind: 'skill', name: 'inspect' },
+    });
+    expect(provider).toHaveBeenCalledTimes(35);
+    expect(prepared[1]?.text).toBe('another');
+    await service.invalidate('codex');
+    await expect(service.prepare(ws, 'codex', { text: '/inspect task' })).rejects.toMatchObject({
+      code: 'capabilities_not_refreshed',
+    });
+  });
+  it('内存目录按最近使用回收，刷新中的目录不会被其他目录挤掉', async () => {
+    const { service, provider, catalog } = setup();
+    const directory = (index: number) => ({ ...ws, dir: path.join(ws.dir, String(index)) });
+    for (let index = 0; index < 32; index++) await service.refresh(directory(index), 'codex');
+    await service.read(directory(0), 'codex');
+    let release!: (value: NativeCapabilityCatalog) => void;
+    provider.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const pending = service.refresh(directory(1), 'codex');
+    await service.refresh(directory(32), 'codex');
+    expect((await service.read(directory(0), 'codex')).discovered).toBe(true);
+    expect((await service.read(directory(1), 'codex')).discovered).toBe(true);
+    expect((await service.read(directory(2), 'codex')).discovered).toBe(false);
+    release(catalog);
+    await pending;
+    expect((await service.read(directory(1), 'codex')).discovered).toBe(true);
+  });
   it('配置保存同时清除旧缓存与在途刷新，其他 CLI 缓存保留', async () => {
     const { service, provider, catalog } = setup();
     await service.refresh(ws, 'claude');

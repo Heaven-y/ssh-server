@@ -1,6 +1,6 @@
-import { sessionsApi, sessionsKeys } from '../features/sessions/api';
+import { useSessionPages } from '../features/sessions/use-session-pages';
+import { LoadMoreSessions } from '../features/sessions/LoadMoreSessions';
 import { Command } from 'cmdk';
-import { useQueries } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { AgentKind, SessionSummary } from '@agentdeck/shared/conversation';
 import type { Workspace } from '@agentdeck/shared/projects';
@@ -94,44 +94,44 @@ function SessionSource({
     </Command.Group>
   );
 }
-function PaletteSessions({ workspace, choose }: { workspace?: Workspace; choose(session: SessionSummary): void }) {
-  const sources = useQueries({
-    queries: (['claude', 'codex', 'antigravity'] as const).map((agent) => ({
-      queryKey: sessionsKeys.sessions(workspace?.id ?? '', agent),
-      queryFn: ({ signal }: { signal: AbortSignal }) => sessionsApi.listSessions(workspace!.id, agent, false, signal),
-      enabled: !!workspace,
-      retry: false,
-    })),
-  });
+function PaletteSessions({
+  workspace,
+  search,
+  choose,
+}: {
+  workspace?: Workspace;
+  search: string;
+  choose(session: SessionSummary): void;
+}) {
+  const page = useSessionPages({ projectId: workspace?.id, search, enabled: !!workspace });
   if (!workspace) return null;
   return (
     <>
-      {sources.map((query, index) => {
-        const agent = (['claude', 'codex', 'antigravity'] as const)[index]!;
-        return (
-          <div key={agent}>
-            {query.isLoading && (
-              <p role="status" className="px-3 py-2 text-xs text-muted-foreground">
-                正在读取 {agent} 会话…
-              </p>
-            )}
-            {query.isError && (
-              <p role="alert" className="px-3 py-2 text-xs text-destructive-foreground">
-                {agent} 会话：{query.error.message}{' '}
-                <button
-                  type="button"
-                  className="underline"
-                  disabled={query.isFetching}
-                  onClick={() => void query.refetch()}
-                >
-                  重新读取
-                </button>
-              </p>
-            )}
-            <SessionSource agent={agent} workspaceId={workspace.id} sessions={query.data ?? []} choose={choose} />
-          </div>
-        );
-      })}
+      {page.loading && (
+        <p role="status" className="px-3 py-2 text-xs text-muted-foreground">
+          正在读取会话…
+        </p>
+      )}
+      {page.errors.map((error) => (
+        <p key={error.agent} role="alert" className="px-3 py-2 text-xs text-destructive-foreground">
+          {error.agent} 会话：{error.message}
+        </p>
+      ))}
+      {page.errors.length > 0 && (
+        <button type="button" onClick={page.retry}>
+          重新读取
+        </button>
+      )}
+      {(['claude', 'codex', 'antigravity'] as const).map((agent) => (
+        <SessionSource
+          key={agent}
+          agent={agent}
+          workspaceId={workspace.id}
+          sessions={page.sessions.filter((row) => row.agent === agent)}
+          choose={choose}
+        />
+      ))}
+      <LoadMoreSessions hasMore={page.hasMore} loading={page.loadingMore} more={page.more} />
     </>
   );
 }
@@ -146,6 +146,7 @@ export default function CommandPalette({
   actions: PaletteActions;
   close(): void;
 }) {
+  const [search, setSearch] = useState('');
   const [error, setError] = useState<string>();
   const run = (action: Action) => {
     if (action.workspace && (!workspace || useChat.getState().workspaceId !== workspace.id)) {
@@ -171,9 +172,21 @@ export default function CommandPalette({
     });
   return (
     <DetailDialog title="搜索与操作" onClose={close}>
-      <Command label="项目、会话和常用操作" loop>
+      <Command
+        label="项目、会话和常用操作"
+        loop
+        filter={(value, search, keywords = []) =>
+          value.startsWith('session:')
+            ? 1
+            : `${value} ${keywords.join(' ')}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())
+              ? 1
+              : 0
+        }
+      >
         <Command.Input
           autoFocus
+          value={search}
+          onValueChange={setSearch}
           placeholder="搜索项目、会话或操作…"
           aria-label="搜索命令"
           className="w-full rounded-md border border-border-strong bg-background px-3 py-2 text-sm"
@@ -221,7 +234,7 @@ export default function CommandPalette({
               </Command.Item>
             ))}
           </Command.Group>
-          <PaletteSessions workspace={workspace} choose={choose} />
+          <PaletteSessions workspace={workspace} search={search} choose={choose} />
         </Command.List>
       </Command>
     </DetailDialog>

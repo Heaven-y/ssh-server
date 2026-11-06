@@ -79,21 +79,22 @@ it('桌面选择文件夹只填入路径，确认添加时才创建项目', asyn
 it('其他目录添加为项目后立即刷新归属，移除原来的无归属条目', async () => {
   const dir = path.resolve('fixtures', 'discovered');
   let assigned = false;
-  vi.spyOn(sessionsApi, 'orphanSessions').mockImplementation(async (agent) =>
-    agent === 'claude' && !assigned
-      ? [
-          {
-            agent,
-            sessionId: 'native',
-            title: '待归属会话',
-            updatedAt: '2026-11-05T00:00:00Z',
-            projectId: null,
-            running: false,
-            directory: dir,
-          },
-        ]
-      : [],
-  );
+  vi.spyOn(sessionsApi, 'page').mockImplementation(async ({ agent }) => ({
+    items:
+      agent === 'claude' && !assigned
+        ? [
+            {
+              agent,
+              sessionId: 'native',
+              title: '待归属会话',
+              updatedAt: '2026-11-05T00:00:00Z',
+              projectId: null,
+              running: false,
+              directory: dir,
+            },
+          ]
+        : [],
+  }));
   vi.spyOn(projectsApi, 'createProject').mockImplementation(async () => {
     assigned = true;
     return { id: 'discovered', name: 'discovered', dir };

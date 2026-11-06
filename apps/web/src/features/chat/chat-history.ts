@@ -74,7 +74,10 @@ export function createChatHistory(get: () => ChatState, set: SetState) {
       const actualModel = reportedModel(history.actualModel);
       set((current) => ({
         items,
+        title: history.session.summary,
         loadingHistory: false,
+        historyReloadNeeded: false,
+        historyReplayable: true,
         actualModel,
         ...statuses,
         sessionModels: {
