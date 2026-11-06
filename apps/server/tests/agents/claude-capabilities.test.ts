@@ -154,7 +154,23 @@ it('保留自定义模型的原生别名和显示名，默认选项不变成实�
     { id: 'opus', label: 'custom-model' },
     { id: 'sonnet', label: 'custom-model' },
   ]);
+  expect(result.models.map((model) => model.modelId)).toEqual(['custom-model', 'custom-model']);
+  expect(result.defaultModel).toBeUndefined();
   expect(fake.calls[0]?.options).not.toHaveProperty('model');
+});
+
+it('默认项使用 CLI 报告的真实型号并保留长上下文后缀，不发送 default 别名', async () => {
+  const fake = discovery(
+    async () => [],
+    [
+      { value: 'default', resolvedModel: 'custom-model[1m]', displayName: 'Default', description: '' },
+      { value: 'sonnet[1m]', resolvedModel: 'custom-model[1m]', displayName: '自定义模型', description: '' },
+    ],
+  );
+  const result = await fake.discover(directory);
+  expect(result.defaultModel).toBe('custom-model[1m]');
+  expect(result.models).toMatchObject([{ id: 'sonnet[1m]', modelId: 'custom-model[1m]', label: '自定义模型' }]);
+  expect(result.models).toHaveLength(1);
 });
 
 it('已存在网页等价操作的命令指向具体入口，未接入不冒称原生不支持', async () => {

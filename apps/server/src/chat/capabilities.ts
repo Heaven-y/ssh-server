@@ -2,7 +2,7 @@ import path from 'node:path';
 import type { AgentCapabilities, AgentKind, AgentModel, CapabilitySelection, Workspace } from '@agentdeck/shared';
 import type { CapabilityProvider, NativeCapabilityCatalog, NativeInvocation } from '../agents/capability-types';
 import { SessionError } from './sessions';
-import { createModelCache } from './model-cache';
+import { createModelCache, type CachedModelCatalog } from './model-cache';
 
 type Entry = NativeCapabilityCatalog['entries'][number];
 function typedCommand(text: string): { name: string; text: string } | undefined {
@@ -54,7 +54,7 @@ export function createCapabilitiesService(
   options: { configDir?: string } = {},
 ) {
   const cache = new Map<string, NativeCapabilityCatalog>();
-  const models = new Map<string, AgentModel[] | undefined>();
+  const models = new Map<string, CachedModelCatalog | undefined>();
   const refreshing = new Map<string, symbol>();
   const revisions: Partial<Record<AgentKind, number>> = {};
   const disk = options.configDir ? createModelCache(options.configDir) : undefined;
@@ -65,14 +65,14 @@ export function createCapabilitiesService(
   function publicCatalog(
     agent: AgentKind,
     catalog?: NativeCapabilityCatalog,
-    savedModels?: AgentModel[],
+    savedModels?: CachedModelCatalog,
   ): AgentCapabilities {
     if (!catalog)
       return {
         agent,
-        discovered: savedModels !== undefined,
+        discovered: savedModels?.current ?? false,
         commandsDiscovered: false,
-        models: structuredClone(savedModels ?? []),
+        ...structuredClone(savedModels?.snapshot ?? { models: [] }),
         entries: [],
         warnings: savedModels ? [] : ['打开模型菜单或点击刷新即可读取 CLI 能力。'],
       };
@@ -129,9 +129,13 @@ export function createCapabilitiesService(
       const catalog = structuredClone(await discover(directory, agent, signal));
       assertCurrent();
       if (catalog.modelWarning) {
-        catalog.models = retainModels(catalog.models, (await readDirectory(directory, agent)).models);
+        const previous = await readDirectory(directory, agent);
+        catalog.models = retainModels(catalog.models, previous.models);
+        catalog.defaultModel ??= previous.defaultModel;
+        if (catalog.defaultModel === previous.defaultModel)
+          catalog.defaultReasoningEffort ??= previous.defaultReasoningEffort;
       } else if (catalog.models.length || !catalog.warnings.length || catalog.modelWarning === '') {
-        await disk?.write(agent, key, catalog.models, () => refreshing.get(key) === request && !signal?.aborted);
+        await disk?.write(agent, key, catalog, () => refreshing.get(key) === request && !signal?.aborted);
       }
       assertCurrent();
       cache.set(key, structuredClone(catalog));

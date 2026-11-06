@@ -176,6 +176,21 @@ function customConnectionEdits(config: ConfigObject, changes: Changes, id: strin
   edits.push(...codexAuthEdits(provider, changes, prefix));
   return edits;
 }
+function codexTokenLimitEdits(changes: Changes): Edit[] {
+  const fields = [
+    ['contextWindow', 'model_context_window', '上下文窗口'],
+    ['autoCompactTokenLimit', 'model_auto_compact_token_limit', '自动压缩阈值'],
+  ] as const;
+  return fields
+    .filter(([key]) => owns(changes, key))
+    .map(([key, native, label]) => {
+      try {
+        return { path: [native], value: modelContextWindow(changes[key], label) };
+      } catch (error) {
+        throw new ModelSettingsError((error as Error).message);
+      }
+    });
+}
 function codexEdits(config: ConfigObject, changes: Changes): Edit[] {
   validateKeys(changes, [
     'model',
@@ -187,6 +202,7 @@ function codexEdits(config: ConfigObject, changes: Changes): Edit[] {
     'apiKey',
     'reasoningEffort',
     'contextWindow',
+    'autoCompactTokenLimit',
   ]);
   const id = providerId(config, changes);
   const edits: Edit[] = [];
@@ -194,13 +210,7 @@ function codexEdits(config: ConfigObject, changes: Changes): Edit[] {
   if (owns(changes, 'provider')) edits.push({ path: ['model_provider'], value: id === 'openai' ? null : id });
   if (owns(changes, 'reasoningEffort'))
     edits.push({ path: ['model_reasoning_effort'], value: normalized(changes.reasoningEffort) });
-  if (owns(changes, 'contextWindow')) {
-    try {
-      edits.push({ path: ['model_context_window'], value: modelContextWindow(changes.contextWindow) });
-    } catch (error) {
-      throw new ModelSettingsError((error as Error).message);
-    }
-  }
+  edits.push(...codexTokenLimitEdits(changes));
   edits.push(...(nativeConnectionEdits(config, changes, id) ?? customConnectionEdits(config, changes, id)));
   return edits;
 }

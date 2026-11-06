@@ -95,13 +95,14 @@ function modelEntry(value: unknown): AgentModel | undefined {
     id,
     label: text(model.displayName) || id,
     ...(text(model.description) ? { description: text(model.description) } : {}),
-    reasoningEfforts: [
-      ...new Set(
-        list(model.supportedReasoningEfforts)
-          .map((effort) => text(record(effort).reasoningEffort))
-          .filter(Boolean),
-      ),
-    ],
+    reasoningEfforts: Array.isArray(model.supportedReasoningEfforts)
+      ? [
+          ...new Set(
+            model.supportedReasoningEfforts.map((effort) => text(record(effort).reasoningEffort)).filter(Boolean),
+          ),
+        ]
+      : undefined,
+    defaultReasoningEffort: text(model.defaultReasoningEffort) || undefined,
   };
 }
 
@@ -116,8 +117,9 @@ function modelCursor(response: RecordValue, cursors: Set<string>): string | unde
   return cursor;
 }
 
-async function modelsCatalog(client: CodexClient): Promise<AgentModel[]> {
+async function modelsCatalog(client: CodexClient): Promise<{ models: AgentModel[]; defaultModel?: string }> {
   const models = new Map<string, AgentModel>();
+  const defaults = new Set<string>();
   const cursors = new Set<string>();
   let cursor: string | undefined;
   let count = 0;
@@ -129,15 +131,33 @@ async function modelsCatalog(client: CodexClient): Promise<AgentModel[]> {
     for (const value of response.data) {
       const model = modelEntry(value);
       if (model) models.set(model.id, model);
+      if (model && record(value).isDefault === true) defaults.add(model.id);
     }
     cursor = modelCursor(response, cursors);
   } while (cursor);
-  return [...models.values()];
+  return { models: [...models.values()], defaultModel: defaults.size === 1 ? [...defaults][0] : undefined };
 }
 
-async function configuredModel(client: CodexClient, dir: string): Promise<string> {
+type ModelDefaults = Pick<NativeCapabilityCatalog, 'defaultModel' | 'defaultReasoningEffort'>;
+async function configuredModel(client: CodexClient, dir: string): Promise<ModelDefaults> {
   const response = await client.request('config/read', { cwd: dir, includeLayers: false });
-  return text(record(response.config).model);
+  const config = record(response.config);
+  return {
+    defaultModel: text(config.model) || undefined,
+    defaultReasoningEffort: text(config.model_reasoning_effort) || undefined,
+  };
+}
+
+function applyModelDefaults(catalog: NativeCapabilityCatalog, configured: ModelDefaults, nativeDefault?: string) {
+  catalog.defaultModel = configured.defaultModel ?? nativeDefault;
+  const selected = catalog.models.find((model) => model.id === catalog.defaultModel);
+  catalog.defaultReasoningEffort = configured.defaultReasoningEffort ?? selected?.defaultReasoningEffort;
+  if (catalog.defaultModel && !selected)
+    catalog.models.unshift({
+      id: catalog.defaultModel,
+      label: catalog.defaultModel,
+      description: '当前原生配置中的模型',
+    });
 }
 
 function skillFeedback(skills: PromiseSettledResult<{ entries: Entry[]; warnings: string[] }>): string[] {
@@ -162,16 +182,16 @@ export async function discoverCodexCapabilities(
       catalog.entries.push(...skills.value.entries);
       catalog.warnings.push(...skills.value.warnings);
     } else catalog.warnings.push('Codex 技能目录读取失败，请检查本机技能配置。');
-    if (models.status === 'fulfilled') catalog.models = models.value;
+    if (models.status === 'fulfilled') catalog.models = models.value.models;
     else catalog.warnings.push('Codex 模型目录读取失败，仍可手动填写模型或使用原生配置。');
     catalog.modelWarning = models.status === 'rejected' ? '暂时无法读取模型。' : '';
     catalog.commandWarnings = skillFeedback(skills);
-    if (
-      configured.status === 'fulfilled' &&
-      configured.value &&
-      !catalog.models.some((model) => model.id === configured.value)
-    )
-      catalog.models.unshift({ id: configured.value, label: configured.value, description: '当前原生配置中的模型' });
+    if (configured.status === 'fulfilled')
+      applyModelDefaults(
+        catalog,
+        configured.value,
+        models.status === 'fulfilled' ? models.value.defaultModel : undefined,
+      );
     return catalog;
   } finally {
     await client.close();

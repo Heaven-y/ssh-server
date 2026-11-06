@@ -299,7 +299,7 @@ it('原生目录读取失败保留用户输入，显式自定义连接仍可登�
   });
 });
 
-it('模型显示名称与默认推理参数按原生字段保存，Codex窗口保持整数', async () => {
+it('模型参数按原生字段保存，Codex窗口与压缩阈值独立读写并可恢复默认', async () => {
   const { service, write } = await fixture();
   const claude = await write(
     '.claude/settings.json',
@@ -324,16 +324,29 @@ it('模型显示名称与默认推理参数按原生字段保存，Codex窗口�
     '# native\nmodel_provider="custom"\n[model_providers.custom]\nname="Old"\n',
   );
   const second = await service.read('codex');
-  await service.save('codex', {
+  const saved = await service.save('codex', {
     revision: second.revision,
-    changes: { displayName: 'New', reasoningEffort: 'ultra', contextWindow: '123456' },
+    changes: { displayName: 'New', reasoningEffort: 'ultra', contextWindow: '123456', autoCompactTokenLimit: '100000' },
   });
   expect(parse(await fs.readFile(codex, 'utf8'))).toMatchObject({
     model_reasoning_effort: 'ultra',
     model_context_window: 123456,
+    model_auto_compact_token_limit: 100000,
     model_providers: { custom: { name: 'New' } },
   });
   expect(await fs.readFile(codex, 'utf8')).toContain('# native');
+  expect(saved.fields.find((field) => field.key === 'autoCompactTokenLimit')).toMatchObject({
+    value: '100000',
+    inputType: 'number',
+  });
+  await expect(
+    service.save('codex', { revision: saved.revision, changes: { autoCompactTokenLimit: '1.5' } }),
+  ).rejects.toThrow('自动压缩阈值必须是正整数');
+  const restored = await service.save('codex', { revision: saved.revision, changes: { autoCompactTokenLimit: '' } });
+  const content = parse(await fs.readFile(codex, 'utf8'));
+  expect(content.model_context_window).toBe(123456);
+  expect(content).not.toHaveProperty('model_auto_compact_token_limit');
+  expect(restored.fields.find((field) => field.key === 'autoCompactTokenLimit')?.value).toBe('');
 });
 
 it('选择旧 Antigravity 自定义键并改名时迁移地址，默认选择同步原生 label', async () => {

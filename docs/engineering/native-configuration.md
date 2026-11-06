@@ -21,12 +21,12 @@
 | CLI | 表单写入 | 认证与地址 |
 |---|---|---|
 | Claude | model、modelPicker.options 中选中模型的 label、effortLevel；别名映射收进高级设置 | 原生 env 中的 ANTHROPIC_BASE_URL 与 API Key/Auth Token；账号登录由 CLI 管理 |
-| Codex | model、model_provider、服务商 name、model_reasoning_effort、整数 model_context_window | 自定义 provider 的 base_url 与 Responses 协议；直接填写 Key 使用 experimental_bearer_token，原生高级认证保留 |
+| Codex | model、model_provider、服务商 name、model_reasoning_effort、整数 model_context_window、model_auto_compact_token_limit | 自定义 provider 的 base_url 与 Responses 协议；直接填写 Key 使用 experimental_bearer_token，原生高级认证保留 |
 | Antigravity | model、modelProvider、自定义模型的 label/modelName/maxTokens | 同页配置 Gemini API URL 与 Key，分别映射 GOOGLE_GEMINI_BASE_URL、GEMINI_API_KEY，经加密启动环境交给新进程 |
 
-三者共用模型输入、缓存候选和“获取模型”操作。Claude 的模型名称是 picker label；Codex 的名称是服务商名称，不伪造模型别名。Claude 默认推理强度可保存 low/medium/high/xhigh，max 只用于会话；Codex 按模型目录建议并允许原生强度字符串。Antigravity 默认强度由原生模型变体表示，不写不存在的顶层 effort 字段。
+三者共用模型输入、缓存候选和“获取模型”操作。工作台分开保留 CLI 选择值、显示名称和底层真实型号；模型菜单显示两者，发送时使用原始选择值。Claude 的 `[1m]` 后缀在匹配模型能力时单独处理，不会从发送值中删除。推理强度优先采用模型目录报告，未报告时只按已核对的精确型号补全；没有显式选择就省略字段并显示“自动”。Claude、Codex 与 Antigravity 的档位不能互相套用，详细表见[模型身份与推理强度](model-capabilities.md)。 Claude 的名称仍是 picker label，Codex 的名称仍是服务商名称；Claude 持久默认可写 low/medium/high/xhigh，max 仅用于会话。Antigravity 默认强度仍通过模型变体表示，不写不存在的顶层 effort 字段。
 
-上下文窗口按实际语义显示：Codex 可写数字 token 上限；Antigravity 自定义模型写 maxTokens；Claude 默认显示“由模型决定”。Claude 的条件性网关窗口覆盖与压缩阈值继续留在原始配置，不自动关闭压缩，也不将压缩阈值冒充模型窗口。
+上下文窗口按实际语义显示：Codex 可写数字 token 上限，自动压缩阈值独立填写 token 数并写入原生 model_auto_compact_token_limit，留空移除该覆盖；Antigravity 自定义模型写 maxTokens；Claude 默认显示“由模型决定”。Claude 的条件性网关窗口覆盖与压缩阈值继续留在原始配置，不自动关闭压缩，也不将压缩阈值冒充模型窗口。
 
 Codex 的 provider、端点与认证放在用户配置。当前原生版本会忽略项目 .codex/config.toml 中的这些字段，不能把项目表单当作有效服务商切换。已有高级认证命令、认证请求头、云认证以及内置服务商保持原生配置；简单 Key 表单不能覆盖。TOML 使用 AST 范围修改指定字段，保留注释、未知表、换行和 BOM；不能安全修改的结构转原文编辑，不整体重新序列化。JSON 表单保留未知字段、缩进与换行习惯。
 
@@ -41,6 +41,8 @@ Antigravity 的 `customModelsConfig.customModels` 是对象映射，每个条目
 服务地址唯一写入启动环境 `GOOGLE_GEMINI_BASE_URL`，不会再把地址拼进 `modelName`；读取旧的 `gemini-api://.../models/...` 条目时提取模型 ID，保存时标准化。提交的地址去掉末尾 `/v1beta`，由原生 CLI 添加版本路径，避免重复。已有环境地址优先，旧 URI 的地址只在环境没有显式值时迁移，用户明确停用时不恢复。仅 Gemini 模式使用这些条目，不能把 OpenAI Responses 地址当作 Gemini 地址。旧数组形式的说明已纠正，历史可从 `5d5d0c6` 追溯。
 
 模型目录按 CLI 与实际目录持久缓存，成功结果在应用重启后继续使用；用户可点击重新获取，填写过配置时明确显示“保存并获取模型”。设置 GET `/api/settings/models/:agent/catalog` 只读缓存，POST 使用原生接口获取；不会探测任意服务的 /v1/models 或发送对话。Claude 使用 supportedModels，Codex 使用 model/list 并补入原生当前自定义 ID。模型列表是否列全由原生协议决定，始终允许手输。
+
+Codex 的自动压缩计数口径 `model_auto_compact_token_limit_scope` 和较新版本的轮末压缩百分比 `model_post_turn_compact_threshold_percent` 仍可从原始配置编辑；前者不等于窗口大小，后者不是普通自动压缩阈值的替代。常用表单不改写这些未选择字段。依据为[官方配置参考](https://learn.chatgpt.com/docs/config-file/config-reference)和本机 app-server 的 ConfigReadResponse schema。
 
 ## 读取与编辑边界
 

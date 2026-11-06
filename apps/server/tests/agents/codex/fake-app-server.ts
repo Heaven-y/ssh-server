@@ -178,7 +178,12 @@ function config(message: Message): void {
   }
   if (mode !== 'wait-config')
     reply(message, {
-      config: { developer_instructions: '原生约束', model: 'native-model', model_provider: 'native-provider' },
+      config: {
+        developer_instructions: '原生约束',
+        model: mode.startsWith('catalog-no-') ? undefined : 'native-model',
+        model_reasoning_effort: mode === 'catalog' ? 'medium' : undefined,
+        model_provider: 'native-provider',
+      },
     });
 }
 function echo(message: Message): void {

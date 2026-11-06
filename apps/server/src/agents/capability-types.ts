@@ -7,6 +7,8 @@ export type NativeInvocation =
 export type NativeCapabilityCatalog = {
   entries: Array<AgentCapability & { invocation?: NativeInvocation }>;
   models: AgentModel[];
+  defaultModel?: string;
+  defaultReasoningEffort?: string;
   warnings: string[];
   modelWarning?: string;
   commandWarnings?: string[];

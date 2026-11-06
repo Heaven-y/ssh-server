@@ -16,9 +16,20 @@ export type AgentCapability = {
   requiresSession: boolean;
   supportsArguments: boolean;
 };
-export type AgentModel = { id: string; label: string; description?: string; reasoningEfforts?: string[] };
+export type AgentModel = {
+  id: string;
+  label: string;
+  description?: string;
+  /** 底层原生模型 ID；id 可以是 CLI 别名或自定义配置键，不改写发送值。 */
+  modelId?: string;
+  reasoningEfforts?: string[];
+  defaultReasoningEffort?: string;
+};
 export type AgentCapabilities = {
   agent: AgentKind;
+  /** 原生配置的默认选择；未知时省略，不以候选第一项代替。 */
+  defaultModel?: string;
+  defaultReasoningEffort?: string;
   /** false 表示尚未向 CLI 读取；缺省兼容已取得的目录。 */
   discovered?: boolean;
   /** 模型可从磁盘恢复；技能与命令须在本进程从相同目录重新发现。 */

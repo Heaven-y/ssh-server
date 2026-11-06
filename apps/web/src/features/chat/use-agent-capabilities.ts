@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { api, queryKeys } from '../../lib/api';
 import { useChat } from './chat-store';
 import type { AgentCapabilities, AgentKind } from '@agentdeck/shared';
@@ -8,6 +8,16 @@ import { currentCapabilityError } from './capability-feedback';
 
 type CapabilityScope = { workspaceId: string; agent: AgentKind; sessionId?: string };
 type CapabilityRefresh = CapabilityScope & { generation: number };
+// 重建输入区或切回会话不会重复执行失败的自动发现；配置代次改变后允许重新读取。
+const autoAttempts = new WeakMap<QueryClient, Set<string>>();
+function discoveryAttempts(client: QueryClient) {
+  let attempts = autoAttempts.get(client);
+  if (!attempts) {
+    attempts = new Set();
+    autoAttempts.set(client, attempts);
+  }
+  return attempts;
+}
 function sameTarget(current: CapabilityScope, previous?: CapabilityScope) {
   return (
     !!previous &&
@@ -34,12 +44,14 @@ export function useAgentCapabilities(enabled: boolean, discoverOnOpen = false, c
   const sessionId = useChat((state) => state.sessionId ?? undefined);
   const key = queryKeys.agentCapabilities(workspaceId ?? '', agent, sessionId);
   const generation = nativeCapabilitiesGeneration(agent);
-  const attempted = useRef(new Set<string>());
+  const attempted = discoveryAttempts(client);
   const query = useQuery({
     queryKey: key,
     queryFn: ({ signal }) => api.agentCapabilities(workspaceId ?? '', agent, signal, sessionId),
     enabled: enabled && !!workspaceId,
     staleTime: Infinity,
+    gcTime: Infinity,
+    retryOnMount: false,
     retry: false,
   });
   const refresh = useMutation({
@@ -61,10 +73,10 @@ export function useAgentCapabilities(enabled: boolean, discoverOnOpen = false, c
   const shouldDiscover = mayDiscover(enabled, discoverOnOpen, workspaceId, discovered);
   const mutate = refresh.mutate;
   useEffect(() => {
-    if (!shouldDiscover || !workspaceId || attempted.current.has(targetKey)) return;
-    attempted.current.add(targetKey);
+    if (!shouldDiscover || !workspaceId || attempted.has(targetKey)) return;
+    attempted.add(targetKey);
     mutate({ workspaceId, agent, sessionId, generation });
-  }, [shouldDiscover, targetKey, workspaceId, agent, sessionId, generation, mutate]);
+  }, [shouldDiscover, targetKey, workspaceId, agent, sessionId, generation, mutate, attempted]);
   const currentRefresh = isCurrentRefresh(
     { workspaceId: workspaceId ?? '', agent, sessionId },
     generation,

@@ -8,7 +8,7 @@ import { projectTimeline } from './timeline-model';
 
 /** 动态测量和跟随只交给Virtuoso；展开状态留在列表外，虚拟卸载不丢选择。 */
 export function ChatTimeline({ items, running }: { items: ChatItem[]; running: boolean }) {
-  const rows = useMemo(() => projectTimeline(items), [items]);
+  const rows = useMemo(() => projectTimeline(items.filter((item) => item.kind !== 'statistics')), [items]);
   const list = useRef<VirtuosoHandle>(null);
   const atBottom = useRef(true);
   const [bottom, setBottom] = useState(true);

@@ -1,9 +1,9 @@
 import type { AgentKind } from '@agentdeck/shared';
+import antigravityIcon from './assets/antigravity.svg';
 
 /**
- * Agent 品牌图标：路径数据取自 simple-icons（CC0）。
- * 商标权利归 Anthropic / OpenAI，此处仅用于指示所对接的原生工具；
- * 界面同时保留「Claude / Codex」文字名。
+ * Claude/OpenAI 路径取自 simple-icons（CC0）；Antigravity 素材来源见本地 SVG 注释。
+ * 品牌标识权利归各厂商，此处仅指示所对接的原生工具，界面同时保留文字名。
  */
 export function ClaudeIcon({ className = 'size-4' }: { className?: string }) {
   return (
@@ -31,12 +31,7 @@ export function CodexIcon({ className = 'size-4' }: { className?: string }) {
 export function AgentIcon({ agent, className }: { agent: AgentKind; className?: string }) {
   if (agent === 'antigravity')
     return (
-      <span
-        aria-hidden
-        className={`inline-flex shrink-0 items-center justify-center font-mono font-semibold ${className ?? 'size-4'}`}
-      >
-        A
-      </span>
+      <img src={antigravityIcon} alt="" aria-hidden className={`shrink-0 object-contain ${className ?? 'size-4'}`} />
     );
   return agent === 'claude' ? <ClaudeIcon className={className} /> : <CodexIcon className={className} />;
 }

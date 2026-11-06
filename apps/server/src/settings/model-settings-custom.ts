@@ -11,11 +11,11 @@ import {
 type Changes = NativeModelSettingsInput['changes'];
 const owns = (changes: Changes, key: string) => Object.hasOwn(changes, key);
 
-export function modelContextWindow(value: string | null | undefined): number | null {
+export function modelContextWindow(value: string | null | undefined, label = '上下文窗口'): number | null {
   if (!value?.trim()) return null;
   const number = Number(value);
   if (!/^\d+$/.test(value) || !Number.isSafeInteger(number) || number < 1)
-    throw new Error('上下文窗口必须是正整数（tokens）。');
+    throw new Error(`${label}必须是正整数（tokens）。`);
   return number;
 }
 

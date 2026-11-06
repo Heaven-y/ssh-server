@@ -31,6 +31,7 @@ it('账号模式只读已配置模型，不启动可能加载 MCP 的真实 CLI'
   const homeDir = await fixture({ model: 'Example Native' });
   const catalog = await discoverAntigravityCapabilities('project', { homeDir, env: {} });
   expect(catalog.models).toEqual([{ id: 'Example Native', label: 'Example Native', description: '原生默认模型' }]);
+  expect(catalog.defaultModel).toBe('Example Native');
   expect(catalog.modelWarning).toBe('');
   expect(runProcess).not.toHaveBeenCalled();
 });
@@ -49,13 +50,13 @@ it('模型目录兼容裸 ID 和旧 URI，使用稳定键并保留显示名', as
   const settings = await readAntigravityModelSettings({ homeDir, env: {} });
   expect(settings.customModelsConfig?.customModels.stable?.modelName).toBe('new-model');
   expect(configuredAntigravityModels(settings)).toEqual([
-    { id: 'stable', label: '显示名称', description: '原生自定义模型' },
-    { id: 'old', label: '旧名称', description: '原生自定义模型' },
+    { id: 'stable', label: '显示名称', modelId: 'new-model', description: '原生自定义模型' },
+    { id: 'old', label: '旧名称', modelId: 'old-model', description: '原生自定义模型' },
   ]);
   expect(await antigravityDefaultModel({ HOME: homeDir, USERPROFILE: homeDir })).toBe('stable');
 });
 
-it('Gemini 发现隔离用户目录和工作目录，保持原生 TSV 标识且不复制密钥或执行扩展', async () => {
+it('Gemini 发现隔离用户目录和工作目录，保留自定义键与真实型号且不复制密钥或执行扩展', async () => {
   const homeDir = await fixture({
     modelProvider: 'gemini',
     model: '自定义显示名',
@@ -105,8 +106,9 @@ it('Gemini 发现隔离用户目录和工作目录，保持原生 TSV 标识且�
   });
   expect(result.models).toEqual([
     { id: 'gemini-example-high', label: 'Gemini Example (High)' },
-    { id: '自定义显示名', label: '自定义显示名' },
+    { id: 'custom', label: '自定义显示名', modelId: 'custom', description: '原生自定义模型' },
   ]);
+  expect(result.defaultModel).toBe('custom');
   expect(result.modelWarning).toBe('');
   await expect(stat(isolated)).rejects.toMatchObject({ code: 'ENOENT' });
 });
@@ -125,6 +127,18 @@ it('发现失败清理隔离目录，保留配置模型而不泄露子进程诊�
   await expect(stat(isolated)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
+it('内置模型的原生默认显示名映射到目录 ID，不重复生成无变体信息的默认条目', async () => {
+  const homeDir = await fixture({ modelProvider: 'gemini', model: 'Gemini Example (High)' });
+  vi.mocked(runProcess).mockResolvedValue({
+    exitCode: 0,
+    stderr: Buffer.alloc(0),
+    stdout: Buffer.from('gemini-example-high\tGemini Example (High)\ngemini-example-low\tGemini Example (Low)\n'),
+  });
+  const result = await discoverAntigravityCapabilities('project', { homeDir, env: { GEMINI_API_KEY: 'fixture-key' } });
+  expect(result.defaultModel).toBe('gemini-example-high');
+  expect(result.models.map((model) => model.id)).toEqual(['gemini-example-high', 'gemini-example-low']);
+});
+
 it('Gemini 缺少 Key 只提示配置，旧数组格式不能伪装成可用自定义模型', async () => {
   const homeDir = await fixture({
     modelProvider: 'gemini',
@@ -132,6 +146,7 @@ it('Gemini 缺少 Key 只提示配置，旧数组格式不能伪装成可用自�
   });
   const result = await discoverAntigravityCapabilities('project', { homeDir, env: {} });
   expect(result.models).toEqual([]);
+  expect(result.defaultModel).toBeUndefined();
   expect(result.modelWarning).toContain('API Key');
   expect(runProcess).not.toHaveBeenCalled();
 });

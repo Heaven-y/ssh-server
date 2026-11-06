@@ -205,6 +205,17 @@
     0 0 0 1px var(--color-border-strong),
     0 2px 8px #0000000a;
 }
+.composer-status {
+  display: flex;
+  max-width: calc(var(--conversation-width, 748px) + 32px);
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px 16px;
+  margin: 6px auto 0;
+  padding-inline: 4px;
+}
 .composer-input {
   box-sizing: border-box;
   width: 100%;

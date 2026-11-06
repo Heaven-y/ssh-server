@@ -77,7 +77,7 @@ async function setup(mode = 'normal') {
 }
 
 describe('Codex 原生能力目录与发送', () => {
-  it('刷新技能、区分同名路径，完整分页模型且不返回默认覆盖', async () => {
+  it('刷新技能、区分同名路径，完整分页模型并读取实际配置的默认值', async () => {
     const { dir, options, messages, skillPath } = await setup('catalog');
     const catalog = await discoverCodexCapabilities(dir, options);
     const duplicates = catalog.entries.filter((entry) => entry.kind === 'skill' && entry.name === 'example');
@@ -105,9 +105,13 @@ describe('Codex 原生能力目录与发送', () => {
         label: '建议模型',
         description: '仅作候选',
         reasoningEfforts: ['high', 'custom-effort'],
+        defaultReasoningEffort: 'high',
       },
-      { id: 'other-model', label: '另一个模型', reasoningEfforts: [] },
+      { id: 'other-model', label: '另一个模型' },
     ]);
+    expect(catalog.defaultModel).toBe('native-model');
+    expect(catalog.defaultReasoningEffort).toBe('medium');
+    expect(catalog.models.find((model) => model.id === 'other-model')?.reasoningEfforts).toBeUndefined();
     expect(catalog.warnings).toHaveLength(1);
     expect(JSON.stringify(catalog.warnings)).not.toContain('fixture-private-diagnostic');
     const requests = await messages();
@@ -119,6 +123,13 @@ describe('Codex 原生能力目录与发送', () => {
       undefined,
       'next-page',
     ]);
+  });
+
+  it.each(['catalog-no-model', 'catalog-no-default'])('配置缺少模型时仅采用原生明确标记的默认项：%s', async (mode) => {
+    const { dir, options } = await setup(mode);
+    const result = await discoverCodexCapabilities(dir, options);
+    expect(result.defaultModel).toBe(mode === 'catalog-no-model' ? 'suggested-model' : undefined);
+    expect(result.defaultReasoningEffort).toBe(mode === 'catalog-no-model' ? 'high' : undefined);
   });
 
   it.each(['skills-fail', 'models-fail', 'model-loop'])('%s 只产生对应分支警告，不抹掉另一分支', async (mode) => {

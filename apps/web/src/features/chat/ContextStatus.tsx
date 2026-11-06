@@ -1,7 +1,6 @@
 import { Popover, PopoverDisclosure, usePopoverStore } from '@ariakit/react';
 import { ChevronDown } from 'lucide-react';
 import type { CompactionState, ContextUsage } from '@agentdeck/shared';
-import { buttonClass } from '../../ui/styles';
 import { useChat } from './chat-store';
 
 const numberFormat = new Intl.NumberFormat('zh-CN');
@@ -114,7 +113,7 @@ function ContextLabel({
   );
 }
 /**
- * 与模型、强度共用输入控制行；有原生报告或压缩事件才显示，无数据整体隐藏。
+ * 位于输入框下方；有原生报告或压缩事件才显示，无数据整体隐藏。
  * 只显示原生数据，详情不占常驻高度。
  */
 export function ContextStatus() {
@@ -132,7 +131,7 @@ export function ContextStatus() {
         render={<button type="button" />}
         aria-label="上下文用量"
         title={usageTitle(usage, summary)}
-        className={`${buttonClass('ghost')} min-w-0 max-w-full flex-wrap gap-1 rounded-lg px-2 text-[13px] text-muted-foreground`}
+        className="inline-flex min-h-6 min-w-0 max-w-full flex-wrap items-center gap-1 rounded-md px-1 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
       >
         <ContextLabel usage={usage} compaction={compaction} incomplete={incomplete} />
       </PopoverDisclosure>

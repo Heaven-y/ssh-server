@@ -59,7 +59,7 @@ export function capabilityHandlers(mode: string, transport: Transport): Record<s
               model: 'suggested-model',
               displayName: '建议模型',
               description: '仅作候选',
-              isDefault: true,
+              isDefault: mode !== 'catalog-no-default',
               defaultReasoningEffort: 'high',
               supportedReasoningEfforts: [{ reasoningEffort: 'high' }, { reasoningEffort: 'custom-effort' }],
             },

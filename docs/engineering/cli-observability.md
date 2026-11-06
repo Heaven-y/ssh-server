@@ -12,6 +12,8 @@ DSH 的生成速度同时依赖提供方输出 token 数与首个 token 至完�
 
 依据为安装包中的 `@deepseek-ai/dsh-client-ui-trajectory/README.zh.md`、`@deepseek-ai/dsh-session-stats/README.zh.md`，以及 chat 客户端的计时投影。本次只参考交互和指标定义，不复制插件实现。
 
+当前输入框外下方显示上下文和最新一轮耗时、平均 tok/s；点击统计可展开 token 分项。开始新轮或本轮未报告时不借用旧速度，完整历史统计保留在轨迹视图。Antigravity 使用官方彩色标识。
+
 ## 能力对照
 
 | 内容 | Claude Code | Codex | Antigravity |
@@ -93,3 +95,7 @@ Turn 提供 durationMs 和起止时间；ThreadItem 有可选 startedAtMs/comple
 - Codex：本机 `app-server generate-json-schema` 的 0.166.0 schema；官方 app-server 页面本次返回 403，未用该页面证明字段含义。
 - Antigravity：[headless](https://antigravity.google/docs/cli/headless/)、[statusLine](https://antigravity.google/docs/cli/statusline)、本机 protobuf 描述和隔离 GetCascadeTrajectory 读取。
 - 当前数据入口：[Claude 上下文](../../apps/server/src/agents/claude-query.ts)、[Antigravity 映射](../../apps/server/src/agents/antigravity/mapper.ts)、[前端上下文状态](../../apps/web/src/features/chat/ContextStatus.tsx)、[事件归并](../../apps/web/src/features/chat/chat-reducer.ts)。
+
+## 本轮短对话补充验证
+
+2026-11-06 用户授权使用当前 Claude/Codex 连接和指定 Gemini 模型做一句话正常问答。Claude 取到本轮输入 99、输出 71、耗时约 3.85 秒与 1M 上下文报告；Antigravity 取到步骤输入 37、输出 144、耗时约 2.74 秒。Codex 当前服务返回 403，未取得回复或用量。为控制额度，隔离验收关闭工具并限制输出，Codex/Antigravity 额外裁剪原生前置上下文；不据此宣称完整工具回合或所有模型可用。原配置文件摘要不变，完整结果边界见[路线图](../roadmap.md#模型身份推理强度与输入框统计)。

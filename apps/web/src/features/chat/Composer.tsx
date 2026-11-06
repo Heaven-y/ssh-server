@@ -6,6 +6,7 @@ import { selectionRestriction } from './capability-selection';
 import { ComposerInput } from './ComposerInput';
 import type { AgentCapability } from '@agentdeck/shared';
 import { AgentControls } from './AgentControls';
+import { ComposerStatus } from './ComposerStatus';
 
 function ComposerActions({ disabled }: { disabled: boolean }) {
   const running = useChat((s) => s.running);
@@ -103,6 +104,7 @@ export function Composer() {
           </div>
         </div>
       </div>
+      <ComposerStatus />
     </form>
   );
 }

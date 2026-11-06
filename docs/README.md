@@ -19,6 +19,8 @@
 | [原生对话接入](engineering/native-dialogue.md) | 三 CLI 主流程的本轮边界与接口选择 |
 | [原生配置与启动环境](engineering/native-configuration.md) | 各 CLI 配置入口、显式正文编辑和启动变量的边界 |
 | [CLI 用量与执行轨迹](engineering/cli-observability.md) | 三 CLI 统计口径、执行轨迹接线与仍需验证的边界 |
+| [模型身份与推理强度](engineering/model-capabilities.md) | 模型显示、Claude `[1m]`、上下文和精确推理档位 |
+| [目录与模块边界审查](engineering/structure-review.md) | 独立审查发现、建议目录、分阶段迁移及验证范围（尚未迁移） |
 | [工作台插件接口](engineering/workbench-plugins.md) | 自有 v1 插件格式、宿主接口、SSH Console 与兼容边界 |
 | [本地安装与打包](guides/local-installation.md) | 安装版、便携版、数据保存、构建和隔离验收 |
 

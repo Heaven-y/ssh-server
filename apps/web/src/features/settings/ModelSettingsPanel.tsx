@@ -6,6 +6,7 @@ import { buttonClass } from '../../ui/styles';
 import { nativeAgentNames } from './native-resource-labels';
 import { ModelSettingsField } from './ModelSettingsField';
 import { modelSettingValue, modelSettingsFields, useModelSettings, type SettingsLeave } from './use-model-settings';
+import { modelEfforts } from '../chat/model-capabilities';
 
 type State = ReturnType<typeof useModelSettings>;
 function visibleFields(fields: ModelSettingField[], state: State) {
@@ -24,7 +25,9 @@ function suggestionsFor(field: ModelSettingField, state: State) {
   if (field.key !== 'reasoningEffort' || field.options) return undefined;
   const selected = state.document?.fields.find((entry) => entry.key === 'model');
   const modelId = selected && modelSettingValue(selected, state.draft);
-  return models.find((model) => model.id === modelId)?.reasoningEfforts?.map((value) => ({ value, label: value }));
+  return state.document && modelId
+    ? modelEfforts(state.document.agent, modelId, models).map((value) => ({ value, label: value }))
+    : undefined;
 }
 function FetchModels({ state }: { state: State }) {
   const hasCatalog = state.modelCatalog && state.modelCatalog.discovered !== false;
@@ -74,7 +77,9 @@ function ConnectionFields({ fields, state }: { fields: ModelSettingField[]; stat
 function ModelSettingsForm({ state, fields }: { state: State; fields: ModelSettingField[] }) {
   const connections = fields.filter((field) => !field.advanced && field.group === 'connection');
   const models = fields.filter((field) => !field.advanced && field.group === 'model');
-  const parameters = models.filter((field) => ['reasoningEffort', 'contextWindow'].includes(field.key));
+  const parameters = models.filter((field) =>
+    ['reasoningEffort', 'contextWindow', 'autoCompactTokenLimit'].includes(field.key),
+  );
   return (
     <div className="space-y-6">
       {connections.length > 0 && (

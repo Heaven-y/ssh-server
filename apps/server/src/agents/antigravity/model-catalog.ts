@@ -52,6 +52,11 @@ export async function antigravityDefaultModel(env: NodeJS.ProcessEnv): Promise<s
   return selected && text(selected.modelName) ? text(selected.key) : undefined;
 }
 
+export function configuredAntigravityDefault(settings: AntigravityModelSettings): string | undefined {
+  const selected = settings.modelProvider === 'gemini' ? selectedAntigravityModel(settings) : undefined;
+  return text(selected?.key) || settings.model;
+}
+
 /** 原生自定义条目的键和 label 均可用于 --model；模型名与窗口不从标题猜测。 */
 export function configuredAntigravityModels(settings: AntigravityModelSettings): AgentModel[] {
   const result = new Map<string, AgentModel>();
@@ -59,7 +64,7 @@ export function configuredAntigravityModels(settings: AntigravityModelSettings):
   if (settings.modelProvider === 'gemini') {
     for (const [key, model] of entries) {
       const label = model.label || key;
-      result.set(label, { id: key, label, description: '原生自定义模型' });
+      result.set(key, { id: key, label, modelId: antigravityModelId(model.modelName), description: '原生自定义模型' });
     }
   }
   const selectedCustom =

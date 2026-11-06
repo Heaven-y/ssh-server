@@ -103,6 +103,7 @@ function modelsFrom(models: ModelInfo[]): AgentModel[] {
       id: model.value,
       label: model.displayName,
       description: model.description,
+      modelId: model.resolvedModel,
       reasoningEfforts: model.supportsEffort === false ? [] : model.supportedEffortLevels,
     }));
 }
@@ -115,6 +116,10 @@ async function readCatalog(q: ClaudeQuery, signal: AbortSignal): Promise<NativeC
   return {
     entries: commands.status === 'fulfilled' ? entriesFrom(usableCommands(commands.value)) : [],
     models: models.status === 'fulfilled' ? modelsFrom(models.value) : [],
+    defaultModel:
+      models.status === 'fulfilled'
+        ? models.value.find((model) => model.value === 'default')?.resolvedModel
+        : undefined,
     warnings: [
       ...(commands.status === 'rejected' ? ['Claude 技能与命令读取失败，请刷新重试'] : []),
       ...(models.status === 'rejected' ? ['Claude 模型建议读取失败，请刷新重试'] : []),

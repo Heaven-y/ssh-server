@@ -170,6 +170,12 @@ export function codexFields(config: ConfigObject): Pick<NativeModelSettingsDocum
         inputType: 'number',
         placeholder: '由模型决定（tokens）',
       }),
+      field('autoCompactTokenLimit', '自动压缩阈值', config.model_auto_compact_token_limit, {
+        group: 'model',
+        inputType: 'number',
+        placeholder: '原生默认（tokens）',
+        hint: '达到此 token 数时自动压缩历史；留空沿用 Codex 默认。计数口径和实际触发由原生配置决定。',
+      }),
       field('provider', '服务商', selected, { options: providers.map(({ id, label }) => ({ value: id, label })) }),
     ],
     providers,
