@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from 'react';
 import ProductSettingsDialog, { type SettingsPage } from './ProductSettingsDialog';
-import type { AgentKind, Workspace } from '@agentdeck/shared';
+import type { AgentKind } from '@agentdeck/shared/conversation';
+import type { Workspace } from '@agentdeck/shared/projects';
 
 const NativeResourcesDialog = lazy(() => import('./NativeResourcesDialog'));
 const LaunchEnvironmentPanel = lazy(() => import('./LaunchEnvironmentPanel'));

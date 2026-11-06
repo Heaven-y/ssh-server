@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { SessionError } from '../../chat/sessions';
+import { SessionError } from '../errors';
 
 export type ManagementRecord = Record<string, unknown>;
 export type ManagementMethod =

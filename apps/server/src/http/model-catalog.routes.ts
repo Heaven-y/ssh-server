@@ -1,9 +1,9 @@
 import os from 'node:os';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
-import { AgentKindSchema } from '@agentdeck/shared';
+import { AgentKindSchema } from '@agentdeck/shared/conversation';
 import type { CapabilitiesService } from '../chat/capabilities';
-import { SessionError } from '../chat/sessions';
+import { SessionError } from '../agents/errors';
 import type { WorkspaceStore } from '../workspaces/store';
 type Deps = { capabilities: CapabilitiesService; store: Pick<WorkspaceStore, 'get'>; homeDir?: string };
 async function catalogDirectory(deps: Deps, projectId?: string) {

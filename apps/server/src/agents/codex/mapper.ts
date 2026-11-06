@@ -1,4 +1,4 @@
-import { NativeSessionIdSchema, type AgentEvent, type TokenUsage } from '@agentdeck/shared';
+import { NativeSessionIdSchema, type AgentEvent, type TokenUsage } from '@agentdeck/shared/conversation';
 import { CodexCompaction } from './compaction';
 import { list, record, text, type RecordValue } from './types';
 import { codexItemDuration, CodexTurnUsage, nonnegativeInteger, type CodexUsageBreakdown } from './observability';

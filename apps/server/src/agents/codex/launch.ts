@@ -2,7 +2,7 @@ import { access } from 'node:fs/promises';
 import path from 'node:path';
 import type { CodexRuntimeOptions } from './types';
 import { CodexError } from './types';
-import { resolveNodeExecutable } from '../../process/executable';
+import { resolveNodeExecutable } from '../../platform/process/executable';
 
 type LaunchCommand = { command: string; args: string[] };
 async function exists(file: string): Promise<boolean> {

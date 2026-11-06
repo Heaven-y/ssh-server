@@ -1,10 +1,11 @@
 import { expectTypeOf, it } from 'vitest';
 import type { Query } from '@anthropic-ai/claude-agent-sdk';
-import type { ClaudeQuery } from '../../src/agents/claude-query';
-import type { ClaudeSessionsApi } from '../../src/agents/claude-sessions';
-import type { SessionProvider, createSessionsService } from '../../src/chat/sessions';
+import type { ClaudeQuery } from '../../src/agents/claude/query';
+import type { ClaudeSessionsApi } from '../../src/agents/claude/sessions';
+import type { SessionProvider } from '../../src/agents/contracts';
+import type { createSessionsService } from '../../src/sessions/service';
 import type { TurnManagerDeps } from '../../src/chat/turn-manager';
-import type { sampleResourceCommand } from '../../src/resources/sample';
+import type { sampleResourceCommand } from '../../src/builtin-plugins/ssh-console/legacy/resources/sample';
 
 it('固定SDK控制方法与原生会话管理均为必需契约', () => {
   type Controls = Pick<ClaudeQuery, 'close' | 'supportedCommands' | 'supportedModels' | 'getContextUsage'>;

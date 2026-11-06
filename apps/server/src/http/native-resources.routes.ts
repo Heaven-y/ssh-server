@@ -1,10 +1,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest, RouteShorthandOptions } from 'fastify';
 import { z } from 'zod';
+import { NativeResourceError, resourceError } from '../agents/common/configuration/errors';
+import { MAX_CONFIG_BYTES } from '../platform/files/safe-file';
 import type { NativeResourcesService } from '../settings/native-resources';
-import { NativeResourceError, resourceError } from '../settings/native-resources-errors';
-import { MAX_CONFIG_BYTES } from '../settings/safe-file';
-import type { WorkspaceStore } from '../workspaces/store';
 import { WorkspaceBusyError, type WorkspaceActivity } from '../workspaces/activity';
+import type { WorkspaceStore } from '../workspaces/store';
 
 export type NativeResourceRoutesDeps = {
   service: NativeResourcesService;

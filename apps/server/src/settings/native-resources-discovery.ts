@@ -1,7 +1,8 @@
+import type { NativeResource, NativeResourceRoot } from '@agentdeck/shared/settings';
 import type { Dirent } from 'node:fs';
 import { lstat, opendir } from 'node:fs/promises';
 import path from 'node:path';
-import type { NativeResource, NativeResourceRoot } from '@agentdeck/shared';
+import { NativeResourceError, resourceError } from '../agents/common/configuration/errors';
 import {
   makeResourceTarget,
   resourcePathKey,
@@ -10,9 +11,9 @@ import {
   type ResourceRoot,
   type ResourceScan,
   type ResourceTarget,
-} from './native-resources-catalog';
-import { NativeResourceError, resourceError } from './native-resources-errors';
-import { assertDirectoryUnchanged, inspectDirectory, MAX_CONFIG_BYTES } from './safe-file';
+} from '../agents/common/configuration/resources';
+import { cliConfigurations } from '../agents/registry';
+import { assertDirectoryUnchanged, inspectDirectory, MAX_CONFIG_BYTES } from '../platform/files/safe-file';
 
 const MAX_DISCOVERY_ENTRIES = 4096;
 const MAX_DIRECTORY_DEPTH = 6;
@@ -137,13 +138,7 @@ export async function discoverResources(context: ResourceContext, plan: Resource
     });
   }
 
-  const instructionNames = new Set(
-    context.agent === 'claude'
-      ? ['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md']
-      : context.agent === 'codex'
-        ? ['AGENTS.md', 'AGENTS.override.md']
-        : ['AGENTS.md', 'GEMINI.md'],
-  );
+  const instructionNames = new Set(cliConfigurations[context.agent].instructionNames);
   async function directoryRules(directory: string, relative = '', depth = 0): Promise<void> {
     await eachEntry(directory, async (entry) => {
       if (depth > 0 && entry.isFile() && instructionNames.has(entry.name)) {

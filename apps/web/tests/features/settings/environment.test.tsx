@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
+import { settingsApi } from '../../../src/features/settings/api';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from '../../../src/lib/api';
+
 import { EnvironmentReport, EnvironmentSummary } from '../../../src/features/settings/EnvironmentReport';
 
 afterEach(() => {
@@ -18,8 +19,8 @@ it('启动摘要与设置共享GET报告，缺失有官方指引，未知版本�
       { name: 'Antigravity' as const, available: false, version: null, message: '可执行文件 agy 未找到或无法启动' },
     ],
   };
-  vi.spyOn(api, 'readEnvironment').mockResolvedValue(report);
-  vi.spyOn(api, 'detectEnvironment').mockResolvedValue({
+  vi.spyOn(settingsApi, 'readEnvironment').mockResolvedValue(report);
+  vi.spyOn(settingsApi, 'detectEnvironment').mockResolvedValue({
     ...report,
     tools: report.tools.map((tool) => ({ ...tool, available: true })),
   });
@@ -34,12 +35,12 @@ it('启动摘要与设置共享GET报告，缺失有官方指引，未知版本�
   await screen.findByText(/缺少或不可用：Antigravity/);
   expect(screen.getAllByText(/可用 · 版本未知/).length).toBe(2);
   expect(screen.getByRole('link', { name: /Antigravity 官方/ }).getAttribute('href')).toContain('antigravity');
-  expect(api.readEnvironment).toHaveBeenCalledTimes(1);
-  expect(api.detectEnvironment).not.toHaveBeenCalled();
+  expect(settingsApi.readEnvironment).toHaveBeenCalledTimes(1);
+  expect(settingsApi.detectEnvironment).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '查看设置' }));
   expect(settings).toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '重新检测' }));
-  await waitFor(() => expect(api.detectEnvironment).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(settingsApi.detectEnvironment).toHaveBeenCalledTimes(1));
   await waitFor(() => expect(screen.queryByRole('region', { name: '启动环境摘要' })).toBeNull());
   expect(screen.getAllByText(/可用 · 版本未知/).length).toBe(3);
   expect(screen.getByText(/检测时间/)).toBeTruthy();
@@ -47,14 +48,14 @@ it('启动摘要与设置共享GET报告，缺失有官方指引，未知版本�
 });
 
 it('读取中保留简短状态，全部工具可用后不渲染摘要或占位条', async () => {
-  let resolve!: (report: Awaited<ReturnType<typeof api.readEnvironment>>) => void;
-  const read = vi.spyOn(api, 'readEnvironment').mockImplementation(
+  let resolve!: (report: Awaited<ReturnType<typeof settingsApi.readEnvironment>>) => void;
+  const read = vi.spyOn(settingsApi, 'readEnvironment').mockImplementation(
     () =>
       new Promise((done) => {
         resolve = done;
       }),
   );
-  const detect = vi.spyOn(api, 'detectEnvironment');
+  const detect = vi.spyOn(settingsApi, 'detectEnvironment');
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const { container } = render(
     <QueryClientProvider client={client}>
@@ -80,8 +81,8 @@ it('读取中保留简短状态，全部工具可用后不渲染摘要或占位�
 });
 
 it('读取失败保留设置入口，不自动重新检测', async () => {
-  vi.spyOn(api, 'readEnvironment').mockRejectedValue(new Error('读取失败'));
-  const detect = vi.spyOn(api, 'detectEnvironment');
+  vi.spyOn(settingsApi, 'readEnvironment').mockRejectedValue(new Error('读取失败'));
+  const detect = vi.spyOn(settingsApi, 'detectEnvironment');
   const settings = vi.fn();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(

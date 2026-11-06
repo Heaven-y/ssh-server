@@ -14,7 +14,7 @@ import {
 import { useRef, useState } from 'react';
 import { useUiPreferences } from '../ui/ui-preferences';
 import { desktopChrome } from '../lib/desktop-bridge';
-import { sidebarItemClass, sidebarMenuClass, sidebarMenuItemClass } from './SidebarActions';
+import { sidebarItemClass, sidebarMenuClass, sidebarMenuItemClass } from '../ui/sidebar-styles';
 
 const iconButtonClass =
   'inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent';

@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Workspace } from '@agentdeck/shared';
-import { runClaudeTurn } from '../../src/agents/claude-adapter';
+import type { Workspace } from '@agentdeck/shared/projects';
+import { runClaudeTurn } from '../../src/agents/claude/adapter';
 import { TurnManager } from '../../src/chat/turn-manager';
 
 // 防止旧的隐式回退在回归测试中启动真实运行时。
-vi.mock('../../src/agents/claude-adapter', () => ({
+vi.mock('../../src/agents/claude/adapter', () => ({
   runClaudeTurn: vi.fn(() => ({ done: Promise.resolve(), interrupt: async () => undefined })),
 }));
 

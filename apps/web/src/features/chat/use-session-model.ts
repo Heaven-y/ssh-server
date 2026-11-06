@@ -1,4 +1,4 @@
-import type { SessionRef } from '@agentdeck/shared';
+import type { SessionRef } from '@agentdeck/shared/conversation';
 import { sessionActionKey, useChat } from './chat-store';
 
 /** 仅消费原生报告；来源与模型分开，输入框选择值不参与展示。 */

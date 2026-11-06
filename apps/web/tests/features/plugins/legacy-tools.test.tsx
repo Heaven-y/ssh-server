@@ -1,17 +1,23 @@
 // @vitest-environment jsdom
+import { sshApi } from '../../../src/builtin-plugins/ssh-console/ssh/api';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { WorkbenchPlugin } from '@agentdeck/shared';
+import type { WorkbenchPlugin } from '@agentdeck/shared/plugins';
 import { PluginWorkspace } from '../../../src/features/plugins/PluginWorkspace';
-import { api } from '../../../src/lib/api';
 
 // 本用例没有服务器目标；截断未使用的业务依赖，保留页面、入口、返回按钮和 Esc 的真实 DOM。
-vi.mock('../../../src/features/ssh-console/ConsoleServerPanel', () => ({ ConsoleServerPanel: () => null }));
-vi.mock('../../../src/features/ssh-console/ConsoleTabs', () => ({ ConsoleServerTabs: () => null }));
-vi.mock('../../../src/features/resources/ResourcesPanel', () => ({ ResourcesPanel: () => null }));
-vi.mock('../../../src/features/remote-files/RemoteFilesPanel', () => ({ RemoteFilesPanel: () => null }));
+vi.mock('../../../src/builtin-plugins/ssh-console/console/ConsoleServerPanel', () => ({
+  ConsoleServerPanel: () => null,
+}));
+vi.mock('../../../src/builtin-plugins/ssh-console/console/ConsoleTabs', () => ({ ConsoleServerTabs: () => null }));
+vi.mock('../../../src/builtin-plugins/ssh-console/legacy/resources/ResourcesPanel', () => ({
+  ResourcesPanel: () => null,
+}));
+vi.mock('../../../src/builtin-plugins/ssh-console/legacy/remote-files/RemoteFilesPanel', () => ({
+  RemoteFilesPanel: () => null,
+}));
 
 const plugin: WorkbenchPlugin = {
   builtin: true,
@@ -36,9 +42,8 @@ function Fixture() {
       </button>
       <PluginWorkspace
         plugin={visible ? plugin : undefined}
-        sshPlugin={plugin}
+        builtinPlugins={[plugin]}
         close={() => setVisible(false)}
-        manageServers={vi.fn()}
       />
     </>
   );
@@ -50,7 +55,7 @@ afterEach(() => {
 });
 
 it('项目服务器工具打开与关闭都有焦点目标，隐藏整个插件不抢左栏焦点', async () => {
-  vi.spyOn(api, 'listSshHosts').mockResolvedValue([]);
+  vi.spyOn(sshApi, 'listSshHosts').mockResolvedValue([]);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>

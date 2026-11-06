@@ -1,7 +1,8 @@
+import { settingsApi, settingsKeys } from './api';
 import { useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react';
 import { RefreshCw, Save } from 'lucide-react';
-import type { ProductSettingsDocument } from '@agentdeck/shared';
-import { api, queryKeys } from '../../lib/api';
+import type { ProductSettingsDocument } from '@agentdeck/shared/settings';
+
 import { queryClient } from '../../lib/query-client';
 import { buttonClass } from '../../ui/styles';
 import { ProductSettingsForm } from './ProductSettingsForm';
@@ -22,7 +23,7 @@ function useGeneralSettings() {
   useEffect(() => {
     const controller = new AbortController();
     pending.current = controller;
-    void api
+    void settingsApi
       .readProductSettings(controller.signal)
       .then((result) => {
         if (controller.signal.aborted) return;
@@ -60,12 +61,12 @@ function useGeneralSettings() {
     setError('');
     setMessage('');
     try {
-      const result = await api.saveProductSettings(
+      const result = await settingsApi.saveProductSettings(
         { settings: parsed.data, revision: document.revision },
         controller.signal,
       );
-      await queryClient.cancelQueries({ queryKey: queryKeys.productSettings });
-      queryClient.setQueryData(queryKeys.productSettings, result);
+      await queryClient.cancelQueries({ queryKey: settingsKeys.productSettings });
+      queryClient.setQueryData(settingsKeys.productSettings, result);
       if (controller.signal.aborted) return;
       setDocument(result);
       setDraft(settingsDraft(result.settings));

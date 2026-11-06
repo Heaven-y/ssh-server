@@ -1,0 +1,34 @@
+import { describe, expect, it } from 'vitest';
+import { buildRemoteCommand, sq } from '../../../../src/builtin-plugins/ssh-console/ssh/remote-command';
+
+describe('sq', () => {
+  it('用 POSIX 单引号包裹并转义内部单引号', () => {
+    expect(sq("it's")).toBe("'it'\\''s'");
+    expect(sq('a b')).toBe("'a b'");
+  });
+});
+
+describe('buildRemoteCommand', () => {
+  it('绝对路径目录', () => {
+    expect(buildRemoteCommand('/data/a b', 'ls -la', 600)).toBe("cd '/data/a b' && exec timeout 600 bash -lc 'ls -la'");
+  });
+
+  it('~ 开头的目录用 $HOME 展开，命令中的单引号被转义', () => {
+    expect(buildRemoteCommand('~/p q', "echo 'x'", 60)).toBe(
+      "cd \"$HOME\"/'p q' && exec timeout 60 bash -lc 'echo '\\''x'\\'''",
+    );
+  });
+
+  it('目录为 ~ 时直接进入家目录', () => {
+    expect(buildRemoteCommand('~', 'pwd', 60)).toBe('cd "$HOME" && exec timeout 60 bash -lc \'pwd\'');
+  });
+
+  it('命令中的换行原样交给 bash', () => {
+    expect(() => buildRemoteCommand('/a', 'ls\nrm x', 60)).not.toThrow();
+  });
+
+  it('目录含换行或超时不是正整数时抛错', () => {
+    expect(() => buildRemoteCommand('/a\nb', 'ls', 60)).toThrow();
+    expect(() => buildRemoteCommand('/a', 'ls', 0)).toThrow();
+  });
+});

@@ -1,4 +1,4 @@
-import type { NativeConfigAgent } from '@agentdeck/shared';
+import type { NativeConfigAgent } from '@agentdeck/shared/settings';
 
 /** 原生配置的最小模板。 */
 export function nativeConfigTemplate(agent: NativeConfigAgent): { content: string; notes: string[] } {

@@ -1,14 +1,7 @@
 import { ChevronRight, ListTree } from 'lucide-react';
-import type { ChatItem } from './chat-reducer';
+import { activityStatus, type ActivityItem } from './activity-presentation';
 import { finiteCount, formatDuration } from './chat-metrics';
 import type { ExpandedProps } from './timeline-model';
-
-type ActivityItem = Extract<ChatItem, { kind: 'activity' }>;
-const labels = { running: '进行中', completed: '完成', failed: '失败', cancelled: '已取消', unknown: '状态未知' };
-
-export function activityStatus(item: ActivityItem): string {
-  return item.incomplete ? '未完成' : labels[item.status];
-}
 
 export function ActivityCard({ item, expanded, onExpandedChange }: { item: ActivityItem } & ExpandedProps) {
   return (

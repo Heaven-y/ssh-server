@@ -1,35 +1,22 @@
-import path from 'node:path';
-import { createHash } from 'node:crypto';
-import { z } from 'zod';
 import {
   LaunchEnvironmentInputSchema,
-  type AgentKind,
   type LaunchEnvironmentDocument,
   type LaunchEnvironmentInput,
-} from '@agentdeck/shared';
-import { createWindowsProtector, type SecretProtector } from '../ssh/windows-protection';
-import { NativeConfigError, anonymousConfigError } from './errors';
-import { assertDirectoryUnchanged, inspectDirectory, readConfigFile, writeConfigFile } from './safe-file';
+} from '@agentdeck/shared/settings';
+import { type AgentKind } from '@agentdeck/shared/conversation';
+import { createHash } from 'node:crypto';
+import path from 'node:path';
+import { z } from 'zod';
+import { NativeConfigError, anonymousConfigError } from '../agents/common/configuration/legacy-errors';
+import { cliConfigurations } from '../agents/registry';
+import {
+  assertDirectoryUnchanged,
+  inspectDirectory,
+  readConfigFile,
+  writeConfigFile,
+} from '../platform/files/safe-file';
+import { createWindowsProtector, type SecretProtector } from '../platform/secrets/windows-protection';
 
-type Variable = { name: string; label: string; sensitive: boolean };
-const variables: Record<AgentKind, Variable[]> = {
-  claude: [
-    { name: 'ANTHROPIC_API_KEY', label: 'API 密钥', sensitive: true },
-    { name: 'ANTHROPIC_AUTH_TOKEN', label: '认证令牌', sensitive: true },
-    { name: 'ANTHROPIC_BASE_URL', label: 'API 地址', sensitive: false },
-  ],
-  codex: [
-    { name: 'OPENAI_API_KEY', label: 'API 密钥', sensitive: true },
-    { name: 'OPENAI_BASE_URL', label: 'API 地址', sensitive: false },
-  ],
-  antigravity: [
-    { name: 'GEMINI_API_KEY', label: 'Gemini API 密钥', sensitive: true },
-    { name: 'GOOGLE_GEMINI_BASE_URL', label: 'Gemini API 地址', sensitive: false },
-    { name: 'AGY_ADC_AUTH', label: '使用 ADC 认证（true/false）', sensitive: false },
-    { name: 'GOOGLE_CLOUD_QUOTA_PROJECT', label: 'ADC 配额项目', sensitive: false },
-    { name: 'GOOGLE_CLOUD_LOCATION', label: 'ADC 区域', sensitive: false },
-  ],
-};
 const Entry = z.strictObject({ mode: z.enum(['set', 'disabled']), protected: z.string().max(32768).optional() });
 const Entries = z.record(z.string(), Entry);
 const Stored = z.strictObject({ version: z.literal(1), claude: Entries, codex: Entries, antigravity: Entries });
@@ -46,7 +33,7 @@ const entropy = (agent: AgentKind, name: string) =>
 function validateStored(value: unknown): StoredEnvironment {
   const stored = Stored.parse(value);
   for (const agent of ['claude', 'codex', 'antigravity'] as const) {
-    const allowed = new Set(variables[agent].map((item) => item.name));
+    const allowed = new Set(cliConfigurations[agent].launchVariables.map((item) => item.name));
     for (const [name, entry] of Object.entries(stored[agent])) {
       if (!allowed.has(name) || (entry.mode === 'set' && !entry.protected))
         throw new NativeConfigError('invalid_request');
@@ -56,7 +43,6 @@ function validateStored(value: unknown): StoredEnvironment {
 }
 function checkValue(name: string, value: string | undefined) {
   if (value === undefined) return;
-  if (name === 'AGY_ADC_AUTH' && !['true', 'false'].includes(value)) throw new NativeConfigError('invalid_request');
   if (!name.endsWith('_BASE_URL')) return;
   let url: URL;
   try {
@@ -68,13 +54,14 @@ function checkValue(name: string, value: string | undefined) {
     throw new NativeConfigError('invalid_request');
 }
 function checkChanges(agent: AgentKind, input: LaunchEnvironmentInput) {
-  const allowed = new Set(variables[agent].map((item) => item.name));
+  const allowed = new Set(cliConfigurations[agent].launchVariables.map((item) => item.name));
   const seen = new Set<string>();
   for (const item of input.variables) {
     if (!allowed.has(item.name) || seen.has(item.name) || (item.mode !== 'set' && item.value !== undefined))
       throw new NativeConfigError('invalid_request');
     seen.add(item.name);
     checkValue(item.name, item.value);
+    if (item.value !== undefined) cliConfigurations[agent].validateVariable?.(item.name, item.value);
   }
 }
 function stateOf(entry: z.infer<typeof Entry> | undefined, inherited: string | undefined) {
@@ -112,11 +99,8 @@ export function createLaunchEnvironment(deps: Deps) {
       agent,
       revision,
       encryptionAvailable: protector.available,
-      note:
-        agent === 'antigravity'
-          ? 'Gemini API 密钥须配合原生 settings.json 的 modelProvider="gemini"；ADC 使用 AGY_ADC_AUTH=true。保存用于新启动的 CLI，旧值不会回填。'
-          : '保存用于新启动的 CLI。已有会话可在空闲时重新启动；不会自动发送消息。旧值不会回填。',
-      variables: variables[agent].map((item) => {
+      note: cliConfigurations[agent].launchNote,
+      variables: cliConfigurations[agent].launchVariables.map((item) => {
         const entry = stored[agent][item.name];
         const source = stateOf(entry, inherited[item.name]);
         return {

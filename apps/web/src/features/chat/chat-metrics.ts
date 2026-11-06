@@ -1,4 +1,4 @@
-import type { TokenUsage } from '@agentdeck/shared';
+import type { TokenUsage } from '@agentdeck/shared/conversation';
 
 export type ChatStatistics = {
   scope: 'turn' | 'step';

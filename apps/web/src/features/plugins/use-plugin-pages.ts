@@ -32,11 +32,11 @@ export function usePluginPages() {
         },
       })),
     );
-  const ssh = list.find((plugin) => plugin.builtin && plugin.manifest.id === 'ssh-console' && plugin.enabled);
+  const builtinPlugins = list.filter((plugin) => plugin.builtin && plugin.enabled);
   return {
     list,
     active,
-    ssh,
+    builtinPlugins,
     selected: active?.manifest.id,
     show,
     command: command?.pluginId === id ? command : undefined,

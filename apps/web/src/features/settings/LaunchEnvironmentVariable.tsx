@@ -1,4 +1,4 @@
-import type { LaunchEnvironmentDocument, LaunchVariableMode } from '@agentdeck/shared';
+import type { LaunchEnvironmentDocument, LaunchVariableMode } from '@agentdeck/shared/settings';
 import { inputClass } from '../../ui/styles';
 
 export type LaunchVariable = LaunchEnvironmentDocument['variables'][number];

@@ -1,4 +1,4 @@
-import type { NativeResource, NativeResourceCatalog as Catalog, NativeResourceRoot } from '@agentdeck/shared';
+import type { NativeResource, NativeResourceCatalog as Catalog, NativeResourceRoot } from '@agentdeck/shared/settings';
 import { FilePlus2 } from 'lucide-react';
 import { buttonClass } from '../../ui/styles';
 import { nativeKindNames, nativeScopeNames } from './native-resource-labels';

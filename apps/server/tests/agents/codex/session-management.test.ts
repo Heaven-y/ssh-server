@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SessionActionInput } from '@agentdeck/shared';
+import type { SessionActionInput } from '@agentdeck/shared/conversation';
 import { forkCodexSession, listCodexSessions, mutateCodexSession, readCodexSession } from '../../../src/agents/codex';
 
 type Message = { method?: string; params?: Record<string, unknown>; fixtureCompleted?: string };

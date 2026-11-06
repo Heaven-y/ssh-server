@@ -1,10 +1,12 @@
+import { sessionsApi, sessionsKeys } from '../features/sessions/api';
 import { Command } from 'cmdk';
 import { useQueries } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { AgentKind, SessionSummary, Workspace } from '@agentdeck/shared';
+import type { AgentKind, SessionSummary } from '@agentdeck/shared/conversation';
+import type { Workspace } from '@agentdeck/shared/projects';
 import { DetailDialog } from '../ui/DetailDialog';
 import { AgentIcon } from '../ui/BrandIcons';
-import { api, queryKeys } from '../lib/api';
+
 import { sessionActionKey, useChat } from '../features/chat/chat-store';
 import { useUiPreferences } from '../ui/ui-preferences';
 
@@ -95,8 +97,8 @@ function SessionSource({
 function PaletteSessions({ workspace, choose }: { workspace?: Workspace; choose(session: SessionSummary): void }) {
   const sources = useQueries({
     queries: (['claude', 'codex', 'antigravity'] as const).map((agent) => ({
-      queryKey: queryKeys.sessions(workspace?.id ?? '', agent),
-      queryFn: ({ signal }: { signal: AbortSignal }) => api.listSessions(workspace!.id, agent, false, signal),
+      queryKey: sessionsKeys.sessions(workspace?.id ?? '', agent),
+      queryFn: ({ signal }: { signal: AbortSignal }) => sessionsApi.listSessions(workspace!.id, agent, false, signal),
       enabled: !!workspace,
       retry: false,
     })),

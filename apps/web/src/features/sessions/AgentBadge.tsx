@@ -1,5 +1,5 @@
-import type { AgentKind } from '@agentdeck/shared';
-import { AGENT_LABELS } from '../chat/AgentControls';
+import type { AgentKind } from '@agentdeck/shared/conversation';
+import { AGENT_LABELS } from '../../cli/shared/labels';
 
 /**
  * CLI 徽标：一个字母足够区分三个 CLI，左栏分组与会话头共用同一形态，

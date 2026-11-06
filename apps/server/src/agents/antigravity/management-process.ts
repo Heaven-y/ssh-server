@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { resolveLocalCommand, type ResolvedCommand } from '../../process/executable';
+import { resolveLocalCommand, type ResolvedCommand } from '../../platform/process/executable';
 import { AntigravityLines } from './lines';
 import {
   managementFailure,

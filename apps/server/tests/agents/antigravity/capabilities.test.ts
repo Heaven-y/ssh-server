@@ -9,9 +9,11 @@ import {
   configuredAntigravityModels,
   antigravityDefaultModel,
 } from '../../../src/agents/antigravity/model-catalog';
-import { runProcess } from '../../../src/process/run';
-vi.mock('../../../src/process/executable', () => ({ resolveLocalCommand: () => ({ command: 'agy', args: [] }) }));
-vi.mock('../../../src/process/run', () => ({ runProcess: vi.fn() }));
+import { runProcess } from '../../../src/platform/process/run';
+vi.mock('../../../src/platform/process/executable', () => ({
+  resolveLocalCommand: () => ({ command: 'agy', args: [] }),
+}));
+vi.mock('../../../src/platform/process/run', () => ({ runProcess: vi.fn() }));
 
 const roots: string[] = [];
 afterEach(async () => {

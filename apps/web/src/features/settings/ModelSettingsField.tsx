@@ -1,6 +1,6 @@
 import { useId, useRef, type ReactNode, type RefObject } from 'react';
 import { CircleHelp } from 'lucide-react';
-import type { ModelSettingField } from '@agentdeck/shared';
+import type { ModelSettingField } from '@agentdeck/shared/settings';
 import { buttonClass } from '../../ui/styles';
 
 const controlClass =

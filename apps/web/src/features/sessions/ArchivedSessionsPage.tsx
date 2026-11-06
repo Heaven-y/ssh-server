@@ -1,14 +1,16 @@
+import { sessionsApi, sessionsKeys } from './api';
 import { useQueries } from '@tanstack/react-query';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Archive, ArrowLeft } from 'lucide-react';
-import { nativeSessionCapabilities, type SessionSummary, type Workspace } from '@agentdeck/shared';
-import { api, queryKeys } from '../../lib/api';
+import { legacySessionCapabilities, type SessionSummary } from '@agentdeck/shared/conversation';
+import { type Workspace } from '@agentdeck/shared/projects';
+
 import { buttonClass, inputClass } from '../../ui/styles';
 import { AgentIcon } from '../../ui/BrandIcons';
 import { SessionActionsDialog } from './SessionActionsDialog';
 import { useSessionBusy } from './use-session-busy';
-import type { ProjectDraft } from '../../app/project-management';
-import { AGENT_LABELS } from '../chat/AgentControls';
+import type { ProjectDraft } from '../projects/project-management';
+import { AGENT_LABELS } from '../../cli/shared/labels';
 
 type Selection = { session: SessionSummary; action: 'unarchive' | 'delete' };
 type Props = { projects: Workspace[]; close(): void; addProject(draft: ProjectDraft): void };
@@ -22,7 +24,7 @@ function ArchivedActions({
   disabled: boolean;
   choose(action: Selection['action']): void;
 }) {
-  const actions = session.capabilities ?? nativeSessionCapabilities(session.agent);
+  const actions = session.capabilities ?? legacySessionCapabilities(session.agent);
   return (
     <div className="flex gap-1">
       <button type="button" className={buttonClass('outline')} disabled={disabled} onClick={() => choose('unarchive')}>
@@ -90,8 +92,8 @@ export default function ArchivedSessionsPage({ projects, close, addProject }: Pr
   }, []);
   const queries = useQueries({
     queries: (['codex', 'claude', 'antigravity'] as const).map((agent) => ({
-      queryKey: queryKeys.archivedSessions(agent),
-      queryFn: ({ signal }: { signal: AbortSignal }) => api.archivedSessions(agent, signal),
+      queryKey: sessionsKeys.archivedSessions(agent),
+      queryFn: ({ signal }: { signal: AbortSignal }) => sessionsApi.archivedSessions(agent, signal),
       retry: false,
     })),
   });

@@ -1,9 +1,10 @@
+import { sshConsoleDefinition } from '../../src/builtin-plugins/ssh-console/manifest';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { WorkbenchPluginCatalog, WorkbenchPluginStorage } from '@agentdeck/shared';
+import type { WorkbenchPluginCatalog, WorkbenchPluginStorage } from '@agentdeck/shared/plugins';
 import { registerPluginRoutes } from '../../src/http/plugins.routes';
 import { registerSecurity } from '../../src/http/security';
 import { createWorkbenchPlugins } from '../../src/plugins/service';
@@ -29,7 +30,9 @@ async function setup() {
   const app = Fastify();
   fixtures.push({ root, app });
   registerSecurity(app, { token: 'test-token', port: 24455 });
-  registerPluginRoutes(app, { service: createWorkbenchPlugins({ configDir: path.join(root, 'config') }) });
+  registerPluginRoutes(app, {
+    service: createWorkbenchPlugins({ builtins: [sshConsoleDefinition], configDir: path.join(root, 'config') }),
+  });
   return { app, directory };
 }
 afterEach(async () => {

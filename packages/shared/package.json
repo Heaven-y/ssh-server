@@ -5,7 +5,12 @@
   "type": "module",
   "description": "前后端共用的类型与协议",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./conversation": "./src/conversation/index.ts",
+    "./projects": "./src/projects/index.ts",
+    "./settings": "./src/settings/index.ts",
+    "./plugins": "./src/plugins/index.ts",
+    "./ssh": "./src/ssh/index.ts"
   },
   "dependencies": {
     "zod": "4.6.7"

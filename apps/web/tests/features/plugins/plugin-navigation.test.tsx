@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { WorkbenchPlugin } from '@agentdeck/shared';
+import type { WorkbenchPlugin } from '@agentdeck/shared/plugins';
 import { PluginNavigation } from '../../../src/features/plugins/PluginNavigation';
 import { useUiPreferences } from '../../../src/ui/ui-preferences';
 

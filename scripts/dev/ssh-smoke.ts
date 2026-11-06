@@ -2,9 +2,12 @@
 // 用法：node --import tsx scripts/dev/ssh-smoke.ts <Host> [--show]
 // 默认不打印主机名本身（只打印长度与哈希前缀），避免把服务器信息带进日志；加 --show 才显示。
 import { createHash } from 'node:crypto';
-import { createSshPool } from '../../apps/server/src/ssh/pool';
-import { createSshConfigLookup } from '../../apps/server/src/ssh/connection';
-import { buildRemoteCommand, OUTPUT_CAP_BYTES } from '../../apps/server/src/ssh/remote-command';
+import { createSshPool } from '../../apps/server/src/builtin-plugins/ssh-console/ssh/pool';
+import { createSshConfigLookup } from '../../apps/server/src/builtin-plugins/ssh-console/ssh/connection';
+import {
+  buildRemoteCommand,
+  OUTPUT_CAP_BYTES,
+} from '../../apps/server/src/builtin-plugins/ssh-console/ssh/remote-command';
 
 const [alias, flag] = process.argv.slice(2);
 if (!alias) {

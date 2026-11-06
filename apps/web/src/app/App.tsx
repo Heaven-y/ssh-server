@@ -1,26 +1,27 @@
+import { projectsApi, projectsKeys } from '../features/projects/api';
 import { useQuery } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react';
-import type { AgentKind, SessionSummary, Workspace } from '@agentdeck/shared';
+import type { AgentKind, SessionSummary } from '@agentdeck/shared/conversation';
+import type { Workspace } from '@agentdeck/shared/projects';
 import { allowConversationNavigation, useChat } from '../features/chat/chat-store';
-import { api, queryKeys } from '../lib/api';
+
 import { TopBar } from './TopBar';
 import { useProductSettings } from '../features/settings/use-product-settings';
 import { useUiPreferences } from '../ui/ui-preferences';
 import { useCommandPalette } from './use-command-palette';
 import type { PaletteActions } from './CommandPalette';
-import { ServerManagerDialog } from '../features/ssh/ServerManagerDialog';
 import { EnvironmentSummary } from '../features/settings/EnvironmentReport';
 import { Sidebar } from './Sidebar';
 import { SessionPane } from './SessionPane';
 import { ConversationSidebar } from './ConversationSidebar';
 import { WorkspaceLayout } from './WorkspaceLayout';
 import { useProjectNavigation } from './use-project-navigation';
-import { useOtherSessions, useProjectSessions } from './use-project-sessions';
+import { useOtherSessions, useProjectSessions } from '../features/projects/use-project-sessions';
 import { useConversationSidebar } from './use-conversation-sidebar';
-import { AddProjectDialog } from './AddProjectDialog';
-import { BindServerDialog } from './BindServerDialog';
-import { ProjectManageDialog } from './ProjectManageDialog';
-import type { ProjectDraft, ProjectManageAction } from './project-management';
+import { AddProjectDialog } from '../features/projects/AddProjectDialog';
+import { BindServerDialog } from '../builtin-plugins/ssh-console/legacy/BindServerDialog';
+import { ProjectManageDialog } from '../features/projects/ProjectManageDialog';
+import type { ProjectDraft, ProjectManageAction } from '../features/projects/project-management';
 import { PluginNavigation } from '../features/plugins/PluginNavigation';
 import { PluginWorkspace } from '../features/plugins/PluginWorkspace';
 import { usePluginPages } from '../features/plugins/use-plugin-pages';
@@ -145,7 +146,6 @@ export function App() {
     setArchiveOpen(false);
     requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('button[aria-label="更多"]')?.focus());
   };
-  const [serversOpen, setServersOpen] = useState(false);
   const [addingProject, setAddingProject] = useState<ProjectDraft>();
   const [managingProject, setManagingProject] = useState<{ project: Workspace; action: ProjectManageAction }>();
   // 绑定服务器要拿到具体的项目对象，不能只记一个开关。
@@ -154,8 +154,8 @@ export function App() {
   const conversationVisible = !activePlugin && !archiveOpen;
   const sidebarVisible = dock.open && conversationVisible;
   const projects = useQuery({
-    queryKey: queryKeys.workspaces,
-    queryFn: ({ signal }) => api.listWorkspaces(signal),
+    queryKey: projectsKeys.workspaces,
+    queryFn: ({ signal }) => projectsApi.listWorkspaces(signal),
   });
   const projectId = useChat((s) => s.workspaceId);
   useProjectNavigation(projects.data);
@@ -187,7 +187,6 @@ export function App() {
   return (
     <div className="flex h-full min-w-[800px] flex-col">
       <DesktopTitleBar />
-      {serversOpen && <ServerManagerDialog onClose={() => setServersOpen(false)} />}
       <OpenPluginManager opened={plugins.managerOpen} close={() => plugins.setManagerOpen(false)} />
       <ProjectDialogs
         adding={addingProject}
@@ -290,11 +289,9 @@ export function App() {
           </div>
           <PluginWorkspace
             plugin={activePlugin}
-            sshPlugin={plugins.ssh}
+            builtinPlugins={plugins.builtinPlugins}
             project={current}
             close={() => plugins.show(undefined)}
-            manageServers={() => setServersOpen(true)}
-            bindServer={() => current && setBindingProject(current)}
             command={plugins.command}
           />
           {archiveOpen && (

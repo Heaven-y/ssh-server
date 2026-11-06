@@ -1,6 +1,6 @@
 import type { ChatItem } from './chat-reducer';
 import { shortToolName, toolPrimaryArgument } from './tool-presentation';
-import { activityStatus } from './ActivityCard';
+import { activityStatus } from './activity-presentation';
 
 export type TrajectoryItem = Exclude<ChatItem, { kind: 'fork-point' }>;
 export type TrajectoryRow =

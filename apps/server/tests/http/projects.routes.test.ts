@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AgentProbes } from '../../src/agents/probe';
+import type { AgentProbes } from '../../src/agents/common/probe';
 import { registerProjectRoutes } from '../../src/http/projects.routes';
 import { registerProbeRoutes } from '../../src/http/probe.routes';
 import { createWorkspaceStore } from '../../src/workspaces/store';

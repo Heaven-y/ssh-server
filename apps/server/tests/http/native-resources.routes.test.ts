@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { NativeResourceCatalog, NativeResourceDocument } from '@agentdeck/shared';
+import type { NativeResourceCatalog, NativeResourceDocument } from '@agentdeck/shared/settings';
 import { registerNativeResourceRoutes } from '../../src/http/native-resources.routes';
 import { createNativeResourcesService } from '../../src/settings/native-resources';
 

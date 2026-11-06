@@ -1,14 +1,19 @@
 import path from 'node:path';
 import { z } from 'zod';
-import { AgentKindSchema, NativeSessionIdSchema, type AgentKind, type SessionRef } from '@agentdeck/shared';
-import { nativeFileTransaction } from '../settings/native-resources-transactions';
+import {
+  AgentKindSchema,
+  NativeSessionIdSchema,
+  type AgentKind,
+  type SessionRef,
+} from '@agentdeck/shared/conversation';
+import { nativeFileTransaction } from '../platform/files/transactions';
 import {
   assertDirectoryUnchanged,
   inspectDirectory,
   MAX_CONFIG_BYTES,
   readConfigFile,
   writeConfigFile,
-} from '../settings/safe-file';
+} from '../platform/files/safe-file';
 
 const Entry = z.strictObject({ agent: AgentKindSchema, sessionId: NativeSessionIdSchema });
 const Stored = z.strictObject({ version: z.literal(1), archived: z.array(Entry).max(3000) });

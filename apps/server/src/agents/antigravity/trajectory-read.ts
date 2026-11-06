@@ -1,4 +1,4 @@
-import { SessionError } from '../../chat/sessions';
+import { SessionError } from '../errors';
 import { managementObject as object, type ManagementBackend, type ManagementRecord } from './management-rpc';
 
 const MAX_STEPS = 50_000;

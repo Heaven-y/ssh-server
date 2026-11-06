@@ -1,6 +1,6 @@
 import { LoaderCircle, Plus, RefreshCw, Sparkles, X } from 'lucide-react';
 import { useId, useState } from 'react';
-import type { AgentCapability } from '@agentdeck/shared';
+import type { AgentCapability } from '@agentdeck/shared/conversation';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { useChat } from './chat-store';

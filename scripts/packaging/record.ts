@@ -54,7 +54,10 @@ async function verifyRuntime(version: string) {
   const preloadHash = digest(extractFile(archive, path.join('out', 'preload', 'preload.cjs')));
   if (
     mainHash !== (await hashFile(path.join(root, 'apps/desktop/out/main/main.js'))) ||
-    helperHash !== (await hashFile(path.join(root, 'apps/server/src/remote-files/remote-helper.py'))) ||
+    helperHash !==
+      (await hashFile(
+        path.join(root, 'apps/server/src/builtin-plugins/ssh-console/legacy/remote-files/remote-helper.py'),
+      )) ||
     preloadHash !== (await hashFile(path.join(root, 'apps/desktop/out/preload/preload.cjs')))
   )
     throw new Error('打包的主进程、preload 或远端 helper 与当前构建不一致');

@@ -1,19 +1,20 @@
 import { ChevronRight, FolderPlus } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
-import type { AgentKind, SessionSummary, Workspace } from '@agentdeck/shared';
-import { AGENT_LABELS } from '../features/chat/AgentControls';
+import type { AgentKind, SessionSummary } from '@agentdeck/shared/conversation';
+import type { Workspace } from '@agentdeck/shared/projects';
+import { AGENT_LABELS } from '../cli/shared/labels';
 import { sessionActionKey, useChat } from '../features/chat/chat-store';
 import { ProjectSessionRow as SessionRow } from '../features/sessions/ProjectSessionRow';
 import { ProjectSessionDialog, type ProjectSessionSelection } from '../features/sessions/ProjectSessionDialog';
 import type { SessionDialogAction } from '../features/sessions/SessionMenu';
 import { buttonClass } from '../ui/styles';
 import { useUiPreferences } from '../ui/ui-preferences';
-import { ProjectMenu } from './ProjectMenu';
+import { ProjectMenu } from '../features/projects/ProjectMenu';
 import { NewSessionMenu, SidebarMore } from './SidebarActions';
 import { SidebarBrand, SidebarFooter, SidebarWorkspaces } from './SidebarChrome';
 import { SidebarOtherSessions } from './SidebarOtherSessions';
-import type { ProjectDraft, ProjectManageAction } from './project-management';
-import type { SessionListFailure } from './use-project-sessions';
+import type { ProjectDraft, ProjectManageAction } from '../features/projects/project-management';
+import type { SessionListFailure } from '../features/projects/use-project-sessions';
 
 export type SidebarProps = {
   pages?: ReactNode;

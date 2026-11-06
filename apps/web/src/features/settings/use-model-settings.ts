@@ -1,15 +1,18 @@
+import { chatKeys } from '../chat/api';
 import { useEffect, useRef, useState } from 'react';
-import type { AgentCapabilities, AgentKind, ModelSettingField, NativeModelSettingsDocument } from '@agentdeck/shared';
+import type { AgentCapabilities, AgentKind } from '@agentdeck/shared/conversation';
+import type { ModelSettingField, NativeModelSettingsDocument } from '@agentdeck/shared/settings';
 import { confirmNativeDiscard, nativeSettingsError } from './native-resource-labels';
-import { invalidateNativeCapabilities, modelSettingsApi } from './model-settings-api';
+import { modelSettingsApi } from './model-settings-api';
+import { invalidateNativeCapabilities } from '../../cli/shared/capability-cache';
 import { queryClient } from '../../lib/query-client';
-import { queryKeys } from '../../lib/api';
 
-export type ModelSettingsDraft = Record<string, string | null>;
+import type { ModelSettingsDraft } from '../../cli/shared/settings-types';
+import { cliSettingsFields, clearCliConnectionDraft } from '../../cli/settings-policy';
 export type SettingsLeave = (action: () => void) => void;
 const modelFailure = (reason: unknown) => (reason instanceof Error ? reason.message : '暂时无法获取模型');
 function publishCatalog(agent: AgentKind, result: AgentCapabilities, projectId?: string) {
-  if (projectId) queryClient.setQueryData(queryKeys.agentCapabilities(projectId, agent), result);
+  if (projectId) queryClient.setQueryData(chatKeys.agentCapabilities(projectId, agent), result);
   void queryClient.invalidateQueries({
     predicate: (query) => query.queryKey[0] === 'agent-capabilities' && query.queryKey[2] === agent,
   });
@@ -25,11 +28,7 @@ export function modelSettingsFields(document: NativeModelSettingsDocument, draft
     ...document.fields,
     ...(document.providers?.find((provider) => provider.id === selected)?.fields ?? []),
   ];
-  if (document.agent !== 'antigravity') return fields;
-  const connection = draft.modelProvider ?? fields.find((field) => field.key === 'modelProvider')?.value;
-  return connection === 'gemini'
-    ? fields
-    : fields.filter((field) => !['baseUrl', 'apiKey', 'displayName', 'contextWindow'].includes(field.key));
+  return cliSettingsFields(document.agent, fields, draft);
 }
 export function modelSettingValue(field: ModelSettingField, draft: ModelSettingsDraft) {
   return Object.hasOwn(draft, field.key) ? (draft[field.key] ?? '') : field.value;
@@ -45,22 +44,12 @@ function changedDraft(
     for (const provider of document.providers ?? [])
       for (const connection of provider.fields) delete next[connection.key];
   }
-  clearConnectionDraft(next, field.key);
+  clearCliConnectionDraft(document.agent, next, field.key);
   // 密码输入留空表示保留；删除必须使用单独的清除操作。
   if (value === field.value || (field.secret && value === '')) delete next[field.key];
   else next[field.key] = value;
   return next;
 }
-function clearConnectionDraft(draft: ModelSettingsDraft, field: string) {
-  const fields =
-    field === 'authMode'
-      ? ['apiKey', 'envKey']
-      : field === 'modelProvider'
-        ? ['baseUrl', 'apiKey', 'displayName', 'contextWindow']
-        : [];
-  for (const key of fields) delete draft[key];
-}
-
 export function useModelSettings(agent: AgentKind, projectId?: string) {
   const [document, setDocument] = useState<NativeModelSettingsDocument>();
   const [draft, setDraft] = useState<ModelSettingsDraft>({});

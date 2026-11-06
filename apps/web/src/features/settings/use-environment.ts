@@ -1,12 +1,13 @@
+import { settingsApi, settingsKeys } from './api';
 import { useQuery } from '@tanstack/react-query';
-import type { AgentKind, EnvironmentReport, EnvironmentTool } from '@agentdeck/shared';
-import { api, queryKeys } from '../../lib/api';
+import type { AgentKind } from '@agentdeck/shared/conversation';
+import type { EnvironmentReport, EnvironmentTool } from '@agentdeck/shared/settings';
 
 /** 复用后端启动时的一次报告；设置打开与窗口聚焦都不触发重新探测。 */
 export function useEnvironment() {
   return useQuery({
-    queryKey: queryKeys.environment,
-    queryFn: ({ signal }) => api.readEnvironment(signal),
+    queryKey: settingsKeys.environment,
+    queryFn: ({ signal }) => settingsApi.readEnvironment(signal),
     staleTime: Infinity,
     retry: false,
   });

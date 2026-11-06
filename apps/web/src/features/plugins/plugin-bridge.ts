@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import type { WorkbenchPluginManifest, Workspace } from '@agentdeck/shared';
+import type { WorkbenchPluginManifest } from '@agentdeck/shared/plugins';
+import type { Workspace } from '@agentdeck/shared/projects';
 import { pluginApi } from './plugin-api';
 
 const Request = z.strictObject({

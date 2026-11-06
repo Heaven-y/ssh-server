@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AgentEvent, Workspace } from '@agentdeck/shared';
-import type { PermissionAnswer, TurnHandle } from '../../../src/agents/types';
+import type { AgentEvent } from '@agentdeck/shared/conversation';
+import type { Workspace } from '@agentdeck/shared/projects';
+import type { PermissionAnswer, TurnHandle } from '../../../src/agents/contracts';
 import {
   runCodexTurn as nativeRunCodexTurn,
   listCodexSessions,

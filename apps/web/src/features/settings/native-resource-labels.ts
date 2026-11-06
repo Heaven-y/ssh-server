@@ -1,5 +1,6 @@
-import type { AgentKind, NativeResourceKind, NativeResourceScope } from '@agentdeck/shared';
-import { ApiError } from '../../lib/api';
+import { ApiError } from '../../lib/http';
+import type { AgentKind } from '@agentdeck/shared/conversation';
+import type { NativeResourceKind, NativeResourceScope } from '@agentdeck/shared/settings';
 
 export const nativeAgentNames: Record<AgentKind, string> = {
   claude: 'Claude Code',

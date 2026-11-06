@@ -1,4 +1,4 @@
-import { ProductSettingsSchema, type ProductSettings } from '@agentdeck/shared';
+import { ProductSettingsSchema, type ProductSettings } from '@agentdeck/shared/settings';
 
 export type ProductSettingsDraft = {
   defaultAgent: ProductSettings['defaultAgent'];

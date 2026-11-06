@@ -19,14 +19,14 @@ export default defineConfig({
         'apps/desktop/src/main.ts',
         'apps/desktop/src/preload.ts',
         // 需要真实 SSH 连接，由 scripts/dev/ssh-smoke.ts 与 e2e 验收覆盖
-        'apps/server/src/ssh/pool.ts',
+        'apps/server/src/builtin-plugins/ssh-console/ssh/pool.ts',
         // 只有类型或样式常量
-        'packages/shared/src/events.ts',
+        'packages/shared/src/conversation/events.ts',
         'apps/web/src/ui/styles.ts',
         // 界面组件：通过行为组件测试与实际浏览器验收验证，沿用既有覆盖率边界
         'apps/web/src/**/*.tsx',
         // 从 SSH 组件抽出的交互 Hook：沿用该组件的浏览器验收范围
-        'apps/web/src/features/ssh/use-ssh-connection.ts',
+        'apps/web/src/builtin-plugins/ssh-console/ssh/use-ssh-connection.ts',
         // 浏览器 WebSocket 封装，逻辑交给 partysocket；状态处理在 chat-store 中测试
         'apps/web/src/lib/ws.ts',
       ],

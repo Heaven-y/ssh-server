@@ -1,6 +1,6 @@
 import { CircleAlert, ListTree, MessageSquare, X } from 'lucide-react';
 import { useState } from 'react';
-import type { Workspace } from '@agentdeck/shared';
+import type { Workspace } from '@agentdeck/shared/projects';
 import { buttonClass } from '../../ui/styles';
 import { useChat } from './chat-store';
 import { Composer } from './Composer';

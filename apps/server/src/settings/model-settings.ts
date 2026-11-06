@@ -1,54 +1,32 @@
-import type { AgentKind, NativeModelSettingsDocument, NativeModelSettingsInput } from '@agentdeck/shared';
-import { NativeModelSettingsInputSchema } from '@agentdeck/shared';
+import type { AgentKind, AgentModel } from '@agentdeck/shared/conversation';
+import type { NativeModelSettingsDocument, NativeModelSettingsInput } from '@agentdeck/shared/settings';
+import { NativeModelSettingsInputSchema } from '@agentdeck/shared/settings';
+import type { EnvironmentSnapshot, ModelSettingsEnvironment } from '../agents/common/configuration/contracts';
+import { modelSettingsRevision } from '../agents/common/configuration/environment';
+import { NativeResourceError } from '../agents/common/configuration/errors';
+import { parseModelConfig } from '../agents/common/configuration/fields';
+import { ModelSettingsError } from '../agents/common/configuration/patch';
+import { cliConfigurations } from '../agents/registry';
 import { createNativeResourcesService, type NativeResourcesService } from './native-resources';
-import { antigravityFields, claudeFields, codexFields, parseModelConfig } from './model-settings-fields';
-import { ModelSettingsError, patchModelConfig } from './model-settings-patch';
-import { NativeResourceError } from './native-resources-errors';
-import {
-  antigravitySelectionChanges,
-  nativeAntigravityModels,
-  type AntigravityModelCatalog,
-} from './model-settings-antigravity';
-import {
-  advancedModelEnvironmentWarnings,
-  antigravityConnectionChanges,
-  modelConnectionFields,
-  modelEnvironmentWarnings,
-  modelSettingsRevision,
-  nativeModelChanges,
-  prepareModelConnection,
-  readModelEnvironment,
-  type ModelSettingsEnvironment,
-} from './model-settings-environment';
-
 type Deps = {
   resources?: NativeResourcesService;
   environment?: ModelSettingsEnvironment;
-  antigravityModels?: AntigravityModelCatalog;
+  antigravityModels?: () => Promise<AgentModel[]>;
 };
 type NativeDocument = Awaited<ReturnType<NativeResourcesService['open']>>;
-type EnvironmentSnapshot = Awaited<ReturnType<typeof readModelEnvironment>>;
 
 function describe(
   agent: AgentKind,
   document: NativeDocument,
-  environment: EnvironmentSnapshot,
+  environment: EnvironmentSnapshot | undefined,
 ): NativeModelSettingsDocument {
-  const config = parseModelConfig(agent, document.content);
-  const fields =
-    agent === 'codex'
-      ? codexFields(config)
-      : { fields: agent === 'claude' ? claudeFields(config) : antigravityFields(config) };
-  if (agent === 'antigravity') fields.fields.push(...modelConnectionFields(environment));
+  const adapter = cliConfigurations[agent];
+  const config = parseModelConfig(adapter.format, document.content);
   return {
     agent,
     revision: modelSettingsRevision(document.revision, environment),
     displayPath: document.resource.displayPath,
-    ...fields,
-    warnings: [
-      ...modelEnvironmentWarnings(config.modelProvider, environment),
-      ...(config.profile ? ['检测到旧版 profile 选择；新版 CLI 的 profile 格式已变化，请在原始配置中核对。'] : []),
-    ],
+    ...adapter.describe(config, environment),
   };
 }
 
@@ -70,39 +48,32 @@ export function createModelSettingsService(deps: Deps = {}) {
     const saved = await resources.save(agent, document.resource.id, { content, revision: document.revision });
     return { ...saved, content };
   }
-  async function response(agent: AgentKind, document: NativeDocument, environment: EnvironmentSnapshot) {
+  async function response(agent: AgentKind, document: NativeDocument, environment: EnvironmentSnapshot | undefined) {
     const result = describe(agent, document, environment);
-    const config = parseModelConfig(agent, document.content);
-    result.warnings.push(...(await advancedModelEnvironmentWarnings(agent, config, deps.environment)));
+    const config = parseModelConfig(cliConfigurations[agent].format, document.content);
+    result.warnings.push(...(await cliConfigurations[agent].advancedWarnings(config, deps.environment)));
     return result;
   }
   return {
     async read(agent: AgentKind) {
       const document = await open(agent);
-      return response(agent, document, await readModelEnvironment(agent, deps.environment));
+      return response(agent, document, await cliConfigurations[agent].readEnvironment(deps.environment));
     },
     async save(agent: AgentKind, input: NativeModelSettingsInput) {
       const parsed = NativeModelSettingsInputSchema.safeParse(input);
       if (!parsed.success) throw new ModelSettingsError('模型配置请求格式不正确。');
       const document = await open(agent);
-      const environment = await readModelEnvironment(agent, deps.environment);
+      const environment = await cliConfigurations[agent].readEnvironment(deps.environment);
       if (input.revision !== modelSettingsRevision(document.revision, environment))
         throw new NativeResourceError('revision_conflict');
-      const config = parseModelConfig(agent, document.content);
-      const changes =
-        agent === 'antigravity'
-          ? antigravityConnectionChanges(parsed.data.changes, config, environment)
-          : parsed.data.changes;
-      const nativeChanges =
-        agent === 'antigravity'
-          ? await antigravitySelectionChanges(
-              config,
-              nativeModelChanges(changes, environment),
-              deps.antigravityModels ?? nativeAntigravityModels,
-            )
-          : changes;
-      const content = patchModelConfig(agent, document.content, config, nativeChanges);
-      const connection = prepareModelConnection(agent === 'antigravity' ? changes : {}, deps.environment, environment);
+      const config = parseModelConfig(cliConfigurations[agent].format, document.content);
+      const adapter = cliConfigurations[agent];
+      const prepared = await adapter.prepare(config, parsed.data.changes, environment, {
+        environment: deps.environment,
+        modelCatalog: deps.antigravityModels,
+      });
+      const content = adapter.patch(document.content, config, prepared.changes);
+      const connection = prepared.connection;
       const environmentSaved = await connection.save();
       let saved: NativeDocument;
       try {

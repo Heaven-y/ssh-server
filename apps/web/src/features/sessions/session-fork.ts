@@ -1,7 +1,9 @@
-import { NativeSessionIdSchema, type SessionForkInput, type SessionRef } from '@agentdeck/shared';
-import { api } from '../../lib/api';
+import type { SessionOperation } from '../chat/chat-state';
+import { sessionsApi } from './api';
+import { NativeSessionIdSchema, type SessionForkInput, type SessionRef } from '@agentdeck/shared/conversation';
+
 import { refreshSessionLists } from './session-queries';
-import { managementPending, sessionActionKey, useChat, type SessionOperation } from '../chat/chat-store';
+import { managementPending, sessionActionKey, useChat } from '../chat/chat-store';
 
 type Current = ReturnType<typeof useChat.getState>;
 function isSource(current: Current, workspaceId: string, session: SessionRef): boolean {
@@ -46,7 +48,7 @@ export async function forkSession(workspaceId: string, session: SessionRef, inpu
   }
   setOperation(key, { action: 'fork', pending: true });
   try {
-    const result = await api.sessionFork(workspaceId, session.sessionId, session.agent, input);
+    const result = await sessionsApi.sessionFork(workspaceId, session.sessionId, session.agent, input);
     checkResult(session, result.session);
     setOperation(key);
     if (canSelect(useChat.getState(), workspaceId, current.conversationVersion))

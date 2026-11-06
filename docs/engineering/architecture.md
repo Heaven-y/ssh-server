@@ -41,22 +41,30 @@ Electron 负责入口、生命周期及本机目录选择。目录选择只暴�
 | 路径 | 负责内容 |
 |---|---|
 | `apps/desktop/src` | 窗口、preload、单实例与退出编排 |
-| `apps/server/src/agents` | 本机程序探测、各 CLI 协议映射、会话读取与运行时 |
-| `apps/server/src/chat`、`sessions` | 回合、能力缓存、原生会话管理与归属 |
-| `apps/server/src/workspaces`、`settings` | 项目、迁移、产品偏好、原生配置 |
-| `apps/server/src/plugins`、`ssh-console` | 插件注册及隔离接口、独立服务器控制台与后端 PTY 注册表 |
-| `apps/server/src/http`、`process` | 访问控制、路由、子进程通用执行 |
-| `apps/server/src/ssh`、`terminal` | SSH 档案、信任、凭据、通道与 PTY 生命周期 |
-| `apps/server/src/resources`、`slurm`、`remote-files` | 当前资源采样、作业查询及服务器文件业务 |
-| `apps/web/src/app` | 入口、导航、布局和对话主区组合 |
-| `apps/web/src/features` | 会话、对话、设置与 SSH 界面 |
-| `apps/web/src/lib`、`ui` | API、查询缓存和可复用界面组件 |
-| `packages/shared/src` | 前后端消息、模型和 zod schema |
+| `apps/server/src/bootstrap` | 静态组装 CLI 服务、内置插件和清理钩子；server.ts 只管理启动生命周期 |
+| `apps/server/src/agents/{claude,codex,antigravity}` | 各 CLI 协议、历史、能力与 configuration；common 存契约辅助及同步目录归属规则 |
+| `apps/server/src/chat`、`sessions` | 共享回合、能力缓存、会话服务、目录缓存和归档偏好 |
+| `apps/server/src/workspaces`、`settings` | 项目、迁移、产品偏好、原生文件与配置事务协调 |
+| `apps/server/src/platform/{files,process,secrets}` | 安全文件读写、文件事务、TOML 修改、子进程和 Windows DPAPI |
+| `apps/server/src/plugins` | 通用插件注册状态、包校验、权限和存储，不导入 SSH 实现 |
+| `apps/server/src/builtin-plugins/ssh-console` | manifest、注册、SSH 基础、console 与 HTTP；旧工具放在 legacy 下 |
+| `apps/server/src/http` | 本机访问控制、通用请求取消和应用路由 |
+| `apps/web/src/app` | DSH 外壳、导航、布局和跨功能组合 |
+| `apps/web/src/cli` | 通用模型身份与缓存，以及 Claude 上下文、Codex 参数、AGY 变体和设置策略 |
+| `apps/web/src/features` | 对话、会话、项目、设置、插件宿主；每个功能拥有自己的 API 与查询键 |
+| `apps/web/src/builtin-plugins/ssh-console` | 内置页面注册、服务器配置、控制台和 legacy 工具 |
+| `apps/web/src/lib`、`ui` | HTTP、WebSocket、桌面桥、查询客户端与通用控件 |
+| `packages/shared/src/{conversation,projects,settings,plugins,ssh}` | 按领域导出的协议/schema；根入口保留兼容出口 |
 | `apps/*/tests`、`packages/*/tests` | 按功能镜像的单元与组件/模块测试 |
 | `scripts/dev` | 文档检查、受控夹具和显式真实链路验证入口 |
 | `scripts/packaging` | 本地成包检查与隔离桌面启动冒烟 |
 
 按功能划分模块，通用能力才进入公共目录；不额外增加控制器/仓储等重复层。旧同步、版本、本地镜像、MCP 桥和命令黑名单目录已删除。
+
+依赖方向由少量 ESLint 导入规则检查：platform 不导入应用/CLI/插件业务，agents 不导入应用服务，插件宿主不导入内置实现；前端 cli/lib/ui 不反向导入功能页面，shared 不依赖 apps。CLI 配置通过 `CliConfiguration` 静态注册，通用设置只负责 revision、文件保存、连接事务和失效通知。JSON/TOML 格式工具不识别具体 CLI，原生字段和作用域只在各适配目录声明。
+
+会话目录的同步路径裁决与磁盘 realpath 核验保持不同函数。`legacySessionCapabilities` 明确用于缺少 capabilities 的旧数据，新列表以 provider 返回能力为准。前端继续只有一个 chat store，纯状态和模型策略另行提取，不复制三个对话产品。
+
 
 ## 4. 项目、会话与回合
 

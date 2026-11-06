@@ -1,7 +1,7 @@
 import { constants, type Dirent, type Stats } from 'node:fs';
 import { lstat, open, opendir, rmdir, unlink, type FileHandle } from 'node:fs/promises';
 import path from 'node:path';
-import { assertDirectoryUnchanged, inspectDirectory } from '../settings/safe-file';
+import { assertDirectoryUnchanged, inspectDirectory } from '../platform/files/safe-file';
 import { WorkbenchPluginError } from './errors';
 
 export const MAX_PLUGIN_BYTES = 10 * 1024 * 1024;

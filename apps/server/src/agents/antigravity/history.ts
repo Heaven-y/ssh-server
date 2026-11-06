@@ -1,4 +1,4 @@
-import type { AgentEvent } from '@agentdeck/shared';
+import type { AgentEvent } from '@agentdeck/shared/conversation';
 import { managementObject as object, managementText as text, type ManagementRecord } from './management-rpc';
 import { contextEvent, historyTiming, stepUsage } from './metrics';
 

@@ -1,11 +1,13 @@
+import { settingsApi } from './api';
 import { useEffect, useRef, useState } from 'react';
 import { RefreshCw, Save } from 'lucide-react';
-import type { AgentKind, LaunchEnvironmentDocument } from '@agentdeck/shared';
-import { api } from '../../lib/api';
+import type { AgentKind } from '@agentdeck/shared/conversation';
+import type { LaunchEnvironmentDocument } from '@agentdeck/shared/settings';
+
 import { buttonClass } from '../../ui/styles';
 import { SettingsDetailDialog } from './SettingsDetailDialog';
 import { confirmNativeDiscard, nativeAgentNames, nativeSettingsError } from './native-resource-labels';
-import { invalidateNativeCapabilities } from './model-settings-api';
+import { invalidateNativeCapabilities } from '../../cli/shared/capability-cache';
 import {
   LaunchEnvironmentVariable,
   invalidLaunchDraft,
@@ -27,7 +29,7 @@ function useLaunchEnvironment(agent: AgentKind) {
   useEffect(() => {
     const controller = new AbortController();
     pending.current = controller;
-    void api
+    void settingsApi
       .readLaunchEnvironment(agent, controller.signal)
       .then((result) => {
         if (!controller.signal.aborted) setDocument(result);
@@ -85,7 +87,7 @@ function useLaunchEnvironment(agent: AgentKind) {
         mode: value.mode,
         ...(value.mode === 'set' && value.value ? { value: value.value } : {}),
       }));
-      const result = await api.saveLaunchEnvironment(agent, { revision: document.revision, variables }, signal);
+      const result = await settingsApi.saveLaunchEnvironment(agent, { revision: document.revision, variables }, signal);
       await invalidateNativeCapabilities(agent);
       if (!signal.aborted) {
         setDocument(result);
@@ -97,7 +99,7 @@ function useLaunchEnvironment(agent: AgentKind) {
   const restart = async () => {
     if (!document || dirty) return;
     await perform('restart', async (signal) => {
-      await api.restartAgentRuntime(agent, signal);
+      await settingsApi.restartAgentRuntime(agent, signal);
       return '下一次发送时将重新启动 CLI 并使用当前启动环境。';
     });
   };

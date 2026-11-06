@@ -4,7 +4,8 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ProcessRunner } from '../src/process/run';
+import type { WorkbenchPluginCatalog } from '@agentdeck/shared/plugins';
+import type { ProcessRunner } from '../src/platform/process/run';
 import { startServer, type StartedServer } from '../src/server';
 
 // 探测用假执行器：立刻以非零状态退出，避免测试启动本机真实 CLI。
@@ -98,4 +99,26 @@ describe('startServer', () => {
     await Promise.all([server.close(), server.close()]);
     await expect(server.close()).resolves.toBeUndefined();
   });
+});
+
+it('完整启动接线在停用期间拒绝所有 SSH 路由，重新启用恢复且不影响项目接口', async () => {
+  const { configDir, legacyDir } = await fixture();
+  const server = await launch(configDir, legacyDir);
+  const origin = new URL(server.url).origin;
+  const headers = { origin, cookie: 'AGENTDECK_session=test-token', 'content-type': 'application/json' };
+  const request = (url: string, method = 'GET', body?: unknown) =>
+    fetch(new URL(url, server.url), { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const initial = (await (await request('api/plugins')).json()) as WorkbenchPluginCatalog;
+  expect((await request('api/plugins/ssh-console', 'PUT', { enabled: false, revision: initial.revision })).status).toBe(
+    200,
+  );
+  for (const url of ['api/ssh-targets', 'api/workspaces/missing/resources', 'api/workspaces/missing/slurm']) {
+    expect((await request(url)).status).toBe(409);
+  }
+  expect((await request('api/projects')).status).toBe(200);
+  const disabled = (await (await request('api/plugins')).json()) as WorkbenchPluginCatalog;
+  expect((await request('api/plugins/ssh-console', 'PUT', { enabled: true, revision: disabled.revision })).status).toBe(
+    200,
+  );
+  expect((await request('api/ssh-targets')).status).toBe(200);
 });

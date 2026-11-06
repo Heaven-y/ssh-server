@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import type { AgentTurnInput, TurnHandle, TurnRunner } from '../types';
-import { resolveLocalCommand } from '../../process/executable';
+import type { AgentTurnInput, TurnHandle, TurnRunner } from '../contracts';
+import { resolveLocalCommand } from '../../platform/process/executable';
 import { AntigravityMapper } from './mapper';
 import { AntigravityLines } from './lines';
 import { antigravityDefaultModel } from './model-catalog';

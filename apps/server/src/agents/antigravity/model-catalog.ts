@@ -1,8 +1,8 @@
+import type { AgentModel } from '@agentdeck/shared/conversation';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import type { AgentModel } from '@agentdeck/shared';
-import { readConfigFile } from '../../settings/safe-file';
-import { antigravityModelId, selectedAntigravityModel } from '../../settings/model-settings-fields';
+import { readConfigFile } from '../../platform/files/safe-file';
+import { antigravityModelId, selectedAntigravityModel } from './configuration/identity';
 
 type CustomModel = { modelName: string; label?: string; maxTokens?: number };
 export type AntigravityModelSettings = {

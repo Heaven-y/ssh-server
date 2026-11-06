@@ -1,18 +1,16 @@
-import os from 'node:os';
-import path from 'node:path';
-import { parse as parseToml } from 'smol-toml';
+import type { AgentKind } from '@agentdeck/shared/conversation';
 import type {
-  AgentKind,
   NativeResourceCatalog,
   NativeResourceCreateInput,
   NativeResourceDocument,
-  NativeResourceSaveInput,
   NativeResourceSaved,
-} from '@agentdeck/shared';
-import { makeResourceTarget, resourcePlan, type ResourceTarget } from './native-resources-catalog';
-import { describeResource, describeRoot, discoverResources } from './native-resources-discovery';
-import { NativeResourceError, resourceError } from './native-resources-errors';
-import { nativeFileTransaction } from './native-resources-transactions';
+  NativeResourceSaveInput,
+} from '@agentdeck/shared/settings';
+import os from 'node:os';
+import path from 'node:path';
+import { parse as parseToml } from 'smol-toml';
+import { NativeResourceError, resourceError } from '../agents/common/configuration/errors';
+import { makeResourceTarget, type ResourceTarget } from '../agents/common/configuration/resources';
 import {
   assertDirectoryUnchanged,
   contentRevision,
@@ -21,7 +19,10 @@ import {
   MAX_CONFIG_BYTES,
   readConfigFile,
   writeConfigFile,
-} from './safe-file';
+} from '../platform/files/safe-file';
+import { nativeFileTransaction } from '../platform/files/transactions';
+import { describeResource, describeRoot, discoverResources } from './native-resources-discovery';
+import { resourcePlan } from './resource-plan';
 
 export type NativeResourceProject = { id: string; dir: string };
 type Deps = { homeDir?: string; env?: NodeJS.ProcessEnv; onSaved?: (agent: AgentKind) => void | Promise<void> };

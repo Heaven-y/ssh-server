@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { WorkbenchPlugin, Workspace } from '@agentdeck/shared';
+import type { WorkbenchPlugin } from '@agentdeck/shared/plugins';
+import type { Workspace } from '@agentdeck/shared/projects';
 import { pluginApi } from './plugin-api';
 import { handlePluginRequest, pluginDocument } from './plugin-bridge';
 

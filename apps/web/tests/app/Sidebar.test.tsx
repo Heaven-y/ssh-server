@@ -1,14 +1,17 @@
 // @vitest-environment jsdom
+import { ApiError } from '../../src/lib/http';
+import { sessionsApi } from '../../src/features/sessions/api';
 import path from 'node:path';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render as renderView, screen, waitFor, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { SessionSummary, Workspace } from '@agentdeck/shared';
+import type { SessionSummary } from '@agentdeck/shared/conversation';
+import type { Workspace } from '@agentdeck/shared/projects';
 import { Sidebar } from '../../src/app/Sidebar';
-import { useProjectSessions } from '../../src/app/use-project-sessions';
+import { useProjectSessions } from '../../src/features/projects/use-project-sessions';
 import { useChat } from '../../src/features/chat/chat-store';
-import { api, ApiError } from '../../src/lib/api';
+
 import { queryClient } from '../../src/lib/query-client';
 import { useUiPreferences } from '../../src/ui/ui-preferences';
 
@@ -275,7 +278,7 @@ function ProjectSessionsSidebar() {
 
 it('项目会话单个CLI读取失败时保留其他来源，错误按项目展示且只重试失败来源', async () => {
   let failed = true;
-  const list = vi.spyOn(api, 'listSessions').mockImplementation(async (id, agent) => {
+  const list = vi.spyOn(sessionsApi, 'listSessions').mockImplementation(async (id, agent) => {
     if (id === project.id && agent === 'codex') {
       if (failed) throw new ApiError(503, '原生目录暂不可用');
       return [codexSession];
@@ -301,7 +304,7 @@ it('项目会话单个CLI读取失败时保留其他来源，错误按项目展�
 });
 
 it('所有会话来源读取失败时不能显示暂无会话', async () => {
-  vi.spyOn(api, 'listSessions').mockRejectedValue(new ApiError(503, '原生目录暂不可用'));
+  vi.spyOn(sessionsApi, 'listSessions').mockRejectedValue(new ApiError(503, '原生目录暂不可用'));
   render(<ProjectSessionsSidebar />);
   const group = within(screen.getByRole('region', { name: '示例项目会话' }));
   expect(await group.findAllByRole('alert')).toHaveLength(3);
@@ -355,7 +358,7 @@ it('非当前项目删除只发送源行身份，必须确认且失败留在原�
 it('已打开菜单在会话变忙后禁用，409失败后可重新操作', async () => {
   useChat.getState().selectWorkspace(project.id);
   const mutate = vi
-    .spyOn(api, 'sessionAction')
+    .spyOn(sessionsApi, 'sessionAction')
     .mockRejectedValueOnce(new ApiError(409, '会话正在运行', { code: 'session_busy' }))
     .mockResolvedValue(undefined);
   managedSidebar();
@@ -381,8 +384,8 @@ it('已打开菜单在会话变忙后禁用，409失败后可重新操作', asyn
 it('当前项目分叉经确认后读取并选中新原生身份', async () => {
   useChat.getState().selectWorkspace(project.id);
   const forked = { agent: 'claude' as const, sessionId: 'forked', summary: '新分叉', lastModified: 2 };
-  const fork = vi.spyOn(api, 'sessionFork').mockResolvedValue({ session: forked });
-  const read = vi.spyOn(api, 'sessionEvents').mockResolvedValue({ session: forked, events: [] });
+  const fork = vi.spyOn(sessionsApi, 'sessionFork').mockResolvedValue({ session: forked });
+  const read = vi.spyOn(sessionsApi, 'sessionEvents').mockResolvedValue({ session: forked, events: [] });
   managedSidebar();
   await actionFor(claudeSession.title, '创建分支');
   expect(fork).not.toHaveBeenCalled();
@@ -393,7 +396,7 @@ it('当前项目分叉经确认后读取并选中新原生身份', async () => {
 });
 
 it('原生摘要或当前回合运行时禁用菜单，操作处理中不重复发送', async () => {
-  const mutate = vi.spyOn(api, 'sessionAction').mockImplementation(() => new Promise(() => undefined));
+  const mutate = vi.spyOn(sessionsApi, 'sessionAction').mockImplementation(() => new Promise(() => undefined));
   managedSidebar([{ ...claudeSession, running: true }, codexSession]);
   expect(screen.getByRole<HTMLButtonElement>('button', { name: /Claude.*更多操作/ }).disabled).toBe(true);
   await actionFor(codexSession.title, '归档');

@@ -1,13 +1,25 @@
 // @vitest-environment jsdom
+import { settingsApi } from '../../src/features/settings/api';
+import { chatApi } from '../../src/features/chat/api';
+import { projectsApi } from '../../src/features/projects/api';
+import { sessionsApi } from '../../src/features/sessions/api';
+import { sshApi, sshKeys } from '../../src/builtin-plugins/ssh-console/ssh/api';
+import { resourcesApi } from '../../src/builtin-plugins/ssh-console/legacy/resources/api';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { pluginApi } from '../../src/features/plugins/plugin-api';
 import { App } from '../../src/app/App';
-import { api, queryKeys } from '../../src/lib/api';
+
 import { useChat } from '../../src/features/chat/chat-store';
 import { useUiPreferences } from '../../src/ui/ui-preferences';
-import { credentials, server, settings, snapshot, workspace } from '../features/resources/fixtures';
+import {
+  credentials,
+  server,
+  settings,
+  snapshot,
+  workspace,
+} from '../builtin-plugins/ssh-console/legacy/resources/fixtures';
 
 let client: QueryClient;
 let wide: boolean;
@@ -76,12 +88,12 @@ beforeEach(() => {
   });
   // 每次挂载右栏均关闭；旧服务器栏偏好不再决定对话布局。
   useUiPreferences.setState({ sidebarCollapsed: false, dockCollapsed: null });
-  vi.spyOn(api, 'listWorkspaces').mockResolvedValue([workspace, other]);
-  vi.spyOn(api, 'readProductSettings').mockResolvedValue(settings);
-  vi.spyOn(api, 'readEnvironment').mockResolvedValue({ checkedAt: 1, tools: [] });
-  vi.spyOn(api, 'listSshHosts').mockResolvedValue([server]);
-  vi.spyOn(api, 'sshCredentials').mockResolvedValue(credentials);
-  vi.spyOn(api, 'listSessions').mockResolvedValue([]);
+  vi.spyOn(projectsApi, 'listWorkspaces').mockResolvedValue([workspace, other]);
+  vi.spyOn(settingsApi, 'readProductSettings').mockResolvedValue(settings);
+  vi.spyOn(settingsApi, 'readEnvironment').mockResolvedValue({ checkedAt: 1, tools: [] });
+  vi.spyOn(sshApi, 'listSshHosts').mockResolvedValue([server]);
+  vi.spyOn(sshApi, 'sshCredentials').mockResolvedValue(credentials);
+  vi.spyOn(sessionsApi, 'listSessions').mockResolvedValue([]);
   vi.spyOn(pluginApi, 'list').mockResolvedValue({
     revision: 'fixture',
     plugins: [
@@ -100,16 +112,21 @@ beforeEach(() => {
       },
     ],
   });
-  vi.spyOn(api, 'agentCapabilities').mockResolvedValue({ agent: 'claude', entries: [], models: [], warnings: [] });
-  vi.spyOn(api, 'readResources').mockImplementation(async () => snapshot());
-  vi.spyOn(api, 'readSlurm').mockResolvedValue({ sampledAt: 1, status: 'available', output: '', truncated: false });
+  vi.spyOn(chatApi, 'agentCapabilities').mockResolvedValue({ agent: 'claude', entries: [], models: [], warnings: [] });
+  vi.spyOn(resourcesApi, 'readResources').mockImplementation(async () => snapshot());
+  vi.spyOn(resourcesApi, 'readSlurm').mockResolvedValue({
+    sampledAt: 1,
+    status: 'available',
+    output: '',
+    truncated: false,
+  });
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => new Response(JSON.stringify({ message: '受控未启用接口' }), { status: 503 })),
   );
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(queryKeys.sshHosts, [server]);
-  client.setQueryData(queryKeys.sshCredentials(server.alias), credentials);
+  client.setQueryData(sshKeys.sshHosts, [server]);
+  client.setQueryData(sshKeys.sshCredentials(server.alias), credentials);
 });
 afterEach(async () => {
   cleanup();
@@ -134,9 +151,9 @@ it.each([null, false, true])('默认只显示工作区和对话，旧服务器�
   await screen.findByLabelText('输入消息');
   expect(screen.queryByRole('complementary', { name: '右侧边栏' })).toBeNull();
   expect(screen.queryByRole('complementary', { name: '服务器面板' })).toBeNull();
-  expect(api.readResources).not.toHaveBeenCalled();
-  expect(api.sshCredentials).not.toHaveBeenCalled();
-  expect(api.listSshHosts).not.toHaveBeenCalled();
+  expect(resourcesApi.readResources).not.toHaveBeenCalled();
+  expect(sshApi.sshCredentials).not.toHaveBeenCalled();
+  expect(sshApi.listSshHosts).not.toHaveBeenCalled();
 });
 it('右侧按需打开会话信息，收起重开不卸载输入草稿', async () => {
   mount();
@@ -154,7 +171,7 @@ it('右侧按需打开会话信息，收起重开不卸载输入草稿', async (
   expect(screen.getByRole('complementary', { name: '右侧边栏' })).toBe(panel);
   expect(screen.getByLabelText('输入消息')).toBe(composer);
   expect((composer as HTMLTextAreaElement).value).toBe('保留草稿');
-  expect(api.readResources).not.toHaveBeenCalled();
+  expect(resourcesApi.readResources).not.toHaveBeenCalled();
 });
 it('SSH Console从左上打开中央面板，返回当前工作区保留对话草稿', async () => {
   mount();

@@ -42,6 +42,8 @@ Antigravity 的 `customModelsConfig.customModels` 是对象映射，每个条目
 
 模型目录按 CLI 与实际目录持久缓存，成功结果在应用重启后继续使用；用户可点击重新获取，填写过配置时明确显示“保存并获取模型”。设置 GET `/api/settings/models/:agent/catalog` 只读缓存，POST 使用原生接口获取；不会探测任意服务的 /v1/models 或发送对话。Claude 使用 supportedModels，Codex 使用 model/list 并补入原生当前自定义 ID。模型列表是否列全由原生协议决定，始终允许手输。
 
+窗口和 token 阈值文本框接受整数或十进制简写，例如 `128K`、`1M`、`1.5m`；K 为 1,000，M 为 1,000,000。保存时精确转换成原生整数，读取仍回显原生数值；空白恢复默认，负数、溢出或换算后不是整数的值拒绝保存。这里是输入格式便利，不改变各 CLI 对窗口、压缩和 maxTokens 的定义。
+
 Codex 的自动压缩计数口径 `model_auto_compact_token_limit_scope` 和较新版本的轮末压缩百分比 `model_post_turn_compact_threshold_percent` 仍可从原始配置编辑；前者不等于窗口大小，后者不是普通自动压缩阈值的替代。常用表单不改写这些未选择字段。依据为[官方配置参考](https://learn.chatgpt.com/docs/config-file/config-reference)和本机 app-server 的 ConfigReadResponse schema。
 
 ## 读取与编辑边界

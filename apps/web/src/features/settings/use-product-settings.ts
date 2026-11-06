@@ -1,6 +1,6 @@
+import { settingsApi, settingsKeys } from './api';
 import { useEffect } from 'react';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { api, queryKeys } from '../../lib/api';
 
 const focusReaders = new WeakMap<QueryClient, { count: number; changed(): void }>();
 function subscribeFocus(client: QueryClient) {
@@ -10,7 +10,7 @@ function subscribeFocus(client: QueryClient) {
       count: 0,
       changed: () => {
         if (document.visibilityState === 'visible')
-          void client.invalidateQueries({ queryKey: queryKeys.productSettings }, { cancelRefetch: false });
+          void client.invalidateQueries({ queryKey: settingsKeys.productSettings }, { cancelRefetch: false });
       },
     };
     focusReaders.set(client, entry);
@@ -31,8 +31,8 @@ export function useProductSettings() {
   const client = useQueryClient();
   useEffect(() => subscribeFocus(client), [client]);
   return useQuery({
-    queryKey: queryKeys.productSettings,
-    queryFn: ({ signal }) => api.readProductSettings(signal),
+    queryKey: settingsKeys.productSettings,
+    queryFn: ({ signal }) => settingsApi.readProductSettings(signal),
     staleTime: 0,
     refetchOnWindowFocus: true,
     retry: false,

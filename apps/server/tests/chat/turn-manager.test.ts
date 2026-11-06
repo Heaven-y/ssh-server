@@ -1,9 +1,10 @@
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentEvent, ServerMessage, Workspace } from '@agentdeck/shared';
-import type { AgentTurnInput } from '../../src/agents/types';
-import { SessionError } from '../../src/chat/sessions';
+import type { AgentEvent, ServerMessage } from '@agentdeck/shared/conversation';
+import type { Workspace } from '@agentdeck/shared/projects';
+import type { AgentTurnInput } from '../../src/agents/contracts';
+import { SessionError } from '../../src/agents/errors';
 import { TurnManager, type Socket, type TurnManagerDeps } from '../../src/chat/turn-manager';
 
 const ws: Workspace = {

@@ -1,14 +1,13 @@
+import { NativeSessionIdSchema } from '@agentdeck/shared/conversation';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import type { SessionProvider } from '../../chat/sessions';
-import { SessionError } from '../../chat/sessions';
-import type { NativeSessionSummary } from '../types';
-import { readSummaries, type SummaryRow } from './summaries';
-import { nativeSessionDirectory, resolveProjectId } from '../../sessions/ownership';
-import { NativeSessionIdSchema } from '@agentdeck/shared';
-import { sameSessionDirectory } from '../session-scope';
-import type { AntigravitySessionManagement } from './session-management-types';
+import { nativeSessionDirectory, resolveProjectId } from '../common/session-ownership';
+import { sameSessionDirectory } from '../common/session-scope';
+import type { NativeSessionSummary, SessionProvider } from '../contracts';
+import { SessionError } from '../errors';
 import { antigravityHistory } from './history';
+import type { AntigravitySessionManagement } from './session-management-types';
+import { readSummaries, type SummaryRow } from './summaries';
 
 /** Antigravity 在用户目录下维护自己的会话摘要库，不随项目目录变化。 */
 export const ANTIGRAVITY_DB_PATH = path.join(homedir(), '.gemini', 'antigravity-cli', 'conversation_summaries.db');

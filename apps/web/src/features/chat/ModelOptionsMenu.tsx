@@ -1,47 +1,29 @@
+import { AGENT_LABELS } from '../../cli/shared/labels';
+import { MenuChoice as Choice, modelMenuItemClass as itemClass } from '../../ui/MenuChoice';
+import { ClaudeContextChoices } from '../../cli/claude/ContextChoices';
+import { ApiError } from '../../lib/http';
+import { projectsKeys } from '../projects/api';
 import { Menu, MenuButton, MenuGroup, MenuItem, MenuProvider, MenuSeparator, useMenuStore } from '@ariakit/react';
-import { Check, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { AgentCapabilities, AgentKind, AgentModel, Workspace } from '@agentdeck/shared';
-import { ApiError, queryKeys } from '../../lib/api';
-import { ProjectManageDialog } from '../../app/ProjectManageDialog';
+import type { AgentCapabilities, AgentKind } from '@agentdeck/shared/conversation';
+import type { Workspace } from '@agentdeck/shared/projects';
+
+import { ProjectManageDialog } from '../projects/ProjectManageDialog';
 import { buttonClass } from '../../ui/styles';
 import { agentUnavailable, agentVersion, useEnvironment } from '../settings/use-environment';
 import { sessionActionKey, useChat } from './chat-store';
 import { useAgentCapabilities } from './use-agent-capabilities';
 import { AgentIcon } from '../../ui/BrandIcons';
 import { ManualModelDialog } from './ManualModelDialog';
-import { claudeContextModels, findModel, modelDefaultEffort, modelDisplay, modelEfforts } from './model-capabilities';
+import { findModel, modelDisplay } from '../../cli/shared/model-identity';
+import { modelDefaultEffort, modelEfforts } from '../../cli/model-capabilities';
 
-export const AGENT_LABELS: Record<AgentKind, string> = {
-  claude: 'Claude',
-  codex: 'Codex',
-  antigravity: 'Antigravity',
-};
 const menuClass =
   'z-50 max-h-[min(440px,var(--popover-available-height))] w-72 overflow-y-auto rounded-2xl border border-border bg-card p-1 text-foreground shadow-lg';
-const itemClass =
-  'flex w-full cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[13px] outline-none data-active-item:bg-muted data-active-item:ring-1 data-active-item:ring-border-strong aria-disabled:cursor-not-allowed aria-disabled:opacity-45';
 const triggerClass = `${buttonClass('ghost')} min-h-7 min-w-0 gap-1 rounded-lg px-2 text-[13px]`;
 
-function Choice({
-  checked,
-  disabled,
-  choose,
-  children,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  choose(): void;
-  children: ReactNode;
-}) {
-  return (
-    <MenuItem role="menuitemradio" aria-checked={checked} disabled={disabled} onClick={choose} className={itemClass}>
-      <Check aria-hidden className={`size-3.5 shrink-0 ${checked ? '' : 'invisible'}`} />
-      <span className="min-w-0 flex-1">{children}</span>
-    </MenuItem>
-  );
-}
 function CatalogStatus({ catalog }: { catalog: ReturnType<typeof useAgentCapabilities> }) {
   if (catalog.isFetching && !catalog.data?.models.length)
     return (
@@ -179,6 +161,9 @@ function ModelChoices({
   onRepair,
 }: CatalogProps & { model: string; currentModel: string; inheritedLabel: string; onManual(): void; onRepair(): void }) {
   const setModel = useChat((state) => state.setModel);
+  const agent = useChat((state) => state.agent);
+  const effort = useChat((state) => state.reasoningEfforts[state.agent]);
+  const setEffort = useChat((state) => state.setReasoningEffort);
   return (
     <>
       <MenuGroup aria-label="可选模型">
@@ -206,7 +191,17 @@ function ModelChoices({
         ))}
       </MenuGroup>
       <CatalogStatus catalog={catalog} />
-      <ClaudeContextChoices disabled={disabled} model={currentModel} models={catalog.data?.models ?? []} />
+      {agent === 'claude' && (
+        <ClaudeContextChoices
+          disabled={disabled}
+          model={currentModel}
+          models={catalog.data?.models ?? []}
+          choose={(id) => {
+            setModel(id);
+            setEffort(effort);
+          }}
+        />
+      )}
       <MenuSeparator className="my-1 border-t border-border" />
       {catalog.error instanceof ApiError && catalog.error.code === 'workspace_directory_unavailable' ? (
         <MenuItem className={itemClass} disabled={disabled} onClick={onRepair}>
@@ -216,35 +211,6 @@ function ModelChoices({
         <RefreshModels catalog={catalog} disabled={disabled} />
       )}
       <ModelActions disabled={disabled} model={model} onManual={onManual} />
-    </>
-  );
-}
-function ClaudeContextChoices({ disabled, model, models }: { disabled: boolean; model: string; models: AgentModel[] }) {
-  const agent = useChat((state) => state.agent);
-  const setModel = useChat((state) => state.setModel);
-  const effort = useChat((state) => state.reasoningEfforts.claude);
-  const setEffort = useChat((state) => state.setReasoningEffort);
-  if (agent !== 'claude') return null;
-  const choices = claudeContextModels(model, models);
-  if (!choices) return null;
-  const choose = (id: string) => {
-    setModel(id);
-    setEffort(effort);
-  };
-  return (
-    <>
-      <MenuSeparator className="my-1 border-t border-border" />
-      <MenuGroup aria-label="Claude 上下文窗口">
-        <p className="px-3 py-2 text-xs text-muted-foreground">上下文窗口</p>
-        <div className="grid grid-cols-2 gap-1">
-          <Choice checked={!choices.selected} disabled={disabled} choose={() => choose(choices.standard)}>
-            默认窗口
-          </Choice>
-          <Choice checked={choices.selected} disabled={disabled} choose={() => choose(choices.extended)}>
-            1M
-          </Choice>
-        </div>
-      </MenuGroup>
     </>
   );
 }
@@ -335,7 +301,7 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
           onManual={() => setManual(true)}
           onRepair={() => {
             const project = client
-              .getQueryData<Workspace[]>(queryKeys.workspaces)
+              .getQueryData<Workspace[]>(projectsKeys.workspaces)
               ?.find((entry) => entry.id === useChat.getState().workspaceId);
             if (project) setRepairProject(project);
           }}

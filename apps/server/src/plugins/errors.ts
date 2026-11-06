@@ -1,4 +1,4 @@
-import { NativeConfigError } from '../settings/errors';
+import { FileAccessError } from '../platform/files/errors';
 
 const failures = {
   invalid_request: { status: 400, message: '插件请求格式不正确' },
@@ -28,7 +28,7 @@ export class WorkbenchPluginError extends Error {
 
 export function pluginError(error: unknown): WorkbenchPluginError {
   if (error instanceof WorkbenchPluginError) return error;
-  if (error instanceof NativeConfigError) {
+  if (error instanceof FileAccessError) {
     if (error.code === 'unsafe_path' || error.code === 'too_large' || error.code === 'revision_conflict')
       return new WorkbenchPluginError(error.code);
   }

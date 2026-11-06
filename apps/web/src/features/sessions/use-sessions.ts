@@ -1,15 +1,17 @@
+import { ApiError } from '../../lib/http';
+import { sessionsApi, sessionsKeys } from './api';
 // 会话数据的查询层：项目会话列表与单条原生历史都用 react-query 缓存，
 // 历史读取的失败按错误码分类，界面据此区分「不可回放」「会话不存在」与「读取出错」。
 import { useQuery } from '@tanstack/react-query';
-import type { AgentKind, SessionHistory, SessionRef } from '@agentdeck/shared';
-import { api, ApiError, queryKeys } from '../../lib/api';
+import type { AgentKind, SessionHistory, SessionRef } from '@agentdeck/shared/conversation';
+
 import type { SessionHistoryFailure } from './SessionTimeline';
 
 /** 项目会话列表：与左栏、对话区共用同一个缓存键，切项目不重复取。 */
 export function sessionListQuery(projectId: string, agent: AgentKind) {
   return {
-    queryKey: queryKeys.sessions(projectId, agent),
-    queryFn: ({ signal }: { signal: AbortSignal }) => api.listSessions(projectId, agent, false, signal),
+    queryKey: sessionsKeys.sessions(projectId, agent),
+    queryFn: ({ signal }: { signal: AbortSignal }) => sessionsApi.listSessions(projectId, agent, false, signal),
     retry: false as const,
   };
 }
@@ -26,7 +28,7 @@ export function useSessionHistory(
   retry(): void;
 } {
   const query = useQuery({
-    queryKey: queryKeys.sessionHistory(projectId ?? '', session?.agent ?? 'claude', session?.sessionId ?? ''),
+    queryKey: sessionsKeys.sessionHistory(projectId ?? '', session?.agent ?? 'claude', session?.sessionId ?? ''),
     queryFn: ({ signal }) => readHistory(projectId, session, signal),
     enabled: !!projectId && !!session,
     retry: false,
@@ -43,7 +45,7 @@ export function useSessionHistory(
 
 function readHistory(projectId: string | undefined, session: SessionRef | undefined, signal: AbortSignal) {
   if (!projectId || !session) throw new Error('尚未选择会话');
-  return api.sessionEvents(projectId, session.sessionId, session.agent, signal);
+  return sessionsApi.sessionEvents(projectId, session.sessionId, session.agent, signal);
 }
 
 /**

@@ -1,6 +1,6 @@
 import { LoaderCircle } from 'lucide-react';
-import type { SessionSummary } from '@agentdeck/shared';
-import { AGENT_LABELS } from '../chat/AgentControls';
+import type { SessionSummary } from '@agentdeck/shared/conversation';
+import { AGENT_LABELS } from '../../cli/shared/labels';
 import { relativeTime } from '../../ui/relative-time';
 import { SessionMenu, type SessionDialogAction } from './SessionMenu';
 import { useSessionBusy } from './use-session-busy';

@@ -1,7 +1,12 @@
 import { unlink } from 'node:fs/promises';
 import { z } from 'zod';
-import type { WorkbenchPluginStorage, WorkbenchPluginStorageInput } from '@agentdeck/shared';
-import { assertDirectoryUnchanged, inspectDirectory, readConfigFile, writeConfigFile } from '../settings/safe-file';
+import type { WorkbenchPluginStorage, WorkbenchPluginStorageInput } from '@agentdeck/shared/plugins';
+import {
+  assertDirectoryUnchanged,
+  inspectDirectory,
+  readConfigFile,
+  writeConfigFile,
+} from '../platform/files/safe-file';
 import { childPath, MAX_PLUGIN_STORAGE_BYTES, statIfPresent } from './files';
 import { WorkbenchPluginError } from './errors';
 

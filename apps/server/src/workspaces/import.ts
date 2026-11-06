@@ -2,7 +2,7 @@
 // 与 migrate-legacy.ts 分工：那个只负责把旧目录里的文件原样复制到新目录，这里才改字段，也不去找旧路径。
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { WorkspaceSchema, type Workspace } from '@agentdeck/shared';
+import { WorkspaceSchema, type Workspace } from '@agentdeck/shared/projects';
 import type { WorkspaceStore } from './store';
 
 const FILE_NAME = 'workspaces.json';

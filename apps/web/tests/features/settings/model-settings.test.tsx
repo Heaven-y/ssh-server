@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
+import { ApiError } from '../../../src/lib/http';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { NativeModelSettingsDocument } from '@agentdeck/shared';
+import type { NativeModelSettingsDocument } from '@agentdeck/shared/settings';
 import ProductSettingsDialog from '../../../src/features/settings/ProductSettingsDialog';
 import { modelSettingsApi } from '../../../src/features/settings/model-settings-api';
 import { queryClient } from '../../../src/lib/query-client';
-import { ApiError } from '../../../src/lib/api';
 
 const document: NativeModelSettingsDocument = {
   agent: 'claude',
@@ -218,24 +218,24 @@ it('Codex窗口与压缩阈值分别保存，保存失败时保留草稿且不�
     agent: 'codex',
     fields: [
       ...document.fields,
-      { key: 'contextWindow', label: '上下文窗口', value: '128000', group: 'model', inputType: 'number' },
-      { key: 'autoCompactTokenLimit', label: '自动压缩阈值', value: '', group: 'model', inputType: 'number' },
+      { key: 'contextWindow', label: '上下文窗口', value: '128000', group: 'model' },
+      { key: 'autoCompactTokenLimit', label: '自动压缩阈值', value: '', group: 'model' },
     ],
   });
   vi.mocked(modelSettingsApi.save).mockRejectedValueOnce(new ApiError(409, '配置已变化'));
   render(<ProductSettingsDialog initialPage="codex" onClose={vi.fn()} onNative={vi.fn()} />);
-  const windowSize = await screen.findByRole<HTMLInputElement>('spinbutton', { name: '上下文窗口' });
-  fireEvent.change(windowSize, { target: { value: '256000' } });
-  const threshold = screen.getByRole<HTMLInputElement>('spinbutton', { name: '自动压缩阈值' });
-  fireEvent.change(threshold, { target: { value: '200000' } });
+  const windowSize = await screen.findByRole<HTMLInputElement>('textbox', { name: '上下文窗口' });
+  fireEvent.change(windowSize, { target: { value: '1.5M' } });
+  const threshold = screen.getByRole<HTMLInputElement>('textbox', { name: '自动压缩阈值' });
+  fireEvent.change(threshold, { target: { value: '128K' } });
   fireEvent.click(screen.getByRole('button', { name: '保存并获取模型' }));
   await screen.findByRole('alert');
   expect(modelSettingsApi.refreshCatalog).not.toHaveBeenCalled();
-  expect(windowSize.value).toBe('256000');
-  expect(threshold.value).toBe('200000');
+  expect(windowSize.value).toBe('1.5M');
+  expect(threshold.value).toBe('128K');
   expect(modelSettingsApi.save).toHaveBeenCalledWith(
     'codex',
-    { revision: document.revision, changes: { contextWindow: '256000', autoCompactTokenLimit: '200000' } },
+    { revision: document.revision, changes: { contextWindow: '1.5M', autoCompactTokenLimit: '128K' } },
     expect.any(AbortSignal),
   );
   fireEvent.click(screen.getByRole('button', { name: '保存配置' }));

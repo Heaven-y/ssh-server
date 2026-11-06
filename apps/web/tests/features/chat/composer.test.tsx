@@ -1,14 +1,20 @@
 // @vitest-environment jsdom
+import { ApiError } from '../../../src/lib/http';
+import { settingsApi } from '../../../src/features/settings/api';
+import { chatApi, chatKeys } from '../../../src/features/chat/api';
+import { projectsKeys } from '../../../src/features/projects/api';
+import { sessionsApi, sessionsKeys } from '../../../src/features/sessions/api';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { AgentCapabilities, ClientMessage, ServerMessage, Workspace } from '@agentdeck/shared';
+import type { AgentCapabilities, ClientMessage, ServerMessage } from '@agentdeck/shared/conversation';
+import type { Workspace } from '@agentdeck/shared/projects';
 import { ChatView } from '../../../src/features/chat/ChatView';
 import { Composer } from '../../../src/features/chat/Composer';
 import { ManualModelDialog } from '../../../src/features/chat/ManualModelDialog';
 import { startChatConnection, useChat } from '../../../src/features/chat/chat-store';
-import { api, ApiError, queryKeys } from '../../../src/lib/api';
-import { invalidateNativeCapabilities } from '../../../src/features/settings/model-settings-api';
+
+import { invalidateNativeCapabilities } from '../../../src/cli/shared/capability-cache';
 import { useAgentCapabilities } from '../../../src/features/chat/use-agent-capabilities';
 
 const workspace: Workspace = {
@@ -68,10 +74,10 @@ beforeEach(() => {
   useChat.setState({ connection: 'open' });
   client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   for (const agent of ['claude', 'codex', 'antigravity'] as const) {
-    client.setQueryData(queryKeys.sessions(workspace.id, agent), []);
-    client.setQueryData(queryKeys.agentCapabilities(workspace.id, agent), { ...catalog, agent });
+    client.setQueryData(sessionsKeys.sessions(workspace.id, agent), []);
+    client.setQueryData(chatKeys.agentCapabilities(workspace.id, agent), { ...catalog, agent });
   }
-  vi.spyOn(api, 'readEnvironment').mockResolvedValue({ checkedAt: 1, tools: [] });
+  vi.spyOn(settingsApi, 'readEnvironment').mockResolvedValue({ checkedAt: 1, tools: [] });
 });
 afterEach(() => {
   cleanup();
@@ -103,7 +109,7 @@ async function menuChoose(menu: string, name: string | RegExp) {
 }
 
 it('模型已有缓存时直接显示；技能和斜杠只读缓存，点击刷新重新发现能力', async () => {
-  const refresh = vi.spyOn(api, 'refreshAgentCapabilities').mockResolvedValue({
+  const refresh = vi.spyOn(chatApi, 'refreshAgentCapabilities').mockResolvedValue({
     ...catalog,
     agent: 'claude',
     models: [{ id: 'fresh-model', label: '新报告的模型', reasoningEfforts: [] }],
@@ -123,7 +129,7 @@ it('模型已有缓存时直接显示；技能和斜杠只读缓存，点击刷�
   await waitFor(() => expect(refresh).toHaveBeenCalledExactlyOnceWith(workspace.id, 'claude', undefined));
   await waitFor(() =>
     expect(
-      client.getQueryData<AgentCapabilities>(queryKeys.agentCapabilities(workspace.id, 'claude'))?.models[0]?.id,
+      client.getQueryData<AgentCapabilities>(chatKeys.agentCapabilities(workspace.id, 'claude'))?.models[0]?.id,
     ).toBe('fresh-model'),
   );
   fireEvent.click(screen.getByRole('button', { name: '关闭技能与命令' }));
@@ -133,14 +139,14 @@ it('模型已有缓存时直接显示；技能和斜杠只读缓存，点击刷�
 });
 
 it('首次打开模型菜单自动发现一次，复用缓存且不会发送对话', async () => {
-  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'), {
+  client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'claude'), {
     agent: 'claude',
     discovered: false,
     entries: [],
     models: [],
     warnings: ['打开模型菜单或点击刷新即可读取 CLI 能力。'],
   });
-  const refresh = vi.spyOn(api, 'refreshAgentCapabilities').mockResolvedValue({
+  const refresh = vi.spyOn(chatApi, 'refreshAgentCapabilities').mockResolvedValue({
     ...catalog,
     agent: 'claude',
     discovered: true,
@@ -160,11 +166,11 @@ it('首次打开模型菜单自动发现一次，复用缓存且不会发送对�
 });
 
 it('当前会话提前读取缓存，重建输入区及重开菜单不重新请求；手动刷新保留已有选项', async () => {
-  client.removeQueries({ queryKey: queryKeys.agentCapabilities(workspace.id, 'claude') });
+  client.removeQueries({ queryKey: chatKeys.agentCapabilities(workspace.id, 'claude') });
   const cached = { ...catalog, agent: 'claude' as const, discovered: true, defaultModel: 'native-model' };
-  const read = vi.spyOn(api, 'agentCapabilities').mockResolvedValue(cached);
+  const read = vi.spyOn(chatApi, 'agentCapabilities').mockResolvedValue(cached);
   let resolve!: (value: AgentCapabilities) => void;
-  const refresh = vi.spyOn(api, 'refreshAgentCapabilities').mockReturnValue(
+  const refresh = vi.spyOn(chatApi, 'refreshAgentCapabilities').mockReturnValue(
     new Promise((done) => {
       resolve = done;
     }),
@@ -188,14 +194,14 @@ it('当前会话提前读取缓存，重建输入区及重开菜单不重新请�
 });
 
 it('首次打开强度也能发现默认型号，Claude [1m] 选择原样发送且采用型号档位', async () => {
-  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'), {
+  client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'claude'), {
     agent: 'claude',
     discovered: false,
     entries: [],
     models: [],
     warnings: [],
   });
-  vi.spyOn(api, 'refreshAgentCapabilities').mockResolvedValue({
+  vi.spyOn(chatApi, 'refreshAgentCapabilities').mockResolvedValue({
     ...catalog,
     agent: 'claude',
     discovered: true,
@@ -216,7 +222,7 @@ it('首次打开强度也能发现默认型号，Claude [1m] 选择原样发送�
 });
 
 it('Claude 上下文由用户切换，打开菜单不启用 1M，切换保留强度且原样发送后缀', async () => {
-  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'), {
+  client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'claude'), {
     ...catalog,
     agent: 'claude',
     defaultModel: 'sonnet',
@@ -240,7 +246,7 @@ it('Claude 上下文由用户切换，打开菜单不启用 1M，切换保留强
 });
 
 it('Claude 别名已绑定 1M 时可显式选择默认窗口，其他 CLI 不显示后缀开关', async () => {
-  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'), {
+  client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'claude'), {
     ...catalog,
     agent: 'claude',
     defaultModel: 'opus',
@@ -258,9 +264,9 @@ it('Claude 别名已绑定 1M 时可显式选择默认窗口，其他 CLI 不显
 
 it('重启恢复的模型缓存不重复获取，打开技能时补取命令目录', async () => {
   const persisted = { ...catalog, discovered: true, commandsDiscovered: false, entries: [] };
-  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'), persisted);
+  client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'claude'), persisted);
   const refresh = vi
-    .spyOn(api, 'refreshAgentCapabilities')
+    .spyOn(chatApi, 'refreshAgentCapabilities')
     .mockResolvedValue({ ...catalog, discovered: true, commandsDiscovered: true });
   showComposer();
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
@@ -271,21 +277,21 @@ it('重启恢复的模型缓存不重复获取，打开技能时补取命令目�
   await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
   await waitFor(() =>
     expect(
-      client.getQueryData<AgentCapabilities>(queryKeys.agentCapabilities(workspace.id, 'claude'))?.commandsDiscovered,
+      client.getQueryData<AgentCapabilities>(chatKeys.agentCapabilities(workspace.id, 'claude'))?.commandsDiscovered,
     ).toBe(true),
   );
   expect(sent).toHaveLength(0);
 });
 
 it('自动发现失败显示可重试状态，重开菜单不循环检查账号', async () => {
-  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'), {
+  client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'claude'), {
     agent: 'claude',
     discovered: false,
     entries: [],
     models: [],
     warnings: [],
   });
-  const refresh = vi.spyOn(api, 'refreshAgentCapabilities').mockRejectedValue(new Error('读取失败'));
+  const refresh = vi.spyOn(chatApi, 'refreshAgentCapabilities').mockRejectedValue(new Error('读取失败'));
   showComposer();
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
   await screen.findByRole('alert');
@@ -300,8 +306,8 @@ it('自动发现失败显示可重试状态，重开菜单不循环检查账号'
 
 it('保存原生配置后重新发现模型，旧刷新响应不能回填旧目录', async () => {
   const empty = { agent: 'claude' as const, discovered: false, entries: [], models: [], warnings: [] };
-  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'), empty);
-  vi.spyOn(api, 'agentCapabilities').mockResolvedValue(empty);
+  client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'claude'), empty);
+  vi.spyOn(chatApi, 'agentCapabilities').mockResolvedValue(empty);
   let resolve!: (value: AgentCapabilities) => void;
   const pending = new Promise<AgentCapabilities>((done) => {
     resolve = done;
@@ -312,7 +318,7 @@ it('保存原生配置后重新发现模型，旧刷新响应不能回填旧目�
     discovered: true,
     models: [{ id: 'updated-model', label: '更新后的模型' }],
   };
-  const refresh = vi.spyOn(api, 'refreshAgentCapabilities').mockReturnValueOnce(pending).mockResolvedValue(fresh);
+  const refresh = vi.spyOn(chatApi, 'refreshAgentCapabilities').mockReturnValueOnce(pending).mockResolvedValue(fresh);
   showComposer();
   fireEvent.click(screen.getByRole('button', { name: '模型选项' }));
   await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
@@ -323,7 +329,7 @@ it('保存原生配置后重新发现模型，旧刷新响应不能回填旧目�
   await act(async () => {
     resolve({ ...catalog, agent: 'claude', discovered: true });
   });
-  expect(client.getQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'))).toEqual(fresh);
+  expect(client.getQueryData(chatKeys.agentCapabilities(workspace.id, 'claude'))).toEqual(fresh);
 });
 
 it('配置保存前发起的刷新不会把忙碌或失败状态带入新配置', async () => {
@@ -332,8 +338,8 @@ it('配置保存前发起的刷新不会把忙碌或失败状态带入新配置'
     reject = fail;
   });
   const fresh = { ...catalog, agent: 'claude' as const, models: [{ id: 'new-generation', label: '新配置模型' }] };
-  const refresh = vi.spyOn(api, 'refreshAgentCapabilities').mockReturnValueOnce(pending).mockResolvedValue(fresh);
-  vi.spyOn(api, 'agentCapabilities').mockResolvedValue({ ...catalog, agent: 'claude' });
+  const refresh = vi.spyOn(chatApi, 'refreshAgentCapabilities').mockReturnValueOnce(pending).mockResolvedValue(fresh);
+  vi.spyOn(chatApi, 'agentCapabilities').mockResolvedValue({ ...catalog, agent: 'claude' });
   const hook = renderHook(() => useAgentCapabilities(true), {
     wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
   });
@@ -353,7 +359,9 @@ it('配置保存前发起的刷新不会把忙碌或失败状态带入新配置'
 });
 
 it('旧版 Antigravity 历史不可回放仍可续聊，不常驻防御性说明或伪造审批', async () => {
-  vi.spyOn(api, 'sessionEvents').mockRejectedValue(new ApiError(501, '不能回放', { code: 'session_not_replayable' }));
+  vi.spyOn(sessionsApi, 'sessionEvents').mockRejectedValue(
+    new ApiError(501, '不能回放', { code: 'session_not_replayable' }),
+  );
   await useChat.getState().openSession({ agent: 'antigravity', sessionId: 'agy-native' });
   showChat();
   expect(screen.getByText(/Antigravity 的原生历史暂不能回放/)).toBeTruthy();
@@ -370,7 +378,7 @@ it('旧版 Antigravity 历史不可回放仍可续聊，不常驻防御性说明
 });
 
 it('历史读取失败保留可编辑草稿，重读成功才恢复发送', async () => {
-  const read = vi.spyOn(api, 'sessionEvents').mockRejectedValueOnce(new Error('文件被占用'));
+  const read = vi.spyOn(sessionsApi, 'sessionEvents').mockRejectedValueOnce(new Error('文件被占用'));
   await useChat.getState().openSession({ agent: 'codex', sessionId: 'native' });
   showChat();
   fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '待发送' } });
@@ -520,12 +528,12 @@ it('强度菜单只列当前模型实际报告的档位，默认不覆盖', asyn
 it.each(['claude', 'codex', 'antigravity'] as const)('%s手填模型且目录失败时仍能沿用原生强度发送', async (agent) => {
   useChat.getState().setAgent(agent);
   useChat.getState().setModel('manual-model');
-  client.removeQueries({ queryKey: queryKeys.agentCapabilities(workspace.id, agent) });
-  vi.spyOn(api, 'agentCapabilities').mockRejectedValue(new Error('模型列表暂不可用'));
+  client.removeQueries({ queryKey: chatKeys.agentCapabilities(workspace.id, agent) });
+  vi.spyOn(chatApi, 'agentCapabilities').mockRejectedValue(new Error('模型列表暂不可用'));
   showChat();
   fireEvent.click(screen.getByRole('button', { name: '推理强度' }));
   await waitFor(() =>
-    expect(client.getQueryState(queryKeys.agentCapabilities(workspace.id, agent))?.status).toBe('error'),
+    expect(client.getQueryState(chatKeys.agentCapabilities(workspace.id, agent))?.status).toBe('error'),
   );
   expect(screen.queryByRole('menuitemradio', { name: 'max' })).toBeNull();
   fireEvent.click(screen.getByRole('menuitemradio', { name: '自动' }));
@@ -537,7 +545,7 @@ it.each(['claude', 'codex', 'antigravity'] as const)('%s手填模型且目录失
 it('Codex保留目录提供的扩展强度，不被常用档位覆盖', async () => {
   useChat.getState().setAgent('codex');
   useChat.getState().setModel('custom-model');
-  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'codex'), {
+  client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'codex'), {
     ...catalog,
     models: [{ id: 'custom-model', label: '扩展模型', reasoningEfforts: ['custom-effort'] }],
   });
@@ -593,7 +601,7 @@ it('斜杠补全与选择器共用可执行筛选，不默认铺开不可执行�
 });
 
 it('原生目录部分读取失败显示警告，不把失败呈现为无技能', async () => {
-  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'), {
+  client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'claude'), {
     ...catalog,
     agent: 'claude',
     entries: [],
@@ -638,13 +646,13 @@ it.each([
   { actualModel: 'actual-history', nativeModel: 'configured-history', label: 'configured-history' },
   { actualModel: undefined, nativeModel: 'configured-history', label: 'configured-history' },
 ])('输入区区分历史证据与下一轮显式选择：$label', async ({ actualModel, nativeModel, label }) => {
-  vi.spyOn(api, 'sessionEvents').mockResolvedValue({
+  vi.spyOn(sessionsApi, 'sessionEvents').mockResolvedValue({
     session: { agent: 'claude', sessionId: 'history', summary: '历史', lastModified: 1, nativeModel },
     actualModel,
     events: [],
   });
   await useChat.getState().openSession({ agent: 'claude', sessionId: 'history' });
-  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude', 'history'), { ...catalog, agent: 'claude' });
+  client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'claude', 'history'), { ...catalog, agent: 'claude' });
   showComposer();
   const trigger = screen.getByRole('button', { name: '模型选项' });
   expect(trigger.textContent).toContain(label);
@@ -670,9 +678,9 @@ it('读取历史时明确显示读取状态，不将候选模型当作已取得�
 });
 
 it('原生目录读取显示进度，空结果保留默认模型而不堆叠说明', async () => {
-  client.removeQueries({ queryKey: queryKeys.agentCapabilities(workspace.id, 'claude') });
+  client.removeQueries({ queryKey: chatKeys.agentCapabilities(workspace.id, 'claude') });
   let resolve!: (value: AgentCapabilities) => void;
-  vi.spyOn(api, 'agentCapabilities').mockImplementation(
+  vi.spyOn(chatApi, 'agentCapabilities').mockImplementation(
     () =>
       new Promise((done) => {
         resolve = done;
@@ -702,15 +710,15 @@ it('手填模型不把空白或默认占位符发送为型号，恢复原生必�
 });
 
 it('模型菜单不显示技能错误；失效目录保留真实原因并能打开目录选择', async () => {
-  client.setQueryData(queryKeys.agentCapabilities(workspace.id, 'claude'), {
+  client.setQueryData(chatKeys.agentCapabilities(workspace.id, 'claude'), {
     ...catalog,
     agent: 'claude',
     modelWarning: '',
     commandWarnings: ['技能读取失败'],
     warnings: ['技能读取失败'],
   });
-  client.setQueryData(queryKeys.workspaces, [workspace]);
-  vi.spyOn(api, 'refreshAgentCapabilities').mockRejectedValue(
+  client.setQueryData(projectsKeys.workspaces, [workspace]);
+  vi.spyOn(chatApi, 'refreshAgentCapabilities').mockRejectedValue(
     new ApiError(409, '工作区目录不可用，请重新选择文件夹。', { code: 'workspace_directory_unavailable' }),
   );
   showComposer();
@@ -727,7 +735,7 @@ it('模型菜单不显示技能错误；失效目录保留真实原因并能打�
 it.each(['claude', 'codex'] as const)('输入区%s自动强度省略字段，并使用各自目录报告的档位', async (agent) => {
   useChat.getState().setAgent(agent);
   useChat.getState().setModel('native-model');
-  client.setQueryData(queryKeys.agentCapabilities(workspace.id, agent), {
+  client.setQueryData(chatKeys.agentCapabilities(workspace.id, agent), {
     ...catalog,
     agent,
     models: [{ id: 'native-model', label: '候选模型', reasoningEfforts: ['custom-effort'] }],

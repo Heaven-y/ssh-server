@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
+import { sessionsApi, sessionsKeys } from '../../../src/features/sessions/api';
 import path from 'node:path';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { SessionSummary } from '@agentdeck/shared';
+import type { SessionSummary } from '@agentdeck/shared/conversation';
 import ArchivedSessionsPage from '../../../src/features/sessions/ArchivedSessionsPage';
-import { api, queryKeys } from '../../../src/lib/api';
+
 import { queryClient } from '../../../src/lib/query-client';
 import { useChat } from '../../../src/features/chat/chat-store';
 
@@ -49,8 +50,8 @@ function mount(items = projects) {
 }
 it('集中展示跨项目归档，恢复使用来源项目并立即更新列表', async () => {
   let entries = [row('one', 'first'), row('two', 'second')];
-  vi.spyOn(api, 'archivedSessions').mockImplementation(async (agent) => (agent === 'codex' ? entries : []));
-  const change = vi.spyOn(api, 'sessionAction').mockImplementation(async () => {
+  vi.spyOn(sessionsApi, 'archivedSessions').mockImplementation(async (agent) => (agent === 'codex' ? entries : []));
+  const change = vi.spyOn(sessionsApi, 'sessionAction').mockImplementation(async () => {
     entries = [entries[0]!];
   });
   mount();
@@ -63,7 +64,7 @@ it('集中展示跨项目归档，恢复使用来源项目并立即更新列表'
   expect(useChat.getState().workspaceId).toBe('first');
 });
 it('零项目也显示归档，先添加可信目录才能管理', async () => {
-  vi.spyOn(api, 'archivedSessions').mockImplementation(async (agent) =>
+  vi.spyOn(sessionsApi, 'archivedSessions').mockImplementation(async (agent) =>
     agent === 'codex' ? [row('orphan', null)] : [],
   );
   const add = mount([]);
@@ -74,7 +75,7 @@ it('零项目也显示归档，先添加可信目录才能管理', async () => {
 });
 it('归档读取失败保留重试入口，成功空结果显示空态', async () => {
   const read = vi
-    .spyOn(api, 'archivedSessions')
+    .spyOn(sessionsApi, 'archivedSessions')
     .mockRejectedValueOnce(new Error('原生列表暂不可用'))
     .mockResolvedValue([]);
   mount();
@@ -87,18 +88,18 @@ it('归档读取失败保留重试入口，成功空结果显示空态', async (
 });
 it('删除必须确认；归档条目变忙后阻止写入', async () => {
   const session = row('one', 'first');
-  vi.spyOn(api, 'archivedSessions').mockImplementation(async (agent) => (agent === 'codex' ? [session] : []));
-  const change = vi.spyOn(api, 'sessionAction').mockResolvedValue(undefined);
+  vi.spyOn(sessionsApi, 'archivedSessions').mockImplementation(async (agent) => (agent === 'codex' ? [session] : []));
+  const change = vi.spyOn(sessionsApi, 'sessionAction').mockResolvedValue(undefined);
   mount();
   fireEvent.click(await screen.findByRole('button', { name: '删除' }));
   const submit = screen.getByRole<HTMLButtonElement>('button', { name: '确认删除会话' });
   expect(submit.disabled).toBe(true);
   fireEvent.click(screen.getByRole('checkbox'));
-  await act(() => queryClient.setQueryData(queryKeys.archivedSessions('codex'), [{ ...session, running: true }]));
+  await act(() => queryClient.setQueryData(sessionsKeys.archivedSessions('codex'), [{ ...session, running: true }]));
   await screen.findByText('当前会话正在运行，结束后才能管理。');
   fireEvent.click(submit);
   expect(change).not.toHaveBeenCalled();
-  await act(() => queryClient.setQueryData(queryKeys.archivedSessions('codex'), [session]));
+  await act(() => queryClient.setQueryData(sessionsKeys.archivedSessions('codex'), [session]));
   await waitFor(() => expect(screen.queryByText('当前会话正在运行，结束后才能管理。')).toBeNull());
   fireEvent.click(submit);
   await waitFor(() =>
@@ -120,10 +121,10 @@ it('三种来源的归档一起展示，工作台归档恢复按真实来源操�
     },
     row('codex', 'first'),
   ];
-  vi.spyOn(api, 'archivedSessions').mockImplementation(async (agent) =>
+  vi.spyOn(sessionsApi, 'archivedSessions').mockImplementation(async (agent) =>
     records.filter((record) => record.agent === agent),
   );
-  const change = vi.spyOn(api, 'sessionAction').mockResolvedValue(undefined);
+  const change = vi.spyOn(sessionsApi, 'sessionAction').mockResolvedValue(undefined);
   mount();
   await screen.findByText('归档agy');
   expect(screen.getByText('归档claude')).toBeTruthy();

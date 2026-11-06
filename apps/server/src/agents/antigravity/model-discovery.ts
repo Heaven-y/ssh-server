@@ -1,8 +1,8 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { resolveLocalCommand } from '../../process/executable';
-import { runProcess } from '../../process/run';
+import { resolveLocalCommand } from '../../platform/process/executable';
+import { runProcess } from '../../platform/process/run';
 import { parseAntigravityModelList, type AntigravityModelSettings } from './model-catalog';
 
 /** agy models 会加载原生 MCP；模型发现必须使用只含模型设置的独立目录。 */

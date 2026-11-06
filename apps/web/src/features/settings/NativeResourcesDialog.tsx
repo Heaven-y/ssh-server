@@ -1,7 +1,11 @@
+import { settingsApi } from './api';
+
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import type { AgentKind, NativeResourceCatalog as Catalog, Workspace } from '@agentdeck/shared';
-import { api } from '../../lib/api';
+import type { AgentKind } from '@agentdeck/shared/conversation';
+import type { NativeResourceCatalog as Catalog } from '@agentdeck/shared/settings';
+import type { Workspace } from '@agentdeck/shared/projects';
+
 import { buttonClass } from '../../ui/styles';
 import { SettingsDetailDialog } from './SettingsDetailDialog';
 import { NativeResourceCatalog, type NativeResourceSelection } from './NativeResourceCatalog';
@@ -28,7 +32,7 @@ export default function NativeResourcesDialog({
   const [target, setTarget] = useState<NativeResourceSelection>();
   useEffect(() => {
     const controller = new AbortController();
-    void api
+    void settingsApi
       .listNativeResources({ agent, projectId }, controller.signal)
       .then((result) => {
         if (!controller.signal.aborted) setCatalog(result);

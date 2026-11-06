@@ -1,4 +1,4 @@
-import type { AgentEvent, CompactionState } from '@agentdeck/shared';
+import type { AgentEvent, CompactionState } from '@agentdeck/shared/conversation';
 
 type Progress = {
   id?: string;

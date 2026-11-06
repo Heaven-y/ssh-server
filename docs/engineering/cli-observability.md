@@ -45,7 +45,7 @@ DSH 的生成速度同时依赖提供方输出 token 数与首个 token 至完�
 
 当前上下文使用 `getContextUsage({detail: 'summary'})`，结果是原生估计；`rawMaxTokens` 按原生压缩策略解释。full 模式可能调用 token-count API，不作为每帧自动采样。当前在发送至原生 result 到达间使用单调时钟计时，随后读取上下文，控制查询不计入回合。
 
-当前 [事件映射](../../apps/server/src/agents/claude-mapper.ts) 已接 usage、工具进度及公开 thinking，全文快照与流式增量分别去重；签名和 redacted 块不展示。子代理 result 不结束父回合，中断后淘汰旧运行时再按原生 ID 恢复，防止迟到结果串轮。完整子代理历史尚未接入。本机 SDK 历史投影未保留部分顶层 system 压缩字段，合成压缩测试仍不能替代真实历史验证。
+当前 [事件映射](../../apps/server/src/agents/claude/mapper.ts) 已接 usage、工具进度及公开 thinking，全文快照与流式增量分别去重；签名和 redacted 块不展示。子代理 result 不结束父回合，中断后淘汰旧运行时再按原生 ID 恢复，防止迟到结果串轮。完整子代理历史尚未接入。本机 SDK 历史投影未保留部分顶层 system 压缩字段，合成压缩测试仍不能替代真实历史验证。
 
 ## Codex 的接入点与限制
 
@@ -94,7 +94,7 @@ Turn 提供 durationMs 和起止时间；ThreadItem 有可选 startedAtMs/comple
 - Claude：[SDK 用量](https://platform.claude.com/docs/en/agent-sdk/cost-tracking)、[类型参考](https://platform.claude.com/docs/en/agent-sdk/typescript)、[流事件](https://platform.claude.com/docs/en/build-with-claude/streaming)，以及本机 SDK 类型与实现。
 - Codex：本机 `app-server generate-json-schema` 的 0.166.0 schema；官方 app-server 页面本次返回 403，未用该页面证明字段含义。
 - Antigravity：[headless](https://antigravity.google/docs/cli/headless/)、[statusLine](https://antigravity.google/docs/cli/statusline)、本机 protobuf 描述和隔离 GetCascadeTrajectory 读取。
-- 当前数据入口：[Claude 上下文](../../apps/server/src/agents/claude-query.ts)、[Antigravity 映射](../../apps/server/src/agents/antigravity/mapper.ts)、[前端上下文状态](../../apps/web/src/features/chat/ContextStatus.tsx)、[事件归并](../../apps/web/src/features/chat/chat-reducer.ts)。
+- 当前数据入口：[Claude 上下文](../../apps/server/src/agents/claude/query.ts)、[Antigravity 映射](../../apps/server/src/agents/antigravity/mapper.ts)、[前端上下文状态](../../apps/web/src/features/chat/ContextStatus.tsx)、[事件归并](../../apps/web/src/features/chat/chat-reducer.ts)。
 
 ## 本轮短对话补充验证
 

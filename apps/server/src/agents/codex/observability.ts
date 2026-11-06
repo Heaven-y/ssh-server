@@ -1,4 +1,4 @@
-import type { TokenUsage } from '@agentdeck/shared';
+import type { TokenUsage } from '@agentdeck/shared/conversation';
 import { record, type RecordValue } from './types';
 
 const USAGE_FIELDS = [

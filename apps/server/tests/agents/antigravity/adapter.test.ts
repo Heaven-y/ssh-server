@@ -3,7 +3,7 @@ import { PassThrough } from 'node:stream';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AgentEvent } from '@agentdeck/shared';
+import type { AgentEvent } from '@agentdeck/shared/conversation';
 import { createAntigravityRunner, type AntigravityProcess } from '../../../src/agents/antigravity/adapter';
 
 const cwd = path.join(tmpdir(), 'agentdeck-agy-fixture');

@@ -1,5 +1,5 @@
 import { FolderPlus } from 'lucide-react';
-import type { Workspace } from '@agentdeck/shared';
+import type { Workspace } from '@agentdeck/shared/projects';
 import { ChatView } from '../features/chat/ChatView';
 import { buttonClass } from '../ui/styles';
 

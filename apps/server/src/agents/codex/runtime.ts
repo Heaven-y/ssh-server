@@ -1,7 +1,7 @@
 // 长驻 Codex 会话：一个 app-server 进程承载同一原生线程的多轮对话，空闲后回收。
-import type { AgentEvent } from '@agentdeck/shared';
-import type { AgentTurnInput } from '../types';
-import { sameSessionDirectory } from '../session-scope';
+import type { AgentEvent } from '@agentdeck/shared/conversation';
+import type { AgentTurnInput } from '../contracts';
+import { sameSessionDirectory } from '../common/session-scope';
 import { CodexClient } from './client';
 import { validateCodexSkill } from './capabilities';
 import { threadParams } from './config';

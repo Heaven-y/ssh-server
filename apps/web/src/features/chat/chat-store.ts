@@ -1,80 +1,28 @@
+import type { ChatState } from './chat-state';
+import {
+  DEFAULT_REASONING_EFFORTS,
+  EMPTY_MODEL_OVERRIDES,
+  historyFailure,
+  historyViewVersion,
+  historyParameters,
+  historyRetryItems,
+  sameSession,
+  nativeStatus,
+  reportedModel,
+} from './chat-state-helpers';
+import { sessionsApi } from '../sessions/api';
 // 会话身份包含 Agent；历史请求与实时轮次分别校验选择代次和关联 ID。
 import { create } from 'zustand';
-import type {
-  AgentKind,
-  AgentCapability,
-  AgentEvent,
-  ContextUsage,
-  CompactionState,
-  ServerMessage,
-  SessionActionInput,
-  SessionRef,
-  ProductSettings,
-} from '@agentdeck/shared';
-import { api, ApiError } from '../../lib/api';
+import type { AgentEvent, ServerMessage, SessionRef } from '@agentdeck/shared/conversation';
+
 import { refreshSessionLists } from '../sessions/session-queries';
 import { connectChat, type ChatSocket, type ConnectionStatus } from '../../lib/ws';
 import { markPermissionPending, reduceChat, type ChatItem } from './chat-reducer';
 import { capabilityRestriction, selectionRestriction } from './capability-selection';
 
 const LAST_WORKSPACE_KEY = 'agentdeck.lastProject';
-const DEFAULT_REASONING_EFFORTS: Record<AgentKind, string> = {
-  claude: '',
-  codex: '',
-  antigravity: '',
-};
-/** 未显式选择的模型和强度都由原生配置决定。 */
-const EMPTY_MODEL_OVERRIDES: Record<AgentKind, string> = { claude: '', codex: '', antigravity: '' };
-export type SessionOperation = { action: SessionActionInput['action'] | 'fork'; pending: boolean; error?: string };
 export const sessionActionKey = (workspaceId: string, session: SessionRef): string =>
   JSON.stringify([workspaceId, session.agent, session.sessionId]);
-type ChatState = {
-  connection: ConnectionStatus;
-  workspaceId?: string;
-  agent: AgentKind;
-  sessionId?: string;
-  modelOverrides: Record<AgentKind, string>;
-  defaults: Pick<ProductSettings, 'defaultAgent'>;
-  initialDefaultsEligible: boolean;
-  reasoningEfforts: Record<AgentKind, string>;
-  actualModel?: string;
-  /** 仅保存本页已读取/运行的原生模型元数据，不从默认或显式选择推导。 */
-  sessionModels: Record<string, { actualModel?: string; nativeModel?: string }>;
-  selectedCapability?: AgentCapability;
-  contextUsage?: ContextUsage | null;
-  compaction?: CompactionState;
-  items: ChatItem[];
-  inspectedItemId?: string;
-  inspectorRequest: number;
-  inspectItem(id?: string): void;
-  /** 网页选择代次；原生首次返回sessionId不会重建时间线。 */
-  conversationVersion: number;
-  running: boolean;
-  turnId?: string;
-  pendingClientTurnId?: string;
-  interruptRequested: boolean;
-  loadingHistory: boolean;
-  historyError?: string;
-  historyNotice?: string;
-  banner?: string;
-  sessionOperations: Record<string, SessionOperation>;
-  manageSession(workspaceId: string, session: SessionRef, input: SessionActionInput): Promise<boolean>;
-  selectWorkspace(id?: string): void;
-  removeWorkspace(id: string, nextId?: string): void;
-  resetWorkspaceConversation(id: string, expectedVersion: number): void;
-  newSession(agent?: AgentKind): void;
-  setAgent(agent: AgentKind): void;
-  openSession(session: SessionRef, options?: { preserveDraft?: boolean }): Promise<void>;
-  setModel(model: string): void;
-  setDefaults(settings: ProductSettings): void;
-  touchDraft(): void;
-  setReasoningEffort(effort: string): void;
-  selectCapability(capability?: AgentCapability): void;
-  send(text: string): boolean;
-  interrupt(): void;
-  respondPermission(requestId: string, allow: boolean): void;
-  dismissBanner(): void;
-};
 
 let socket: ChatSocket | undefined;
 let historyRequest: AbortController | undefined;
@@ -112,41 +60,7 @@ function historyIsCurrent(controller: AbortController, generation: number, works
     current.sessionId === session.sessionId
   );
 }
-function historyFailure(agent: AgentKind, error: unknown): Pick<ChatState, 'historyError' | 'historyNotice'> {
-  const notReplayable = agent === 'antigravity' && error instanceof ApiError && error.code === 'session_not_replayable';
-  if (notReplayable)
-    return { historyNotice: 'Antigravity 的原生历史暂不能回放；可以继续此会话，本次收到的内容会显示在这里。' };
-  return { historyError: `加载会话失败：${error instanceof Error ? error.message : '请重试'}` };
-}
-function historyViewVersion(
-  current: ChatState,
-  session: SessionRef,
-  generation: number,
-  options?: { preserveDraft?: boolean },
-) {
-  return options?.preserveDraft && current.agent === session.agent && current.sessionId === session.sessionId
-    ? current.conversationVersion
-    : generation;
-}
-function historyParameters(current: ChatState, session: SessionRef) {
-  if (current.agent === session.agent && current.sessionId === session.sessionId)
-    return { modelOverrides: current.modelOverrides, reasoningEfforts: current.reasoningEfforts };
-  return {
-    modelOverrides: { ...EMPTY_MODEL_OVERRIDES },
-    reasoningEfforts: { ...DEFAULT_REASONING_EFFORTS },
-  };
-}
 /** 重试期间先保留已收到的正文；只有成功读取的历史才有资格替换它。 */
-function historyRetryItems(current: ChatState, session: SessionRef, options?: { preserveDraft?: boolean }) {
-  return options?.preserveDraft && current.agent === session.agent && current.sessionId === session.sessionId
-    ? current.items
-    : [];
-}
-function sameSession(current: ChatState, workspaceId: string, session: SessionRef): boolean {
-  return (
-    current.workspaceId === workspaceId && current.agent === session.agent && current.sessionId === session.sessionId
-  );
-}
 function isSessionRunning(current: ChatState, workspaceId: string, session: SessionRef): boolean {
   return sameSession(current, workspaceId, session) && (current.running || !!current.pendingClientTurnId);
 }
@@ -176,11 +90,6 @@ export function allowConversationNavigation(): boolean {
 }
 function sendRestriction(current: ChatState, text: string): string | undefined {
   return selectionRestriction(current.selectedCapability, current.sessionId, text);
-}
-function nativeStatus(event: AgentEvent): { contextUsage?: ContextUsage | null; compaction?: CompactionState } {
-  if (event.type === 'context') return { contextUsage: event.usage };
-  if (event.type === 'compaction') return { compaction: event.state };
-  return {};
 }
 function newDefaults(current: ChatState) {
   return {
@@ -283,7 +192,7 @@ export const useChat = create<ChatState>()((set, get) => ({
       initialDefaultsEligible: false,
     });
     try {
-      const history = await api.sessionEvents(workspaceId, session.sessionId, session.agent, controller.signal);
+      const history = await sessionsApi.sessionEvents(workspaceId, session.sessionId, session.agent, controller.signal);
       if (!historyIsCurrent(controller, generation, workspaceId, session)) return;
       if (history.session.agent !== session.agent || history.session.sessionId !== session.sessionId)
         throw new Error('会话身份不匹配，未载入历史');
@@ -362,7 +271,7 @@ export const useChat = create<ChatState>()((set, get) => ({
     }
     set({ sessionOperations: { ...current.sessionOperations, [key]: { action: input.action, pending: true } } });
     try {
-      await api.sessionAction(workspaceId, session.sessionId, session.agent, input);
+      await sessionsApi.sessionAction(workspaceId, session.sessionId, session.agent, input);
       if ((input.action === 'delete' || input.action === 'archive') && sameSession(get(), workspaceId, session)) {
         const conversationVersion = changeSelection();
         set({
@@ -551,7 +460,3 @@ export function startChatConnection(connect: Connect = connectChat): void {
   socket ??= connect({ onMessage: handleServerMessage, onStatus: handleStatus });
 }
 export const reconnectChat = () => socket?.reconnect();
-
-function reportedModel(model?: string): string | undefined {
-  return model?.trim() || undefined;
-}

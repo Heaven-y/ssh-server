@@ -3,11 +3,11 @@ import os from 'node:os';
 import path from 'node:path';
 import Fastify from 'fastify';
 import { afterEach, expect, it } from 'vitest';
-import { ProductSettingsSchema, type ProductSettingsInput } from '@agentdeck/shared';
+import { ProductSettingsSchema, type ProductSettingsInput } from '@agentdeck/shared/settings';
 import { createProductSettings } from '../../src/settings/product-settings';
 import { registerProductSettingsRoutes } from '../../src/http/product-settings.routes';
-import { createAgentProbes } from '../../src/agents/probe';
-import { ProcessError } from '../../src/process/run';
+import { createAgentProbes } from '../../src/agents/common/probe';
+import { ProcessError } from '../../src/platform/process/run';
 
 // 这些用例只关心产品设置存储与校验，环境接口固定按「未找到」返回。
 const probes = () =>

@@ -1,9 +1,10 @@
+import { chatApi, chatKeys } from './api';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { api, queryKeys } from '../../lib/api';
+
 import { useChat } from './chat-store';
-import type { AgentCapabilities, AgentKind } from '@agentdeck/shared';
-import { nativeCapabilitiesGeneration } from '../settings/model-settings-api';
+import type { AgentCapabilities, AgentKind } from '@agentdeck/shared/conversation';
+import { nativeCapabilitiesGeneration } from '../../cli/shared/capability-cache';
 import { currentCapabilityError } from './capability-feedback';
 
 type CapabilityScope = { workspaceId: string; agent: AgentKind; sessionId?: string };
@@ -42,12 +43,12 @@ export function useAgentCapabilities(enabled: boolean, discoverOnOpen = false, c
   const workspaceId = useChat((state) => state.workspaceId);
   const agent = useChat((state) => state.agent);
   const sessionId = useChat((state) => state.sessionId ?? undefined);
-  const key = queryKeys.agentCapabilities(workspaceId ?? '', agent, sessionId);
+  const key = chatKeys.agentCapabilities(workspaceId ?? '', agent, sessionId);
   const generation = nativeCapabilitiesGeneration(agent);
   const attempted = discoveryAttempts(client);
   const query = useQuery({
     queryKey: key,
-    queryFn: ({ signal }) => api.agentCapabilities(workspaceId ?? '', agent, signal, sessionId),
+    queryFn: ({ signal }) => chatApi.agentCapabilities(workspaceId ?? '', agent, signal, sessionId),
     enabled: enabled && !!workspaceId,
     staleTime: Infinity,
     gcTime: Infinity,
@@ -58,13 +59,13 @@ export function useAgentCapabilities(enabled: boolean, discoverOnOpen = false, c
     mutationKey: key,
     mutationFn: async (target: CapabilityRefresh) => {
       await client.cancelQueries({
-        queryKey: queryKeys.agentCapabilities(target.workspaceId, target.agent, target.sessionId),
+        queryKey: chatKeys.agentCapabilities(target.workspaceId, target.agent, target.sessionId),
       });
-      return api.refreshAgentCapabilities(target.workspaceId, target.agent, target.sessionId);
+      return chatApi.refreshAgentCapabilities(target.workspaceId, target.agent, target.sessionId);
     },
     onSuccess: (data, target) => {
       if (target.generation !== nativeCapabilitiesGeneration(target.agent)) return;
-      client.setQueryData(queryKeys.agentCapabilities(target.workspaceId, target.agent, target.sessionId), data);
+      client.setQueryData(chatKeys.agentCapabilities(target.workspaceId, target.agent, target.sessionId), data);
     },
     retry: false,
   });

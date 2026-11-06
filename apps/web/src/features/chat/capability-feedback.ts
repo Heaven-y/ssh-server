@@ -1,4 +1,4 @@
-import type { AgentCapabilities } from '@agentdeck/shared';
+import type { AgentCapabilities } from '@agentdeck/shared/conversation';
 
 export function commandWarnings(catalog?: AgentCapabilities): string[] {
   return catalog?.commandWarnings ?? catalog?.warnings ?? [];

@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { ArrowLeft, Info, Settings2, X } from 'lucide-react';
-import type { Workspace } from '@agentdeck/shared';
+import type { Workspace } from '@agentdeck/shared/projects';
 import { useChat } from '../features/chat/chat-store';
-import { AGENT_LABELS } from '../features/chat/AgentControls';
+import { AGENT_LABELS } from '../cli/shared/labels';
 import { buttonClass } from '../ui/styles';
 import { TrajectoryDetails } from '../features/chat/TrajectoryDetails';
 

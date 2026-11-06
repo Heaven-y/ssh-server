@@ -1,6 +1,6 @@
 import { CircleAlert, History, RefreshCw, ShieldQuestion } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
-import type { AgentEvent } from '@agentdeck/shared';
+import type { AgentEvent } from '@agentdeck/shared/conversation';
 import { buttonClass } from '../../ui/styles';
 import { historyItems } from '../chat/chat-reducer';
 import { TimelineRowView } from '../chat/TimelineRowView';

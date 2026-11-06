@@ -3,10 +3,10 @@ import { once } from 'node:events';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import ssh2, { type Connection, type ServerChannel, type Session, type SFTPWrapper } from 'ssh2';
-import { isBoundWorkspace } from '@agentdeck/shared';
-import { createSshPool } from '../../apps/server/src/ssh/pool';
+import { isBoundWorkspace } from '@agentdeck/shared/projects';
+import { createSshPool } from '../../apps/server/src/builtin-plugins/ssh-console/ssh/pool';
 import { createWorkspaceStore } from '../../apps/server/src/workspaces/store';
-import { createServerTargets, serverHostConfig } from '../../apps/server/src/ssh/targets';
+import { createServerTargets, serverHostConfig } from '../../apps/server/src/builtin-plugins/ssh-console/ssh/targets';
 
 const HOME = '/home/demo';
 const ROOT = `${HOME}/projects/demo`;

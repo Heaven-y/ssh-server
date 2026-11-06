@@ -1,5 +1,5 @@
 // Codex 适配器：同一原生会话复用 app-server 进程，空闲超时后回收。
-import type { AgentTurnInput, TurnHandle, TurnRunner } from '../types';
+import type { AgentTurnInput, TurnHandle, TurnRunner } from '../contracts';
 import { CodexRuntime, CodexTurn } from './runtime';
 import type { CodexRuntimeOptions } from './types';
 

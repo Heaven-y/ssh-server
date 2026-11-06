@@ -1,7 +1,8 @@
-import { z } from 'zod';
+import { AgentKindSchema, type AgentKind } from '@agentdeck/shared/conversation';
+import { LaunchEnvironmentInputSchema } from '@agentdeck/shared/settings';
 import type { FastifyInstance, FastifyReply, FastifyRequest, HookHandlerDoneFunction } from 'fastify';
-import { AgentKindSchema, LaunchEnvironmentInputSchema, type AgentKind } from '@agentdeck/shared';
-import { NativeConfigError } from '../settings/errors';
+import { z } from 'zod';
+import { NativeConfigError } from '../agents/common/configuration/legacy-errors';
 import type { LaunchEnvironment } from '../settings/launch-environment';
 
 export function registerLaunchEnvironmentRoutes(

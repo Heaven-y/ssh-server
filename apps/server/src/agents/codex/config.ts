@@ -1,4 +1,4 @@
-import type { AgentTurnInput } from '../types';
+import type { AgentTurnInput } from '../contracts';
 import { record, text, type RecordValue } from './types';
 
 /**

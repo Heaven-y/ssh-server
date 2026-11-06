@@ -5,7 +5,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { createCapabilitiesService } from '../../src/chat/capabilities';
 import { registerCapabilityRoutes } from '../../src/http/capabilities.routes';
-import { SessionError } from '../../src/chat/sessions';
+import { SessionError } from '../../src/agents/errors';
 const directories: string[] = [];
 afterEach(async () => {
   await Promise.all(directories.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));

@@ -1,4 +1,4 @@
-import type { AgentEvent, TokenUsage } from '@agentdeck/shared';
+import type { AgentEvent, TokenUsage } from '@agentdeck/shared/conversation';
 import { managementObject as object } from './management-rpc';
 
 export const nonnegative = (value: unknown): number | undefined =>

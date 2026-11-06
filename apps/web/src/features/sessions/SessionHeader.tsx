@@ -1,6 +1,6 @@
 import { LoaderCircle } from 'lucide-react';
-import type { AgentKind } from '@agentdeck/shared';
-import { AGENT_LABELS } from '../chat/AgentControls';
+import type { AgentKind } from '@agentdeck/shared/conversation';
+import { AGENT_LABELS } from '../../cli/shared/labels';
 import { AgentBadge } from './AgentBadge';
 
 /** 会话头：CLI、实际驱动版本、项目路径与运行状态；只陈述已知事实，缺哪项就不画哪项。 */

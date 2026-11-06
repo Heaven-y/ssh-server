@@ -1,4 +1,4 @@
-import type { AgentKind } from '@agentdeck/shared';
+import type { AgentKind } from '@agentdeck/shared/conversation';
 import { queryClient } from '../../lib/query-client';
 
 /** 原生操作完成后更新同来源摘要；先取消在途旧读取，首次加载也能取得新结果。 */

@@ -7,7 +7,8 @@ import { registerProjectRoutes } from '../../src/http/projects.routes';
 import { registerSessionRoutes } from '../../src/http/sessions.routes';
 import { createWorkspaceActivity } from '../../src/workspaces/activity';
 import { createWorkspaceStore } from '../../src/workspaces/store';
-import { createSessionsService, type SessionProvider } from '../../src/chat/sessions';
+import { type SessionProvider } from '../../src/agents/contracts';
+import { createSessionsService } from '../../src/sessions/service';
 
 function deferred() {
   let resolve!: () => void;

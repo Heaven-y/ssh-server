@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
+import { sessionsApi, sessionsKeys } from '../../../src/features/sessions/api';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { api, queryKeys } from '../../../src/lib/api';
+
 import { SessionList } from '../../../src/features/sessions/SessionList';
 import { useChat } from '../../../src/features/chat/chat-store';
 import { useSessionPins } from '../../../src/features/sessions/session-preferences';
@@ -27,12 +28,12 @@ let client: QueryClient;
 beforeEach(() => {
   useSessionPins.setState({ pins: [] });
   client = new QueryClient({ defaultOptions: { queries: { retry: false, retryOnMount: false, staleTime: Infinity } } });
-  client.setQueryData(queryKeys.sessions('workspace', 'claude'), [session]);
-  client.setQueryData(queryKeys.sessions('workspace', 'codex'), []);
-  client.setQueryData(queryKeys.sessions('workspace', 'antigravity'), []);
-  client.setQueryData(queryKeys.sessions('workspace', 'codex', true), [archived]);
-  client.setQueryData(queryKeys.sessions('workspace', 'claude', true), []);
-  client.setQueryData(queryKeys.sessions('workspace', 'antigravity', true), []);
+  client.setQueryData(sessionsKeys.sessions('workspace', 'claude'), [session]);
+  client.setQueryData(sessionsKeys.sessions('workspace', 'codex'), []);
+  client.setQueryData(sessionsKeys.sessions('workspace', 'antigravity'), []);
+  client.setQueryData(sessionsKeys.sessions('workspace', 'codex', true), [archived]);
+  client.setQueryData(sessionsKeys.sessions('workspace', 'claude', true), []);
+  client.setQueryData(sessionsKeys.sessions('workspace', 'antigravity', true), []);
   useChat.setState(useChat.getInitialState(), true);
   useChat.getState().selectWorkspace('workspace');
   HTMLDialogElement.prototype.showModal = function () {
@@ -61,10 +62,10 @@ async function openAction(name: string, agent = 'Claude', title = session.title)
 }
 
 it('Codex来源失败仍保留Claude历史与独立重试入口', async () => {
-  client.removeQueries({ queryKey: queryKeys.sessions('workspace', 'codex') });
+  client.removeQueries({ queryKey: sessionsKeys.sessions('workspace', 'codex') });
   await client
     .fetchQuery({
-      queryKey: queryKeys.sessions('workspace', 'codex'),
+      queryKey: sessionsKeys.sessions('workspace', 'codex'),
       queryFn: () => Promise.reject(new Error('运行时不可用')),
     })
     .catch(() => undefined);
@@ -83,7 +84,7 @@ const history = {
 };
 
 it('标题仅选择会话，更多先展示菜单，不直接打开综合管理弹窗', async () => {
-  const read = vi.spyOn(api, 'sessionEvents').mockResolvedValue({ session: history, events: [] });
+  const read = vi.spyOn(sessionsApi, 'sessionEvents').mockResolvedValue({ session: history, events: [] });
   mount();
   const title = screen.getByText(session.title);
   // 行尾新增相对更新时间（lastModified=1 → “1/1”），标题文本本身保持单行省略。
@@ -102,7 +103,7 @@ it('标题仅选择会话，更多先展示菜单，不直接打开综合管理�
 });
 
 it('重命名和删除分别进入对应表单，删除仍需显式确认', async () => {
-  const action = vi.spyOn(api, 'sessionAction').mockResolvedValue(undefined);
+  const action = vi.spyOn(sessionsApi, 'sessionAction').mockResolvedValue(undefined);
   mount();
   await openAction('重命名');
   const rename = screen.getByRole('dialog', { name: '重命名会话' });
@@ -150,8 +151,8 @@ it('运行中会话的更多菜单禁用，不发起管理请求', () => {
 });
 
 it('归档列表成功为空时显示中性空状态，并复用其他来源缓存', async () => {
-  client.removeQueries({ queryKey: queryKeys.sessions('workspace', 'codex', true), exact: true });
-  const list = vi.spyOn(api, 'listSessions').mockResolvedValue([]);
+  client.removeQueries({ queryKey: sessionsKeys.sessions('workspace', 'codex', true), exact: true });
+  const list = vi.spyOn(sessionsApi, 'listSessions').mockResolvedValue([]);
   mount();
   fireEvent.click(screen.getByRole('button', { name: '已归档' }));
   expect(await screen.findByText('暂无归档会话')).toBeTruthy();
@@ -160,7 +161,7 @@ it('归档列表成功为空时显示中性空状态，并复用其他来源缓�
 });
 
 it('普通会话按Codex与Claude分别成组，不混排来源', () => {
-  client.setQueryData(queryKeys.sessions('workspace', 'codex'), [{ ...archived, title: 'Codex 活跃会话' }]);
+  client.setQueryData(sessionsKeys.sessions('workspace', 'codex'), [{ ...archived, title: 'Codex 活跃会话' }]);
   mount();
   const codex = screen.getByRole('region', { name: 'Codex 会话' });
   const claude = screen.getByRole('region', { name: 'Claude 会话' });
@@ -170,7 +171,7 @@ it('普通会话按Codex与Claude分别成组，不混排来源', () => {
 });
 
 it('置顶只改变当前来源的排序，取消置顶恢复按更新时间排序', async () => {
-  client.setQueryData(queryKeys.sessions('workspace', 'claude'), [
+  client.setQueryData(sessionsKeys.sessions('workspace', 'claude'), [
     session,
     { ...session, sessionId: 'newer', title: '较新会话', updatedAt: new Date(20).toISOString() },
   ]);

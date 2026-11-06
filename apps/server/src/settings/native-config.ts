@@ -1,9 +1,10 @@
+import { resourcePlan } from './resource-plan';
+import { cliConfigurations } from '../agents/registry';
+import type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from '@agentdeck/shared/settings';
 import os from 'node:os';
 import path from 'node:path';
 import { parse as parseToml } from 'smol-toml';
-import type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from '@agentdeck/shared';
-import { anonymousConfigError, NativeConfigError } from './errors';
-import { nativeFileTransaction } from './native-resources-transactions';
+import { anonymousConfigError, NativeConfigError } from '../agents/common/configuration/legacy-errors';
 import {
   assertDirectoryUnchanged,
   contentRevision,
@@ -12,7 +13,8 @@ import {
   MAX_CONFIG_BYTES,
   readConfigFile,
   writeConfigFile,
-} from './safe-file';
+} from '../platform/files/safe-file';
+import { nativeFileTransaction } from '../platform/files/transactions';
 
 export type { NativeConfigAgent, NativeConfigDocument, NativeConfigInput } from '@agentdeck/shared';
 type Deps = {
@@ -27,13 +29,13 @@ function validateContent(agent: NativeConfigAgent, content: string): Buffer {
   if (decodeUtf8(data) !== content) throw new NativeConfigError('invalid_utf8');
   const text = content.replace(/^\uFEFF/, '');
   try {
-    if (agent === 'codex') parseToml(text);
+    if (cliConfigurations[agent].format === 'toml') parseToml(text);
     else {
       const parsed: unknown = JSON.parse(text);
       if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
     }
   } catch {
-    throw new NativeConfigError(agent === 'claude' ? 'invalid_json' : 'invalid_toml');
+    throw new NativeConfigError(cliConfigurations[agent].format === 'json' ? 'invalid_json' : 'invalid_toml');
   }
   return data;
 }
@@ -45,14 +47,15 @@ export function createNativeConfigService(deps: Deps = {}) {
 
   function target(agent: NativeConfigAgent) {
     if (agent !== 'claude' && agent !== 'codex') throw new NativeConfigError('invalid_agent');
-    const override = agent === 'claude' ? env.CLAUDE_CONFIG_DIR : env.CODEX_HOME;
-    const basename = agent === 'claude' ? 'settings.json' : 'config.toml';
-    const directory = path.resolve(override || path.join(homeDir, `.${agent}`));
+    const resource = resourcePlan({ agent, homeDir, env }).targets.find(
+      (entry) => entry.kind === 'settings' && entry.scope === 'user',
+    );
+    if (!resource) throw new NativeConfigError('invalid_agent');
     return {
-      directory,
-      file: path.join(directory, basename),
-      displayPath: override ? path.join(directory, basename) : `~/.${agent}/${basename}`,
-      format: agent === 'claude' ? ('json' as const) : ('toml' as const),
+      directory: path.dirname(resource.file),
+      file: resource.file,
+      displayPath: path.isAbsolute(resource.displayPath) ? path.normalize(resource.displayPath) : resource.displayPath,
+      format: cliConfigurations[agent].format,
     };
   }
 

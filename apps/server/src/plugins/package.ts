@@ -1,7 +1,7 @@
+import { WorkbenchPluginManifestSchema, type WorkbenchPluginManifest } from '@agentdeck/shared/plugins';
 import { lstat, mkdir, open } from 'node:fs/promises';
 import path from 'node:path';
-import { WorkbenchPluginManifestSchema, type WorkbenchPluginManifest } from '@agentdeck/shared';
-import { decodeUtf8, inspectDirectory, assertDirectoryUnchanged } from '../settings/safe-file';
+import { assertDirectoryUnchanged, decodeUtf8, inspectDirectory } from '../platform/files/safe-file';
 import { WorkbenchPluginError } from './errors';
 import {
   childPath,

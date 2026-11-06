@@ -1,6 +1,6 @@
 import { Popover, PopoverDisclosure, usePopoverStore } from '@ariakit/react';
 import { ChevronDown } from 'lucide-react';
-import type { CompactionState, ContextUsage } from '@agentdeck/shared';
+import type { CompactionState, ContextUsage } from '@agentdeck/shared/conversation';
 import { useChat } from './chat-store';
 
 const numberFormat = new Intl.NumberFormat('zh-CN');

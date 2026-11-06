@@ -1,13 +1,14 @@
+import { type NativeResourceContext, settingsApi } from './api';
 import { useEffect, useRef, useState } from 'react';
 import { RefreshCw, Save } from 'lucide-react';
-import type { NativeResource, NativeResourceDocument } from '@agentdeck/shared';
-import { api, type NativeResourceContext } from '../../lib/api';
+import type { NativeResource, NativeResourceDocument } from '@agentdeck/shared/settings';
+
 import { CodeEditor } from '../../ui/CodeEditor';
 import { buttonClass } from '../../ui/styles';
 import { SettingsDetailDialog } from './SettingsDetailDialog';
 import { NativeConfigHelp } from './NativeConfigHelp';
 import { confirmNativeDiscard, nativeSettingsError } from './native-resource-labels';
-import { invalidateNativeCapabilities } from './model-settings-api';
+import { invalidateNativeCapabilities } from '../../cli/shared/capability-cache';
 
 function ConfigHelp({
   document,
@@ -61,7 +62,7 @@ function useNativeResourceEditor({ context, resource }: Pick<EditorProps, 'conte
   useEffect(() => {
     const controller = new AbortController();
     pending.current = controller;
-    void api
+    void settingsApi
       .openNativeResource({ agent, projectId }, resource.id, controller.signal)
       .then((result) => {
         if (controller.signal.aborted) return;
@@ -106,7 +107,7 @@ function useNativeResourceEditor({ context, resource }: Pick<EditorProps, 'conte
     const controller = new AbortController();
     pending.current = controller;
     try {
-      const saved = await api.saveNativeResource(
+      const saved = await settingsApi.saveNativeResource(
         context,
         resource.id,
         { content, revision: document.revision },

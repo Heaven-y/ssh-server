@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { AgentEvent } from '@agentdeck/shared';
+import type { AgentEvent } from '@agentdeck/shared/conversation';
 import { AgentBadge } from '../../../src/features/sessions/AgentBadge';
 import { SessionHeader } from '../../../src/features/sessions/SessionHeader';
 import { SessionTimeline } from '../../../src/features/sessions/SessionTimeline';

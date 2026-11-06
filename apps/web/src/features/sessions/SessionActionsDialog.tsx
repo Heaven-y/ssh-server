@@ -1,10 +1,15 @@
+import { sessionsKeys } from './api';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { nativeSessionCapabilities, type SessionActionInput, type SessionSummary } from '@agentdeck/shared';
-import { queryKeys } from '../../lib/api';
+import {
+  legacySessionCapabilities,
+  type SessionActionInput,
+  type SessionSummary,
+} from '@agentdeck/shared/conversation';
+
 import { DetailDialog } from '../../ui/DetailDialog';
 import { buttonClass, inputClass } from '../../ui/styles';
-import { AGENT_LABELS } from '../chat/AgentControls';
+import { AGENT_LABELS } from '../../cli/shared/labels';
 import { sessionActionKey, useChat } from '../chat/chat-store';
 import { useSessionBusy } from './use-session-busy';
 
@@ -130,8 +135,8 @@ function SessionActionError({
         type="button"
         className={buttonClass('outline')}
         onClick={() => {
-          void client.invalidateQueries({ queryKey: queryKeys.sessions(workspaceId, session.agent) });
-          void client.invalidateQueries({ queryKey: queryKeys.archivedSessions(session.agent) });
+          void client.invalidateQueries({ queryKey: sessionsKeys.sessions(workspaceId, session.agent) });
+          void client.invalidateQueries({ queryKey: sessionsKeys.archivedSessions(session.agent) });
         }}
       >
         重新读取列表
@@ -154,7 +159,7 @@ function SessionActionForm({
       return (
         <ArchiveSession
           archived={action === 'unarchive'}
-          local={(session.capabilities ?? nativeSessionCapabilities(session.agent)).archive === 'workbench'}
+          local={(session.capabilities ?? legacySessionCapabilities(session.agent)).archive === 'workbench'}
           submit={submit}
         />
       );

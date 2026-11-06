@@ -3,10 +3,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { parse } from 'smol-toml';
+import { modelContextWindow } from '../../src/agents/common/configuration/token-count';
 import { createModelSettingsService } from '../../src/settings/model-settings';
 import { createNativeResourcesService } from '../../src/settings/native-resources';
 import { createLaunchEnvironment } from '../../src/settings/launch-environment';
-import type { AgentModel } from '@agentdeck/shared';
+import type { AgentModel } from '@agentdeck/shared/conversation';
 
 const roots: string[] = [];
 async function fixture(nativeModels: () => Promise<AgentModel[]> = async () => []) {
@@ -326,25 +327,25 @@ it('模型参数按原生字段保存，Codex窗口与压缩阈值独立读写�
   const second = await service.read('codex');
   const saved = await service.save('codex', {
     revision: second.revision,
-    changes: { displayName: 'New', reasoningEffort: 'ultra', contextWindow: '123456', autoCompactTokenLimit: '100000' },
+    changes: { displayName: 'New', reasoningEffort: 'ultra', contextWindow: '1.5m', autoCompactTokenLimit: '128K' },
   });
   expect(parse(await fs.readFile(codex, 'utf8'))).toMatchObject({
     model_reasoning_effort: 'ultra',
-    model_context_window: 123456,
-    model_auto_compact_token_limit: 100000,
+    model_context_window: 1500000,
+    model_auto_compact_token_limit: 128000,
     model_providers: { custom: { name: 'New' } },
   });
   expect(await fs.readFile(codex, 'utf8')).toContain('# native');
   expect(saved.fields.find((field) => field.key === 'autoCompactTokenLimit')).toMatchObject({
-    value: '100000',
-    inputType: 'number',
+    value: '128000',
+    placeholder: '原生默认，如 128K',
   });
   await expect(
     service.save('codex', { revision: saved.revision, changes: { autoCompactTokenLimit: '1.5' } }),
   ).rejects.toThrow('自动压缩阈值必须是正整数');
   const restored = await service.save('codex', { revision: saved.revision, changes: { autoCompactTokenLimit: '' } });
   const content = parse(await fs.readFile(codex, 'utf8'));
-  expect(content.model_context_window).toBe(123456);
+  expect(content.model_context_window).toBe(1500000);
   expect(content).not.toHaveProperty('model_auto_compact_token_limit');
   expect(restored.fields.find((field) => field.key === 'autoCompactTokenLimit')?.value).toBe('');
 });
@@ -438,4 +439,30 @@ it('首次保存创建真实配置，空白环境认证名不能保存，返回�
     restored.providers?.find((entry) => entry.id === 'agentdeck')?.fields.find((field) => field.key === 'envKey')
       ?.value,
   ).toBe('MY_MODEL_KEY');
+});
+
+it('token 简写使用十进制精确整数并拒绝溢出或分数 token', () => {
+  expect(modelContextWindow(' 1.001 K ')).toBe(1001);
+  expect(modelContextWindow('1M')).toBe(1000000);
+  expect(modelContextWindow('128000')).toBe(128000);
+  expect(modelContextWindow('')).toBeNull();
+  for (const value of ['0', '-1K', '1e3', '1.0001K', '9007199254740992', '1G']) {
+    expect(() => modelContextWindow(value)).toThrow('必须是正整数');
+  }
+});
+
+it('Antigravity 无效服务地址返回字段错误，且不改原生文件和连接环境', async () => {
+  const { service, write, environment } = await fixture();
+  const content = '{"model":"custom","modelProvider":"gemini"}';
+  const file = await write('.gemini/antigravity-cli/settings.json', content);
+  const initial = await service.read('antigravity');
+  const before = await environment.read('antigravity');
+  await expect(
+    service.save('antigravity', {
+      revision: initial.revision,
+      changes: { baseUrl: 'invalid-url', apiKey: 'fixture-key' },
+    }),
+  ).rejects.toMatchObject({ status: 400, code: 'model_settings_invalid' });
+  expect(await fs.readFile(file, 'utf8')).toBe(content);
+  expect(await environment.read('antigravity')).toEqual(before);
 });

@@ -1,4 +1,4 @@
-import type { AgentModel } from '@agentdeck/shared';
+import type { AgentModel } from '@agentdeck/shared/conversation';
 import type { NativeCapabilityCatalog } from '../capability-types';
 import {
   configuredAntigravityDefault,

@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { z } from 'zod';
-import type { AgentKind } from '@agentdeck/shared';
-import { inspectDirectory, MAX_CONFIG_BYTES, readConfigFile, writeConfigFile } from '../settings/safe-file';
+import type { AgentKind } from '@agentdeck/shared/conversation';
+import { inspectDirectory, MAX_CONFIG_BYTES, readConfigFile, writeConfigFile } from '../platform/files/safe-file';
 
 const Model = z.object({
   id: z.string().min(1).max(512),

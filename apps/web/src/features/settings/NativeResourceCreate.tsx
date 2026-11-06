@@ -1,12 +1,13 @@
+import { type NativeResourceContext, settingsApi } from './api';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Save } from 'lucide-react';
-import type { NativeResourceRoot, NativeResourceSaved } from '@agentdeck/shared';
-import { api, type NativeResourceContext } from '../../lib/api';
+import type { NativeResourceRoot, NativeResourceSaved } from '@agentdeck/shared/settings';
+
 import { CodeEditor } from '../../ui/CodeEditor';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { SettingsDetailDialog } from './SettingsDetailDialog';
 import { confirmNativeDiscard, nativeSettingsError } from './native-resource-labels';
-import { invalidateNativeCapabilities } from './model-settings-api';
+import { invalidateNativeCapabilities } from '../../cli/shared/capability-cache';
 
 type CreateProps = {
   context: NativeResourceContext;
@@ -51,7 +52,7 @@ function useNativeResourceCreate({ context, root }: Pick<CreateProps, 'context' 
       ? `---\nname: ${JSON.stringify(name.trim())}\ndescription: ${JSON.stringify(description.trim())}\n---\n\n${content}`
       : content;
     try {
-      const result = await api.createNativeResource(
+      const result = await settingsApi.createNativeResource(
         context,
         { rootId: root.id, name: name.trim(), content: text },
         controller.signal,

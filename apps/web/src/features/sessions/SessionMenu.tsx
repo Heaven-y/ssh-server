@@ -2,13 +2,13 @@ import { Menu, MenuButton, MenuItem, useMenuStore } from '@ariakit/react';
 import { Archive, ArchiveRestore, GitFork, Link, MoreHorizontal, Pencil, Pin, Trash2 } from 'lucide-react';
 import { useRef } from 'react';
 import {
-  nativeSessionCapabilities,
+  legacySessionCapabilities,
   type SessionActionInput,
   type SessionSummary,
   type SessionCapabilities,
-} from '@agentdeck/shared';
+} from '@agentdeck/shared/conversation';
 import { buttonClass } from '../../ui/styles';
-import { AGENT_LABELS } from '../chat/AgentControls';
+import { AGENT_LABELS } from '../../cli/shared/labels';
 
 export type SessionDialogAction = SessionActionInput['action'] | 'fork';
 export type SessionMenuAction = SessionDialogAction | 'pin' | 'copy';
@@ -57,7 +57,7 @@ export function SessionMenu({
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useMenuStore({ placement: 'bottom-start' });
-  const capabilities = session.capabilities ?? nativeSessionCapabilities(session.agent);
+  const capabilities = session.capabilities ?? legacySessionCapabilities(session.agent);
   const visible = visibleActions(capabilities, archived, localActions);
   if (!visible.length) return null;
   return (

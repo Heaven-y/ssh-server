@@ -1,4 +1,4 @@
-import type { AgentCapability } from '@agentdeck/shared';
+import type { AgentCapability } from '@agentdeck/shared/conversation';
 
 /** 目录保留全部原生条目，常用入口只展示已接通网页调用的能力。 */
 export function isInvocableCapability(entry: AgentCapability): boolean {

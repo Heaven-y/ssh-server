@@ -1,12 +1,12 @@
-import path from 'node:path';
 import {
-  ProductSettingsSchema,
   ProductSettingsInputSchema,
+  ProductSettingsSchema,
   type ProductSettingsDocument,
   type ProductSettingsInput,
-} from '@agentdeck/shared';
-import { inspectDirectory, readConfigFile, writeConfigFile } from './safe-file';
-import { NativeConfigError, anonymousConfigError } from './errors';
+} from '@agentdeck/shared/settings';
+import path from 'node:path';
+import { NativeConfigError, anonymousConfigError } from '../agents/common/configuration/legacy-errors';
+import { inspectDirectory, readConfigFile, writeConfigFile } from '../platform/files/safe-file';
 
 export class ProductSettingsError extends Error {
   constructor(

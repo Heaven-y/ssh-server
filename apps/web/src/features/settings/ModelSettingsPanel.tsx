@@ -1,12 +1,13 @@
 import { useLayoutEffect, type MutableRefObject } from 'react';
 import { ArrowUpRight, FileCode2, RefreshCw } from 'lucide-react';
-import type { AgentKind, ModelSettingField } from '@agentdeck/shared';
+import type { AgentKind } from '@agentdeck/shared/conversation';
+import type { ModelSettingField } from '@agentdeck/shared/settings';
 import { AgentIcon } from '../../ui/BrandIcons';
 import { buttonClass } from '../../ui/styles';
 import { nativeAgentNames } from './native-resource-labels';
 import { ModelSettingsField } from './ModelSettingsField';
 import { modelSettingValue, modelSettingsFields, useModelSettings, type SettingsLeave } from './use-model-settings';
-import { modelEfforts } from '../chat/model-capabilities';
+import { modelEfforts } from '../../cli/model-capabilities';
 
 type State = ReturnType<typeof useModelSettings>;
 function visibleFields(fields: ModelSettingField[], state: State) {

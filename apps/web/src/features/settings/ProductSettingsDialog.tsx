@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { MonitorCheck, Settings2, SlidersHorizontal, X } from 'lucide-react';
-import type { AgentKind } from '@agentdeck/shared';
+import type { AgentKind } from '@agentdeck/shared/conversation';
 import { AgentIcon } from '../../ui/BrandIcons';
 import { buttonClass } from '../../ui/styles';
 import { EnvironmentReport } from './EnvironmentReport';

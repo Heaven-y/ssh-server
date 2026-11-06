@@ -1,8 +1,8 @@
 import type { UseQueryResult } from '@tanstack/react-query';
 import { LoaderCircle, Pin } from 'lucide-react';
-import type { AgentKind, SessionSummary } from '@agentdeck/shared';
+import type { AgentKind, SessionSummary } from '@agentdeck/shared/conversation';
 import { sessionActionKey, useChat } from '../chat/chat-store';
-import { AGENT_LABELS } from '../chat/AgentControls';
+import { AGENT_LABELS } from '../../cli/shared/labels';
 import { AgentIcon } from '../../ui/BrandIcons';
 import { relativeTime } from '../../ui/relative-time';
 import { SessionMenu, type SessionMenuAction } from './SessionMenu';

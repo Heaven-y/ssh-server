@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { registerAgentConfigRoutes } from '../../src/http/agent-config.routes';
-import { NativeConfigError } from '../../src/settings/errors';
+import { NativeConfigError } from '../../src/agents/common/configuration/legacy-errors';
 import type { NativeConfigDocument, NativeConfigService } from '../../src/settings/native-config';
 
 const document: NativeConfigDocument = {

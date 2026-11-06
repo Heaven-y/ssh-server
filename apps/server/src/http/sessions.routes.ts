@@ -6,9 +6,10 @@ import {
   NativeSessionIdSchema,
   SessionActionSchema,
   SessionForkSchema,
-  type Workspace,
-} from '@agentdeck/shared';
-import { SessionError, type SessionsService } from '../chat/sessions';
+} from '@agentdeck/shared/conversation';
+import { type Workspace } from '@agentdeck/shared/projects';
+import { SessionError } from '../agents/errors';
+import { type SessionsService } from '../sessions/service';
 import type { WorkspaceStore } from '../workspaces/store';
 import { WorkspaceBusyError, type WorkspaceActivity } from '../workspaces/activity';
 

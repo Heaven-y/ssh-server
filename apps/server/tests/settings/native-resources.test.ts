@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AgentKind } from '@agentdeck/shared';
+import type { AgentKind } from '@agentdeck/shared/conversation';
 import { createNativeResourcesService } from '../../src/settings/native-resources';
 
 const roots: string[] = [];

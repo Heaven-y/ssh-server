@@ -1,7 +1,8 @@
 import path from 'node:path';
-import type { AgentCapabilities, AgentKind, AgentModel, CapabilitySelection, Workspace } from '@agentdeck/shared';
+import type { AgentCapabilities, AgentKind, AgentModel, CapabilitySelection } from '@agentdeck/shared/conversation';
+import type { Workspace } from '@agentdeck/shared/projects';
 import type { CapabilityProvider, NativeCapabilityCatalog, NativeInvocation } from '../agents/capability-types';
-import { SessionError } from './sessions';
+import { SessionError } from '../agents/errors';
 import { createModelCache, type CachedModelCatalog } from './model-cache';
 
 type Entry = NativeCapabilityCatalog['entries'][number];

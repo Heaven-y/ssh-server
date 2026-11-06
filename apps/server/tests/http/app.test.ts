@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import type { Workspace, WorkspaceInput } from '@agentdeck/shared';
+import type { Workspace, WorkspaceInput } from '@agentdeck/shared/projects';
 import type { WorkspaceStore } from '../../src/workspaces/store';
 import { buildApp } from '../../src/http/app';
 import { registerProjectRoutes } from '../../src/http/projects.routes';

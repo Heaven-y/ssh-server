@@ -27,7 +27,10 @@ const MAIN_EXTERNALS = [
 
 /** 后端在模块加载时读取 remote-helper.py，打包后要放到与主进程入口同级的目录。 */
 function copyRemoteHelper(): Plugin {
-  const source = path.resolve(projectRoot, '../server/src/remote-files/remote-helper.py');
+  const source = path.resolve(
+    projectRoot,
+    '../server/src/builtin-plugins/ssh-console/legacy/remote-files/remote-helper.py',
+  );
   return {
     name: 'agentdeck-copy-remote-helper',
     buildStart() {

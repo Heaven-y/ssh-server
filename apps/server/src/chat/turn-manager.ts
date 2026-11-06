@@ -1,8 +1,9 @@
 // 轮次按 Agent 与原生会话隔离；耗时准备前先建立应用轮次，允许及时中断。
 import { randomUUID } from 'node:crypto';
-import type { AgentEvent, AgentKind, ClientMessage, ServerMessage, SessionRef, Workspace } from '@agentdeck/shared';
-import type { AgentTurnInput, PermissionAnswer, TurnHandle, TurnRunner } from '../agents/types';
-import { SessionError } from './sessions';
+import type { AgentEvent, AgentKind, ClientMessage, ServerMessage, SessionRef } from '@agentdeck/shared/conversation';
+import type { Workspace } from '@agentdeck/shared/projects';
+import type { AgentTurnInput, PermissionAnswer, TurnHandle, TurnRunner } from '../agents/contracts';
+import { SessionError } from '../agents/errors';
 import type { CapabilitiesService } from './capabilities';
 
 export type Socket = { send(msg: ServerMessage): void; isOpen(): boolean };

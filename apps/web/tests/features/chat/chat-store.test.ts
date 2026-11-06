@@ -1,6 +1,9 @@
+import { ApiError } from '../../../src/lib/http';
+import { chatKeys } from '../../../src/features/chat/api';
+import { sessionsApi, sessionsKeys } from '../../../src/features/sessions/api';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryObserver } from '@tanstack/react-query';
-import { ProductSettingsSchema } from '@agentdeck/shared';
+import { ProductSettingsSchema } from '@agentdeck/shared/settings';
 import type {
   AgentCapability,
   AgentKind,
@@ -8,7 +11,7 @@ import type {
   ServerMessage,
   SessionActionInput,
   SessionHistory,
-} from '@agentdeck/shared';
+} from '@agentdeck/shared/conversation';
 import type { ConnectionStatus } from '../../../src/lib/ws';
 
 // node 环境没有 localStorage，用内存实现
@@ -20,7 +23,7 @@ vi.stubGlobal('localStorage', {
 
 const { useChat, startChatConnection, lastWorkspaceId, sessionActionKey } =
   await import('../../../src/features/chat/chat-store');
-const { api, ApiError, queryKeys } = await import('../../../src/lib/api');
+
 const { queryClient } = await import('../../../src/lib/query-client');
 afterEach(() => {
   vi.restoreAllMocks();
@@ -93,7 +96,7 @@ it.each(['claude', 'codex', 'antigravity'] as const)('未显式选择时%s发送
 });
 
 it('历史读取失败后禁止发送，重新读取成功才允许续聊', async () => {
-  const read = vi.spyOn(api, 'sessionEvents').mockRejectedValueOnce(new Error('读取失败'));
+  const read = vi.spyOn(sessionsApi, 'sessionEvents').mockRejectedValueOnce(new Error('读取失败'));
   await useChat.getState().openSession({ agent: 'claude', sessionId: 'same-id' });
   expect(useChat.getState().send('继续')).toBe(false);
   read.mockResolvedValue(history('claude', '历史'));
@@ -102,7 +105,7 @@ it('历史读取失败后禁止发送，重新读取成功才允许续聊', asyn
 });
 
 it('Antigravity不可回放保留会话身份并允许续接', async () => {
-  vi.spyOn(api, 'sessionEvents').mockRejectedValue(
+  vi.spyOn(sessionsApi, 'sessionEvents').mockRejectedValue(
     new ApiError(501, '私有轨迹无法回放', { code: 'session_not_replayable' }),
   );
   await useChat.getState().openSession({ agent: 'antigravity', sessionId: 'agy-native' });
@@ -111,7 +114,7 @@ it('Antigravity不可回放保留会话身份并允许续接', async () => {
 });
 
 it('准备或运行中的导航保留原回合，避免审批和停止失联', async () => {
-  const read = vi.spyOn(api, 'sessionEvents');
+  const read = vi.spyOn(sessionsApi, 'sessionEvents');
   const turnId = startTurn();
   useChat.getState().selectWorkspace('another');
   useChat.getState().newSession('antigravity');
@@ -124,7 +127,7 @@ it('准备或运行中的导航保留原回合，避免审批和停止失联', a
 });
 
 it.each(['claude', 'codex', 'antigravity'] as const)('打开另一条%s会话不沿用上一会话的模型和强度', async (agent) => {
-  vi.spyOn(api, 'sessionEvents').mockImplementation(async (_workspace, sessionId, source) => ({
+  vi.spyOn(sessionsApi, 'sessionEvents').mockImplementation(async (_workspace, sessionId, source) => ({
     session: { agent: source, sessionId, summary: sessionId, lastModified: 1 },
     events: [],
   }));
@@ -140,7 +143,7 @@ it.each(['claude', 'codex', 'antigravity'] as const)('打开另一条%s会话不
 });
 
 it('同会话重读保留显式参数，跨会话即使要求保留草稿也不继承', async () => {
-  vi.spyOn(api, 'sessionEvents').mockImplementation(async (_workspace, sessionId) => ({
+  vi.spyOn(sessionsApi, 'sessionEvents').mockImplementation(async (_workspace, sessionId) => ({
     session: { agent: 'codex', sessionId, summary: sessionId, lastModified: 1 },
     events: [],
   }));
@@ -168,7 +171,7 @@ it.each([
 ])('$agent 同会话重读失败保留已经收到的内存正文', async ({ agent, error, canSend }) => {
   const items = [{ kind: 'assistant' as const, id: 'received', text: '已经收到的结果', streaming: false }];
   useChat.setState({ agent, sessionId: 'same-id', items, historyError: '已断线' });
-  vi.spyOn(api, 'sessionEvents').mockRejectedValue(error);
+  vi.spyOn(sessionsApi, 'sessionEvents').mockRejectedValue(error);
   const reading = useChat.getState().openSession({ agent, sessionId: 'same-id' }, { preserveDraft: true });
   expect(useChat.getState().items).toEqual(items);
   await reading;
@@ -185,7 +188,7 @@ it('视图代次只随选择变化，首次原生会话id不重置；重开同�
   const fresh = useChat.getState().conversationVersion;
   useChat.getState().setAgent('codex');
   expect(useChat.getState().conversationVersion).toBeGreaterThan(fresh);
-  vi.spyOn(api, 'sessionEvents').mockResolvedValue(history('codex', '历史'));
+  vi.spyOn(sessionsApi, 'sessionEvents').mockResolvedValue(history('codex', '历史'));
   await useChat.getState().openSession({ agent: 'codex', sessionId: 'same-id' });
   const firstOpen = useChat.getState().conversationVersion;
   await useChat.getState().openSession({ agent: 'codex', sessionId: 'same-id' });
@@ -206,7 +209,7 @@ it.each(['claude', 'codex', 'antigravity'] as const)(
   '%s 新会话和结束事件更新列表，取消尚未完成的旧枚举',
   async (agent) => {
     useChat.getState().newSession(agent);
-    const queryKey = queryKeys.sessions('w1', agent);
+    const queryKey = sessionsKeys.sessions('w1', agent);
     const original = deferred<string[]>();
     let latest = ['native-session'];
     let originalSignal: AbortSignal | undefined;
@@ -257,7 +260,7 @@ describe('原生会话管理状态', () => {
 
   it('处理中拒绝同目标重复操作和发送，名称保存成功后保留对话', async () => {
     const response = deferred<void>();
-    const action = vi.spyOn(api, 'sessionAction').mockReturnValue(response.promise);
+    const action = vi.spyOn(sessionsApi, 'sessionAction').mockReturnValue(response.promise);
     const request = useChat.getState().manageSession('w1', session, { action: 'rename', title: '新名称' });
     expect(useChat.getState().sessionOperations[key]).toEqual({ action: 'rename', pending: true });
     await expect(useChat.getState().manageSession('w1', session, { action: 'delete', confirmed: true })).resolves.toBe(
@@ -276,7 +279,7 @@ describe('原生会话管理状态', () => {
   });
 
   it('运行中不发管理请求；后端失败保留会话和错误并解除处理中状态', async () => {
-    const action = vi.spyOn(api, 'sessionAction').mockRejectedValue(new Error('原生操作失败'));
+    const action = vi.spyOn(sessionsApi, 'sessionAction').mockRejectedValue(new Error('原生操作失败'));
     useChat.setState({ running: true });
     await expect(useChat.getState().manageSession('w1', session, { action: 'archive' })).resolves.toBe(false);
     expect(action).not.toHaveBeenCalled();
@@ -294,9 +297,9 @@ describe('原生会话管理状态', () => {
 
   it('归档时另一项目首次加载被取消后重新读取，不停留在 pending/idle', async () => {
     vi.mocked(queryClient.invalidateQueries).mockRestore();
-    vi.spyOn(api, 'sessionAction').mockResolvedValue(undefined);
-    const queryKey = queryKeys.sessions('other-loading', 'codex');
-    const unrelatedKey = queryKeys.sessions('other-loading', 'claude');
+    vi.spyOn(sessionsApi, 'sessionAction').mockResolvedValue(undefined);
+    const queryKey = sessionsKeys.sessions('other-loading', 'codex');
+    const unrelatedKey = sessionsKeys.sessions('other-loading', 'claude');
     const original = deferred<string[]>();
     let originalSignal: AbortSignal | undefined;
     const read = vi.fn(({ signal }: { signal: AbortSignal }) => {
@@ -328,7 +331,7 @@ describe('原生会话管理状态', () => {
   it.each(removeActions)('$action 成功时清空仍匹配的当前对话并刷新来源列表', async (input) => {
     useChat.getState().setModel('old-model');
     useChat.getState().setReasoningEffort('high');
-    vi.spyOn(api, 'sessionAction').mockResolvedValue(undefined);
+    vi.spyOn(sessionsApi, 'sessionAction').mockResolvedValue(undefined);
     await expect(useChat.getState().manageSession('w1', session, input)).resolves.toBe(true);
     expect(useChat.getState()).toMatchObject({ workspaceId: 'w1', agent: 'codex', sessionId: undefined, items: [] });
     expect(useChat.getState().sessionOperations[key]).toBeUndefined();
@@ -345,7 +348,7 @@ describe('原生会话管理状态', () => {
     '跨 $dimension 切换后保留原请求，迟到成功不清空新对话',
     async ({ workspaceId, agent, sessionId, input }) => {
       const response = deferred<void>();
-      vi.spyOn(api, 'sessionAction').mockReturnValue(response.promise);
+      vi.spyOn(sessionsApi, 'sessionAction').mockReturnValue(response.promise);
       const request = useChat.getState().manageSession('w1', session, input);
       useChat.getState().selectWorkspace(workspaceId);
       useChat.getState().newSession(agent);
@@ -455,7 +458,7 @@ describe('原生能力状态', () => {
     useChat.getState().setAgent('codex');
     expect(useChat.getState().selectedCapability).toBeUndefined();
     useChat.getState().selectCapability(skill);
-    vi.spyOn(api, 'sessionEvents').mockResolvedValue(history('codex', '已有会话'));
+    vi.spyOn(sessionsApi, 'sessionEvents').mockResolvedValue(history('codex', '已有会话'));
     await useChat.getState().openSession({ agent: 'codex', sessionId: 'same-id' });
     expect(useChat.getState().selectedCapability).toBeUndefined();
   });
@@ -477,13 +480,13 @@ describe('原生能力状态', () => {
 
   it('历史保留原生压缩边界，不从候选或执行报告推导模型与强度', async () => {
     useChat.getState().newSession('codex');
-    queryClient.setQueryData(queryKeys.agentCapabilities('w1', 'codex'), {
+    queryClient.setQueryData(chatKeys.agentCapabilities('w1', 'codex'), {
       agent: 'codex',
       entries: [],
       warnings: [],
       models: [{ id: 'catalog-model', label: '候选', reasoningEfforts: ['low'] }],
     });
-    vi.spyOn(api, 'sessionEvents').mockResolvedValue({
+    vi.spyOn(sessionsApi, 'sessionEvents').mockResolvedValue({
       ...history('codex', '原生历史'),
       events: [
         { type: 'compaction', state: { status: 'completed', trigger: 'manual', beforeTokens: 500, afterTokens: 100 } },
@@ -497,7 +500,7 @@ describe('原生能力状态', () => {
     expect(useChat.getState().send('继续')).toBe(true);
     expect(sent[0]).toMatchObject({ agent: 'codex', model: undefined, reasoningEffort: undefined });
     expect(useChat.getState().compaction).toMatchObject({ status: 'completed' });
-    queryClient.removeQueries({ queryKey: queryKeys.agentCapabilities('w1', 'codex') });
+    queryClient.removeQueries({ queryKey: chatKeys.agentCapabilities('w1', 'codex') });
   });
 
   it('断线后保留未确认边界，重新读取前不能继续发送', () => {
@@ -545,7 +548,7 @@ describe('chat-store', () => {
 
   it('历史原生配置和实际报告只更新证据，明确重置后续接不带model', async () => {
     const session = { agent: 'codex' as const, sessionId: 'history', summary: '历史', lastModified: 1 };
-    vi.spyOn(api, 'sessionEvents').mockResolvedValue({
+    vi.spyOn(sessionsApi, 'sessionEvents').mockResolvedValue({
       session: { ...session, nativeModel: 'native-config-model' },
       events: [],
       actualModel: 'historical-model',
@@ -567,7 +570,7 @@ describe('chat-store', () => {
 
   it('运行报告保留历史原生配置证据，不回填用户覆盖', async () => {
     const session = { agent: 'claude' as const, sessionId: 'same-id' };
-    vi.spyOn(api, 'sessionEvents').mockResolvedValue({
+    vi.spyOn(sessionsApi, 'sessionEvents').mockResolvedValue({
       ...history('claude', '历史'),
       session: { ...history('claude', '历史').session, nativeModel: 'native-config-model' },
     });
@@ -705,7 +708,7 @@ describe('chat-store', () => {
     useChat.getState().setAgent('codex');
     useChat.getState().setModel('codex-model');
     useChat.getState().setReasoningEffort('high');
-    vi.spyOn(api, 'sessionEvents').mockResolvedValue(history('codex', '原生历史'));
+    vi.spyOn(sessionsApi, 'sessionEvents').mockResolvedValue(history('codex', '原生历史'));
     await useChat.getState().openSession({ agent: 'codex', sessionId: 'same-id' });
     useChat.getState().setAgent('claude');
     expect(useChat.getState()).toMatchObject({
@@ -738,7 +741,7 @@ describe('chat-store', () => {
     const middle = deferred<SessionHistory>();
     const latest = deferred<SessionHistory>();
     const read = vi
-      .spyOn(api, 'sessionEvents')
+      .spyOn(sessionsApi, 'sessionEvents')
       .mockReturnValueOnce(old.promise)
       .mockReturnValueOnce(middle.promise)
       .mockReturnValueOnce(latest.promise);
@@ -761,7 +764,7 @@ describe('chat-store', () => {
 
   it('工作区切换取消历史，并在后台轮次结束时刷新其原 Agent 列表', async () => {
     const pending = deferred<SessionHistory>();
-    vi.spyOn(api, 'sessionEvents').mockReturnValue(pending.promise);
+    vi.spyOn(sessionsApi, 'sessionEvents').mockReturnValue(pending.promise);
     const loading = useChat.getState().openSession({ agent: 'codex', sessionId: 'same-id' });
     useChat.getState().selectWorkspace('w2');
     pending.resolve(history('codex', '旧工作区'));
@@ -773,10 +776,10 @@ describe('chat-store', () => {
     await vi.waitFor(() => expect(refresh).toHaveBeenCalledWith({ predicate: expect.any(Function) }));
     const filter = refresh.mock.lastCall?.[0]?.predicate;
     const lists = queryClient.getQueryCache();
-    queryClient.setQueryData(queryKeys.sessions('w1', 'codex'), []);
-    queryClient.setQueryData(queryKeys.sessions('w2', 'claude'), []);
-    expect(filter?.(lists.find({ queryKey: queryKeys.sessions('w1', 'codex') })!)).toBe(true);
-    expect(filter?.(lists.find({ queryKey: queryKeys.sessions('w2', 'claude') })!)).toBe(false);
+    queryClient.setQueryData(sessionsKeys.sessions('w1', 'codex'), []);
+    queryClient.setQueryData(sessionsKeys.sessions('w2', 'claude'), []);
+    expect(filter?.(lists.find({ queryKey: sessionsKeys.sessions('w1', 'codex') })!)).toBe(true);
+    expect(filter?.(lists.find({ queryKey: sessionsKeys.sessions('w2', 'claude') })!)).toBe(false);
     expect(useChat.getState().running).toBe(true);
   });
 

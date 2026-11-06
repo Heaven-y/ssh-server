@@ -1,5 +1,6 @@
+import { ApiError } from '../../../src/lib/http';
 import { describe, expect, it } from 'vitest';
-import { ApiError } from '../../../src/lib/api';
+
 import { sessionHistoryFailure } from '../../../src/features/sessions/use-sessions';
 
 describe('会话历史读取失败分类', () => {

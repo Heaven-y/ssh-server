@@ -4,7 +4,7 @@ import { managementPending, useChat } from './chat-store';
 import { CapabilityPicker } from './CapabilityPicker';
 import { selectionRestriction } from './capability-selection';
 import { ComposerInput } from './ComposerInput';
-import type { AgentCapability } from '@agentdeck/shared';
+import type { AgentCapability } from '@agentdeck/shared/conversation';
 import { AgentControls } from './AgentControls';
 import { ComposerStatus } from './ComposerStatus';
 

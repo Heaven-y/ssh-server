@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentCapability } from '@agentdeck/shared';
+import type { AgentCapability } from '@agentdeck/shared/conversation';
 import { matchesCapability, slashCompletion } from '../../../src/features/chat/slash-completion';
 
 describe('原生命令补全', () => {

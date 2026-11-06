@@ -1,17 +1,18 @@
 // @vitest-environment jsdom
+import { terminalApi } from '../../../src/builtin-plugins/ssh-console/legacy/terminal/api';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import PluginManager from '../../../src/features/plugins/PluginManager';
 import { pluginApi } from '../../../src/features/plugins/plugin-api';
-import type { WorkbenchPlugin } from '@agentdeck/shared';
-import { api } from '../../../src/lib/api';
+import type { WorkbenchPlugin } from '@agentdeck/shared/plugins';
+
 import {
   closeTerminalTab,
   ensureInitialTerminal,
   openTerminalTab,
   useTerminalStore,
-} from '../../../src/features/terminal/terminal-store';
+} from '../../../src/builtin-plugins/ssh-console/legacy/terminal/terminal-store';
 
 beforeEach(() => {
   useTerminalStore.setState(useTerminalStore.getInitialState(), true);
@@ -109,7 +110,7 @@ it('停用SSH Console确认后清旧终端和待绑定操作，再启用不从�
   });
   let bindingSignal: AbortSignal | undefined;
   let rejectBinding!: (error: Error) => void;
-  const bind = vi.spyOn(api, 'bindTerminalTarget').mockImplementation((_target, options) => {
+  const bind = vi.spyOn(terminalApi, 'bindTerminalTarget').mockImplementation((_target, options) => {
     bindingSignal = options?.signal;
     return new Promise((_resolve, reject) => {
       rejectBinding = reject;

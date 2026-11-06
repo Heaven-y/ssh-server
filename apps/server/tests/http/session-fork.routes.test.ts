@@ -4,10 +4,12 @@ import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SDKSessionInfo } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentKind, Workspace } from '@agentdeck/shared';
-import type { NativeSessionRead } from '../../src/agents/types';
-import { createClaudeSessions } from '../../src/agents/claude-sessions';
-import { createSessionsService, SessionError } from '../../src/chat/sessions';
+import type { AgentKind } from '@agentdeck/shared/conversation';
+import type { Workspace } from '@agentdeck/shared/projects';
+import type { NativeSessionRead } from '../../src/agents/contracts';
+import { createClaudeSessions } from '../../src/agents/claude/sessions';
+import { SessionError } from '../../src/agents/errors';
+import { createSessionsService } from '../../src/sessions/service';
 import { TurnManager } from '../../src/chat/turn-manager';
 import { registerSessionRoutes } from '../../src/http/sessions.routes';
 

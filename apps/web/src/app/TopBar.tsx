@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { LoaderCircle, PanelRightClose, PanelRightOpen, RefreshCw, WifiOff } from 'lucide-react';
-import type { Workspace } from '@agentdeck/shared';
+import type { Workspace } from '@agentdeck/shared/projects';
 import { reconnectChat, useChat } from '../features/chat/chat-store';
 import { sessionListQuery } from '../features/sessions/use-sessions';
 

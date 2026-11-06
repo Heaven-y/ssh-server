@@ -1,5 +1,5 @@
-import type { WorkbenchPluginCatalog, WorkbenchPluginPage, WorkbenchPluginStorage } from '@agentdeck/shared';
-import { request } from '../../lib/api';
+import { request } from '../../lib/http';
+import type { WorkbenchPluginCatalog, WorkbenchPluginPage, WorkbenchPluginStorage } from '@agentdeck/shared/plugins';
 
 const pluginUrl = (id: string) => `/api/plugins/${encodeURIComponent(id)}`;
 export const pluginsKey = ['workbench-plugins'] as const;

@@ -3,8 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 import ssh2 from 'ssh2';
 import type { Attributes, Connection, FileEntry, SFTPWrapper } from 'ssh2';
-import type { BoundWorkspace, RemoteBrowseTarget } from '@agentdeck/shared';
-import { createSshPool } from '../../src/ssh/pool';
+import type { BoundWorkspace } from '@agentdeck/shared/projects';
+import type { RemoteBrowseTarget } from '@agentdeck/shared/ssh';
+import { createSshPool } from '../../src/builtin-plugins/ssh-console/ssh/pool';
 
 type Operation = 'READDIR' | 'REALPATH' | 'SFTP' | 'READ';
 type Gate = { entered(): void; action?: () => void };

@@ -1,11 +1,13 @@
+import { sshConsoleDefinition } from '../../src/builtin-plugins/ssh-console/manifest';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import type { WorkbenchPluginManifest } from '@agentdeck/shared/plugins';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createWorkbenchPlugins } from '../../src/plugins/service';
 
 const roots: string[] = [];
-const manifest = {
+const manifest: WorkbenchPluginManifest = {
   id: 'demo-plugin',
   name: '示例插件',
   version: '1.0.0',
@@ -23,7 +25,12 @@ async function fixture(onDisable?: (id: string) => Promise<void>) {
   await fs.mkdir(directory);
   await fs.writeFile(path.join(directory, 'agentdeck.plugin.json'), JSON.stringify(manifest));
   await fs.writeFile(path.join(directory, 'index.html'), html);
-  return { root, directory, configDir, service: createWorkbenchPlugins({ configDir, onDisable }) };
+  return {
+    root,
+    directory,
+    configDir,
+    service: createWorkbenchPlugins({ builtins: [sshConsoleDefinition], configDir, onDisable }),
+  };
 }
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
@@ -69,7 +76,7 @@ describe('工作台插件宿主', () => {
       enabled: false,
     });
     await expect(service.page('demo-plugin')).rejects.toMatchObject({ code: 'plugin_disabled' });
-    expect(await createWorkbenchPlugins({ configDir }).list()).toEqual(catalog);
+    expect(await createWorkbenchPlugins({ builtins: [sshConsoleDefinition], configDir }).list()).toEqual(catalog);
     await fs.writeFile(path.join(directory, 'index.html'), '外部包被修改');
     const enabled = await service.update('demo-plugin', { enabled: true, revision: catalog.revision });
     expect(enabled.plugins.find((plugin) => plugin.manifest.id === 'demo-plugin')?.enabled).toBe(true);
@@ -185,4 +192,31 @@ describe('工作台插件宿主', () => {
       code: 'too_large',
     });
   });
+});
+
+it('内置注册项各自保存状态，v1 停用选择迁移后不丢失且不回写旧格式', async () => {
+  const { configDir } = await fixture();
+  const folder = path.join(configDir, 'workbench-plugins');
+  await fs.mkdir(folder, { recursive: true });
+  const registryFile = path.join(folder, 'registry.json');
+  const previous = JSON.stringify({ version: 1, sshConsoleEnabled: false, plugins: [] });
+  await fs.writeFile(registryFile, previous);
+  const builtins = [
+    { manifest: { ...manifest, id: 'ssh-console' }, defaultEnabled: true },
+    { manifest: { ...manifest, id: 'other-builtin' }, defaultEnabled: true },
+  ];
+  const service = createWorkbenchPlugins({ configDir, builtins });
+  const old = await service.list();
+  expect(old.plugins.map((entry) => [entry.manifest.id, entry.enabled])).toEqual([
+    ['ssh-console', false],
+    ['other-builtin', true],
+  ]);
+  expect(await fs.readFile(registryFile, 'utf8')).toBe(previous);
+  const updated = await service.update('other-builtin', { enabled: false, revision: old.revision });
+  expect(updated.plugins.every((entry) => !entry.enabled)).toBe(true);
+  expect(JSON.parse(await fs.readFile(registryFile, 'utf8'))).toMatchObject({
+    version: 2,
+    builtinEnabled: { 'ssh-console': false, 'other-builtin': false },
+  });
+  expect(await createWorkbenchPlugins({ configDir, builtins }).list()).toEqual(updated);
 });

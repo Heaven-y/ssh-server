@@ -1,4 +1,4 @@
-import type { AgentKind } from '@agentdeck/shared';
+import type { AgentKind } from '@agentdeck/shared/conversation';
 import antigravityIcon from './assets/antigravity.svg';
 
 /**

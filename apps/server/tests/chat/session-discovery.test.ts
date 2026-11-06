@@ -2,8 +2,8 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
-import { createClaudeSessions, type ClaudeSessionsApi } from '../../src/agents/claude-sessions';
-import { createSessionsService } from '../../src/chat/sessions';
+import { createClaudeSessions, type ClaudeSessionsApi } from '../../src/agents/claude/sessions';
+import { createSessionsService } from '../../src/sessions/service';
 import { createAntigravitySessions } from '../../src/agents/antigravity/sessions';
 
 const parent = { id: 'parent', name: '父项目', dir: path.join(tmpdir(), 'discovery-fixture', 'parent') };

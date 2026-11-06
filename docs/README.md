@@ -20,7 +20,6 @@
 | [原生配置与启动环境](engineering/native-configuration.md) | 各 CLI 配置入口、显式正文编辑和启动变量的边界 |
 | [CLI 用量与执行轨迹](engineering/cli-observability.md) | 三 CLI 统计口径、执行轨迹接线与仍需验证的边界 |
 | [模型身份与推理强度](engineering/model-capabilities.md) | 模型显示、Claude `[1m]`、上下文和精确推理档位 |
-| [目录与模块边界审查](engineering/structure-review.md) | 独立审查发现、建议目录、分阶段迁移及验证范围（尚未迁移） |
 | [工作台插件接口](engineering/workbench-plugins.md) | 自有 v1 插件格式、宿主接口、SSH Console 与兼容边界 |
 | [本地安装与打包](guides/local-installation.md) | 安装版、便携版、数据保存、构建和隔离验收 |
 
@@ -47,3 +46,5 @@
 DSH 界面对齐和整体验证计划归档至 `08ed6df:docs/superpowers/plans/2026-11-05-dsh-ui-alignment.md`。现行布局、生命周期与验收分别由交互、架构和路线图维护，Git 合并结果以分支历史为准。
 
 执行轨迹实施前的能力评估保存在 `3c8d0ac:docs/engineering/cli-observability.md`。其中“尚未实施”的结论属于当时状态，现行接线与限制由上表的 CLI 用量与执行轨迹文档继续维护。
+
+内部结构迁移已完成。迁移前独立审查保存在 `cdcef47:docs/engineering/structure-review.md`，执行完成的计划保存在 `d6028db:docs/superpowers/plans/2026-11-06-workbench-structure.md`。当前模块边界由架构文档维护，取舍和验收分别归现行决策与路线图；不继续并列维护完成计划和旧路径清单。

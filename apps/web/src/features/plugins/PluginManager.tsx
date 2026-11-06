@@ -1,19 +1,16 @@
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { WorkbenchPlugin, WorkbenchPluginCatalog } from '@agentdeck/shared';
+import type { WorkbenchPlugin, WorkbenchPluginCatalog } from '@agentdeck/shared/plugins';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { pluginApi, pluginsKey } from './plugin-api';
 import { useWorkbenchPlugins } from './use-workbench-plugins';
-import { closeTerminalTab, useTerminalStore } from '../terminal/terminal-store';
+import { builtinPlugins } from '../../builtin-plugins/registry';
 
 const permissions = { storage: '插件自己的本机设置', 'project-context': '当前项目名称和目录' };
 async function togglePlugin(plugin: WorkbenchPlugin, revision: string) {
   const catalog = await pluginApi.setEnabled(plugin.manifest.id, !plugin.enabled, revision);
-  if (plugin.enabled && plugin.manifest.id === 'ssh-console') {
-    // 停用成功后清理旧终端及待绑定操作，重新启用时由用户新建 shell。
-    for (const tab of useTerminalStore.getState().tabs) closeTerminalTab(tab.id);
-  }
+  if (plugin.enabled && plugin.builtin) builtinPlugins[plugin.manifest.id]?.onDisabled();
   return catalog;
 }
 
@@ -78,9 +75,9 @@ export default function PluginManager({ onClose }: { onClose(): void }) {
   };
   const toggle = (plugin: WorkbenchPlugin) => {
     if (!query.data) return;
-    const ended = plugin.manifest.id === 'ssh-console' ? '，包括项目服务器工具中的终端' : '';
     const text = plugin.enabled
-      ? `停用“${plugin.manifest.name}”将关闭它的页面与资源${ended}。服务器档案、项目和任务记录保留。继续吗？`
+      ? (plugin.builtin && builtinPlugins[plugin.manifest.id]?.disableConfirmation(plugin)) ||
+        `停用“${plugin.manifest.name}”将关闭它的页面与资源。插件设置保留。继续吗？`
       : `启用“${plugin.manifest.name}”，允许访问：${plugin.manifest.permissions.map((item) => permissions[item]).join('、') || '仅插件页面'}？`;
     if (window.confirm(text)) void perform(() => togglePlugin(plugin, query.data.revision));
   };

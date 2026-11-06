@@ -1,7 +1,7 @@
 import path from 'node:path';
-import type { AgentModel } from '@agentdeck/shared';
+import type { AgentModel } from '@agentdeck/shared/conversation';
 import { capabilityId, type NativeCapabilityCatalog, type NativeInvocation } from '../capability-types';
-import { sameSessionDirectory } from '../session-scope';
+import { sameSessionDirectory } from '../common/session-scope';
 import { CodexClient } from './client';
 import { cancelled, CodexError, list, record, text, type CodexRuntimeOptions, type RecordValue } from './types';
 

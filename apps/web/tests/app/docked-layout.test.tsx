@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { WorkspaceLayout } from '../../src/app/WorkspaceLayout';
 import { dockSizing } from '../../src/app/WorkspaceColumns';
-import { ServerDock, type ServerDockView } from '../../src/app/ServerDock';
+import { ServerDock, type ServerDockView } from '../../src/builtin-plugins/ssh-console/legacy/ServerDock';
 
 import { useUiPreferences } from '../../src/ui/ui-preferences';
 

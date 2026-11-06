@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
+import { sessionsApi } from '../../../src/features/sessions/api';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { SessionRecord } from '@agentdeck/shared';
-import { api } from '../../../src/lib/api';
+import type { SessionRecord } from '@agentdeck/shared/conversation';
+
 import { queryClient } from '../../../src/lib/query-client';
 import { managementPending, sessionActionKey, useChat } from '../../../src/features/chat/chat-store';
 import { forkSession } from '../../../src/features/sessions/session-fork';
@@ -18,8 +19,8 @@ beforeEach(() => {
     'fetch',
     vi.fn(async () => response()),
   );
-  vi.spyOn(api, 'sessionEvents').mockResolvedValue({ session: created, events: [] });
-  vi.spyOn(api, 'sessionAction').mockResolvedValue(undefined);
+  vi.spyOn(sessionsApi, 'sessionEvents').mockResolvedValue({ session: created, events: [] });
+  vi.spyOn(sessionsApi, 'sessionAction').mockResolvedValue(undefined);
   vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
 });
 afterEach(() => {
@@ -41,7 +42,7 @@ it('指定位置原生分叉仅发一次请求，复用操作锁，成功刷新�
   expect(await useChat.getState().manageSession('workspace', source, { action: 'rename', title: '不应发送' })).toBe(
     false,
   );
-  expect(api.sessionAction).not.toHaveBeenCalled();
+  expect(sessionsApi.sessionAction).not.toHaveBeenCalled();
   expect(fetch).toHaveBeenCalledExactlyOnceWith(
     '/api/projects/workspace/sessions/codex/source/fork',
     expect.objectContaining({
@@ -73,7 +74,7 @@ it('末尾分叉省略pointId；迟到成功只刷新列表，不能切走新的
   resolve(response());
   expect(await pending).toBe(true);
   expect(useChat.getState()).toMatchObject({ workspaceId: 'workspace', agent: 'claude', sessionId: undefined });
-  expect(api.sessionEvents).not.toHaveBeenCalled();
+  expect(sessionsApi.sessionEvents).not.toHaveBeenCalled();
   expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ predicate: expect.any(Function) });
 });
 
@@ -115,7 +116,7 @@ it('响应不能复用源ID或改换Agent，用户已离开工作区时不读取
   resolve(response());
   expect(await pending).toBe(true);
   expect(useChat.getState().workspaceId).toBe('other');
-  expect(api.sessionEvents).not.toHaveBeenCalled();
+  expect(sessionsApi.sessionEvents).not.toHaveBeenCalled();
 });
 
 it('分叉完成时当前会话另有管理操作，只刷新来源，不抢占当前会话', async () => {
@@ -133,5 +134,5 @@ it('分叉完成时当前会话另有管理操作，只刷新来源，不抢占�
   expect(await pending).toBe(true);
   expect(useChat.getState().sessionId).toBe('source');
   expect(useChat.getState().sessionOperations[key]).toEqual(operation);
-  expect(api.sessionEvents).not.toHaveBeenCalled();
+  expect(sessionsApi.sessionEvents).not.toHaveBeenCalled();
 });

@@ -1,7 +1,7 @@
-import { NativeSessionIdSchema, type SessionActionInput, type SessionForkInput } from '@agentdeck/shared';
-import { sameSessionDirectory, sessionDirectoryWithin } from '../session-scope';
-import type { NativeSessionFork, NativeSessionRead, NativeSessionRow, NativeSessionSummary } from '../types';
-import { SessionError } from '../../chat/sessions';
+import { NativeSessionIdSchema, type SessionActionInput, type SessionForkInput } from '@agentdeck/shared/conversation';
+import { sameSessionDirectory, sessionDirectoryWithin } from '../common/session-scope';
+import type { NativeSessionFork, NativeSessionRead, NativeSessionRow, NativeSessionSummary } from '../contracts';
+import { SessionError } from '../errors';
 import { CodexClient } from './client';
 import { CodexEventMapper, codexForkPoint } from './mapper';
 import { cancelled, CodexError, record, text, type CodexRuntimeOptions, type RecordValue } from './types';

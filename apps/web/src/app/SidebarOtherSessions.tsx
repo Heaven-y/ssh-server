@@ -1,8 +1,8 @@
-import type { SessionSummary } from '@agentdeck/shared';
+import type { SessionSummary } from '@agentdeck/shared/conversation';
 import { sessionActionKey } from '../features/chat/chat-store';
 import { ProjectSessionRow } from '../features/sessions/ProjectSessionRow';
 import { buttonClass } from '../ui/styles';
-import { projectFolderName, useProjectChatBusy, type ProjectDraft } from './project-management';
+import { projectFolderName, useProjectChatBusy, type ProjectDraft } from '../features/projects/project-management';
 
 export function SidebarOtherSessions({
   sessions,

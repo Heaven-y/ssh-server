@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest, RouteShorthandOptions } from 'fastify';
 import { z } from 'zod';
-import { anonymousConfigError, NativeConfigError } from '../settings/errors';
+import { anonymousConfigError, NativeConfigError } from '../agents/common/configuration/legacy-errors';
+import { MAX_CONFIG_BYTES } from '../platform/files/safe-file';
 import type { NativeConfigAgent, NativeConfigService } from '../settings/native-config';
-import { MAX_CONFIG_BYTES } from '../settings/safe-file';
 
 export type AgentConfigRoutesDeps = { service: NativeConfigService };
 const Params = z.object({ agent: z.enum(['claude', 'codex']) }).strict();

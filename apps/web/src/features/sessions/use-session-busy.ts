@@ -1,4 +1,4 @@
-import type { SessionRef } from '@agentdeck/shared';
+import type { SessionRef } from '@agentdeck/shared/conversation';
 import { sessionActionKey, useChat } from '../chat/chat-store';
 
 /** 同一原生身份的摘要、当前回合与管理占用共同决定是否可操作。 */

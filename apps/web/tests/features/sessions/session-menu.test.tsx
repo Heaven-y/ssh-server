@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { SessionSummary } from '@agentdeck/shared';
+import type { SessionSummary } from '@agentdeck/shared/conversation';
 import { SessionMenu } from '../../../src/features/sessions/SessionMenu';
 
 afterEach(cleanup);

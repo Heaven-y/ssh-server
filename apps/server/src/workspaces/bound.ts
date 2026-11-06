@@ -1,4 +1,4 @@
-import { isBoundWorkspace, type BoundWorkspace, type Workspace } from '@agentdeck/shared';
+import { isBoundWorkspace, type BoundWorkspace, type Workspace } from '@agentdeck/shared/projects';
 
 /**
  * 服务器面板只服务「已绑定服务器与默认目录」的项目。

@@ -3,8 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { createSessionPreferences } from '../../src/sessions/preferences';
-import { createClaudeSessions, type ClaudeSessionsApi } from '../../src/agents/claude-sessions';
-import { createSessionsService } from '../../src/chat/sessions';
+import { createClaudeSessions, type ClaudeSessionsApi } from '../../src/agents/claude/sessions';
+import { createSessionsService } from '../../src/sessions/service';
 import { createAntigravitySessions } from '../../src/agents/antigravity/sessions';
 import { pathToFileURL } from 'node:url';
 

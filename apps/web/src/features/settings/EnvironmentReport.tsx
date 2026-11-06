@@ -1,7 +1,8 @@
+import { settingsApi, settingsKeys } from './api';
 import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
-import type { EnvironmentTool } from '@agentdeck/shared';
-import { api, queryKeys } from '../../lib/api';
+import type { EnvironmentTool } from '@agentdeck/shared/settings';
+
 import { buttonClass } from '../../ui/styles';
 import { useCancelableRequest } from '../../lib/use-cancelable-request';
 import { useEnvironment } from './use-environment';
@@ -51,10 +52,10 @@ export function EnvironmentReport({ disabled }: { disabled: boolean }) {
   const check = async () => {
     if (disabled || request.busy) return;
     const report = await request.run(async (signal) => {
-      await qc.cancelQueries({ queryKey: queryKeys.environment });
-      return api.detectEnvironment(signal);
+      await qc.cancelQueries({ queryKey: settingsKeys.environment });
+      return settingsApi.detectEnvironment(signal);
     });
-    if (report) qc.setQueryData(queryKeys.environment, report);
+    if (report) qc.setQueryData(settingsKeys.environment, report);
   };
   return (
     <section className="space-y-3">

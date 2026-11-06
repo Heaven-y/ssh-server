@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { NativeSessionIdSchema, type AgentEvent } from '@agentdeck/shared';
+import { NativeSessionIdSchema, type AgentEvent } from '@agentdeck/shared/conversation';
 import { stepDuration, stepUsage } from './metrics';
 
 type RecordValue = Record<string, unknown>;

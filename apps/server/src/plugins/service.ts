@@ -1,3 +1,4 @@
+import type { BuiltinPluginDefinition } from './contracts';
 import path from 'node:path';
 import type {
   WorkbenchPluginCatalog,
@@ -7,15 +8,19 @@ import type {
   WorkbenchPluginStorage,
   WorkbenchPluginStorageInput,
   WorkbenchPluginUpdateInput,
-} from '@agentdeck/shared';
-import { contentRevision, decodeUtf8 } from '../settings/safe-file';
+} from '@agentdeck/shared/plugins';
+import { contentRevision, decodeUtf8 } from '../platform/files/safe-file';
 import { WorkbenchPluginError, pluginError } from './errors';
 import { childPath, readPluginFile, removePluginDirectory } from './files';
 import { copyPluginPackage, readPluginPackage } from './package';
 import { createPluginRegistry, registryCatalog, type RegistrySnapshot } from './registry';
 import { createPluginStorage } from './storage';
 
-type Deps = { configDir: string; onDisable?: (id: string) => Promise<void> | void };
+type Deps = {
+  builtins: BuiltinPluginDefinition[];
+  configDir: string;
+  onDisable?: (id: string) => Promise<void> | void;
+};
 function assertRevision(current: RegistrySnapshot, revision: string) {
   if (current.snapshot.revision !== revision) throw new WorkbenchPluginError('revision_conflict');
 }
@@ -33,7 +38,7 @@ function activePlugin(current: RegistrySnapshot, id: string) {
 export function createWorkbenchPlugins(deps: Deps) {
   const directory = path.resolve(deps.configDir, 'workbench-plugins');
   const packages = path.join(directory, 'packages');
-  const registry = createPluginRegistry(directory);
+  const registry = createPluginRegistry(directory, deps.builtins);
   const storage = createPluginStorage(path.join(directory, 'storage'));
   let enabledIds = new Set<string>();
   const suspended = new Set<string>();
@@ -87,7 +92,7 @@ export function createWorkbenchPlugins(deps: Deps) {
         const current = await registry.load();
         const source = await readPluginPackage(input.directory);
         if (
-          source.manifest.id === 'ssh-console' ||
+          deps.builtins.some((entry) => entry.manifest.id === source.manifest.id) ||
           current.state.plugins.some((entry) => entry.manifest.id === source.manifest.id)
         )
           throw new WorkbenchPluginError('already_installed');
@@ -116,7 +121,7 @@ export function createWorkbenchPlugins(deps: Deps) {
           const plugin = findPlugin(current, id);
           if (plugin.enabled === input.enabled) return publish(current);
           if (!input.enabled) await cleanup(id);
-          if (plugin.builtin) current.state.sshConsoleEnabled = input.enabled;
+          if (plugin.builtin) current.state.builtinEnabled[id] = input.enabled;
           else current.state.plugins.find((entry) => entry.manifest.id === id)!.enabled = input.enabled;
           return publish(await registry.save(current.state, current.snapshot));
         }),

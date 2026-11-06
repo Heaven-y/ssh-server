@@ -1,10 +1,11 @@
-import { z } from 'zod';
+import type { AgentKind, AgentProbe, ProbeStatus } from '@agentdeck/shared/conversation';
+import type { EnvironmentReport, EnvironmentTool } from '@agentdeck/shared/settings';
+import { ProductSettingsInputSchema } from '@agentdeck/shared/settings';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { AgentKind, AgentProbe, EnvironmentReport, EnvironmentTool, ProbeStatus } from '@agentdeck/shared';
-import { ProductSettingsInputSchema } from '@agentdeck/shared';
+import { z } from 'zod';
+import { anonymousConfigError } from '../agents/common/configuration/legacy-errors';
+import type { AgentProbes } from '../agents/common/probe';
 import { ProductSettingsError, type ProductSettingsStore } from '../settings/product-settings';
-import { anonymousConfigError } from '../settings/errors';
-import type { AgentProbes } from '../agents/probe';
 
 const Empty = z.strictObject({});
 const TOOL_NAMES: Record<AgentKind, EnvironmentTool['name']> = {

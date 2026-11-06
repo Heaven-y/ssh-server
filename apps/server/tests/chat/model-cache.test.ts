@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { NativeCapabilityCatalog } from '../../src/agents/capability-types';
 import { createCapabilitiesService } from '../../src/chat/capabilities';
-import * as files from '../../src/settings/safe-file';
+import * as files from '../../src/platform/files/safe-file';
 
 const roots: string[] = [];
 afterEach(async () => {

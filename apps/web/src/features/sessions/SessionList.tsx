@@ -1,8 +1,9 @@
+import { sessionsApi, sessionsKeys } from './api';
 import { useQueries } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
-import type { SessionSummary } from '@agentdeck/shared';
-import { api, queryKeys } from '../../lib/api';
+import type { SessionSummary } from '@agentdeck/shared/conversation';
+
 import { buttonClass } from '../../ui/styles';
 import { useChat } from '../chat/chat-store';
 import { SessionActionsDialog } from './SessionActionsDialog';
@@ -16,8 +17,8 @@ function useSessionSources(workspaceId: string, archived: boolean): SessionSourc
   const agents = ['codex', 'claude', 'antigravity'] as const;
   const queries = useQueries({
     queries: agents.map((agent) => ({
-      queryKey: queryKeys.sessions(workspaceId, agent, archived),
-      queryFn: ({ signal }: { signal: AbortSignal }) => api.listSessions(workspaceId, agent, archived, signal),
+      queryKey: sessionsKeys.sessions(workspaceId, agent, archived),
+      queryFn: ({ signal }: { signal: AbortSignal }) => sessionsApi.listSessions(workspaceId, agent, archived, signal),
     })),
   });
   return agents.map((agent, index) => ({ agent, query: queries[index]! }));

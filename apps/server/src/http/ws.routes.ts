@@ -1,6 +1,6 @@
 // 对话 WebSocket：/ws（访问控制在 security.ts 的 onRequest 钩子里完成）
 import type { FastifyInstance } from 'fastify';
-import { ClientMessageSchema } from '@agentdeck/shared';
+import { ClientMessageSchema } from '@agentdeck/shared/conversation';
 import { z } from 'zod';
 import type { Socket, TurnManager } from '../chat/turn-manager';
 

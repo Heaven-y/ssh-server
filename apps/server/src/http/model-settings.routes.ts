@@ -1,9 +1,10 @@
-import { z } from 'zod';
+import { AgentKindSchema } from '@agentdeck/shared/conversation';
+import { NativeModelSettingsInputSchema } from '@agentdeck/shared/settings';
 import type { FastifyInstance, FastifyReply, FastifyRequest, RouteShorthandOptions } from 'fastify';
-import { AgentKindSchema, NativeModelSettingsInputSchema } from '@agentdeck/shared';
+import { z } from 'zod';
+import { NativeResourceError, resourceError } from '../agents/common/configuration/errors';
+import { ModelSettingsError } from '../agents/common/configuration/patch';
 import type { ModelSettingsService } from '../settings/model-settings';
-import { ModelSettingsError } from '../settings/model-settings-patch';
-import { NativeResourceError, resourceError } from '../settings/native-resources-errors';
 
 const Params = z.strictObject({ agent: AgentKindSchema });
 function agentOf(req: FastifyRequest) {

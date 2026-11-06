@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import type { WorkbenchPluginManifest } from '@agentdeck/shared';
+import type { WorkbenchPluginManifest } from '@agentdeck/shared/plugins';
 import { handlePluginRequest, pluginDocument } from '../../../src/features/plugins/plugin-bridge';
 import { pluginApi } from '../../../src/features/plugins/plugin-api';
 

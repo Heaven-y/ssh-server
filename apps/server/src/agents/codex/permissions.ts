@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { AgentTurnInput, PermissionAnswer } from '../types';
+import type { AgentTurnInput, PermissionAnswer } from '../contracts';
 import type { CodexClient } from './client';
 import type { CodexEventMapper } from './mapper';
 import { record, text, type RecordValue, type RpcId, type ServerRequest } from './types';

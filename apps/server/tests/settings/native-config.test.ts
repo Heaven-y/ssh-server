@@ -2,9 +2,9 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { NativeConfigError } from '../../src/settings/errors';
+import { NativeConfigError } from '../../src/agents/common/configuration/legacy-errors';
 import { createNativeConfigService, type NativeConfigAgent } from '../../src/settings/native-config';
-import { MAX_CONFIG_BYTES } from '../../src/settings/safe-file';
+import { MAX_CONFIG_BYTES } from '../../src/platform/files/safe-file';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const original = await importOriginal<typeof fs>();

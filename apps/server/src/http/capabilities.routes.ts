@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { AgentKindSchema, NativeSessionIdSchema } from '@agentdeck/shared';
+import { AgentKindSchema, NativeSessionIdSchema } from '@agentdeck/shared/conversation';
 import type { CapabilitiesService } from '../chat/capabilities';
-import { SessionError, type SessionsService } from '../chat/sessions';
+import { SessionError } from '../agents/errors';
+import { type SessionsService } from '../sessions/service';
 import type { WorkspaceStore } from '../workspaces/store';
-import { assertCapabilityDirectory } from '../agents/capability-directory';
+import { assertCapabilityDirectory } from '../agents/common/capability-directory';
 
 const Params = z.object({ id: z.string().min(1) });
 const Query = z.object({ agent: AgentKindSchema, sessionId: NativeSessionIdSchema.optional() }).strict();

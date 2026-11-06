@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest, RouteShorthandOptions } from 'fastify';
 import { z } from 'zod';
-import { WorkbenchPluginIdSchema } from '@agentdeck/shared';
+import { WorkbenchPluginIdSchema } from '@agentdeck/shared/plugins';
 import { WorkbenchPluginError, pluginError } from '../plugins/errors';
 import { MAX_PLUGIN_STORAGE_BYTES } from '../plugins/files';
 import type { WorkbenchPluginsService } from '../plugins/service';

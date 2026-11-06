@@ -17,7 +17,7 @@ export default tseslint.config(
       '.agents/**',
       '.claude/**',
       '.pi/**',
-      '.superpowers/**',
+      '**/.superpowers/**',
     ],
   },
 
@@ -42,6 +42,81 @@ export default tseslint.config(
       ],
       // 用 void 显式丢弃 Promise 是有意为之
       '@typescript-eslint/no-floating-promises': ['error', { ignoreVoid: true }],
+    },
+  },
+
+  // 目录迁移后的依赖方向：底层和 CLI 不反向依赖业务服务。
+  {
+    files: ['apps/server/src/platform/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '(^|/)(agents|chat|sessions|settings|workspaces|plugins|builtin-plugins|http|bootstrap)(/|$)',
+              message: '平台模块不得依赖应用、CLI 或插件业务。',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['apps/server/src/agents/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '^\\..*/(chat|sessions|settings|plugins|builtin-plugins|http|bootstrap)/',
+              message: 'CLI 适配器只依赖契约、公共适配工具和平台模块。',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['apps/server/src/plugins/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '(^|/)(agents|chat|sessions|settings|workspaces|builtin-plugins|bootstrap)(/|$)',
+              message: '插件宿主通过注册接口接收业务，不直接导入业务实现。',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['apps/web/src/cli/**/*.{ts,tsx}', 'apps/web/src/lib/**/*.{ts,tsx}', 'apps/web/src/ui/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '(^|/)(features|builtin-plugins|app)(/|$)',
+              message: '公共前端模块不得反向依赖功能页面或插件业务。',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['packages/shared/src/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [{ regex: '(^|/)(apps|scripts)(/|$)', message: '共享契约不得反向依赖应用实现。' }] },
+      ],
     },
   },
 

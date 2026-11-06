@@ -1,79 +1,23 @@
+import { createBuiltinPlugins } from './bootstrap/builtin-plugins';
+import { createCliServices } from './bootstrap/cli-services';
 // 可编程启动：读取配置、组装依赖、只在本机地址上启动，并返回关闭函数。
 // CLI（main.ts）与 Electron 桌面壳共用这里，业务路由与清理路径保持原样。
-import { mkdir, stat } from 'node:fs/promises';
+import type { AgentProbe } from '@agentdeck/shared/conversation';
 import type { FastifyInstance } from 'fastify';
-import type { AgentProbe } from '@agentdeck/shared';
-import { TurnManager } from './chat/turn-manager';
-import { createSessionsService } from './chat/sessions';
-import { createCapabilitiesService } from './chat/capabilities';
-import { createClaudeRunner } from './agents/claude-adapter';
-import { discoverClaudeCapabilities } from './agents/claude-capabilities';
-import { createClaudeSessions } from './agents/claude-sessions';
-import { createAntigravitySessions } from './agents/antigravity/sessions';
-import { createAntigravitySessionManagement } from './agents/antigravity/management';
-import { createAntigravityRunner } from './agents/antigravity/adapter';
-import { discoverAntigravityCapabilities } from './agents/antigravity/capabilities';
-import {
-  createCodexRunner,
-  listCodexSessions,
-  readCodexSession,
-  assertCodexSession,
-  mutateCodexSession,
-  forkCodexSession,
-  discoverCodexCapabilities,
-} from './agents/codex';
+import { mkdir, stat } from 'node:fs/promises';
+import { createAgentProbes, createLocalRunner } from './agents/common/probe';
 import { legacyConfigDir, type ServerConfig } from './config';
 import { buildApp } from './http/app';
-import { registerSessionRoutes } from './http/sessions.routes';
-import { registerProjectRoutes } from './http/projects.routes';
 import { registerProbeRoutes } from './http/probe.routes';
-import { registerCapabilityRoutes } from './http/capabilities.routes';
-import { registerSshRoutes } from './http/ssh.routes';
-import { registerAgentConfigRoutes } from './http/agent-config.routes';
-import { registerRemoteFileRoutes } from './http/remote-files.routes';
-import { registerRemoteFileActionRoutes } from './http/remote-file-actions.routes';
-import { createRemoteExecutor } from './remote-files/executor';
-import { createFilePreflights } from './remote-files/preflight';
-import { createFileTasks } from './remote-files/tasks';
-import { createRemoteFilesService } from './remote-files/service';
-import { registerWsRoutes } from './http/ws.routes';
-import { registerTerminalRoutes } from './http/terminal.routes';
-import { createTerminalBindings } from './terminal/binding';
-import { createTerminalManager } from './terminal/manager';
-import { registerResourcesRoutes } from './http/resources.routes';
-import { createResourcesService } from './resources/service';
-import { registerSlurmRoutes } from './http/slurm.routes';
-import { createSlurmService } from './slurm/service';
-import { createSshPool } from './ssh/pool';
-import { createServerTargets, serverHostConfig } from './ssh/targets';
-import { createServerProfiles } from './ssh/profiles';
-import { registerSshTargetRoutes } from './http/ssh-targets.routes';
-import { registerHostTrustRoutes } from './http/ssh-host-trust.routes';
-import { createHostTrust } from './ssh/host-trust';
-import { createPasswordStore } from './ssh/password-store';
-import { createWorkspaceStore } from './workspaces/store';
-import { migrateLegacyConfig } from './workspaces/migrate-legacy';
-import { importLegacyWorkspaces, type ImportReport } from './workspaces/import';
-import { createWorkspaceActivity } from './workspaces/activity';
-import { createNativeConfigService } from './settings/native-config';
-import { createProductSettings } from './settings/product-settings';
 import { registerProductSettingsRoutes } from './http/product-settings.routes';
-import { createAgentProbes, createLocalRunner } from './agents/probe';
-import type { ProcessRunner } from './process/run';
-import { createLaunchEnvironment } from './settings/launch-environment';
-import { registerLaunchEnvironmentRoutes } from './http/launch-environment.routes';
-import { createConfiguredRunner } from './agents/configured-runner';
-import { createNativeResourcesService } from './settings/native-resources';
-import { registerNativeResourceRoutes } from './http/native-resources.routes';
-import { createWorkbenchPlugins } from './plugins/service';
-import { registerPluginRoutes } from './http/plugins.routes';
-import { createSshConsoleService } from './ssh-console/service';
-import { registerSshConsoleRoutes } from './http/ssh-console.routes';
-import { createSessionPreferences } from './sessions/preferences';
-import { createModelSettingsService } from './settings/model-settings';
-import { registerModelSettingsRoutes } from './http/model-settings.routes';
-import { registerModelCatalogRoutes } from './http/model-catalog.routes';
-import { withCapabilityDirectory } from './agents/capability-directory';
+import { registerProjectRoutes } from './http/projects.routes';
+import { registerWsRoutes } from './http/ws.routes';
+import type { ProcessRunner } from './platform/process/run';
+import { createProductSettings } from './settings/product-settings';
+import { createWorkspaceActivity } from './workspaces/activity';
+import { importLegacyWorkspaces, type ImportReport } from './workspaces/import';
+import { migrateLegacyConfig } from './workspaces/migrate-legacy';
+import { createWorkspaceStore } from './workspaces/store';
 
 /** 已启动的本机服务：地址固定带尾部斜杠，close 可重复调用。 */
 export type StartedServer = { url: string; close: () => Promise<void> };
@@ -157,139 +101,35 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
   await mkdir(config.configDir, { recursive: true });
   logMigration(migration, log, logError);
   const productSettings = createProductSettings({ configDir: config.configDir });
-  const launchEnvironment = createLaunchEnvironment({
-    configDir: config.configDir,
-    onSaved: (agent) => capabilities.invalidate(agent),
-  });
   const probes = createAgentProbes({ run: options.probeRunner ?? createLocalRunner() });
   // 探测只用于启动日志，不阻塞窗口出现；接口被调用时会另行探测。
   const startupProbes = probes.probeAll();
 
-  const targets = createServerTargets({ configDir: config.configDir });
   const store = createWorkspaceStore({
     configDir: config.configDir,
     dirExists,
-    knownHosts: async () => (await targets.list()).map((server) => server.alias),
+    knownHosts: () => builtin.knownHosts(),
+  });
+  const activity = createWorkspaceActivity();
+  const builtin = await createBuiltinPlugins({
+    configDir: config.configDir,
+    store,
+    activity,
+    productSettings,
+    logError,
   });
   // 旧版 workspaces.json 的字段级转换：在本进程读写项目配置之前跑一次。
   // 没有文件或已经是新结构时为空报告；转换成功后原文件保留为 workspaces.json.bak。
   logLegacyImport(await importLegacyWorkspaces({ configDir: config.configDir, store }), log);
-  const pool = createSshPool({
-    passwordStore: createPasswordStore({ configDir: config.configDir }),
-    lookupHost: async (alias) => {
-      const server = await targets.get(alias);
-      return server ? serverHostConfig(server) : undefined;
-    },
-  });
-  const plugins = createWorkbenchPlugins({
-    configDir: config.configDir,
-    onDisable: (id) => {
-      if (id === 'ssh-console') sshConsole.dispose();
-    },
-  });
-  await plugins.list();
-  const sshConsole = createSshConsoleService({ pool, isEnabled: () => plugins.isEnabled('ssh-console') });
-  const terminalBindings = createTerminalBindings({ store, pool });
-  const activity = createWorkspaceActivity();
-  const acquireWorkspace = (id: string) => activity.acquire(id);
-  const terminals = createTerminalManager({
-    store,
-    pool,
-    bindings: terminalBindings,
-  });
-  const resources = createResourcesService({
-    store,
-    pool,
-    settings: async () => (await productSettings.read()).settings,
-  });
-  const slurm = createSlurmService({ store, pool });
-  const browse = createRemoteFilesService({ store, pool });
-  const executor = createRemoteExecutor(pool);
-  const preflights = createFilePreflights({ store, pool, browse, executor });
-  const tasks = createFileTasks({
-    configDir: config.configDir,
-    preflights,
-    executor,
-    acquireWorkspace,
-    onCorrupt: (name) => logError(`文件任务记录损坏，已保留原文件，未重放操作：${name}`),
-  });
-  const profiles = createServerProfiles({ targets, store, pool });
-  const capabilities = createCapabilitiesService(
-    {
-      claude: withCapabilityDirectory(async (dir, signal) =>
-        discoverClaudeCapabilities(dir, { signal, env: await launchEnvironment.resolve('claude') }),
-      ),
-      codex: withCapabilityDirectory(async (dir, signal) =>
-        discoverCodexCapabilities(dir, { signal, env: await launchEnvironment.resolve('codex') }),
-      ),
-      antigravity: withCapabilityDirectory(async (dir, signal) =>
-        discoverAntigravityCapabilities(dir, { signal, env: await launchEnvironment.resolve('antigravity') }),
-      ),
-    },
-    { configDir: config.configDir },
-  );
-  const nativeResources = createNativeResourcesService({ onSaved: (agent) => capabilities.invalidate(agent) });
-  const antigravityManagement = createAntigravitySessionManagement({
-    environment: () => launchEnvironment.resolve('antigravity'),
-  });
-  // 会话服务与轮次管理器互相引用：会话服务里的回调只在调用时读 turns，声明顺序保持原样。
-  const sessions = createSessionsService(
-    {
-      claude: createClaudeSessions(),
-      antigravity: createAntigravitySessions({ management: antigravityManagement }),
-      codex: {
-        list: (dir, signal, archived) => listCodexSessions(dir, { signal, archived }),
-        read: (id, dir, signal) => readCodexSession(id, dir, { signal }),
-        assertBelongs: (id, dir, signal) => assertCodexSession(id, dir, { signal }),
-        mutate: (id, dir, input) => mutateCodexSession(id, dir, input),
-        fork: (id, dir, input) => forkCodexSession(id, dir, input),
-      },
-    },
-    {
-      withIdleSession: (session, operation) => turns.withIdleSession(session, operation),
-      isRunning: (s) => turns.isRunning(s),
-      // 归属裁决要比较全部项目目录，不能只看当前项目。
-      projects: () => store.list(),
-      preferences: createSessionPreferences({ configDir: config.configDir }),
-    },
-  );
-  const runners = {
-    claude: createConfiguredRunner({
-      environment: () => launchEnvironment.resolve('claude'),
-      create: (env) => createClaudeRunner({ env }),
-    }),
-    codex: createConfiguredRunner({
-      environment: () => launchEnvironment.resolve('codex'),
-      create: (env) => createCodexRunner({ env }),
-    }),
-    antigravity: createConfiguredRunner({
-      environment: () => launchEnvironment.resolve('antigravity'),
-      create: (env) => createAntigravityRunner({ env }),
-    }),
-  };
-  const turns: TurnManager = new TurnManager({
-    getWorkspace: (id) => store.get(id),
-    sessions,
-    capabilities,
-    runners,
-    acquireWorkspace,
-  });
+  const cli = createCliServices({ configDir: config.configDir, store, activity });
+  const { turns } = cli;
 
   let app: FastifyInstance | undefined;
   let closing: Promise<void> | undefined;
   const close = (): Promise<void> => {
     closing ??= (async () => {
       // 每个资源独立释放；一个关闭失败不能阻止其余通道清理。
-      await Promise.allSettled(
-        [
-          () => antigravityManagement.dispose(),
-          () => sshConsole.dispose(),
-          () => terminals.dispose(),
-          () => resources.dispose(),
-          () => slurm.dispose(),
-          () => pool.dispose(),
-        ].map((dispose) => Promise.resolve().then(dispose)),
-      );
+      await Promise.allSettled([cli.disposeSessionManagement(), builtin.dispose()]);
       // 启动探测最多跑 5 秒；关闭保持原有有界等待。
       await Promise.race([
         startupProbes,
@@ -314,34 +154,11 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
       webDir: options.webDir,
       routes: (a) => {
         registerProjectRoutes(a, { store, activity });
-        registerPluginRoutes(a, { service: plugins });
-        registerSshConsoleRoutes(a, sshConsole);
+        builtin.registerRoutes(a);
         registerProbeRoutes(a, { probes });
-        registerSessionRoutes(a, { store, sessions, activity });
-        registerCapabilityRoutes(a, { store, capabilities, sessions });
-        registerModelCatalogRoutes(a, { store, capabilities });
-        registerSshRoutes(a, { pool, profiles });
-        registerSshTargetRoutes(a, profiles);
-        registerHostTrustRoutes(a, createHostTrust({ pool }));
-        registerAgentConfigRoutes(a, {
-          service: createNativeConfigService({ onSaved: (agent) => capabilities.invalidate(agent) }),
-        });
-        registerNativeResourceRoutes(a, { service: nativeResources, store, activity });
-        registerModelSettingsRoutes(
-          a,
-          createModelSettingsService({ resources: nativeResources, environment: launchEnvironment }),
-        );
-        registerLaunchEnvironmentRoutes(a, {
-          service: launchEnvironment,
-          restart: (agent) => turns.withIdleAgent(agent, () => runners[agent].restart()),
-        });
+        cli.registerRoutes(a);
         registerProductSettingsRoutes(a, productSettings, probes);
-        registerRemoteFileRoutes(a, browse);
-        registerRemoteFileActionRoutes(a, { preflights, tasks });
         registerWsRoutes(a, { turns });
-        registerTerminalRoutes(a, { terminals, bindings: terminalBindings });
-        registerResourcesRoutes(a, resources);
-        registerSlurmRoutes(a, slurm);
       },
     });
 

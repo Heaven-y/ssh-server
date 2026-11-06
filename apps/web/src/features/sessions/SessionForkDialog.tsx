@@ -1,11 +1,12 @@
+import { sessionsKeys } from './api';
 import { useEffect, useRef } from 'react';
-import type { SessionRef } from '@agentdeck/shared';
+import type { SessionRef } from '@agentdeck/shared/conversation';
 import { useQueryClient } from '@tanstack/react-query';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { buttonClass } from '../../ui/styles';
-import { queryKeys } from '../../lib/api';
+
 import { sessionActionKey, useChat } from '../chat/chat-store';
-import { AGENT_LABELS } from '../chat/AgentControls';
+import { AGENT_LABELS } from '../../cli/shared/labels';
 import { forkSession } from './session-fork';
 import { useSessionBusy } from './use-session-busy';
 
@@ -64,7 +65,7 @@ export function SessionForkDialog({ workspaceId, session, pointId, onClose }: Pr
               type="button"
               className={buttonClass('outline')}
               onClick={() => {
-                void client.invalidateQueries({ queryKey: queryKeys.sessions(workspaceId, session.agent) });
+                void client.invalidateQueries({ queryKey: sessionsKeys.sessions(workspaceId, session.agent) });
               }}
             >
               重新读取列表

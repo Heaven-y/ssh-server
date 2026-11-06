@@ -1,7 +1,7 @@
 // 项目接口：项目 = 本地目录 + 可选的服务器默认值；管理本地记录，不修改目录和原生会话。
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import type { WorkspaceInput } from '@agentdeck/shared';
+import type { WorkspaceInput } from '@agentdeck/shared/projects';
 import { WorkspaceStorageError, WorkspaceValidationError, type WorkspaceStore } from '../workspaces/store';
 import { WorkspaceBusyError, type WorkspaceActivity } from '../workspaces/activity';
 

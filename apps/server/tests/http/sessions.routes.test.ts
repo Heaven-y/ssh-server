@@ -4,11 +4,14 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { nativeSessionCapabilities, type SessionRef, type Workspace } from '@agentdeck/shared';
+import { legacySessionCapabilities, type SessionRef } from '@agentdeck/shared/conversation';
+import { type Workspace } from '@agentdeck/shared/projects';
 import type { WorkspaceStore } from '../../src/workspaces/store';
 import { registerSessionRoutes } from '../../src/http/sessions.routes';
-import { createClaudeSessions, type ClaudeSessionsApi } from '../../src/agents/claude-sessions';
-import { createSessionsService, SessionError, type SessionProvider } from '../../src/chat/sessions';
+import { createClaudeSessions, type ClaudeSessionsApi } from '../../src/agents/claude/sessions';
+import { SessionError } from '../../src/agents/errors';
+import { type SessionProvider } from '../../src/agents/contracts';
+import { createSessionsService } from '../../src/sessions/service';
 
 const ws: Workspace = {
   id: 'w1',
@@ -246,7 +249,7 @@ describe('会话接口', () => {
     expect(r.json()).toEqual([
       {
         agent: 'claude',
-        capabilities: nativeSessionCapabilities('claude'),
+        capabilities: legacySessionCapabilities('claude'),
         sessionId: 's1',
         // 列表行没带 cwd，不能拿「当前查的是 w1」兜底——否则同一条会话在每个项目下都出现。
         projectId: null,
@@ -386,7 +389,7 @@ describe('会话接口', () => {
     expect((await app.inject('/api/projects/w1/sessions?agent=claude')).json()).toEqual([
       {
         agent: 'claude',
-        capabilities: nativeSessionCapabilities('claude'),
+        capabilities: legacySessionCapabilities('claude'),
         sessionId: 's1',
         projectId: 'w1',
         title: '本项目',
@@ -428,7 +431,7 @@ describe('会话接口', () => {
     expect(listed.json()).toEqual([
       {
         agent: 'codex',
-        capabilities: nativeSessionCapabilities('codex'),
+        capabilities: legacySessionCapabilities('codex'),
         sessionId: 's1',
         projectId: null,
         title: 'Codex 调参',

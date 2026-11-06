@@ -4,10 +4,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AgentEvent, Workspace } from '@agentdeck/shared';
+import type { AgentEvent } from '@agentdeck/shared/conversation';
+import type { Workspace } from '@agentdeck/shared/projects';
 import { discoverCodexCapabilities, runCodexTurn } from '../../../src/agents/codex';
 import { capabilityId } from '../../../src/agents/capability-types';
-import type { AgentTurnInput } from '../../../src/agents/types';
+import type { AgentTurnInput } from '../../../src/agents/contracts';
 
 type Message = {
   method?: string;
