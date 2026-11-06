@@ -18,7 +18,7 @@
 |---|---|
 | [原生对话接入](engineering/native-dialogue.md) | 三 CLI 主流程的本轮边界与接口选择 |
 | [原生配置与启动环境](engineering/native-configuration.md) | 各 CLI 配置入口、显式正文编辑和启动变量的边界 |
-| [CLI 用量与执行轨迹评估](engineering/cli-observability.md) | tok/s、上下文、原生轨迹的能力对照、缺口及建议顺序，尚未实施 |
+| [CLI 用量与执行轨迹](engineering/cli-observability.md) | 三 CLI 统计口径、执行轨迹接线与仍需验证的边界 |
 | [工作台插件接口](engineering/workbench-plugins.md) | 自有 v1 插件格式、宿主接口、SSH Console 与兼容边界 |
 | [本地安装与打包](guides/local-installation.md) | 安装版、便携版、数据保存、构建和隔离验收 |
 
@@ -43,3 +43,5 @@
 整体交付计划的实现与验收已完成，步骤记录保存于 `33ffd9d:docs/superpowers/plans/2026-11-04-workbench-completion.md`。原生配置、工作台插件、本地包分别见上表的长期说明；阶段提交及未验证边界集中在路线图，不再保留并行维护的已完成计划。
 
 DSH 界面对齐和整体验证计划归档至 `08ed6df:docs/superpowers/plans/2026-11-05-dsh-ui-alignment.md`。现行布局、生命周期与验收分别由交互、架构和路线图维护，Git 合并结果以分支历史为准。
+
+执行轨迹实施前的能力评估保存在 `3c8d0ac:docs/engineering/cli-observability.md`。其中“尚未实施”的结论属于当时状态，现行接线与限制由上表的 CLI 用量与执行轨迹文档继续维护。

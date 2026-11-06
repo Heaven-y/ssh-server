@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
-import { Info, Settings2, X } from 'lucide-react';
+import { ArrowLeft, Info, Settings2, X } from 'lucide-react';
 import type { Workspace } from '@agentdeck/shared';
 import { useChat } from '../features/chat/chat-store';
 import { AGENT_LABELS } from '../features/chat/AgentControls';
 import { buttonClass } from '../ui/styles';
+import { TrajectoryDetails } from '../features/chat/TrajectoryDetails';
 
 /** 右侧按需呈现当前会话上下文；不连接服务器，也不扫描项目文件。 */
 export function ConversationSidebar({
@@ -22,6 +23,8 @@ export function ConversationSidebar({
   const model = useChat((state) => state.modelOverrides[state.agent]);
   const effort = useChat((state) => state.reasoningEfforts[state.agent]);
   const running = useChat((state) => state.running || !!state.pendingClientTurnId);
+  const inspected = useChat((state) => state.items.find((item) => item.id === state.inspectedItemId));
+  const inspect = useChat((state) => state.inspectItem);
   useEffect(() => {
     if (open || !document.activeElement?.closest('#conversation-sidebar')) return;
     document.querySelector<HTMLButtonElement>('button[aria-controls="conversation-sidebar"]')?.focus();
@@ -43,8 +46,19 @@ export function ConversationSidebar({
       }}
     >
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
-        <Info aria-hidden className="size-4 text-muted-foreground" />
-        <h2 className="flex-1 text-sm font-medium">会话信息</h2>
+        {inspected ? (
+          <button
+            type="button"
+            aria-label="返回会话信息"
+            onClick={() => inspect()}
+            className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+          >
+            <ArrowLeft aria-hidden className="size-4" />
+          </button>
+        ) : (
+          <Info aria-hidden className="size-4 text-muted-foreground" />
+        )}
+        <h2 className="flex-1 text-sm font-medium">{inspected ? '步骤详情' : '会话信息'}</h2>
         <button
           type="button"
           aria-label="收起右侧边栏"
@@ -55,7 +69,9 @@ export function ConversationSidebar({
         </button>
       </header>
       <div className="min-h-0 space-y-6 overflow-auto p-5 text-sm">
-        {workspace ? (
+        {inspected ? (
+          <TrajectoryDetails item={inspected} />
+        ) : workspace ? (
           <>
             <dl className="space-y-5">
               <Field label="工作区" value={workspace.name} />

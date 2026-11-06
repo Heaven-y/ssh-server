@@ -109,5 +109,6 @@ export type {
   AgentModel,
   ContextUsage,
   CompactionState,
+  TokenUsage,
 } from './capabilities';
 export * from './model-settings';

@@ -7,6 +7,24 @@ import { ToolCard } from './ToolCard';
 import { CompactionStatus } from './ContextStatus';
 import type { ExpandedProps } from './timeline-model';
 import { SessionForkPoint } from './SessionForkPoint';
+import { StatisticsLine } from './StatisticsLine';
+import { ActivityCard } from './ActivityCard';
+
+function AssistantMessage({ item }: { item: Extract<ChatItem, { kind: 'assistant' }> }) {
+  return (
+    <div className="conversation-assistant">
+      <Streamdown mode={item.streaming ? 'streaming' : 'static'} isAnimating={item.streaming}>
+        {item.text}
+      </Streamdown>
+    </div>
+  );
+}
+
+function MetadataMessage({ item }: { item: Extract<ChatItem, { kind: 'statistics' | 'fork-point' | 'compaction' }> }) {
+  if (item.kind === 'statistics') return <StatisticsLine statistics={item} />;
+  if (item.kind === 'fork-point') return <SessionForkPoint pointId={item.pointId} />;
+  return <CompactionStatus state={item.state} incomplete={item.incomplete} />;
+}
 
 /** 单个对话条目；memo 避免流式更新时整列表重渲染（条目内容不变时引用不变） */
 export const MessageItem = memo(function MessageItem({
@@ -15,20 +33,10 @@ export const MessageItem = memo(function MessageItem({
   onExpandedChange,
 }: { item: ChatItem } & ExpandedProps) {
   switch (item.kind) {
-    case 'fork-point':
-      return <SessionForkPoint pointId={item.pointId} />;
-    case 'compaction':
-      return <CompactionStatus state={item.state} incomplete={item.incomplete} />;
     case 'user':
       return <div className="conversation-user">{item.text}</div>;
     case 'assistant':
-      return (
-        <div className="conversation-assistant">
-          <Streamdown mode={item.streaming ? 'streaming' : 'static'} isAnimating={item.streaming}>
-            {item.text}
-          </Streamdown>
-        </div>
-      );
+      return <AssistantMessage item={item} />;
     case 'reasoning':
       return (
         <details
@@ -46,6 +54,8 @@ export const MessageItem = memo(function MessageItem({
       );
     case 'tool':
       return <ToolCard item={item} expanded={expanded} onExpandedChange={onExpandedChange} />;
+    case 'activity':
+      return <ActivityCard item={item} expanded={expanded} onExpandedChange={onExpandedChange} />;
     case 'permission':
       return <PermissionCard item={item} />;
     case 'error':
@@ -58,5 +68,7 @@ export const MessageItem = memo(function MessageItem({
           <span className="min-w-0 break-words text-destructive-foreground">{item.message}</span>
         </div>
       );
+    default:
+      return <MetadataMessage item={item} />;
   }
 });

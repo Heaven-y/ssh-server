@@ -55,7 +55,8 @@ describe('reduceChat', () => {
     expect(items).toEqual([
       {
         kind: 'tool',
-        id: 't1',
+        id: expect.any(String),
+        nativeId: 't1',
         name: 'mcp__my-server__remote_exec',
         input: { command: 'ls' },
         output: 'ok',
@@ -128,4 +129,124 @@ it('只保留服务端给出的原生分叉点，重复结束不复制，普通�
   expect(source.map((item) => item.kind)).toEqual(['assistant', 'fork-point', 'assistant']);
   expect(source.at(-1)).toMatchObject({ streaming: false });
   expect(run([{ type: 'turn_end', isError: true }])).toEqual([]);
+});
+
+it('回合统计在重复结束和补结束后保持唯一，下一轮另记且不复制累计费用', () => {
+  const ended: AgentEvent = {
+    type: 'turn_end',
+    isError: false,
+    durationMs: 2000,
+    costUsd: 9,
+    usage: { source: 'claude', scope: 'turn', inputTokens: 400, outputTokens: 100 },
+    forkPoint: 'turn-one',
+  };
+  const source = run([
+    { type: 'user_message', text: '第一轮' },
+    { type: 'text', delta: '回答' },
+    ended,
+    ended,
+    { type: 'turn_end', isError: false },
+    { type: 'user_message', text: '第二轮' },
+    { type: 'text', delta: '下一轮' },
+    { type: 'turn_end', isError: false, durationMs: 1000 },
+  ]);
+  const statistics = source.filter((item) => item.kind === 'statistics');
+  expect(statistics).toHaveLength(2);
+  expect(statistics[0]).toMatchObject({ scope: 'turn', durationMs: 2000, usage: { outputTokens: 100 } });
+  expect(statistics[0]).not.toHaveProperty('costUsd');
+  expect(statistics[1]).not.toHaveProperty('usage');
+});
+
+it('工具进度及步骤用量按身份更新，已结束工具不被迟到进度改写', () => {
+  const usage = { source: 'antigravity' as const, scope: 'step' as const, outputTokens: 20 };
+  const source = run([
+    { type: 'tool_call', id: 'command', name: 'run_command', input: { command: 'demo' } },
+    { type: 'tool_progress', id: 'command', durationMs: 100, message: '读取中' },
+    { type: 'tool_call', id: 'command', name: 'run_command', input: { command: 'demo' } },
+    {
+      type: 'tool_result',
+      id: 'command',
+      output: 'done',
+      isError: false,
+      durationMs: 300,
+      timingSource: 'native',
+      usage,
+    },
+    { type: 'tool_progress', id: 'command', durationMs: 900, message: '迟到消息' },
+    { type: 'step_usage', id: 'model', usage, durationMs: 1000 },
+    { type: 'step_usage', id: 'model', usage: { ...usage, outputTokens: 25 }, durationMs: 1200 },
+  ]);
+  expect(source).toHaveLength(2);
+  expect(source[0]).toMatchObject({ kind: 'tool', status: 'done', durationMs: 300, usage });
+  expect(source[0]).not.toHaveProperty('progress', '迟到消息');
+  expect(source[1]).toMatchObject({ kind: 'statistics', scope: 'step', usage: { outputTokens: 25 }, durationMs: 1200 });
+});
+
+it('未知原生活动独立记录状态，回合结束不把未完成活动标成成功', () => {
+  const source = run([
+    { type: 'activity', id: 'native-step', name: '原生活动', status: 'running', input: { kind: 'native' } },
+    { type: 'activity', id: 'native-step', name: '原生活动', status: 'running', durationMs: 500 },
+    { type: 'turn_end', isError: false },
+  ]);
+  expect(source).toEqual([
+    {
+      kind: 'activity',
+      id: expect.any(String),
+      nativeId: 'native-step',
+      name: '原生活动',
+      status: 'running',
+      input: { kind: 'native' },
+      durationMs: 500,
+      incomplete: true,
+    },
+  ]);
+  expect(run([{ type: 'activity', id: 'native-step', name: '原生活动', status: 'unknown' }])[0]).toMatchObject({
+    status: 'unknown',
+  });
+});
+
+it('原生 ID 跨轮复用不改写旧工具、活动或统计，界面 key 保持唯一', () => {
+  const usage = { source: 'antigravity' as const, scope: 'step' as const, outputTokens: 10 };
+  const first = run([
+    { type: 'user_message', text: '第一轮' },
+    { type: 'tool_call', id: 'same', name: 'command', input: {} },
+    { type: 'tool_result', id: 'same', output: '第一轮结果', isError: false },
+    { type: 'activity', id: 'same', name: '原生活动', status: 'completed' },
+    { type: 'step_usage', id: 'same', usage, durationMs: 1000 },
+    { type: 'turn_end', isError: false },
+  ]);
+  const snapshot = JSON.stringify(first);
+  const source = run(
+    [
+      { type: 'user_message', text: '第二轮' },
+      { type: 'tool_call', id: 'same', name: 'command', input: {} },
+      { type: 'tool_result', id: 'same', output: '第二轮结果', isError: true },
+      { type: 'activity', id: 'same', name: '新活动', status: 'failed' },
+      { type: 'step_usage', id: 'same', usage: { ...usage, outputTokens: 30 }, durationMs: 2000 },
+    ],
+    first,
+  );
+  expect(JSON.stringify(source.slice(0, first.length))).toBe(snapshot);
+  expect(new Set(source.map((item) => item.id)).size).toBe(source.length);
+  expect(source.filter((item) => item.kind === 'tool').map((item) => item.output)).toEqual([
+    '第一轮结果',
+    '第二轮结果',
+  ]);
+  expect(source.at(-1)).toMatchObject({ kind: 'statistics', usage: { outputTokens: 30 } });
+});
+
+it('无用量的失败补结束仍会标记当前统计失败，后续成功补结束不改回成功', () => {
+  const source = run([
+    { type: 'user_message', text: '本轮' },
+    {
+      type: 'turn_end',
+      isError: false,
+      durationMs: 1000,
+      usage: { source: 'claude', scope: 'turn', outputTokens: 10 },
+    },
+    { type: 'error', message: '进程退出失败' },
+    { type: 'turn_end', isError: true },
+    { type: 'turn_end', isError: false },
+  ]);
+  expect(source.filter((item) => item.kind === 'statistics')).toMatchObject([{ isError: true, durationMs: 1000 }]);
 });

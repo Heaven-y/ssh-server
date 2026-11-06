@@ -2,6 +2,7 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import type { AgentModel } from '@agentdeck/shared';
 import { readConfigFile } from '../../settings/safe-file';
+import { antigravityModelId, selectedAntigravityModel } from '../../settings/model-settings-fields';
 
 type CustomModel = { modelName: string; label?: string; maxTokens?: number };
 export type AntigravityModelSettings = {
@@ -17,7 +18,7 @@ function customModels(value: unknown): Record<string, CustomModel> {
   const result: Record<string, CustomModel> = {};
   for (const [key, raw] of Object.entries(object(value))) {
     const item = object(raw);
-    if (!text(item.modelName).startsWith('gemini-api://')) continue;
+    if (!text(item.modelName)) continue;
     const model: CustomModel = { modelName: text(item.modelName) };
     if (text(item.label)) model.label = text(item.label);
     if (typeof item.maxTokens === 'number' && Number.isSafeInteger(item.maxTokens) && item.maxTokens > 0)
@@ -43,16 +44,28 @@ export async function readAntigravityModelSettings(
   };
 }
 
+/** headless 1.5.1 未应用自定义默认型号，显式补原生键避免回退或空模型。 */
+export async function antigravityDefaultModel(env: NodeJS.ProcessEnv): Promise<string | undefined> {
+  const settings = await readAntigravityModelSettings({ env });
+  if (settings.modelProvider !== 'gemini') return undefined;
+  const selected = selectedAntigravityModel(settings);
+  return selected && text(selected.modelName) ? text(selected.key) : undefined;
+}
+
 /** 原生自定义条目的键和 label 均可用于 --model；模型名与窗口不从标题猜测。 */
 export function configuredAntigravityModels(settings: AntigravityModelSettings): AgentModel[] {
   const result = new Map<string, AgentModel>();
+  const entries = Object.entries(settings.customModelsConfig?.customModels ?? {});
   if (settings.modelProvider === 'gemini') {
-    for (const [key, model] of Object.entries(settings.customModelsConfig?.customModels ?? {})) {
+    for (const [key, model] of entries) {
       const label = model.label || key;
       result.set(label, { id: key, label, description: '原生自定义模型' });
     }
   }
-  if (settings.model && ![...result.values()].some((model) => [model.id, model.label].includes(settings.model!)))
+  const selectedCustom =
+    settings.modelProvider === 'gemini' &&
+    entries.some(([key, model]) => [key, model.label, antigravityModelId(model.modelName)].includes(settings.model));
+  if (settings.model && !selectedCustom)
     result.set(settings.model, { id: settings.model, label: settings.model, description: '原生默认模型' });
   return [...result.values()];
 }

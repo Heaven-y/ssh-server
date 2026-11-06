@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { NativeSessionIdSchema, type AgentEvent } from '@agentdeck/shared';
+import { stepDuration, stepUsage } from './metrics';
 
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): RecordValue =>
@@ -7,10 +8,7 @@ const record = (value: unknown): RecordValue =>
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 const clip = (value: string) => (value.length > 20_000 ? `${value.slice(0, 20_000)}\n[输出已截断]` : value);
 const toolOutput = (info: RecordValue) =>
-  clip(text(info.output)) || (info.error ? '原生工具执行失败，请检查 CLI 诊断。' : '');
-function durationOf(value: unknown): { durationMs?: number } {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? { durationMs: value * 1000 } : {};
-}
+  clip(text(info.output)) || clip(text(record(info.error).message)) || (info.error ? '工具执行失败' : '');
 
 /** 按官方 headless 的 event/payload 结构映射，不能把它当成 Claude stream-json。 */
 export class AntigravityMapper {
@@ -19,6 +17,9 @@ export class AntigravityMapper {
   private tools = new Set<string>();
   private results = new Set<string>();
   private initialized = false;
+  private statistics = new Set<number>();
+  private checkpoints = new Set<number>();
+  private subagents = new Map<number, string>();
   result?: Extract<AgentEvent, { type: 'turn_end' }>;
 
   constructor(
@@ -68,9 +69,54 @@ export class AntigravityMapper {
     if (step.step_type === 'agent_response') {
       const delta = text(step.text_delta);
       if (delta) this.streamed = true;
-      return delta ? [{ type: 'text', delta }] : [];
+      return [...(delta ? [{ type: 'text' as const, delta }] : []), ...this.stepStatistics(step)];
     }
+    if (step.step_type === 'checkpoint') return this.checkpoint(step);
+    if (Array.isArray(record(step.subagent_info).subagents)) return this.subagentStep(step);
     return step.step_type === 'tool' ? this.tool(step) : [];
+  }
+
+  private stepStatistics(step: RecordValue): AgentEvent[] {
+    if (!Number.isSafeInteger(step.step_index) || Number(step.step_index) < 0 || step.state !== 'DONE') return [];
+    const index = Number(step.step_index);
+    if (this.statistics.has(index)) return [];
+    const usage = stepUsage(step.usage, true);
+    if (!usage) return [];
+    this.statistics.add(index);
+    return [{ type: 'step_usage', id: `agy-step-${index}`, usage, ...stepDuration(step.duration_seconds) }];
+  }
+
+  private checkpoint(step: RecordValue): AgentEvent[] {
+    if (!Number.isSafeInteger(step.step_index) || Number(step.step_index) < 0 || step.state !== 'DONE') return [];
+    const index = Number(step.step_index);
+    if (this.checkpoints.has(index)) return [];
+    this.checkpoints.add(index);
+    return [{ type: 'compaction', state: { status: 'completed' } }, ...this.stepStatistics(step)];
+  }
+
+  private subagentStep(step: RecordValue): AgentEvent[] {
+    if (!Number.isSafeInteger(step.step_index) || Number(step.step_index) < 0) return [];
+    const index = Number(step.step_index);
+    const state = text(step.state);
+    if (this.subagents.get(index) === state) return [];
+    this.subagents.set(index, state);
+    const children: unknown[] = record(step.subagent_info).subagents as unknown[];
+    const input = {
+      subagents: children.map((value) => {
+        const child = record(value);
+        return { type: child.type_name, role: child.role, sessionId: child.conversation_id };
+      }),
+    };
+    return [
+      {
+        type: 'activity',
+        id: `agy-step-${index}`,
+        name: '子代理',
+        status: state === 'DONE' ? 'completed' : 'running',
+        input,
+        ...stepDuration(step.duration_seconds),
+      },
+    ];
   }
 
   private tool(step: RecordValue): AgentEvent[] {
@@ -87,7 +133,15 @@ export class AntigravityMapper {
     if (step.state === 'DONE' && !this.results.has(id)) {
       this.results.add(id);
       const isError = !!info.error;
-      events.push({ type: 'tool_result', id, output: toolOutput(info), isError });
+      const usage = stepUsage(step.usage, true);
+      events.push({
+        type: 'tool_result',
+        id,
+        output: toolOutput(info),
+        isError,
+        ...stepDuration(step.duration_seconds),
+        ...(usage ? { usage } : {}),
+      });
     }
     return events;
   }
@@ -104,7 +158,7 @@ export class AntigravityMapper {
     this.result = {
       type: 'turn_end',
       isError,
-      ...durationOf(result.duration_seconds),
+      // result 的 duration/usage 在续接时可能累计；单步统计独立保留，不冒充整轮。
     };
     return events;
   }

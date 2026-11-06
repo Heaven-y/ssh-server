@@ -5,7 +5,13 @@ import { antigravityFields, claudeFields, codexFields, parseModelConfig } from '
 import { ModelSettingsError, patchModelConfig } from './model-settings-patch';
 import { NativeResourceError } from './native-resources-errors';
 import {
+  antigravitySelectionChanges,
+  nativeAntigravityModels,
+  type AntigravityModelCatalog,
+} from './model-settings-antigravity';
+import {
   advancedModelEnvironmentWarnings,
+  antigravityConnectionChanges,
   modelConnectionFields,
   modelEnvironmentWarnings,
   modelSettingsRevision,
@@ -15,7 +21,11 @@ import {
   type ModelSettingsEnvironment,
 } from './model-settings-environment';
 
-type Deps = { resources?: NativeResourcesService; environment?: ModelSettingsEnvironment };
+type Deps = {
+  resources?: NativeResourcesService;
+  environment?: ModelSettingsEnvironment;
+  antigravityModels?: AntigravityModelCatalog;
+};
 type NativeDocument = Awaited<ReturnType<NativeResourcesService['open']>>;
 type EnvironmentSnapshot = Awaited<ReturnType<typeof readModelEnvironment>>;
 
@@ -78,9 +88,19 @@ export function createModelSettingsService(deps: Deps = {}) {
       const environment = await readModelEnvironment(agent, deps.environment);
       if (input.revision !== modelSettingsRevision(document.revision, environment))
         throw new NativeResourceError('revision_conflict');
-      const changes = parsed.data.changes;
-      const nativeChanges = agent === 'antigravity' ? nativeModelChanges(changes, environment) : changes;
       const config = parseModelConfig(agent, document.content);
+      const changes =
+        agent === 'antigravity'
+          ? antigravityConnectionChanges(parsed.data.changes, config, environment)
+          : parsed.data.changes;
+      const nativeChanges =
+        agent === 'antigravity'
+          ? await antigravitySelectionChanges(
+              config,
+              nativeModelChanges(changes, environment),
+              deps.antigravityModels ?? nativeAntigravityModels,
+            )
+          : changes;
       const content = patchModelConfig(agent, document.content, config, nativeChanges);
       const connection = prepareModelConnection(agent === 'antigravity' ? changes : {}, deps.environment, environment);
       const environmentSaved = await connection.save();

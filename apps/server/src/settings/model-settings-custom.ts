@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
 import type { NativeModelSettingsInput } from '@agentdeck/shared';
-import { object, selectedAntigravityModel, string, type ConfigObject } from './model-settings-fields';
+import {
+  antigravityModelId,
+  object,
+  selectedAntigravityModel,
+  string,
+  type ConfigObject,
+} from './model-settings-fields';
 
 type Changes = NativeModelSettingsInput['changes'];
 const owns = (changes: Changes, key: string) => Object.hasOwn(changes, key);
@@ -28,15 +34,14 @@ export function patchClaudeDisplayName(config: ConfigObject, changes: Changes): 
 }
 
 function antigravitySelection(config: ConfigObject, changes: Changes, previous?: ConfigObject) {
-  const previousName = string(previous?.modelName);
   const rawModel = selectedModelId(changes, previous);
   const model = rawModel || string(config.model);
   if (!model) throw new Error('请填写模型 ID。');
   const label = modelLabel(changes, previous) || model;
-  return { model, label, previousName };
+  return { model, label };
 }
 function selectedModelId(changes: Changes, previous?: ConfigObject) {
-  const raw = string(previous?.modelName).split('/models/').at(-1);
+  const raw = antigravityModelId(previous?.modelName);
   if (!owns(changes, 'model')) return raw;
   const model = changes.model?.trim();
   if (!model) throw new Error('请先选择模型，再修改名称或上下文窗口。');
@@ -45,18 +50,10 @@ function selectedModelId(changes: Changes, previous?: ConfigObject) {
 function modelLabel(changes: Changes, previous?: ConfigObject) {
   return owns(changes, 'displayName') ? changes.displayName?.trim() : string(previous?.label);
 }
-function antigravityAddress(model: string, previousName: string, baseUrl?: string) {
-  const endpoint =
-    baseUrl ||
-    previousName.replace(/^gemini-api:\/\//, 'https://').split('/models/')[0] ||
-    'https://generativelanguage.googleapis.com/v1beta';
-  if (!endpoint || !/^https?:\/\//.test(endpoint)) throw new Error('请填写自定义模型的服务地址。');
-  return `gemini-api://${endpoint.replace(/^https?:\/\//, '').replace(/\/$/, '')}/models/${model}`;
-}
 function shouldEditAntigravity(changes: Changes, previous?: ConfigObject) {
   return (
     ['displayName', 'contextWindow'].some((key) => owns(changes, key)) ||
-    (!!previous && owns(changes, 'baseUrl') && !owns(changes, 'model'))
+    (!!previous && (owns(changes, 'baseUrl') || owns(changes, 'model') || owns(changes, 'modelProvider')))
   );
 }
 function applyWindow(entry: ConfigObject, changes: Changes) {
@@ -65,21 +62,23 @@ function applyWindow(entry: ConfigObject, changes: Changes) {
   if (window === null) delete entry.maxTokens;
   else entry.maxTokens = window;
 }
-/** Antigravity 用对象映射登记自定义模型，model 保存原生显示名称。 */
+/** URL 只放启动环境；model 按原生约定保存 label，条目稳定键供显式 --model 选择。 */
 export function patchAntigravityModel(config: ConfigObject, changes: Changes): boolean {
   const previous = selectedAntigravityModel({ ...config, model: changes.model ?? config.model });
+  if (config.modelProvider !== 'gemini' && !['displayName', 'contextWindow'].some((key) => owns(changes, key)))
+    return false;
   if (!shouldEditAntigravity(changes, previous)) return false;
   if (config.modelProvider !== 'gemini') throw new Error('自定义模型需要选择 Gemini API Key 连接方式。');
   const customConfig = object(config.customModelsConfig);
   if (Array.isArray(customConfig.customModels)) throw new Error('原生自定义模型应为对象，请先在原始配置中修正。');
   const models = object(customConfig.customModels);
-  const { model, label, previousName } = antigravitySelection(config, changes, previous);
+  const { model, label } = antigravitySelection(config, changes, previous);
   const key =
     string(previous?.key) ||
     (models.agentdeck ? `agentdeck-${createHash('sha256').update(model).digest('hex').slice(0, 12)}` : 'agentdeck');
   const entry: ConfigObject = {
     ...object(models[key]),
-    modelName: antigravityAddress(model, previousName, changes.baseUrl ?? undefined),
+    modelName: antigravityModelId(model),
     label,
   };
   applyWindow(entry, changes);
@@ -87,4 +86,15 @@ export function patchAntigravityModel(config: ConfigObject, changes: Changes): b
   config.customModelsConfig = { ...customConfig, customModels: models };
   config.model = label;
   return true;
+}
+
+export function legacyAntigravityBaseUrl(config: ConfigObject): string | undefined {
+  const previous = selectedAntigravityModel(config);
+  const modelName = string(previous?.modelName);
+  if (!modelName.startsWith('gemini-api://')) return undefined;
+  const body = modelName.slice('gemini-api://'.length);
+  const index = body.indexOf('/models/');
+  if (index <= 0) return undefined;
+  const host = body.slice(0, index);
+  return /^https?:\/\//.test(host) ? host : `https://${host}`;
 }

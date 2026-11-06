@@ -3,13 +3,18 @@ import type { AgentTurnInput, TurnHandle, TurnRunner } from '../types';
 import { resolveLocalCommand } from '../../process/executable';
 import { AntigravityMapper } from './mapper';
 import { AntigravityLines } from './lines';
+import { antigravityDefaultModel } from './model-catalog';
 
 export type AntigravityProcess = Pick<
   ChildProcessWithoutNullStreams,
   'stdin' | 'stdout' | 'stderr' | 'kill' | 'on' | 'once'
 >;
 type LaunchInput = { cwd: string; args: string[]; env?: NodeJS.ProcessEnv };
-type Options = { launch?: (input: LaunchInput) => AntigravityProcess; env?: NodeJS.ProcessEnv };
+type Options = {
+  launch?: (input: LaunchInput) => AntigravityProcess;
+  env?: NodeJS.ProcessEnv;
+  defaultModel?: () => Promise<string | undefined>;
+};
 
 function launch(input: LaunchInput): AntigravityProcess {
   const executable = resolveLocalCommand('agy', input.env ?? process.env);
@@ -42,10 +47,14 @@ class AntigravityTurn {
   private failed = false;
   private permissionNotice = false;
   private diagnosticNotice = false;
+  /** 原生结果已经确认时，进程清理与模型回合成功是两个独立状态。 */
+  private closingAfterResult = false;
+  private cleanupSignalSent = false;
 
   constructor(
     private readonly input: AgentTurnInput,
     start: (input: LaunchInput) => AntigravityProcess,
+    defaultModel: () => Promise<string | undefined>,
   ) {
     this.done = new Promise((resolve) => {
       this.settle = resolve;
@@ -53,12 +62,21 @@ class AntigravityTurn {
     this.mapper = new AntigravityMapper(input.workspace.dir, input.sessionId);
     this.stdout = new AntigravityLines((line) => this.message(line));
     this.stderr = new AntigravityLines((line) => this.diagnostic(line), 65_536);
+    void this.start(start, defaultModel);
+  }
+
+  private async start(
+    start: (input: LaunchInput) => AntigravityProcess,
+    defaultModel: () => Promise<string | undefined>,
+  ) {
     try {
-      if (input.invocation) throw new Error('不支持此调用');
-      this.child = start({ cwd: input.workspace.dir, args: argumentsFor(input) });
+      if (this.input.invocation) throw new Error('不支持此调用');
+      const model = this.input.model ?? (await defaultModel());
+      if (this.ended || this.failed) return;
+      this.child = start({ cwd: this.input.workspace.dir, args: argumentsFor({ ...this.input, model }) });
       this.listen(this.child);
       this.timer = setTimeout(() => this.fail('Antigravity 启动超时，请检查本机登录与配置。'), 30_000);
-      this.child.stdin.end(`${JSON.stringify({ event: 'user', message: { content: input.text } })}\n`);
+      this.child.stdin.end(`${JSON.stringify({ event: 'user', message: { content: this.input.text } })}\n`);
     } catch {
       this.fail('无法启动 Antigravity，请检查本机 agy 安装与启动环境。');
       if (!this.child) this.finish(null);
@@ -68,7 +86,8 @@ class AntigravityTurn {
   interrupt(): Promise<void> {
     if (!this.ended) {
       this.failed = true;
-      this.stop();
+      if (this.child) this.stop();
+      else this.finish(null);
     }
     return this.done;
   }
@@ -98,7 +117,8 @@ class AntigravityTurn {
     for (const event of events) this.input.emit(event);
     if (this.mapper.result)
       this.timer = setTimeout(() => {
-        this.fail('Antigravity 已返回结果但进程退出未确认，正在请求停止；退出前保持当前会话占用。');
+        this.closingAfterResult = true;
+        this.stop();
       }, 2_000);
   }
 
@@ -129,11 +149,20 @@ class AntigravityTurn {
 
   private stop(): void {
     clearTimeout(this.timer);
-    this.child?.kill('SIGTERM');
+    this.kill('SIGTERM');
     this.timer = setTimeout(() => {
-      this.child?.kill('SIGKILL');
+      this.kill('SIGKILL');
       // kill 只表示信号已发送，真实 close 才能释放会话占用与活动实例。
     }, 2_000);
+  }
+
+  private kill(signal: NodeJS.Signals): void {
+    const sent = this.child?.kill(signal);
+    if (sent && this.closingAfterResult) this.cleanupSignalSent = true;
+  }
+
+  private abnormalExit(code: number | null): boolean {
+    return code !== 0 && !this.cleanupSignalSent;
   }
 
   private finish(code: number | null): void {
@@ -154,7 +183,7 @@ class AntigravityTurn {
       this.input.emit({ type: 'error', message: 'Antigravity 在返回完整结果前退出，请重新读取原生会话后核对。' });
     this.input.emit({
       ...(result ?? { type: 'turn_end' as const }),
-      isError: this.failed || !result || result.isError || code !== 0,
+      isError: this.failed || !result || result.isError || this.abnormalExit(code),
     });
     this.settle();
   }
@@ -163,8 +192,10 @@ class AntigravityTurn {
 export function createAntigravityRunner(options: Options = {}): TurnRunner {
   const active = new Set<AntigravityTurn>();
   const runner: TurnRunner = (input): TurnHandle => {
-    const turn = new AntigravityTurn(input, (request) =>
-      (options.launch ?? launch)({ ...request, ...(options.env ? { env: options.env } : {}) }),
+    const turn = new AntigravityTurn(
+      input,
+      (request) => (options.launch ?? launch)({ ...request, ...(options.env ? { env: options.env } : {}) }),
+      options.defaultModel ?? (() => antigravityDefaultModel(options.env ?? process.env)),
     );
     active.add(turn);
     return { interrupt: () => turn.interrupt(), done: turn.done.finally(() => active.delete(turn)) };

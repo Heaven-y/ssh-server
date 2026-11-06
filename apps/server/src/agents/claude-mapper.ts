@@ -1,12 +1,14 @@
 // 把 Claude Agent SDK 的消息转换成统一的 AgentEvent
 import { NativeSessionIdSchema, type AgentEvent } from '@agentdeck/shared';
 import { claudeCompactionBoundary, claudeCompactionStatus, ClaudeReplayFilter } from './claude-compaction';
+import { claudeTokenUsage, claudeToolProgress, ClaudeToolMetrics, nonnegative as num } from './claude-metrics';
 
 type Rec = Record<string, unknown>;
 const isRec = (v: unknown): v is Rec => typeof v === 'object' && v !== null;
 const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
 const TERMINAL_STOPS = new Set(['end_turn', 'stop_sequence', 'max_tokens', 'refusal', 'model_context_window_exceeded']);
 type MessageIdentity = { sessionId: string; pointId: string };
+const isChild = (message: Rec) => !!message.parent_tool_use_id || !!message.parent_agent_id;
 
 function assistantIdentity(msg: Rec): MessageIdentity | undefined {
   if (msg.type !== 'assistant' || msg.parent_tool_use_id || msg.parent_agent_id || msg.aborted) return;
@@ -58,16 +60,16 @@ function sessionEvent(msg: Rec): AgentEvent[] {
   ];
 }
 
-const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
-
 function turnEndEvent(msg: Rec, forkPoint?: string): AgentEvent[] {
   const failedSubtype = typeof msg.subtype === 'string' && msg.subtype !== 'success';
+  const usage = claudeTokenUsage(msg.usage);
   return [
     {
       type: 'turn_end',
       isError: msg.is_error === true || failedSubtype,
       durationMs: num(msg.duration_ms),
       costUsd: num(msg.total_cost_usd),
+      ...(usage ? { usage } : {}),
       ...(forkPoint ? { forkPoint } : {}),
     },
   ];
@@ -91,30 +93,49 @@ function deltaEvent(d: Rec): AgentEvent | undefined {
   return thinking ? { type: 'reasoning', delta: thinking } : undefined;
 }
 
-/** 助手消息中的一个内容块：tool_use 总是输出，text 按 includeText 决定 */
-function assistantBlock(b: unknown, includeText: boolean): AgentEvent[] {
+/** 工具与两种公开文本各自去重，未流式传递的 thinking 块仍可回放。 */
+function assistantBlock(b: unknown, includeText: boolean, includeThinking: boolean): AgentEvent[] {
   if (!isRec(b)) return [];
   if (b.type === 'tool_use')
     return [{ type: 'tool_call', id: str(b.id) ?? '', name: str(b.name) ?? '', input: b.input }];
+  if (includeThinking && b.type === 'thinking') return thinkingBlock(b);
   const text = b.type === 'text' ? str(b.text) : undefined;
   return text && includeText ? [{ type: 'text', delta: text }] : [];
 }
-/** 每轮对话新建一个 mapper：它记录哪些消息已经流式输出过文本 */
+function thinkingBlock(block: Rec): AgentEvent[] {
+  const delta = str(block.thinking);
+  return delta ? [{ type: 'reasoning', delta }] : [];
+}
+/** 长驻运行时每轮重置去重与计时；历史读取使用独立实例。 */
 export class ClaudeEventMapper {
   private replay = new ClaudeReplayFilter();
   /** 已经收到过 text_delta 的消息 id */
   private streamed = new Set<string>();
+  private streamedThinking = new Set<string>();
   private currentMessageId: string | undefined;
   /** 没有消息 id 时的退路：本轮是否收到过 text_delta */
   private anyDelta = false;
+  private anyThinkingDelta = false;
   private lastAssistant?: MessageIdentity;
+  private readonly tools = new ClaudeToolMetrics();
 
   constructor(private readonly historySessionId?: string) {}
 
+  beginTurn(): void {
+    this.tools.reset();
+    this.streamed.clear();
+    this.streamedThinking.clear();
+    this.currentMessageId = undefined;
+    this.anyDelta = false;
+    this.anyThinkingDelta = false;
+    this.lastAssistant = undefined;
+  }
+
   map(msg: unknown): AgentEvent[] {
     // 子代理的消息不在 M1 中展示
-    if (!isRec(msg) || msg.parent_tool_use_id || msg.parent_agent_id) return [];
+    if (!isRec(msg) || isChild(msg)) return [];
     if (this.replay.skip(msg)) return [];
+    if (msg.type === 'tool_progress') return claudeToolProgress(msg);
     switch (msg.type) {
       case 'system':
         return [...sessionEvent(msg), ...claudeCompactionBoundary(msg), ...claudeCompactionStatus(msg)];
@@ -144,7 +165,7 @@ export class ClaudeEventMapper {
       return events;
     }
     if (msg.type !== 'user') return [];
-    return [...userTexts(msg), ...this.toolResults(msg)];
+    return [...userTexts(msg), ...this.toolResults(msg, false)];
   }
 
   private end(msg: Rec): AgentEvent[] {
@@ -163,13 +184,19 @@ export class ClaudeEventMapper {
     }
     if (event.type !== 'content_block_delta' || !isRec(event.delta)) return [];
     const e = deltaEvent(event.delta);
-    if (e?.type === 'text') this.markStreamed();
-    return e ? [e] : [];
+    if (!e) return [];
+    this.markStreamed(e.type);
+    return [e];
   }
 
-  private markStreamed(): void {
-    this.anyDelta = true;
-    if (this.currentMessageId) this.streamed.add(this.currentMessageId);
+  private markStreamed(type: AgentEvent['type']): void {
+    if (type === 'text') {
+      this.anyDelta = true;
+      if (this.currentMessageId) this.streamed.add(this.currentMessageId);
+    } else {
+      this.anyThinkingDelta = true;
+      if (this.currentMessageId) this.streamedThinking.add(this.currentMessageId);
+    }
   }
 
   private assistant(msg: Rec, history: boolean): AgentEvent[] {
@@ -177,11 +204,13 @@ export class ClaudeEventMapper {
     const id = str(inner.id);
     // 没有流式输出过的消息才输出全文，避免重复
     const includeText = history || !(id ? this.streamed.has(id) : this.anyDelta);
-    return blocksOf(msg).flatMap((b) => assistantBlock(b, includeText));
+    const includeThinking = history || !(id ? this.streamedThinking.has(id) : this.anyThinkingDelta);
+    const events = blocksOf(msg).flatMap((b) => assistantBlock(b, includeText, includeThinking));
+    return history ? events : events.flatMap((event) => this.tools.observe(event));
   }
 
-  private toolResults(msg: Rec): AgentEvent[] {
-    return blocksOf(msg).flatMap((b): AgentEvent[] =>
+  private toolResults(msg: Rec, live = true): AgentEvent[] {
+    const events = blocksOf(msg).flatMap((b): AgentEvent[] =>
       isRec(b) && b.type === 'tool_result'
         ? [
             {
@@ -193,5 +222,6 @@ export class ClaudeEventMapper {
           ]
         : [],
     );
+    return live ? events.flatMap((event) => this.tools.observe(event)) : events;
   }
 }

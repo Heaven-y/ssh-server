@@ -17,7 +17,9 @@ const write = (value: unknown) => process.stdout.write(`${JSON.stringify(value)}
 const reply = (message: Message, result: unknown) => write({ id: message.id, result });
 const notify = (method: string, params: unknown) => write({ method, params });
 const threadId = 'native-thread';
-const turnId = 'native-turn';
+let turnId = 'native-turn';
+let generatedTurns = 0;
+let startedUsageTurns = 0;
 const thread = (id = threadId, cwd = process.cwd()) => ({
   id,
   sessionId: 'fork-tree-root',
@@ -101,6 +103,25 @@ function approval(): void {
     },
   });
 }
+function reportUsage(): void {
+  if (mode.startsWith('usage')) {
+    generatedTurns += 1;
+    if (!(mode === 'usage-missing' && generatedTurns === 2))
+      notify('thread/tokenUsage/updated', {
+        threadId,
+        turnId,
+        tokenUsage: {
+          total: {
+            inputTokens: generatedTurns * 100,
+            outputTokens: generatedTurns * 20,
+            totalTokens: generatedTurns * 120,
+          },
+          last: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+          modelContextWindow: 1000,
+        },
+      });
+  }
+}
 function afterStart(): void {
   if (mode.startsWith('approval')) {
     approval();
@@ -124,10 +145,26 @@ function afterStart(): void {
     });
   notify('item/agentMessage/delta', { threadId, turnId, itemId: 'answer', delta: '流式回复' });
   notify('item/completed', { threadId, turnId, item: { id: 'answer', type: 'agentMessage', text: '流式回复' } });
+  reportUsage();
   end(mode === 'turn-failed' ? 'failed' : 'completed');
 }
 function start(message: Message): void {
   const respond = () => {
+    if (mode.startsWith('usage')) {
+      const previous = turnId;
+      turnId = `native-turn-${++startedUsageTurns}`;
+      notify('thread/tokenUsage/updated', {
+        threadId,
+        turnId: 'foreign-turn',
+        tokenUsage: { total: { outputTokens: 999 }, last: { totalTokens: 999 } },
+      });
+      if (mode === 'usage-late' && startedUsageTurns === 2)
+        notify('thread/tokenUsage/updated', {
+          threadId,
+          turnId: previous,
+          tokenUsage: { total: { inputTokens: 150, outputTokens: 25, totalTokens: 175 }, last: { totalTokens: 15 } },
+        });
+    }
     reply(message, { turn: { id: turnId, status: 'inProgress', items: [] } });
     setTimeout(afterStart, 10);
   };

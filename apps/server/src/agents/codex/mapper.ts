@@ -1,54 +1,15 @@
-import { NativeSessionIdSchema, type AgentEvent } from '@agentdeck/shared';
+import { NativeSessionIdSchema, type AgentEvent, type TokenUsage } from '@agentdeck/shared';
 import { CodexCompaction } from './compaction';
 import { list, record, text, type RecordValue } from './types';
+import { codexItemDuration, CodexTurnUsage, nonnegativeInteger, type CodexUsageBreakdown } from './observability';
+import { codexToolCompleted, codexToolFailed, codexToolInput, codexToolOutput, isCodexTool } from './tool-items';
 
-const TOOL_OUTPUT_MAX_CHARS = 20_000;
-const TOOL_TYPES = new Set(['commandExecution', 'fileChange', 'mcpToolCall']);
 const DELTAS = new Map([
   ['item/agentMessage/delta', 'text'],
   ['item/reasoning/summaryTextDelta', 'reasoning'],
   ['item/reasoning/textDelta', 'reasoning'],
 ] as const);
 
-function printable(value: unknown): string {
-  return typeof value === 'string' ? value : JSON.stringify(value ?? null);
-}
-function bounded(value: string): string {
-  return value.length <= TOOL_OUTPUT_MAX_CHARS
-    ? value
-    : `${value.slice(0, TOOL_OUTPUT_MAX_CHARS)}\n[已截断，共 ${value.length} 字符]`;
-}
-function fileDiff(item: RecordValue): string {
-  return list(item.changes)
-    .map((change) => {
-      const value = record(change);
-      return `${text(value.path)}\n${text(value.diff)}`;
-    })
-    .join('\n');
-}
-function toolInput(item: RecordValue): { name: string; input: unknown } {
-  switch (item.type) {
-    case 'commandExecution':
-      return { name: 'commandExecution', input: { command: item.command, cwd: item.cwd } };
-    case 'fileChange':
-      return { name: 'fileChange', input: { changes: item.changes } };
-    default:
-      return { name: `mcp__${text(item.server)}__${text(item.tool)}`, input: item.arguments };
-  }
-}
-function toolOutput(item: RecordValue): string {
-  if (item.type === 'commandExecution') return text(item.aggregatedOutput);
-  if (item.type === 'fileChange') return fileDiff(item);
-  return printable(item.error ?? item.result);
-}
-function failed(item: RecordValue): boolean {
-  return (
-    item.status === 'failed' ||
-    item.status === 'declined' ||
-    item.status === 'cancelled' ||
-    (typeof item.exitCode === 'number' && item.exitCode !== 0)
-  );
-}
 /** 原生明确终止的轮次才可以作为 inclusive 分叉位置。 */
 export function codexForkPoint(turn: RecordValue): string | undefined {
   if (!['completed', 'failed', 'interrupted'].includes(text(turn.status))) return;
@@ -56,12 +17,14 @@ export function codexForkPoint(turn: RecordValue): string | undefined {
   return id.success ? id.data : undefined;
 }
 
-export function turnEnd(turn: RecordValue): AgentEvent {
+export function turnEnd(turn: RecordValue, usage?: TokenUsage): Extract<AgentEvent, { type: 'turn_end' }> {
   const forkPoint = codexForkPoint(turn);
+  const durationMs = nonnegativeInteger(turn.durationMs);
   return {
     type: 'turn_end',
-    isError: turn.status === 'failed',
-    ...(typeof turn.durationMs === 'number' ? { durationMs: turn.durationMs } : {}),
+    isError: turn.status === 'failed' || turn.status === 'interrupted',
+    ...(durationMs !== undefined ? { durationMs, timingSource: 'native' as const } : {}),
+    ...(usage ? { usage } : {}),
     ...(forkPoint ? { forkPoint } : {}),
   };
 }
@@ -75,6 +38,7 @@ export class CodexEventMapper {
   private readonly compaction: CodexCompaction;
   private usedTokens?: number;
   private model?: string;
+  private readonly usage = new CodexTurnUsage();
 
   constructor(options: { manualCompaction?: boolean } = {}) {
     this.compaction = new CodexCompaction(options.manualCompaction === true);
@@ -93,12 +57,33 @@ export class CodexEventMapper {
     return this.compaction.confirmed;
   }
 
+  beginUsage(baseline?: CodexUsageBreakdown): void {
+    this.usage.begin(baseline);
+  }
+
+  cumulativeUsage(): CodexUsageBreakdown | undefined {
+    return this.usage.snapshot();
+  }
+
+  turnUsage(): TokenUsage | undefined {
+    return this.usage.result();
+  }
+
+  invalidateUsage(): void {
+    this.usage.invalidate();
+  }
+
   item(id: string): RecordValue {
     return this.items.get(id) ?? {};
   }
 
   map(method: string, params: RecordValue): AgentEvent[] {
     if (method === 'thread/tokenUsage/updated') return [this.context(params)];
+    if (method === 'item/mcpToolCall/progress') {
+      const id = text(params.itemId);
+      const message = text(params.message);
+      return id && message ? [{ type: 'tool_progress', id, message }] : [];
+    }
     if (method === 'item/started' || method === 'item/completed') {
       return this.mapItem(record(params.item), method === 'item/completed', false);
     }
@@ -109,20 +94,24 @@ export class CodexEventMapper {
   }
 
   history(turn: RecordValue): AgentEvent[] {
-    return [...list(turn.items).flatMap((item) => this.mapItem(record(item), true, true)), turnEnd(turn)];
+    return [
+      ...list(turn.items).flatMap((item) => this.mapItem(record(item), true, true, turn.status === 'completed')),
+      turnEnd(turn),
+    ];
   }
 
   finishItems(turn: RecordValue): AgentEvent[] {
     // 完成通知的快照不是压缩完成确认；手动压缩必须收到当前 item/completed。
     return list(turn.items)
       .filter((item) => record(item).type !== 'contextCompaction')
-      .flatMap((item) => this.mapItem(record(item), true, false));
+      .flatMap((item) => this.mapItem(record(item), true, false, turn.status === 'completed'));
   }
 
   private context(params: RecordValue): AgentEvent {
     const usage = record(params.tokenUsage);
-    const used = record(usage.last).totalTokens;
-    if (typeof used !== 'number' || !Number.isFinite(used) || used < 0) {
+    this.usage.observe(usage.total);
+    const used = nonnegativeInteger(record(usage.last).totalTokens);
+    if (used === undefined) {
       this.usedTokens = undefined;
       return { type: 'context', usage: null };
     }
@@ -139,19 +128,27 @@ export class CodexEventMapper {
     };
   }
 
-  private mapItem(item: RecordValue, complete: boolean, history: boolean): AgentEvent[] {
+  private mapItem(item: RecordValue, complete: boolean, history: boolean, completionConfirmed = true): AgentEvent[] {
     const id = text(item.id);
     if (!id) return [];
+    const previous = this.items.get(id);
+    item = { ...item, startedAtMs: item.startedAtMs ?? previous?.startedAtMs };
     this.items.set(id, item);
     if (item.type === 'contextCompaction') return this.mapCompaction(item, complete, history);
-    if (TOOL_TYPES.has(text(item.type))) return this.mapTool(item, complete);
+    if (isCodexTool(item)) return this.mapTool(item, complete && codexToolCompleted(item, completionConfirmed));
     if (!complete || this.completed.has(id)) return [];
     this.completed.add(id);
     return this.mapText(item, history);
   }
 
   private mapCompaction(item: RecordValue, complete: boolean, history: boolean): AgentEvent[] {
-    if (!history) return this.compaction.item(text(item.id), complete, this.usedTokens);
+    if (!history) {
+      if (!complete && !this.called.has(text(item.id))) {
+        this.called.add(text(item.id));
+        this.usage.requireFreshSnapshot();
+      }
+      return this.compaction.item(text(item.id), complete, this.usedTokens);
+    }
     if (this.completed.has(text(item.id))) return [];
     this.completed.add(text(item.id));
     const trigger = item.trigger === 'manual' || item.trigger === 'auto' ? item.trigger : undefined;
@@ -187,11 +184,17 @@ export class CodexEventMapper {
     const events: AgentEvent[] = [];
     if (!this.called.has(id)) {
       this.called.add(id);
-      events.push({ type: 'tool_call', id, ...toolInput(item) });
+      events.push({ type: 'tool_call', id, ...codexToolInput(item) });
     }
     if (complete && !this.completed.has(id)) {
       this.completed.add(id);
-      events.push({ type: 'tool_result', id, output: bounded(toolOutput(item)), isError: failed(item) });
+      events.push({
+        type: 'tool_result',
+        id,
+        output: codexToolOutput(item),
+        isError: codexToolFailed(item),
+        ...codexItemDuration(item),
+      });
     }
     return events;
   }

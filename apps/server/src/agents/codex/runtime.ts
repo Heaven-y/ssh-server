@@ -8,6 +8,7 @@ import { threadParams } from './config';
 import { CodexEventMapper, turnEnd } from './mapper';
 import { CodexPermissions } from './permissions';
 import { checkedThread } from './sessions';
+import { emptyCodexUsage, updateCodexUsageBaseline, type CodexUsageBreakdown } from './observability';
 import {
   cancelled,
   CodexError,
@@ -30,6 +31,9 @@ export class CodexRuntime {
   private connecting?: Promise<CodexClient>;
   private closing?: Promise<void>;
   private broken = false;
+  private completedTurnId?: string;
+  /** 仅由完整轮次边界推进；恢复历史时不假定累计用量从零开始。 */
+  usageBaseline?: CodexUsageBreakdown;
   current?: CodexTurn;
 
   constructor(private readonly options: CodexRuntimeOptions = {}) {}
@@ -44,6 +48,27 @@ export class CodexRuntime {
 
   get sessionModel(): string | undefined {
     return this.model;
+  }
+
+  finishUsage(turnId: string, snapshot?: CodexUsageBreakdown): void {
+    if (turnId) this.completedTurnId = turnId;
+    this.usageBaseline = snapshot;
+  }
+
+  private notification(method: string, params: RecordValue): void {
+    const lateUsage =
+      method === 'thread/tokenUsage/updated' &&
+      params.threadId === this.thread &&
+      !!this.completedTurnId &&
+      params.turnId === this.completedTurnId &&
+      !this.current?.matchesTurn(text(params.turnId));
+    if (!lateUsage) {
+      this.current?.notification(method, params);
+      return;
+    }
+    // 结束后的补报可更新空闲基线；若下一轮已发送，其计数范围已经无法完整分离。
+    this.usageBaseline = updateCodexUsageBaseline(this.usageBaseline, record(params.tokenUsage).total);
+    this.current?.invalidateRunningUsage();
   }
 
   /** 首次使用时启动进程并读取原生配置；后续轮次直接复用。 */
@@ -76,7 +101,7 @@ export class CodexRuntime {
     });
     this.client = client;
     client.onRequest = (request: ServerRequest) => this.route(client, request);
-    client.onNotification = (method: string, params: RecordValue) => this.current?.notification(method, params);
+    client.onNotification = (method: string, params: RecordValue) => this.notification(method, params);
     try {
       await client.initialize();
       this.nativeConfig = await client.request('config/read', {
@@ -109,6 +134,7 @@ export class CodexRuntime {
     await this.verifyThread(thread, id, input.workspace.dir);
     this.thread = text(thread.id);
     this.model = text(response.model) || text(thread.model);
+    this.usageBaseline = id ? undefined : emptyCodexUsage();
   }
 
   /** 复核原生线程身份：必须带 ID、属于当前工作区，且与续接目标一致。 */
@@ -165,13 +191,22 @@ export class CodexTurn {
     return this.runtime.sessionId ?? '';
   }
 
+  matchesTurn(id: string): boolean {
+    return this.phase !== 'done' && this.turnId === id;
+  }
+
+  invalidateRunningUsage(): void {
+    if (this.phase !== 'preparing') this.mapper.invalidateUsage();
+  }
+
   async run(): Promise<void> {
-    let end: AgentEvent = { type: 'turn_end', isError: false };
+    let end: Extract<AgentEvent, { type: 'turn_end' }> = { type: 'turn_end', isError: false };
     try {
       this.ensureActive();
       this.validateInput();
       const { client, threadId } = await this.runtime.ensure(this.input, this.preparation.signal);
       this.client = client;
+      this.mapper.setModel(this.runtime.sessionModel ?? '');
       this.permissions = new CodexPermissions(client, this.input, this.mapper);
       this.input.emit({
         type: 'session',
@@ -188,11 +223,12 @@ export class CodexTurn {
         this.input.emit({ type: 'error', message: safeError(error) });
       }
     } finally {
+      this.finishUsage();
       this.phase = 'done';
       clearTimeout(this.interruptTimer);
       this.permissions?.cancel();
       for (const event of this.mapper.finishCompaction(this.stopped ? 'interrupted' : 'failed')) this.input.emit(event);
-      this.input.emit(end);
+      this.input.emit({ ...end, isError: end.isError || this.stopped });
       if (this.runtime.current === this) this.runtime.current = undefined;
       this.complete();
     }
@@ -204,6 +240,12 @@ export class CodexTurn {
       (!!this.runtime.sessionId && params.threadId !== this.runtime.sessionId) ||
       (!!this.turnId && params.turnId !== this.turnId)
     );
+  }
+
+  private finishUsage(): void {
+    const snapshot =
+      !this.stopped && this.turnResult?.status === 'completed' ? this.mapper.cumulativeUsage() : undefined;
+    this.runtime.finishUsage(this.turnId, snapshot);
   }
 
   onRequest(request: ServerRequest): void {
@@ -265,10 +307,11 @@ export class CodexTurn {
     if (this.input.text.trim()) throw new CodexError('Codex 手动压缩不支持附加参数。');
   }
 
-  private async startTurn(client: CodexClient, threadId: string): Promise<AgentEvent> {
+  private async startTurn(client: CodexClient, threadId: string): Promise<Extract<AgentEvent, { type: 'turn_end' }>> {
     if (this.input.invocation?.kind === 'skill')
       await validateCodexSkill(client, this.input.workspace.dir, this.input.invocation);
     this.ensureActive();
+    this.mapper.beginUsage(this.runtime.usageBaseline);
     this.phase = 'starting';
     await this.sendTurn(client, threadId);
     await this.waitForStart(client);
@@ -284,7 +327,7 @@ export class CodexTurn {
       throw new CodexError('Codex 未确认本次压缩完成，请重新读取会话状态。');
     if (turn.status === 'failed')
       this.input.emit({ type: 'error', message: 'Codex 本轮执行失败，请检查本机模型与工具配置。' });
-    return turnEnd(turn);
+    return turnEnd(turn, this.mapper.turnUsage());
   }
 
   private turnResult?: RecordValue;
@@ -351,10 +394,7 @@ export class CodexTurn {
       this.permissions?.resolved(params.requestId);
       return true;
     }
-    if (method !== 'thread/tokenUsage/updated') return false;
-    if (!this.turnId || params.turnId === this.turnId)
-      for (const event of this.mapper.map(method, params)) this.input.emit(event);
-    return true;
+    return false;
   }
 
   private currentNotification(method: string, params: RecordValue): void {

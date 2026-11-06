@@ -55,6 +55,30 @@ it('单步骤分支接收 proto 省略的零下标，使用原生 fork 并等待
   expect(f.close).toHaveBeenCalledOnce();
 });
 
+it('历史读取在身份校验后补齐原生分页，空页不冒充完整历史', async () => {
+  const f = fixture();
+  f.request
+    .mockResolvedValueOnce({
+      ...detail('source', { generatorMetadata: [{ chatModel: {} }] }),
+      numTotalSteps: 2,
+      numTotalGeneratorMetadata: 5,
+    })
+    .mockResolvedValueOnce({
+      steps: [{ type: 'CORTEX_STEP_TYPE_RUN_COMMAND', status: 'CORTEX_STEP_STATUS_DONE' }],
+    });
+  const result = await f.service.readTrajectory!('source', dir);
+  expect(result.trajectory.steps).toHaveLength(2);
+  expect(result.trajectory.generatorMetadata).toEqual([]);
+  expect(f.request).toHaveBeenLastCalledWith('GetCascadeTrajectorySteps', {
+    cascadeId: 'source',
+    stepOffset: 1,
+    trajectoryVerbosity: 'CLIENT_TRAJECTORY_VERBOSITY_FULL',
+  });
+  expect(f.close).toHaveBeenCalledOnce();
+  f.request.mockResolvedValueOnce({ ...detail(), numTotalSteps: 2 }).mockResolvedValueOnce({ steps: [] });
+  await expect(f.service.readTrajectory!('source', dir)).rejects.toMatchObject({ code: 'session_history_incomplete' });
+});
+
 it.each([
   ['wrong id', detail('other'), 'session_missing'],
   [

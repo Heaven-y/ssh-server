@@ -3,7 +3,14 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ModelInfo } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentEvent, Workspace } from '@agentdeck/shared';
-import { PERMISSION_TIMEOUT_MS, runClaudeTurn, type QueryFn } from '../../src/agents/claude-adapter';
+import {
+  createClaudeRunner,
+  PERMISSION_TIMEOUT_MS,
+  runClaudeTurn,
+  type ClaudeTurnInput,
+  type QueryFn,
+  type TurnHandle,
+} from '../../src/agents/claude-adapter';
 
 const ws: Workspace = {
   id: 'w1',
@@ -109,6 +116,91 @@ describe('runClaudeTurn：调用参数', () => {
 });
 
 describe('runClaudeTurn：事件', () => {
+  it('中断后淘汰旧运行时，旧 result 不会结束续接的新轮次', async () => {
+    let releaseOld!: () => void;
+    const oldGate = new Promise<void>((resolve) => {
+      releaseOld = resolve;
+    });
+    let acknowledgeInput!: () => void;
+    const sent = new Promise<void>((resolve) => {
+      acknowledgeInput = resolve;
+    });
+    const second = fakeQuery([
+      { type: 'assistant', message: { id: 'second', content: [{ type: 'text', text: '续接的新回复' }] } },
+      { type: 'result', subtype: 'success', usage: { output_tokens: 4 } },
+    ]);
+    const queryFn = vi.fn<QueryFn>();
+    queryFn.mockImplementationOnce(({ prompt }) =>
+      Object.assign(
+        (async function* () {
+          await prompt[Symbol.asyncIterator]().next();
+          acknowledgeInput();
+          await oldGate;
+          yield { type: 'result', subtype: 'success', usage: { output_tokens: 999 } };
+        })(),
+        {
+          close: () => releaseOld(),
+          interrupt: async () => undefined,
+          supportedCommands: async () => [],
+          supportedModels: async () => [],
+          getContextUsage: async () => {
+            throw new Error('不可用');
+          },
+        },
+      ),
+    );
+    queryFn.mockImplementation(second.queryFn);
+    const runner = createClaudeRunner();
+    const run = runner as (input: ClaudeTurnInput) => TurnHandle;
+    const requestPermission = async () => ({ allow: false });
+    const oldEvents: AgentEvent[] = [];
+    try {
+      const first = run({
+        workspace: ws,
+        sessionId: 'same-session',
+        text: '第一轮',
+        queryFn,
+        emit: (event) => oldEvents.push(event),
+        requestPermission,
+      });
+      await sent;
+      await first.interrupt();
+      await first.done;
+      const nextEvents: AgentEvent[] = [];
+      await run({
+        workspace: ws,
+        sessionId: 'same-session',
+        text: '第二轮',
+        queryFn,
+        emit: (event) => nextEvents.push(event),
+        requestPermission,
+      }).done;
+      expect(queryFn).toHaveBeenCalledTimes(2);
+      expect(second.state.options).toHaveProperty('resume', 'same-session');
+      expect(oldEvents.filter((event) => event.type === 'turn_end')).toEqual([{ type: 'turn_end', isError: true }]);
+      expect(nextEvents).toContainEqual({ type: 'text', delta: '续接的新回复' });
+      expect(nextEvents.filter((event) => event.type === 'turn_end')).toMatchObject([
+        { isError: false, usage: { outputTokens: 4 } },
+      ]);
+    } finally {
+      releaseOld();
+      await runner.dispose?.();
+    }
+  });
+  it('子代理 result 不会结束父回合或提前读取父上下文', async () => {
+    const fake = fakeQuery([
+      { type: 'result', subtype: 'success', parent_agent_id: 'child-agent', usage: { output_tokens: 999 } },
+      { type: 'assistant', message: { id: 'parent-message', content: [{ type: 'text', text: '父回合回复' }] } },
+      { type: 'result', subtype: 'success', usage: { output_tokens: 4 } },
+    ]);
+    const { handle, events } = run(fake);
+    await handle.done;
+    expect(events.filter((event) => event.type === 'text')).toEqual([{ type: 'text', delta: '父回合回复' }]);
+    expect(events.filter((event) => event.type === 'context')).toHaveLength(1);
+    expect(events.filter((event) => event.type === 'turn_end')).toMatchObject([
+      { isError: false, usage: { outputTokens: 4 } },
+    ]);
+  });
   it('转发映射后的事件', async () => {
     const fake = fakeQuery([
       {

@@ -31,13 +31,24 @@ export type AgentCapabilities = {
   commandWarnings?: string[];
 };
 
-/** 原生统计与原生估算均保留来源；没有给出的窗口或比例不推算。 */
+/** 原生统计与原生估算均保留来源；有有效窗口时可计算最近报告的占比。 */
 export type ContextUsage = {
   usedTokens: number;
   windowTokens?: number;
   percentage?: number;
   model?: string;
-  source: 'claude_estimate' | 'codex_native';
+  source: 'claude_estimate' | 'codex_native' | 'antigravity_estimate';
+};
+export type TokenUsage = {
+  inputTokens?: number;
+  outputTokens?: number;
+  cachedInputTokens?: number;
+  cacheWriteInputTokens?: number;
+  reasoningOutputTokens?: number;
+  totalTokens?: number;
+  source: 'claude' | 'codex' | 'antigravity';
+  /** 计数与耗时必须属于同一范围；步骤数据不能冒充整个回合。 */
+  scope: 'turn' | 'step';
 };
 export type CompactionState = {
   status: 'running' | 'completed' | 'failed' | 'cancelled';

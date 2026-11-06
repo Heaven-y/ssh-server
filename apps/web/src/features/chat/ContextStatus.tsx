@@ -35,7 +35,35 @@ export function CompactionStatus({ state, incomplete = false }: { state: Compact
 }
 
 function usageSource(usage: ContextUsage): string {
-  return usage.source === 'claude_estimate' ? 'Claude 原生估计' : 'Codex 原生统计/估算';
+  const labels = {
+    claude_estimate: 'Claude 原生估计',
+    codex_native: 'Codex 原生统计/估算',
+    antigravity_estimate: 'Antigravity 原生估计',
+  };
+  return labels[usage.source];
+}
+
+export function contextPercentage(usage: ContextUsage): number | undefined {
+  if (Number.isFinite(usage.percentage) && usage.percentage! >= 0) return usage.percentage;
+  if (usage.windowTokens === undefined || !Number.isFinite(usage.windowTokens) || usage.windowTokens <= 0) return;
+  return Number.isFinite(usage.usedTokens) && usage.usedTokens >= 0
+    ? (usage.usedTokens / usage.windowTokens) * 100
+    : undefined;
+}
+
+function ContextMeter({ percentage }: { percentage: number }) {
+  const display = Math.round(percentage * 10) / 10;
+  return (
+    <span className="inline-flex items-center gap-1.5" aria-label={`上下文占用 ${display}%`}>
+      <span aria-hidden className="h-1 w-10 overflow-hidden rounded-full bg-border">
+        <span
+          className={`block h-full rounded-full ${percentage >= 90 ? 'bg-warning' : 'bg-muted-foreground'}`}
+          style={{ width: `${Math.min(percentage, 100)}%` }}
+        />
+      </span>
+      <span className="text-xs tabular-nums">{display}%</span>
+    </span>
+  );
 }
 /** 摘要只显示有数据的字段，缺窗口时只显示已用量。 */
 function usageSummary(usage: ContextUsage): string {
@@ -46,14 +74,14 @@ function usageSummary(usage: ContextUsage): string {
   return window === undefined ? used : `${used} / ${window}`;
 }
 function UsageDetails({ usage }: { usage: ContextUsage }) {
-  const percentage = usage.source === 'claude_estimate' ? usage.percentage : undefined;
+  const percentage = contextPercentage(usage);
   return (
     <>
       <p>{usageSource(usage)}</p>
       <p>
         用量 {usage.usedTokens === undefined ? '—' : `${tokens(usage.usedTokens)} tokens`}
         {usage.windowTokens !== undefined && ` / 窗口 ${tokens(usage.windowTokens)} tokens`}
-        {percentage !== undefined && ` · ${percentage}%`}
+        {percentage !== undefined && ` · ${Math.round(percentage * 10) / 10}%`}
       </p>
       {usage.model && <p className="break-all">模型：{usage.model}</p>}
     </>
@@ -63,6 +91,27 @@ function UsageDetails({ usage }: { usage: ContextUsage }) {
 function usageTitle(usage: ContextUsage | null | undefined, summary: string | undefined): string | undefined {
   if (!usage) return undefined;
   return summary ? `${usageSource(usage)} · ${summary} tokens` : usageSource(usage);
+}
+
+function ContextLabel({
+  usage,
+  compaction,
+  incomplete,
+}: {
+  usage?: ContextUsage | null;
+  compaction?: CompactionState;
+  incomplete: boolean;
+}) {
+  const summary = usage ? usageSummary(usage) : undefined;
+  const percentage = usage ? contextPercentage(usage) : undefined;
+  return (
+    <>
+      {summary && <span className="whitespace-nowrap">上下文 {summary}</span>}
+      {percentage !== undefined && <ContextMeter percentage={percentage} />}
+      {compaction && <span>{compactionTitle(compaction, incomplete)}</span>}
+      <ChevronDown aria-hidden className="size-3.5 shrink-0" />
+    </>
+  );
 }
 /**
  * 与模型、强度共用输入控制行；有原生报告或压缩事件才显示，无数据整体隐藏。
@@ -85,9 +134,7 @@ export function ContextStatus() {
         title={usageTitle(usage, summary)}
         className={`${buttonClass('ghost')} min-w-0 max-w-full flex-wrap gap-1 rounded-lg px-2 text-[13px] text-muted-foreground`}
       >
-        {summary && <span className="whitespace-nowrap">上下文 {summary}</span>}
-        {compaction && <span>{compactionTitle(compaction, incomplete)}</span>}
-        <ChevronDown aria-hidden className="size-3.5 shrink-0" />
+        <ContextLabel usage={usage} compaction={compaction} incomplete={incomplete} />
       </PopoverDisclosure>
       <Popover
         store={popover}
@@ -97,7 +144,7 @@ export function ContextStatus() {
         aria-label="上下文用量详情"
         className="z-50 max-h-[min(360px,var(--popover-available-height))] w-80 max-w-[calc(100vw-32px)] space-y-2 overflow-y-auto rounded-2xl border border-border bg-card p-3 text-[13px] leading-6 text-muted-foreground shadow-lg"
       >
-        {usage ? <UsageDetails usage={usage} /> : <p>尚无上下文用量报告</p>}
+        {usage && <UsageDetails usage={usage} />}
         {compaction && <CompactionStatus state={compaction} incomplete={incomplete} />}
       </Popover>
     </>

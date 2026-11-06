@@ -31,7 +31,8 @@ const isResult = (message: unknown): boolean =>
   typeof message === 'object' &&
   'type' in message &&
   message.type === 'result' &&
-  !('parent_tool_use_id' in message && message.parent_tool_use_id);
+  !('parent_tool_use_id' in message && message.parent_tool_use_id) &&
+  !('parent_agent_id' in message && message.parent_agent_id);
 
 /** 单轮状态：事件过滤、压缩跟踪与结束判定都属于这一轮，不属于进程。 */
 class ClaudeTurn {
@@ -43,6 +44,15 @@ class ClaudeTurn {
   private readonly manual: boolean;
   private readonly compaction: ClaudeCompactionTracker;
   private fallback?: NodeJS.Timeout;
+  private sentAt?: number;
+
+  markSent(): void {
+    this.sentAt = performance.now();
+  }
+
+  elapsedMs(): number | undefined {
+    return this.sentAt === undefined ? undefined : Math.max(0, performance.now() - this.sentAt);
+  }
 
   constructor(readonly input: AgentTurnInput) {
     this.manual = commandIs(input, 'compact');
@@ -152,6 +162,7 @@ export class ClaudeRuntime {
   run(input: AgentTurnInput): TurnHandle {
     if (this.current?.active) throw new Error('Claude 运行时正在处理另一轮对话');
     const turn = new ClaudeTurn(input);
+    this.mapper.beginTurn();
     this.current = turn;
     // 原生进程没起来时不再尝试投递，直接以启动错误收尾本轮。
     if (this.launchError) turn.fail(this.launchError.message);
@@ -206,12 +217,13 @@ export class ClaudeRuntime {
   }
 
   private async finishTurn(turn: ClaudeTurn, message: unknown): Promise<void> {
+    const elapsed = turn.elapsedMs();
     turn.deliver({ type: 'context', usage: await readClaudeContext(this.query!) });
     let ended = false;
     for (const event of this.mapper.map(message)) {
       if (event.type === 'turn_end') {
         ended = true;
-        turn.complete(event);
+        turn.complete(elapsed === undefined ? event : { ...event, durationMs: elapsed, timingSource: 'observed' });
       } else {
         turn.deliver(event);
       }
@@ -231,6 +243,7 @@ export class ClaudeRuntime {
       const text = await claudeInvocationText(this.query!, turn.input.invocation, turn.input.text, turn.abort.signal);
       // 中断已经生效时不再投递正文，避免取消后仍向原生进程发送用户消息。
       if (!turn.active || turn.cancelled) return;
+      turn.markSent();
       this.stream.send(text);
     } catch (error) {
       if (turn.active) turn.fail(error instanceof Error ? error.message : 'Claude 本轮运行失败');
@@ -239,6 +252,8 @@ export class ClaudeRuntime {
 
   private async interrupt(turn: ClaudeTurn): Promise<void> {
     if (!turn.active) return;
+    // SDK 的迟到 result 没有回合 ID；中断后不可将此流复用于下一轮。
+    this.broken = true;
     turn.markStopped();
     turn.abort.abort();
     try {

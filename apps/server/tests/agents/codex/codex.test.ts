@@ -14,6 +14,7 @@ import {
 } from '../../../src/agents/codex';
 import { CodexClient } from '../../../src/agents/codex/client';
 import { CodexEventMapper } from '../../../src/agents/codex/mapper';
+import { createCodexRunner } from '../../../src/agents/codex/adapter';
 
 const dirs: string[] = [];
 const watchers: FSWatcher[] = [];
@@ -158,7 +159,7 @@ describe('Codex app-server 核心边界', () => {
     ]);
     expect(events.filter((event) => event.type === 'text')).toEqual([{ type: 'text', delta: '流式回复' }]);
     expect(events.filter((event) => event.type === 'turn_end')).toEqual([
-      { type: 'turn_end', isError: false, durationMs: 30, forkPoint: 'native-turn' },
+      { type: 'turn_end', isError: false, durationMs: 30, timingSource: 'native', forkPoint: 'native-turn' },
     ]);
   });
 
@@ -180,7 +181,7 @@ describe('Codex app-server 核心边界', () => {
     expect((await messages()).some((value) => value.method === 'thread/start' || value.method === 'turn/start')).toBe(
       false,
     );
-    expect(events).toEqual([{ type: 'turn_end', isError: false }]);
+    expect(events).toEqual([{ type: 'turn_end', isError: true }]);
   });
 
   it('turn/start 响应之前停止，获得原生 turnId 后补发 interrupt', async () => {
@@ -210,7 +211,7 @@ describe('Codex app-server 核心边界', () => {
       turnId: 'native-turn',
     });
     expect(events.filter((event) => event.type === 'turn_end')).toEqual([
-      { type: 'turn_end', isError: false, durationMs: 30, forkPoint: 'native-turn' },
+      { type: 'turn_end', isError: true, durationMs: 30, timingSource: 'native', forkPoint: 'native-turn' },
     ]);
   });
 
@@ -229,7 +230,7 @@ describe('Codex app-server 核心边界', () => {
     await waitForMethod('turn/start');
     await handle.interrupt();
     await handle.done;
-    expect(events.filter((event) => event.type === 'turn_end')).toEqual([{ type: 'turn_end', isError: false }]);
+    expect(events.filter((event) => event.type === 'turn_end')).toEqual([{ type: 'turn_end', isError: true }]);
     // 断言的是「5 秒后一定会被强杀」，不是「总共不超过 10 秒」。全量并行（100+ worker）时
     // 子进程调度会被拖慢，10 秒余量不够，故放宽外层超时；被测行为本身（5 秒强杀）不变。
   }, 30_000);
@@ -455,7 +456,66 @@ it('实时分叉点核验完成快照自身的轮次身份，不采纳外来 tur
     options,
   ).done;
   expect(events.filter((event) => event.type === 'turn_end')).toEqual([
-    { type: 'turn_end', isError: false, durationMs: 30, forkPoint: 'native-turn' },
+    { type: 'turn_end', isError: false, durationMs: 30, timingSource: 'native', forkPoint: 'native-turn' },
   ]);
   expect(events).not.toContainEqual({ type: 'text', delta: '不属于本轮' });
+});
+
+it.each([false, true])('原生累计统计跨轮取差，恢复标记 %s 首轮不假定零基线', async (resume) => {
+  const { workspace, options } = await setup('usage');
+  const runner = createCodexRunner(options);
+  const execute = async (sessionId?: string) => {
+    const events: AgentEvent[] = [];
+    await runner({
+      workspace,
+      sessionId,
+      text: '合成统计验证',
+      emit: (event) => events.push(event),
+      requestPermission: async () => ({ allow: false }),
+    }).done;
+    return events;
+  };
+  try {
+    const first = await execute(resume ? 'native-thread' : undefined);
+    const firstEnd = first.findLast((event) => event.type === 'turn_end');
+    if (resume) expect(firstEnd).not.toHaveProperty('usage');
+    else
+      expect(firstEnd).toMatchObject({
+        usage: { source: 'codex', scope: 'turn', inputTokens: 100, outputTokens: 20, totalTokens: 120 },
+      });
+    const second = await execute('native-thread');
+    expect(second.findLast((event) => event.type === 'turn_end')).toMatchObject({
+      usage: { source: 'codex', scope: 'turn', inputTokens: 100, outputTokens: 20, totalTokens: 120 },
+    });
+    expect(second.filter((event) => event.type === 'context')).toEqual([
+      { type: 'context', usage: { usedTokens: 15, windowTokens: 1000, model: 'native-model', source: 'codex_native' } },
+    ]);
+  } finally {
+    await runner.dispose?.();
+  }
+});
+
+it.each(['usage-late', 'usage-missing'])('%s 不把上一轮未确认的用量算入新轮次', async (mode) => {
+  const { workspace, options } = await setup(mode);
+  const runner = createCodexRunner(options);
+  const execute = async (sessionId?: string) => {
+    const events: AgentEvent[] = [];
+    await runner({
+      workspace,
+      sessionId,
+      text: '合成统计验证',
+      emit: (event) => events.push(event),
+      requestPermission: async () => ({ allow: false }),
+    }).done;
+    return events.findLast((event) => event.type === 'turn_end');
+  };
+  try {
+    expect(await execute()).toHaveProperty('usage');
+    expect(await execute('native-thread')).not.toHaveProperty('usage');
+    const third = await execute('native-thread');
+    if (mode === 'usage-missing') expect(third).not.toHaveProperty('usage');
+    else expect(third).toMatchObject({ usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 } });
+  } finally {
+    await runner.dispose?.();
+  }
 });

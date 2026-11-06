@@ -34,7 +34,11 @@ Codex 的 provider、端点与认证放在用户配置。当前原生版本会�
 
 保存后，新的 CLI 进程读取更新文件；当前会话显式模型、托管规则或原生更高优先级配置仍可能覆盖默认值，运行中的进程不会被强制切换。服务端与前端同时清理对应 CLI 的模型能力缓存，并拒绝旧刷新结果回填；下一次打开菜单按原生接口重新发现。
 
-Antigravity 的 customModelsConfig.customModels 是对象映射，每个条目使用 `gemini-api://<base_url>/models/<model>`、label 和可选 maxTokens。模型表单可编辑当前自定义模型；其他模型保留。仅 Gemini 模式使用这些条目，不能把 OpenAI Responses 地址当作 Gemini 地址。旧数组形式的说明已纠正，历史可从 `5d5d0c6` 追溯。
+Antigravity 的 `customModelsConfig.customModels` 是对象映射，每个条目使用稳定键、裸 `modelName`、`label` 和可选 `maxTokens`。原生默认 `model` 保存 label，条目键也可用于显式 `--model`。保存模型选择时复用隔离的原生目录，把内置 ID 转成 label；未知服务型号自动登记自定义条目，不要求先填显示名或窗口。目录读取失败时保留用户输入，有明确自定义连接时仍可登记。
+
+本机 agy 1.5.1 的 headless 默认选择自定义模型时可能返回空模型；工作台仅在未显式选择且原生默认命中自定义条目时补充 `--model` 键。读取采用本轮启动环境与原生配置，准备期间可取消；显式模型保持优先。此适配不修改外部 CLI 程序，也不表示其独立 headless 默认选择问题已修复。
+
+服务地址唯一写入启动环境 `GOOGLE_GEMINI_BASE_URL`，不会再把地址拼进 `modelName`；读取旧的 `gemini-api://.../models/...` 条目时提取模型 ID，保存时标准化。提交的地址去掉末尾 `/v1beta`，由原生 CLI 添加版本路径，避免重复。已有环境地址优先，旧 URI 的地址只在环境没有显式值时迁移，用户明确停用时不恢复。仅 Gemini 模式使用这些条目，不能把 OpenAI Responses 地址当作 Gemini 地址。旧数组形式的说明已纠正，历史可从 `5d5d0c6` 追溯。
 
 模型目录按 CLI 与实际目录持久缓存，成功结果在应用重启后继续使用；用户可点击重新获取，填写过配置时明确显示“保存并获取模型”。设置 GET `/api/settings/models/:agent/catalog` 只读缓存，POST 使用原生接口获取；不会探测任意服务的 /v1/models 或发送对话。Claude 使用 supportedModels，Codex 使用 model/list 并补入原生当前自定义 ID。模型列表是否列全由原生协议决定，始终允许手输。
 

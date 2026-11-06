@@ -1,0 +1,108 @@
+// @vitest-environment jsdom
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import type { ReactNode } from 'react';
+import type { ChatItem } from '../../../src/features/chat/chat-reducer';
+import { useChat } from '../../../src/features/chat/chat-store';
+import { averageTokenRate } from '../../../src/features/chat/chat-metrics';
+import { projectTrajectory } from '../../../src/features/chat/trajectory-model';
+import { TrajectoryView } from '../../../src/features/chat/TrajectoryView';
+import { StatisticsLine } from '../../../src/features/chat/StatisticsLine';
+import { ConversationSidebar } from '../../../src/app/ConversationSidebar';
+import { useConversationSidebar } from '../../../src/app/use-conversation-sidebar';
+import type { TrajectoryRow } from '../../../src/features/chat/trajectory-model';
+
+// jsdom 不提供布局测量；这里只替换虚拟滚动宿主，保留真实步骤与右栏交互。
+vi.mock('react-virtuoso', () => ({
+  Virtuoso: ({
+    data,
+    itemContent,
+  }: {
+    data: TrajectoryRow[];
+    itemContent(index: number, row: TrajectoryRow): ReactNode;
+  }) => (
+    <div>
+      {data.map((row, index) => (
+        <div key={row.id}>{itemContent(index, row)}</div>
+      ))}
+    </div>
+  ),
+}));
+
+beforeEach(() => {
+  useChat.setState(useChat.getInitialState(), true);
+  vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
+});
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+it('按用户轮次分组、保留逐项步骤，不把分叉标识当作执行事件', () => {
+  const items: ChatItem[] = [
+    { kind: 'user', id: 'user-one', text: '检查文件' },
+    { kind: 'tool', id: 'read', name: 'Read', input: {}, status: 'done' },
+    { kind: 'assistant', id: 'answer', text: '已检查', streaming: false },
+    { kind: 'fork-point', id: 'point', pointId: 'native-point' },
+    { kind: 'user', id: 'user-two', text: '执行命令' },
+    { kind: 'tool', id: 'command', name: 'Bash', input: {}, status: 'running' },
+  ];
+  expect(projectTrajectory(items).map((row) => [row.kind, row.number])).toEqual([
+    ['turn', 1],
+    ['step', 1],
+    ['step', 2],
+    ['turn', 2],
+    ['step', 1],
+  ]);
+});
+
+it('速度只配对同范围数据，未知耗时、失败、非有限 token 均隐藏', () => {
+  const usage = { source: 'claude' as const, scope: 'turn' as const, outputTokens: 120 };
+  const statistics = { scope: 'turn' as const, durationMs: 2000, usage };
+  expect(averageTokenRate(statistics)).toBe(60);
+  expect(averageTokenRate({ ...statistics, scope: 'step' })).toBeUndefined();
+  expect(averageTokenRate({ ...statistics, durationMs: 0 })).toBeUndefined();
+  expect(averageTokenRate({ ...statistics, isError: true })).toBeUndefined();
+  expect(averageTokenRate({ ...statistics, usage: { ...usage, outputTokens: NaN } })).toBeUndefined();
+  render(<StatisticsLine statistics={statistics} />);
+  expect(screen.getByText('回合平均 60.0 tok/s')).toBeTruthy();
+});
+
+function Fixture() {
+  const dock = useConversationSidebar();
+  const items = useChat((state) => state.items);
+  return (
+    <>
+      <TrajectoryView items={items} running />
+      {dock.open && <ConversationSidebar open close={dock.hide} settings={() => undefined} />}
+    </>
+  );
+}
+
+it('执行步骤打开现有右栏详情，结果实时更新且审批保留可操作入口', async () => {
+  useChat.setState({
+    connection: 'open',
+    running: true,
+    turnId: 'turn',
+    items: [
+      { kind: 'user', id: 'prompt', text: '检查目录' },
+      { kind: 'tool', id: 'command', name: 'Bash', input: { command: 'demo' }, status: 'running', durationMs: 100 },
+      { kind: 'permission', id: 'permission', toolName: 'Write', input: { path: 'demo.txt' } },
+    ],
+  });
+  render(<Fixture />);
+  expect(screen.queryByRole('complementary')).toBeNull();
+  fireEvent.click(await screen.findByRole('button', { name: /查看步骤 1：命令 demo/ }));
+  expect(await screen.findByRole('heading', { name: '步骤详情' })).toBeTruthy();
+  expect(screen.getByText(/"command": "demo"/)).toBeTruthy();
+  expect(screen.getByRole('button', { name: '批准' }).hasAttribute('disabled')).toBe(false);
+  act(() =>
+    useChat.setState((state) => ({
+      items: state.items.map((item) => (item.kind === 'tool' ? { ...item, output: '执行完成', status: 'done' } : item)),
+    })),
+  );
+  expect(screen.getByText('执行完成')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '收起右侧边栏' }));
+  expect(screen.queryByRole('complementary')).toBeNull();
+  expect(useChat.getState().inspectedItemId).toBeUndefined();
+});

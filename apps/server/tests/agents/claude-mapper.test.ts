@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ClaudeEventMapper } from '../../src/agents/claude-mapper';
 
 const stream = (event: unknown) => ({ type: 'stream_event', event, parent_tool_use_id: null, session_id: 's1' });
@@ -261,4 +261,91 @@ it('Claude 仅收到未闭合工具调用后结束时不输出可分叉位置', 
   expect(mapper.map({ type: 'result', subtype: 'error_during_execution', session_id: 's1' })[0]).not.toHaveProperty(
     'forkPoint',
   );
+});
+
+it('Claude 用量只读取本轮主循环，保留零值并忽略累计量和无效值', () => {
+  const mapper = new ClaudeEventMapper();
+  expect(
+    mapper.map({
+      type: 'result',
+      subtype: 'success',
+      usage: {
+        input_tokens: 120,
+        output_tokens: 30,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 20,
+        output_tokens_details: { thinking_tokens: 5 },
+      },
+      modelUsage: { demo: { outputTokens: 9999 } },
+    })[0],
+  ).toMatchObject({
+    usage: {
+      source: 'claude',
+      scope: 'turn',
+      inputTokens: 120,
+      outputTokens: 30,
+      cachedInputTokens: 0,
+      cacheWriteInputTokens: 20,
+      reasoningOutputTokens: 5,
+    },
+  });
+  expect(
+    mapper.map({
+      type: 'result',
+      subtype: 'success',
+      usage: { output_tokens: -3, input_tokens: NaN, total_tokens: Infinity },
+    })[0],
+  ).not.toHaveProperty('usage');
+});
+
+it('Claude 工具重复快照不复制步骤或改变计时，历史不补造耗时', () => {
+  const clock = vi.spyOn(performance, 'now');
+  try {
+    clock.mockReturnValue(100);
+    const mapper = new ClaudeEventMapper();
+    const call = assistant('call', [{ type: 'tool_use', id: 'same', name: 'Read', input: { path: 'demo.ts' } }]);
+    const result = user([{ type: 'tool_result', tool_use_id: 'same', content: 'ok' }]);
+    expect(mapper.map(call)).toHaveLength(1);
+    clock.mockReturnValue(1100);
+    expect(mapper.map(call)).toEqual([]);
+    expect(mapper.map({ type: 'tool_progress', tool_use_id: 'same', elapsed_time_seconds: 0.9 })).toEqual([
+      { type: 'tool_progress', id: 'same', durationMs: 900 },
+    ]);
+    expect(mapper.map(result)).toEqual([
+      { type: 'tool_result', id: 'same', output: 'ok', isError: false, durationMs: 1000, timingSource: 'observed' },
+    ]);
+    expect(mapper.map(result)).toEqual([]);
+    mapper.beginTurn();
+    expect(mapper.map(call)).toHaveLength(1);
+    const history = new ClaudeEventMapper();
+    history.mapHistory(call);
+    expect(history.mapHistory(result)[0]).not.toHaveProperty('durationMs');
+  } finally {
+    clock.mockRestore();
+  }
+});
+
+it('Claude 历史只展示公开 thinking 文本，不展示签名或 redacted 块', () => {
+  const mapper = new ClaudeEventMapper();
+  expect(
+    mapper.mapHistory(
+      assistant('history', [
+        { type: 'thinking', thinking: '公开思考摘要', signature: 'opaque-signature' },
+        { type: 'redacted_thinking', data: 'opaque-data' },
+      ]),
+    ),
+  ).toEqual([{ type: 'reasoning', delta: '公开思考摘要' }]);
+});
+
+it('Claude 公开 thinking 全文在没有增量时保留，流式思考与文本分别去重', () => {
+  const mapper = new ClaudeEventMapper();
+  const thinking = [{ type: 'thinking', thinking: '公开思考', signature: 'opaque' }];
+  expect(mapper.map(assistant('first', thinking))).toEqual([{ type: 'reasoning', delta: '公开思考' }]);
+  mapper.map(stream({ type: 'message_start', message: { id: 'second' } }));
+  mapper.map(delta({ type: 'thinking_delta', thinking: '公开思考' }));
+  expect(mapper.map(assistant('second', [...thinking, { type: 'text', text: '回复' }]))).toEqual([
+    { type: 'text', delta: '回复' },
+  ]);
+  mapper.beginTurn();
+  expect(mapper.map(assistant('second', thinking))).toEqual([{ type: 'reasoning', delta: '公开思考' }]);
 });

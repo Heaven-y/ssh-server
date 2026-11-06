@@ -255,12 +255,12 @@ it('配置保存前发起的刷新不会把忙碌或失败状态带入新配置'
   expect(hook.result.current.data).toEqual(fresh);
 });
 
-it('Antigravity历史不可回放仍可续聊，保留权限说明且不伪造审批', async () => {
+it('旧版 Antigravity 历史不可回放仍可续聊，不常驻防御性说明或伪造审批', async () => {
   vi.spyOn(api, 'sessionEvents').mockRejectedValue(new ApiError(501, '不能回放', { code: 'session_not_replayable' }));
   await useChat.getState().openSession({ agent: 'antigravity', sessionId: 'agy-native' });
   showChat();
   expect(screen.getByText(/Antigravity 的原生历史暂不能回放/)).toBeTruthy();
-  expect(screen.getByText(/权限由 Antigravity 原生配置决定/)).toBeTruthy();
+  expect(screen.queryByText(/权限由 Antigravity 原生配置决定/)).toBeNull();
   expect(screen.queryByRole('button', { name: /允许|批准/ })).toBeNull();
   fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '继续处理' } });
   fireEvent.click(screen.getByRole('button', { name: '发送' }));
@@ -670,7 +670,7 @@ it('上下文用量和窗口与模型强度同区，来源及原生比例通过�
   expect(sent).toHaveLength(0);
 });
 
-it('无数据不渲染上下文按钮，Codex不按用量除窗口推算比例', async () => {
+it('无数据不渲染上下文按钮，有有效窗口时显示最近报告的占比', async () => {
   showComposer();
   // 无原生报告且无压缩事件时，上下文按钮整体隐藏，不再猜测窗口或比例
   expect(screen.queryByRole('button', { name: '上下文用量' })).toBeNull();
@@ -681,9 +681,11 @@ it('无数据不渲染上下文按钮，Codex不按用量除窗口推算比例',
   fireEvent.click(context);
   const details = within(await screen.findByRole('dialog', { name: '上下文用量详情' }));
   expect(details.getByText(/用量 200 tokens \/ 窗口 1,000 tokens/)).toBeTruthy();
-  expect(details.queryByText(/%/)).toBeNull();
+  expect(details.getByText(/用量 200 tokens \/ 窗口 1,000 tokens · 20%/)).toBeTruthy();
+  expect(screen.getByLabelText('上下文占用 20%')).toBeTruthy();
   act(() => useChat.setState({ contextUsage: { source: 'codex_native', usedTokens: 0 } }));
   expect(context.textContent).toContain('上下文 0');
+  expect(screen.queryByLabelText('上下文占用 20%')).toBeNull();
 });
 
 it('输入控制行保留压缩进度与未确认状态，展开可看原生说明', async () => {

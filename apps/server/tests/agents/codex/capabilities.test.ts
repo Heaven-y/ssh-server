@@ -189,7 +189,7 @@ describe('Codex 原生能力目录与发送', () => {
       await handle.interrupt();
       await handle.done;
       expect((await messages()).some((value) => value.method === 'turn/start')).toBe(false);
-      expect(events.at(-1)).toEqual({ type: 'turn_end', isError: false });
+      expect(events.at(-1)).toEqual({ type: 'turn_end', isError: true });
     } finally {
       await handle.interrupt();
       await handle.done;

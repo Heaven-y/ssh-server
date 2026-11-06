@@ -259,12 +259,11 @@ describe('Antigravity 会话提供方', () => {
     });
   });
 
-  it('read 明确报告历史不可读', async () => {
+  it('读取不存在的会话不启动原生后端', async () => {
     const provider = createAntigravitySessions({ readSummaries: () => [] });
-    await expect(provider.read('c1', dir)).rejects.toThrow(/无法读取/);
     await expect(provider.read('c1', dir)).rejects.toMatchObject({
-      status: 501,
-      code: 'session_not_replayable',
+      status: 404,
+      code: 'session_missing',
     });
   });
 
@@ -320,6 +319,23 @@ describe('Antigravity 原生管理接线', () => {
     const created = { ...row, conversationId: 'forked-session', title: '新分支' };
     const rows = [row, created];
     const management = {
+      readTrajectory: vi.fn(async () => ({
+        trajectory: {
+          cascadeId: row.conversationId,
+          steps: [
+            {
+              type: 'CORTEX_STEP_TYPE_USER_INPUT',
+              status: 'CORTEX_STEP_STATUS_DONE',
+              userInput: { query: '示例问题' },
+            },
+            {
+              type: 'CORTEX_STEP_TYPE_PLANNER_RESPONSE',
+              status: 'CORTEX_STEP_STATUS_DONE',
+              plannerResponse: { response: '示例回复' },
+            },
+          ],
+        },
+      })),
       rename: vi.fn(async () => undefined),
       delete: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: created.conversationId })),
@@ -332,6 +348,17 @@ describe('Antigravity 原生管理接线', () => {
       provider: createAntigravitySessions({ readSummaries: () => rows, management }),
     };
   }
+  it('读取原生历史并复核返回身份，不从摘要 preview 伪造正文', async () => {
+    const { dir, provider, management } = setup();
+    const result = await provider.read('source-session', dir);
+    expect(result.events).toEqual([
+      { type: 'user_message', text: '示例问题' },
+      { type: 'text', delta: '示例回复' },
+      { type: 'turn_end', isError: false, forkPoint: '1' },
+    ]);
+    management.readTrajectory.mockResolvedValueOnce({ trajectory: { cascadeId: 'foreign', steps: [] } });
+    await expect(provider.read('source-session', dir)).rejects.toMatchObject({ code: 'session_missing' });
+  });
   it('按已接入能力显示动作，核对归属后调用原生管理，分支结果保留原生身份', async () => {
     const { dir, provider, management } = setup();
     expect(provider.capabilities).toEqual({ rename: true, fork: 'native', delete: 'native' });

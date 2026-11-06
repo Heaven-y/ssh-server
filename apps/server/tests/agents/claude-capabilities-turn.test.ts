@@ -44,6 +44,38 @@ function contextUsage(overrides: Partial<SDKControlGetContextUsageResponse> = {}
     ...overrides,
   };
 }
+
+it('Claude 回合速度截止于 result，不包含后续上下文查询等待', async () => {
+  const clock = vi.spyOn(performance, 'now').mockReturnValue(100);
+  const events: AgentEvent[] = [];
+  try {
+    const source = (async function* () {
+      clock.mockReturnValue(1100);
+      yield { ...result, usage: { input_tokens: 12, output_tokens: 4 } };
+    })();
+    const fake = controlledQuery(source, {
+      getContextUsage: async () => {
+        clock.mockReturnValue(4100);
+        return contextUsage();
+      },
+    });
+    const turn = runClaudeTurn({
+      workspace,
+      text: '简短回复',
+      queryFn: fake.queryFn,
+      emit: (event) => events.push(event),
+      requestPermission: async () => ({ allow: false }),
+    });
+    await turn.done;
+    expect(events.find((event) => event.type === 'turn_end')).toMatchObject({
+      durationMs: 1000,
+      timingSource: 'observed',
+      usage: { outputTokens: 4, scope: 'turn' },
+    });
+  } finally {
+    clock.mockRestore();
+  }
+});
 type Controls = Partial<Pick<ClaudeQuery, 'supportedCommands' | 'getContextUsage' | 'interrupt'>>;
 function controlledQuery(source: Iterable<unknown> | AsyncIterable<unknown> = [result], controls: Controls = {}) {
   const received: SDKUserMessage[] = [];

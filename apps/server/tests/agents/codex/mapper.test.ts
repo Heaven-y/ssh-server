@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CodexEventMapper, turnEnd } from '../../../src/agents/codex/mapper';
+import { emptyCodexUsage } from '../../../src/agents/codex/observability';
 
 describe('Codex 工具与思考事件', () => {
   it('MCP 与文件变更保留工具身份、参数和结果，并去重最终快照', () => {
@@ -18,7 +19,9 @@ describe('Codex 工具与思考事件', () => {
     expect(mapper.map('item/started', { item: mcp })).toEqual([
       { type: 'tool_call', id: 'mcp', name: 'mcp__my-server__remote_exec', input: { command: 'echo test' } },
     ]);
-    expect(mapper.map('item/mcpToolCall/progress', { itemId: 'mcp', message: '执行中' })).toEqual([]);
+    expect(mapper.map('item/mcpToolCall/progress', { itemId: 'mcp', message: '执行中' })).toEqual([
+      { type: 'tool_progress', id: 'mcp', message: '执行中' },
+    ]);
     expect(mapper.map('item/started', { item: file })).toEqual([
       { type: 'tool_call', id: 'file', name: 'fileChange', input: { changes } },
     ]);
@@ -161,7 +164,7 @@ describe('Codex 原生分叉点', () => {
     const turn = { id: 'native-turn-id', status, items: [] };
     expect(turnEnd(turn)).toMatchObject({ type: 'turn_end', forkPoint: 'native-turn-id' });
     expect(new CodexEventMapper().history(turn)).toEqual([
-      { type: 'turn_end', isError: status === 'failed', forkPoint: 'native-turn-id' },
+      { type: 'turn_end', isError: status !== 'completed', forkPoint: 'native-turn-id' },
     ]);
   });
 
@@ -173,5 +176,158 @@ describe('Codex 原生分叉点', () => {
   ])('未确认结束或没有有效原生身份时不生成分叉点：%j', (turn) => {
     expect(turnEnd(turn)).not.toHaveProperty('forkPoint');
     expect(new CodexEventMapper().history({ ...turn, items: [] }).at(-1)).not.toHaveProperty('forkPoint');
+  });
+});
+
+describe('Codex 用量与执行轨迹', () => {
+  const report = (mapper: CodexEventMapper, input: number, output: number, lastOutput = output) =>
+    mapper.map('thread/tokenUsage/updated', {
+      tokenUsage: {
+        total: { inputTokens: input, outputTokens: output, totalTokens: input + output },
+        last: { totalTokens: 10 + lastOutput, outputTokens: lastOutput },
+        modelContextWindow: 1000,
+      },
+    });
+
+  it('按轮次基线取累计增量，重复通知不相加，恢复首轮与计数重置不伪造用量', () => {
+    const first = new CodexEventMapper();
+    first.beginUsage(emptyCodexUsage());
+    report(first, 50, 20);
+    report(first, 90, 30, 10);
+    report(first, 90, 30, 10);
+    expect(first.turnUsage()).toEqual({
+      source: 'codex',
+      scope: 'turn',
+      inputTokens: 90,
+      outputTokens: 30,
+      totalTokens: 120,
+    });
+    const resumed = new CodexEventMapper();
+    resumed.beginUsage();
+    report(resumed, 500, 100);
+    expect(resumed.turnUsage()).toBeUndefined();
+    const next = new CodexEventMapper();
+    next.beginUsage(resumed.cumulativeUsage());
+    report(next, 600, 130, 5);
+    expect(next.turnUsage()).toMatchObject({ inputTokens: 100, outputTokens: 30, totalTokens: 130 });
+    report(next, 20, 10);
+    report(next, 1000, 200);
+    expect(next.turnUsage()).toBeUndefined();
+  });
+
+  it('缺失字段不以零填充，缺失总量会使本轮统计失效', () => {
+    const mapper = new CodexEventMapper();
+    mapper.beginUsage({ inputTokens: 10, totalTokens: 20 });
+    report(mapper, 30, 10);
+    expect(mapper.turnUsage()).toEqual({ source: 'codex', scope: 'turn', inputTokens: 20, totalTokens: 20 });
+    mapper.map('thread/tokenUsage/updated', { tokenUsage: { last: { totalTokens: 100 } } });
+    report(mapper, 40, 20);
+    expect(mapper.turnUsage()).toBeUndefined();
+    mapper.beginUsage({ inputTokens: 30, outputTokens: 20 });
+    mapper.map('thread/tokenUsage/updated', { tokenUsage: { total: { outputTokens: 25 } } });
+    report(mapper, 10, 30);
+    expect(mapper.turnUsage()).toBeUndefined();
+  });
+
+  it('压缩开始后没有新用量通知时，不将压缩前快照用作结束基线', () => {
+    const mapper = new CodexEventMapper();
+    mapper.beginUsage(emptyCodexUsage());
+    report(mapper, 100, 20);
+    const item = { id: 'compact', type: 'contextCompaction' };
+    mapper.map('item/started', { item });
+    mapper.map('item/completed', { item });
+    expect(mapper.turnUsage()).toBeUndefined();
+    expect(mapper.cumulativeUsage()).toBeUndefined();
+    report(mapper, 150, 30);
+    expect(mapper.turnUsage()).toMatchObject({ inputTokens: 150, outputTokens: 30 });
+  });
+
+  it.each([undefined, null, 'inProgress', 'queued', 'unknown'])('工具状态 %s 不会被完成快照误标成功', (status) => {
+    const item = { id: 'command', type: 'commandExecution', command: 'demo', status };
+    const mapper = new CodexEventMapper();
+    expect(mapper.map('item/started', { item })).toHaveLength(1);
+    expect(mapper.map('item/completed', { item })).toEqual([]);
+    expect(mapper.finishItems({ status: 'completed', items: [item] })).toEqual([]);
+    expect(
+      new CodexEventMapper()
+        .history({ status: 'completed', items: [item] })
+        .some((event) => event.type === 'tool_result'),
+    ).toBe(false);
+  });
+
+  it('中断轮次保留分叉点但标为非成功，未确认结束的无状态步骤不补结果', () => {
+    const usage = { source: 'codex' as const, scope: 'turn' as const, outputTokens: 50 };
+    expect(turnEnd({ id: 'interrupted-turn', status: 'interrupted', durationMs: 100 }, usage)).toMatchObject({
+      isError: true,
+      forkPoint: 'interrupted-turn',
+      usage,
+    });
+    const item = { id: 'web', type: 'webSearch', query: '示例' };
+    expect(new CodexEventMapper().finishItems({ status: 'interrupted', items: [item] })).toMatchObject([
+      { type: 'tool_call' },
+    ]);
+    expect(
+      new CodexEventMapper()
+        .history({ status: 'interrupted', items: [item] })
+        .some((event) => event.type === 'tool_result'),
+    ).toBe(false);
+  });
+
+  it('搜索、计划、动态工具与协作保留原生输出，起止时间只在完整有效时转为耗时', () => {
+    const mapper = new CodexEventMapper();
+    const search = { id: 'search', type: 'webSearch', query: '示例', startedAtMs: 100 };
+    expect(mapper.map('item/started', { item: search })[0]).toMatchObject({
+      name: 'webSearch',
+      input: { query: '示例' },
+    });
+    expect(
+      mapper.map('item/completed', { item: { ...search, startedAtMs: null, completedAtMs: 135 } })[0],
+    ).toMatchObject({ durationMs: 35, timingSource: 'native' });
+    const history = new CodexEventMapper().history({
+      status: 'completed',
+      items: [
+        { id: 'plan', type: 'plan', text: '执行检查' },
+        {
+          id: 'dynamic',
+          type: 'dynamicToolCall',
+          status: 'failed',
+          tool: 'demo',
+          arguments: {},
+          success: false,
+          durationMs: 25,
+          contentItems: [{ type: 'inputText', text: '失败原因' }],
+        },
+        {
+          id: 'collab',
+          type: 'collabAgentToolCall',
+          status: 'completed',
+          tool: 'spawnAgent',
+          agentsStates: { child: { status: 'completed' } },
+        },
+      ],
+    });
+    expect(history).toContainEqual({ type: 'tool_result', id: 'plan', output: '执行检查', isError: false });
+    expect(history).toContainEqual({
+      type: 'tool_result',
+      id: 'dynamic',
+      output: '失败原因',
+      isError: true,
+      durationMs: 25,
+      timingSource: 'native',
+    });
+    expect(history).toContainEqual({
+      type: 'tool_result',
+      id: 'collab',
+      output: '{"child":{"status":"completed"}}',
+      isError: false,
+    });
+    expect(
+      mapper.map('item/completed', { item: { id: 'missing-time', type: 'imageView', path: 'demo.png' } }).at(-1),
+    ).not.toHaveProperty('durationMs');
+    expect(
+      new CodexEventMapper()
+        .history({ items: [{ id: 'still-running', type: 'commandExecution', status: 'inProgress' }] })
+        .filter((event) => event.type === 'tool_result'),
+    ).toEqual([]);
   });
 });

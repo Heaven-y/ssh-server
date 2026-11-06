@@ -8,6 +8,14 @@ export const object = (value: unknown): ConfigObject =>
 export const string = (value: unknown) => (typeof value === 'string' ? value : '');
 export const has = (value: ConfigObject, key: string) => Object.hasOwn(value, key);
 
+/** 旧配置把地址拼进 modelName；展示与迁移时只提取真实模型 ID。 */
+export function antigravityModelId(value: unknown): string {
+  const raw = string(value).trim();
+  if (!raw.startsWith('gemini-api://')) return raw;
+  const model = raw.slice('gemini-api://'.length).split('/models/').at(-1) ?? '';
+  return model.split(/[?#]/, 1)[0]!.trim();
+}
+
 export function parseModelConfig(agent: AgentKind, content: string): ConfigObject {
   try {
     if (!content.trim()) return {};
@@ -172,9 +180,9 @@ export function antigravityFields(config: ConfigObject): ModelSettingField[] {
   const custom = selectedAntigravityModel(config);
   return [
     field('displayName', '模型名称', custom?.label, { group: 'model', placeholder: '与模型 ID 相同' }),
-    field('model', '默认模型', custom ? string(custom.modelName).split('/models/').at(-1) : config.model, {
+    field('model', '默认模型', custom ? antigravityModelId(custom.modelName) : config.model, {
       group: 'model',
-      hint: '填写 agy /model 中的模型显示名称；留空使用原生默认。',
+      hint: '选择原生模型或填写服务商的模型 ID；留空使用原生默认。',
     }),
     field('reasoningEffort', '推理强度', '随模型选择', {
       group: 'model',
@@ -199,6 +207,8 @@ export function antigravityFields(config: ConfigObject): ModelSettingField[] {
 
 export function selectedAntigravityModel(config: ConfigObject): ConfigObject | undefined {
   const models = object(object(config.customModelsConfig).customModels);
+  const selectedKey = string(config.model);
+  if (selectedKey && has(models, selectedKey)) return { ...object(models[selectedKey]), key: selectedKey };
   const matches = Object.entries(models)
     .map(([key, value]): ConfigObject => ({ ...object(value), key }))
     .filter(
@@ -206,7 +216,7 @@ export function selectedAntigravityModel(config: ConfigObject): ConfigObject | u
         entry.key === config.model ||
         entry.label === config.model ||
         entry.modelName === config.model ||
-        string(entry.modelName).split('/models/').at(-1) === config.model,
+        antigravityModelId(entry.modelName) === config.model,
     );
   return matches.length === 1 ? matches[0] : undefined;
 }

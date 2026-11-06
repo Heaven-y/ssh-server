@@ -1,7 +1,14 @@
 // 把 Agent 事件转成界面条目：实时对话和历史记录共用，纯函数，不修改入参
 import { NativeSessionIdSchema, type AgentEvent, type CompactionState } from '@agentdeck/shared';
+import { finiteCount, type ChatStatistics } from './chat-metrics';
 
 export type ChatItem =
+  | ({ kind: 'statistics'; id: string; nativeId?: string } & ChatStatistics)
+  | (Omit<Extract<AgentEvent, { type: 'activity' }>, 'type'> & {
+      kind: 'activity';
+      nativeId?: string;
+      incomplete?: boolean;
+    })
   | { kind: 'fork-point'; id: string; pointId: string }
   | { kind: 'compaction'; id: string; state: CompactionState; incomplete?: boolean }
   | { kind: 'user'; id: string; text: string }
@@ -10,10 +17,15 @@ export type ChatItem =
   | {
       kind: 'tool';
       id: string;
+      nativeId?: string;
       name: string;
       input: unknown;
       output?: string;
       isError?: boolean;
+      durationMs?: number;
+      timingSource?: 'native' | 'observed';
+      usage?: ChatStatistics['usage'];
+      progress?: string;
       status: 'running' | 'done' | 'incomplete';
     }
   | {
@@ -64,14 +76,89 @@ export function reduceChat(items: ChatItem[], e: AgentEvent): ChatItem[] {
     case 'reasoning':
       return appendText(items, 'reasoning', e.delta);
     case 'tool_call':
-      return [...items, { kind: 'tool', id: e.id, name: e.name, input: e.input, status: 'running' }];
+      return appendTool(items, e);
     case 'tool_result':
-      return items.map((i) =>
-        i.kind === 'tool' && i.id === e.id ? { ...i, output: e.output, isError: e.isError, status: 'done' } : i,
-      );
+    case 'tool_progress':
+      return updateTool(items, e);
+    case 'step_usage':
+      return updateStepStatistics(items, e);
+    case 'activity':
+      return updateActivity(items, e);
     default:
       return reduceLifecycle(items, e);
   }
+}
+
+function updateActivity(items: ChatItem[], event: Extract<AgentEvent, { type: 'activity' }>): ChatItem[] {
+  const { type: _type, ...data } = event;
+  const index = currentNativeItem(items, 'activity', event.id);
+  const activity: ChatItem = {
+    ...data,
+    kind: 'activity',
+    id: index < 0 ? nextId(items, 'activity') : items[index]!.id,
+    nativeId: event.id,
+    durationMs: finiteCount(event.durationMs) ? event.durationMs : undefined,
+    incomplete: false,
+  };
+  if (index < 0) return [...items, activity];
+  return items.map((item, position) => (position === index ? { ...item, ...activity } : item));
+}
+
+function appendTool(items: ChatItem[], event: Extract<AgentEvent, { type: 'tool_call' }>): ChatItem[] {
+  if (currentNativeItem(items, 'tool', event.id) >= 0) return items;
+  return [
+    ...items,
+    {
+      kind: 'tool',
+      id: nextId(items, 'tool'),
+      nativeId: event.id,
+      name: event.name,
+      input: event.input,
+      status: 'running',
+    },
+  ];
+}
+
+/** 原生步骤 ID 可能从零重新计数，只允许更新当前用户轮次里的对应条目。 */
+function currentNativeItem(items: ChatItem[], kind: 'tool' | 'activity' | 'statistics', nativeId: string): number {
+  const start = items.findLastIndex((item) => item.kind === 'user');
+  return items.findLastIndex(
+    (item, index) => index > start && item.kind === kind && (item.nativeId ?? item.id) === nativeId,
+  );
+}
+
+function toolUpdate(event: Extract<AgentEvent, { type: 'tool_result' | 'tool_progress' }>) {
+  const duration = finiteCount(event.durationMs) ? { durationMs: event.durationMs } : {};
+  if (event.type === 'tool_progress') return { ...duration, progress: event.message };
+  return {
+    durationMs: finiteCount(event.durationMs) ? event.durationMs : undefined,
+    ...(event.timingSource ? { timingSource: event.timingSource } : {}),
+    ...(event.usage ? { usage: event.usage } : {}),
+    output: event.output,
+    isError: event.isError,
+    status: 'done' as const,
+    progress: undefined,
+  };
+}
+
+function updateTool(
+  items: ChatItem[],
+  event: Extract<AgentEvent, { type: 'tool_result' | 'tool_progress' }>,
+): ChatItem[] {
+  const index = currentNativeItem(items, 'tool', event.id);
+  return items.map((item, position) => {
+    if (position !== index || item.kind !== 'tool') return item;
+    if (event.type === 'tool_progress' && item.status !== 'running') return item;
+    return { ...item, ...toolUpdate(event) };
+  });
+}
+
+function updateStepStatistics(items: ChatItem[], event: Extract<AgentEvent, { type: 'step_usage' }>): ChatItem[] {
+  const index = currentNativeItem(items, 'statistics', event.id);
+  const id = index < 0 ? nextId(items, 'step-statistics') : items[index]!.id;
+  const statistics: ChatItem = { kind: 'statistics', id, nativeId: event.id, scope: 'step', usage: event.usage };
+  if (finiteCount(event.durationMs)) statistics.durationMs = event.durationMs;
+  return index < 0 ? [...items, statistics] : items.map((item, position) => (position === index ? statistics : item));
 }
 
 function finishItems(items: ChatItem[]): ChatItem[] {
@@ -80,15 +167,52 @@ function finishItems(items: ChatItem[]): ChatItem[] {
     if (item.kind === 'assistant' && item.streaming) return { ...item, streaming: false };
     if (item.kind === 'tool' && item.status === 'running') return { ...item, status: 'incomplete' };
     if (item.kind === 'permission' && !item.resolved) return { ...item, resolved: 'cancelled', responding: false };
-    return item;
+    return finishActivity(item);
   });
 }
 
-function finishTurn(items: ChatItem[], pointId?: string): ChatItem[] {
-  const finished = finishItems(items);
+function finishActivity(item: ChatItem): ChatItem {
+  return item.kind === 'activity' && item.status === 'running' ? { ...item, incomplete: true } : item;
+}
+
+function finishTurn(items: ChatItem[], event: Extract<AgentEvent, { type: 'turn_end' }>): ChatItem[] {
+  const finished = finishStatistics(finishItems(items), event);
+  const pointId = event.forkPoint;
   if (!pointId || !NativeSessionIdSchema.safeParse(pointId).success) return finished;
   if (items.some((item) => item.kind === 'fork-point' && item.pointId === pointId)) return finished;
   return [...finished, { kind: 'fork-point', id: nextId(items, 'fork-point'), pointId }];
+}
+
+function finishStatistics(items: ChatItem[], event: Extract<AgentEvent, { type: 'turn_end' }>): ChatItem[] {
+  const existing = lastTurnStatistics(items);
+  if (!finiteCount(event.durationMs) && !event.usage) return markStatisticsFailure(items, existing, event.isError);
+  const statistics: ChatItem = {
+    ...existing,
+    kind: 'statistics',
+    id: existing?.id ?? nextId(items, 'statistics'),
+    scope: 'turn',
+    isError: event.isError || existing?.isError === true,
+    ...reportedStatistics(event),
+  };
+  return existing ? items.map((item) => (item === existing ? statistics : item)) : [...items, statistics];
+}
+
+function markStatisticsFailure(items: ChatItem[], existing: ChatItem | undefined, isError: boolean): ChatItem[] {
+  if (!existing || !isError) return items;
+  return items.map((item) => (item === existing ? { ...item, isError: true } : item));
+}
+
+function lastTurnStatistics(items: ChatItem[]): Extract<ChatItem, { kind: 'statistics' }> | undefined {
+  const tail = items.findLast((item) => item.kind !== 'fork-point' && item.kind !== 'error');
+  return tail?.kind === 'statistics' && tail.scope === 'turn' ? tail : undefined;
+}
+
+function reportedStatistics(event: Extract<AgentEvent, { type: 'turn_end' }>): Partial<ChatStatistics> {
+  return {
+    ...(finiteCount(event.durationMs) ? { durationMs: event.durationMs } : {}),
+    ...(event.usage ? { usage: event.usage } : {}),
+    ...(event.timingSource ? { timingSource: event.timingSource } : {}),
+  };
 }
 
 /** 只由原生压缩事件确认结果；轮次结束不能把未确认的压缩标成成功。 */
@@ -108,7 +232,7 @@ function reduceLifecycle(items: ChatItem[], e: AgentEvent): ChatItem[] {
         { kind: 'permission', id: e.requestId, toolName: e.toolName, input: e.input, description: e.description },
       ];
     case 'turn_end':
-      return finishTurn(items, e.forkPoint);
+      return finishTurn(items, e);
     case 'permission_resolved':
       return resolvePermission(items, e.requestId, e.decision);
     case 'error':

@@ -3,7 +3,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { discoverAntigravityCapabilities } from '../../../src/agents/antigravity/capabilities';
-import { parseAntigravityModelList } from '../../../src/agents/antigravity/model-catalog';
+import {
+  parseAntigravityModelList,
+  readAntigravityModelSettings,
+  configuredAntigravityModels,
+  antigravityDefaultModel,
+} from '../../../src/agents/antigravity/model-catalog';
 import { runProcess } from '../../../src/process/run';
 vi.mock('../../../src/process/executable', () => ({ resolveLocalCommand: () => ({ command: 'agy', args: [] }) }));
 vi.mock('../../../src/process/run', () => ({ runProcess: vi.fn() }));
@@ -28,6 +33,26 @@ it('账号模式只读已配置模型，不启动可能加载 MCP 的真实 CLI'
   expect(catalog.models).toEqual([{ id: 'Example Native', label: 'Example Native', description: '原生默认模型' }]);
   expect(catalog.modelWarning).toBe('');
   expect(runProcess).not.toHaveBeenCalled();
+});
+
+it('模型目录兼容裸 ID 和旧 URI，使用稳定键并保留显示名', async () => {
+  const homeDir = await fixture({
+    modelProvider: 'gemini',
+    model: 'new-model',
+    customModelsConfig: {
+      customModels: {
+        stable: { modelName: 'new-model', label: '显示名称', maxTokens: 32768 },
+        old: { modelName: 'gemini-api://example.test/models/old-model', label: '旧名称' },
+      },
+    },
+  });
+  const settings = await readAntigravityModelSettings({ homeDir, env: {} });
+  expect(settings.customModelsConfig?.customModels.stable?.modelName).toBe('new-model');
+  expect(configuredAntigravityModels(settings)).toEqual([
+    { id: 'stable', label: '显示名称', description: '原生自定义模型' },
+    { id: 'old', label: '旧名称', description: '原生自定义模型' },
+  ]);
+  expect(await antigravityDefaultModel({ HOME: homeDir, USERPROFILE: homeDir })).toBe('stable');
 });
 
 it('Gemini 发现隔离用户目录和工作目录，保持原生 TSV 标识且不复制密钥或执行扩展', async () => {

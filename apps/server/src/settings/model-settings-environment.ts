@@ -10,6 +10,7 @@ import type { LaunchEnvironment } from './launch-environment';
 import { NativeResourceError } from './native-resources-errors';
 import { ModelSettingsError } from './model-settings-patch';
 import { field, object, string, type ConfigObject } from './model-settings-fields';
+import { legacyAntigravityBaseUrl } from './model-settings-custom';
 
 export type ModelSettingsEnvironment = Pick<LaunchEnvironment, 'read' | 'save' | 'resolve'>;
 type Snapshot = { document: LaunchEnvironmentDocument; resolved: NodeJS.ProcessEnv };
@@ -74,12 +75,23 @@ export async function advancedModelEnvironmentWarnings(
 }
 
 function requestedVariables(changes: Changes): Variable[] {
-  return Object.entries(connectionVariables).flatMap(([key, name]) => {
-    if (!Object.hasOwn(changes, key)) return [];
-    const value = changes[key];
-    if (key === 'apiKey' && value !== null && !value?.trim()) return [];
-    return [{ name, mode: value?.trim() ? 'set' : 'disabled', ...(value?.trim() ? { value: value.trim() } : {}) }];
-  });
+  return Object.entries(connectionVariables).flatMap(([key, name]) => requestedVariable(changes, key, name));
+}
+
+function requestedVariable(changes: Changes, key: string, name: string): Variable[] {
+  if (!Object.hasOwn(changes, key)) return [];
+  const value = key === 'baseUrl' ? geminiBaseUrl(changes[key]) : changes[key];
+  const trimmed = value?.trim();
+  if (key === 'apiKey' && value !== null && !trimmed) return [];
+  return [trimmed ? { name, mode: 'set', value: trimmed } : { name, mode: 'disabled' }];
+}
+
+/** agy 自行追加 v1beta，表单接受常见完整 API 根并只去掉末尾重复版本段。 */
+function geminiBaseUrl(value: string | null | undefined): string | null | undefined {
+  if (!value?.trim()) return value;
+  const url = new URL(value.trim());
+  url.pathname = url.pathname.replace(/\/v1beta\/?$/, '').replace(/\/$/, '');
+  return url.toString().replace(/\/$/, '');
 }
 
 function originalVariables(snapshot: Snapshot, variables: Variable[]): Variable[] {
@@ -122,4 +134,17 @@ export function nativeModelChanges(changes: Changes, snapshot?: Snapshot): Chang
   if (needsAddress && !Object.hasOwn(native, 'baseUrl') && snapshot?.resolved.GOOGLE_GEMINI_BASE_URL)
     native.baseUrl = snapshot.resolved.GOOGLE_GEMINI_BASE_URL;
   return native;
+}
+
+/** 迁移旧 URI 时只补缺失地址；用户显式设置、继承的地址或停用选择都优先。 */
+export function antigravityConnectionChanges(changes: Changes, config: ConfigObject, snapshot?: Snapshot): Changes {
+  if (Object.hasOwn(changes, 'baseUrl') || snapshot?.resolved.GOOGLE_GEMINI_BASE_URL) return changes;
+  const prior = snapshot?.document.variables.find((variable) => variable.name === 'GOOGLE_GEMINI_BASE_URL');
+  if (prior?.mode === 'disabled') return changes;
+  const modelChange = ['model', 'displayName', 'contextWindow', 'modelProvider'].some((key) =>
+    Object.hasOwn(changes, key),
+  );
+  if (!modelChange) return changes;
+  const endpoint = legacyAntigravityBaseUrl({ ...config, model: changes.model ?? config.model });
+  return endpoint ? { ...changes, baseUrl: endpoint } : changes;
 }

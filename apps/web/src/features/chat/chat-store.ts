@@ -44,6 +44,9 @@ type ChatState = {
   contextUsage?: ContextUsage | null;
   compaction?: CompactionState;
   items: ChatItem[];
+  inspectedItemId?: string;
+  inspectorRequest: number;
+  inspectItem(id?: string): void;
   /** 网页选择代次；原生首次返回sessionId不会重建时间线。 */
   conversationVersion: number;
   running: boolean;
@@ -84,6 +87,7 @@ const emptyConversation = {
   contextUsage: undefined,
   compaction: undefined,
   items: [] as ChatItem[],
+  inspectedItemId: undefined,
   running: false,
   turnId: undefined,
   pendingClientTurnId: undefined,
@@ -211,7 +215,12 @@ export const useChat = create<ChatState>()((set, get) => ({
   reasoningEfforts: { ...DEFAULT_REASONING_EFFORTS },
   sessionOperations: {},
   sessionModels: {},
+  inspectorRequest: 0,
   ...emptyConversation,
+  inspectItem(id) {
+    if (id && !get().items.some((item) => item.id === id)) return;
+    set((state) => ({ inspectedItemId: id, inspectorRequest: state.inspectorRequest + 1 }));
+  },
   selectWorkspace(id) {
     if (get().workspaceId === id) return;
     if (!allowConversationNavigation()) return;

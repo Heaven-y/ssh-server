@@ -1,9 +1,11 @@
-import { CircleAlert, X } from 'lucide-react';
+import { CircleAlert, ListTree, MessageSquare, X } from 'lucide-react';
+import { useState } from 'react';
 import type { Workspace } from '@agentdeck/shared';
 import { buttonClass } from '../../ui/styles';
 import { useChat } from './chat-store';
 import { Composer } from './Composer';
 import { ChatTimeline } from './ChatTimeline';
+import { TrajectoryView } from './TrajectoryView';
 
 function Banner() {
   const banner = useChat((s) => s.banner);
@@ -54,7 +56,7 @@ function HistoryFailure() {
   );
 }
 
-function Messages() {
+function Messages({ view }: { view: 'chat' | 'trajectory' }) {
   const items = useChat((s) => s.items);
   const running = useChat((s) => s.running);
   const loading = useChat((s) => s.loadingHistory);
@@ -64,6 +66,7 @@ function Messages() {
   const sessionId = useChat((s) => s.sessionId);
   if (loading) return <p className="m-auto text-sm text-muted-foreground">正在加载会话…</p>;
   if (historyError && items.length === 0) return null;
+  if (view === 'trajectory') return <TrajectoryView key={version} items={items} running={running} />;
   if (items.length === 0)
     return (
       <div className="m-auto max-w-lg px-6 py-12 text-center">
@@ -80,23 +83,34 @@ function Messages() {
 }
 
 export function ChatView({ workspace }: { workspace: Workspace }) {
-  const agent = useChat((s) => s.agent);
   const version = useChat((s) => s.conversationVersion);
+  const [view, setView] = useState<'chat' | 'trajectory'>('chat');
   return (
     <section className="conversation" aria-label={`${workspace.name}会话`}>
+      <div role="group" aria-label="会话视图" className="flex shrink-0 items-center gap-1 px-5 py-2">
+        <button
+          type="button"
+          aria-pressed={view === 'chat'}
+          className={`${buttonClass('ghost')} rounded-lg px-3 ${view === 'chat' ? 'bg-muted text-foreground' : ''}`}
+          onClick={() => setView('chat')}
+        >
+          <MessageSquare aria-hidden className="size-3.5" />
+          对话
+        </button>
+        <button
+          type="button"
+          aria-pressed={view === 'trajectory'}
+          className={`${buttonClass('ghost')} rounded-lg px-3 ${view === 'trajectory' ? 'bg-muted text-foreground' : ''}`}
+          onClick={() => setView('trajectory')}
+        >
+          <ListTree aria-hidden className="size-3.5" />
+          轨迹
+        </button>
+      </div>
       <Banner />
       <HistoryFailure />
-      {agent === 'antigravity' && (
-        <details className="conversation-notice text-xs leading-5 text-muted-foreground">
-          <summary className="w-fit cursor-pointer rounded-lg py-1 hover:text-foreground">原生会话说明</summary>
-          <p className="mt-1 leading-6">
-            权限由 Antigravity
-            原生配置决定；需要确认的工具在无界面模式下可能被拒绝。历史轨迹暂不能回放，本次收到的内容仅保留在当前页面。
-          </p>
-        </details>
-      )}
       <div className="flex min-h-0 flex-1 flex-col">
-        <Messages />
+        <Messages view={view} />
       </div>
       <Composer key={version} />
     </section>

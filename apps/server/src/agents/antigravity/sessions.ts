@@ -8,6 +8,7 @@ import { nativeSessionDirectory, resolveProjectId } from '../../sessions/ownersh
 import { NativeSessionIdSchema } from '@agentdeck/shared';
 import { sameSessionDirectory } from '../session-scope';
 import type { AntigravitySessionManagement } from './session-management-types';
+import { antigravityHistory } from './history';
 
 /** Antigravity 在用户目录下维护自己的会话摘要库，不随项目目录变化。 */
 export const ANTIGRAVITY_DB_PATH = path.join(homedir(), '.gemini', 'antigravity-cli', 'conversation_summaries.db');
@@ -46,7 +47,7 @@ function nativeSummary(row: SummaryRow): NativeSessionSummary {
 }
 
 /**
- * Antigravity 目前只暴露会话元数据：历史轨迹是私有格式，M1 不伪造回合事件。
+ * 摘要来自原生 SQLite；正文经已核验身份的原生轨迹接口读取，不维护第二份会话。
  * 列表读取失败时降级为空，避免一个库的问题拖垮整个会话面板。
  */
 export function createAntigravitySessions(api: Partial<AntigravitySessionsApi> = {}): SessionProvider {
@@ -82,14 +83,19 @@ export function createAntigravitySessions(api: Partial<AntigravitySessionsApi> =
       if (archived) return Promise.reject(new SessionError(400, 'unsupported_action', 'Antigravity 不支持归档会话'));
       return Promise.resolve(rows().map(nativeSummary));
     },
-    read() {
-      return Promise.reject(
-        new SessionError(
-          501,
-          'session_not_replayable',
-          'Antigravity 的会话历史以私有轨迹格式保存在本机，当前无法读取；可以继续对话。',
-        ),
-      );
+    async read(id, dir, signal) {
+      signal?.throwIfAborted();
+      const found = belongs(id, dir);
+      if (!api.management?.readTrajectory)
+        throw new SessionError(503, 'session_runtime_failed', 'Antigravity 历史读取服务尚未就绪。');
+      const cwd = nativeSessionDirectory({ workspaceUris: found.workspaceUris });
+      if (!cwd || !(await sameSessionDirectory(cwd, dir)))
+        throw new SessionError(404, 'session_missing', 'Antigravity 会话的目录不匹配');
+      const { trajectory } = await api.management.readTrajectory(id, cwd, signal);
+      signal?.throwIfAborted();
+      if (trajectory.cascadeId !== id)
+        throw new SessionError(404, 'session_missing', 'Antigravity 返回的会话身份不匹配');
+      return { session: nativeSummary(found), cwd, events: antigravityHistory(trajectory) };
     },
     assertBelongs(id, dir, signal) {
       signal?.throwIfAborted();

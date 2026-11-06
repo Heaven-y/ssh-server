@@ -4,6 +4,7 @@ import { SessionError } from '../../chat/sessions';
 export type ManagementRecord = Record<string, unknown>;
 export type ManagementMethod =
   | 'GetCascadeTrajectory'
+  | 'GetCascadeTrajectorySteps'
   | 'GetConversationMetadata'
   | 'ForkConversation'
   | 'DeleteCascadeTrajectory'

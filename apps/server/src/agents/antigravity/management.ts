@@ -9,6 +9,7 @@ import { sameSessionDirectory } from '../session-scope';
 import { nativeSessionDirectory } from '../../sessions/ownership';
 import type { AntigravitySessionManagement } from './session-management-types';
 import { startManagementBackend } from './management-process';
+import { completeTrajectory } from './trajectory-read';
 import {
   managementFailure,
   NativeTrajectoryMissing,
@@ -53,8 +54,12 @@ async function assertDirectory(metadata: ManagementRecord, dir: string) {
   if (!(await sameSessionDirectory(directory, dir))) throw missing();
 }
 
-async function checked(backend: ManagementBackend, id: string, dir: string) {
-  const result = await backend.request('GetCascadeTrajectory', { cascadeId: id });
+type RunOptions = { recoverDelete?: boolean; full?: boolean; signal?: AbortSignal };
+async function checked(backend: ManagementBackend, id: string, dir: string, options: RunOptions = {}) {
+  const result = await backend.request('GetCascadeTrajectory', {
+    cascadeId: id,
+    ...(options.full ? { trajectoryVerbosity: 'CLIENT_TRAJECTORY_VERBOSITY_FULL' } : {}),
+  });
   const trajectory = object(result.trajectory);
   if (trajectory.cascadeId !== id) throw missing();
   const metadata = object(trajectory.metadata);
@@ -63,7 +68,7 @@ async function checked(backend: ManagementBackend, id: string, dir: string) {
     throw new SessionError(400, 'unsupported_action', '不能单独管理 Antigravity 内部子代理会话。');
   if (result.status !== 'CASCADE_RUN_STATUS_IDLE')
     throw new SessionError(409, 'session_busy', 'Antigravity 会话尚未空闲，请结束后再管理。');
-  return trajectory;
+  return options.full ? completeTrajectory(backend, result, options.signal) : trajectory;
 }
 
 /** 原生摘要异步落库：只检查指定 ID，失败不伪装成“尚未创建”。 */
@@ -138,13 +143,23 @@ export function createAntigravitySessionManagement(
         signal: controller.signal,
         env: (await options.environment?.()) ?? options.env ?? process.env,
       }));
+  async function checkOrRecover(backend: ManagementBackend, id: string, dir: string, runOptions: RunOptions) {
+    try {
+      return await checked(backend, id, dir, runOptions);
+    } catch (error) {
+      if (!runOptions.recoverDelete || !(error instanceof NativeTrajectoryMissing) || !(await matches(id, dir)))
+        throw error;
+      return {};
+    }
+  }
   async function run<T>(
     id: string,
     dir: string,
     action: (backend: ManagementBackend, trajectory: ManagementRecord) => Promise<T>,
-    recoverDelete = false,
+    runOptions: RunOptions = {},
   ) {
     assertId(id);
+    runOptions.signal?.throwIfAborted();
     if (controller.signal.aborted) throw managementFailure();
     if (!path.isAbsolute(dir)) throw missing();
     const pending = start(dir);
@@ -156,22 +171,22 @@ export function createAntigravitySessionManagement(
       starting.delete(pending);
     }
     active.add(backend);
+    const abort = () => void backend.close().catch(() => undefined);
+    runOptions.signal?.addEventListener('abort', abort, { once: true });
     try {
+      runOptions.signal?.throwIfAborted();
       if (controller.signal.aborted) throw managementFailure();
-      let trajectory: ManagementRecord;
-      try {
-        trajectory = await checked(backend, id, dir);
-      } catch (error) {
-        if (!recoverDelete || !(error instanceof NativeTrajectoryMissing) || !(await matches(id, dir))) throw error;
-        trajectory = {};
-      }
+      const trajectory = await checkOrRecover(backend, id, dir, runOptions);
       return await action(backend, trajectory);
     } finally {
+      runOptions.signal?.removeEventListener('abort', abort);
       await backend.close();
       active.delete(backend);
     }
   }
   return {
+    readTrajectory: (id, dir, signal) =>
+      run(id, dir, (_backend, trajectory) => Promise.resolve({ trajectory }), { full: true, signal }),
     async dispose() {
       controller.abort();
       const close = Promise.allSettled([
@@ -212,7 +227,7 @@ export function createAntigravitySessionManagement(
           }
           await clearSummary(backend, id, ready);
         },
-        true,
+        { recoverDelete: true },
       ),
     fork: (id, dir, input) =>
       run(id, dir, async (backend, trajectory) => {

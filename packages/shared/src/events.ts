@@ -1,6 +1,6 @@
 // Agent 对话事件：后端把各 CLI 的原始消息统一转换成这些事件，再推送给前端
 import type { AgentKind } from './agents';
-import type { CompactionState, ContextUsage } from './capabilities';
+import type { CompactionState, ContextUsage, TokenUsage } from './capabilities';
 
 export type AgentEvent =
   | { type: 'context'; usage: ContextUsage | null }
@@ -14,10 +14,39 @@ export type AgentEvent =
   /** 思考过程增量 */
   | { type: 'reasoning'; delta: string }
   | { type: 'tool_call'; id: string; name: string; input: unknown }
-  | { type: 'tool_result'; id: string; output: string; isError: boolean }
+  | {
+      type: 'tool_result';
+      id: string;
+      output: string;
+      isError: boolean;
+      durationMs?: number;
+      timingSource?: 'native' | 'observed';
+      usage?: TokenUsage;
+    }
+  | { type: 'tool_progress'; id: string; durationMs?: number; message?: string }
+  /** 单个模型步骤的原生统计，不并入未知累计范围的 result。 */
+  | { type: 'step_usage'; id: string; usage: TokenUsage; durationMs?: number }
+  /** 原生活动没有工具契约时只保留公开状态，不伪装成工具调用。 */
+  | {
+      type: 'activity';
+      id: string;
+      name: string;
+      status: 'running' | 'completed' | 'failed' | 'cancelled' | 'unknown';
+      input?: unknown;
+      output?: string;
+      durationMs?: number;
+    }
   /** Agent 请求执行需要确认的操作，等待网页答复 */
   | { type: 'permission_request'; requestId: string; toolName: string; input: unknown; description?: string }
   | { type: 'permission_resolved'; requestId: string; decision: 'allowed' | 'denied' | 'cancelled' }
   /** forkPoint 仅为已结束位置的原生轮次/消息 ID；缺失时只能分叉完整会话。 */
-  | { type: 'turn_end'; isError: boolean; durationMs?: number; costUsd?: number; forkPoint?: string }
+  | {
+      type: 'turn_end';
+      isError: boolean;
+      durationMs?: number;
+      costUsd?: number;
+      usage?: TokenUsage;
+      timingSource?: 'native' | 'observed';
+      forkPoint?: string;
+    }
   | { type: 'error'; message: string };

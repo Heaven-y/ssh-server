@@ -6,9 +6,10 @@ import { parse } from 'smol-toml';
 import { createModelSettingsService } from '../../src/settings/model-settings';
 import { createNativeResourcesService } from '../../src/settings/native-resources';
 import { createLaunchEnvironment } from '../../src/settings/launch-environment';
+import type { AgentModel } from '@agentdeck/shared';
 
 const roots: string[] = [];
-async function fixture() {
+async function fixture(nativeModels: () => Promise<AgentModel[]> = async () => []) {
   const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'model-settings-'));
   roots.push(homeDir);
   const environment = createLaunchEnvironment({
@@ -21,7 +22,7 @@ async function fixture() {
     },
   });
   const resources = createNativeResourcesService({ homeDir, env: {} });
-  const service = createModelSettingsService({ resources, environment });
+  const service = createModelSettingsService({ resources, environment, antigravityModels: nativeModels });
   const write = async (relative: string, content: string) => {
     const file = path.join(homeDir, relative);
     await fs.mkdir(path.dirname(file), { recursive: true });
@@ -214,17 +215,88 @@ it('Antigravity 同一表单保存原生自定义模型与加密连接，保留�
     },
   });
   const config = JSON.parse(await fs.readFile(file, 'utf8'));
-  expect(config.customModelsConfig.customModels.agentdeck.modelName).toBe(
-    'gemini-api://example.test/v1beta/models/custom-id',
-  );
+  expect(config.customModelsConfig.customModels.agentdeck.modelName).toBe('custom-id');
   expect(JSON.stringify(config)).not.toContain('fixture-key');
   expect(JSON.stringify(saved)).not.toContain('fixture-key');
   expect(await environment.resolve('antigravity')).toMatchObject({
     GEMINI_API_KEY: 'fixture-key',
-    GOOGLE_GEMINI_BASE_URL: 'https://example.test/v1beta',
+    GOOGLE_GEMINI_BASE_URL: 'https://example.test',
   });
   await service.save('antigravity', { revision: saved.revision, changes: { modelProvider: '' } });
   expect(JSON.parse(await fs.readFile(file, 'utf8'))).not.toHaveProperty('modelProvider');
+});
+
+it('Gemini 最简连接和未知模型切换自动登记模型，保留旧条目且默认选择原生 label', async () => {
+  const { service, write, environment } = await fixture();
+  const file = await write('.gemini/antigravity-cli/settings.json', '{}');
+  const initial = await service.read('antigravity');
+  const first = await service.save('antigravity', {
+    revision: initial.revision,
+    changes: {
+      modelProvider: 'gemini',
+      model: 'custom-one',
+      baseUrl: 'https://example.test/v1beta',
+      apiKey: 'fixture-key',
+    },
+  });
+  let config = JSON.parse(await fs.readFile(file, 'utf8'));
+  expect(config).toMatchObject({
+    model: 'custom-one',
+    customModelsConfig: {
+      customModels: {
+        agentdeck: { modelName: 'custom-one', label: 'custom-one' },
+      },
+    },
+  });
+  expect(config.customModelsConfig.customModels.agentdeck).not.toHaveProperty('maxTokens');
+  await service.save('antigravity', { revision: first.revision, changes: { model: 'custom-two' } });
+  config = JSON.parse(await fs.readFile(file, 'utf8'));
+  expect(config.model).toBe('custom-two');
+  expect(Object.values(config.customModelsConfig.customModels)).toEqual(
+    expect.arrayContaining([
+      { modelName: 'custom-one', label: 'custom-one' },
+      { modelName: 'custom-two', label: 'custom-two' },
+    ]),
+  );
+  expect((await environment.resolve('antigravity')).GOOGLE_GEMINI_BASE_URL).toBe('https://example.test');
+});
+
+it('原生模型 ID 保存为对应 label，保持 CLI 的强度变体而不登记成服务端型号', async () => {
+  const catalog = vi.fn(async () => [{ id: 'gemini-example-high', label: 'Gemini Example (High)' }]);
+  const { service, write } = await fixture(catalog);
+  const file = await write('.gemini/antigravity-cli/settings.json', '{"modelProvider":"gemini"}');
+  const initial = await service.read('antigravity');
+  await service.save('antigravity', { revision: initial.revision, changes: { model: 'gemini-example-high' } });
+  expect(JSON.parse(await fs.readFile(file, 'utf8'))).toEqual({
+    modelProvider: 'gemini',
+    model: 'Gemini Example (High)',
+  });
+  expect(catalog).toHaveBeenCalledOnce();
+});
+
+it('原生目录读取失败保留用户输入，显式自定义连接仍可登记', async () => {
+  const { service, write } = await fixture(async () => {
+    throw new Error('unavailable');
+  });
+  const file = await write('.gemini/antigravity-cli/settings.json', '{"modelProvider":"gemini"}');
+  const initial = await service.read('antigravity');
+  const saved = await service.save('antigravity', {
+    revision: initial.revision,
+    changes: { model: 'native-selection' },
+  });
+  expect(JSON.parse(await fs.readFile(file, 'utf8'))).toEqual({ modelProvider: 'gemini', model: 'native-selection' });
+  await service.save('antigravity', {
+    revision: saved.revision,
+    changes: { model: 'custom-api-model', baseUrl: 'https://example.test' },
+  });
+  expect(JSON.parse(await fs.readFile(file, 'utf8'))).toMatchObject({
+    model: 'custom-api-model',
+    customModelsConfig: {
+      customModels: {
+        agentdeck: { modelName: 'custom-api-model' },
+      },
+    },
+  });
 });
 
 it('模型显示名称与默认推理参数按原生字段保存，Codex窗口保持整数', async () => {
@@ -264,8 +336,8 @@ it('模型显示名称与默认推理参数按原生字段保存，Codex窗口�
   expect(await fs.readFile(codex, 'utf8')).toContain('# native');
 });
 
-it('选择已有 Antigravity 自定义键并改显示名时保留真实型号，清空模型不把名称当型号', async () => {
-  const { service, write } = await fixture();
+it('选择旧 Antigravity 自定义键并改名时迁移地址，默认选择同步原生 label', async () => {
+  const { service, write, environment } = await fixture();
   const file = await write(
     '.gemini/antigravity-cli/settings.json',
     JSON.stringify({
@@ -284,12 +356,40 @@ it('选择已有 Antigravity 自定义键并改显示名时保留真实型号，
   expect(JSON.parse(await fs.readFile(file, 'utf8'))).toMatchObject({
     model: 'Renamed',
     customModelsConfig: {
-      customModels: { saved: { modelName: 'gemini-api://example.test/models/real-id', label: 'Renamed' } },
+      customModels: { saved: { modelName: 'real-id', label: 'Renamed' } },
     },
   });
+  expect((await environment.resolve('antigravity')).GOOGLE_GEMINI_BASE_URL).toBe('https://example.test');
+  expect(saved.fields.find((field) => field.key === 'model')?.value).toBe('real-id');
   await expect(
     service.save('antigravity', { revision: saved.revision, changes: { model: '', contextWindow: '123456' } }),
   ).rejects.toThrow('先选择模型');
+});
+
+it.each(['set', 'disabled'] as const)('旧 URI 标准化保留已有 %s 地址选择', async (mode) => {
+  const { service, write, environment } = await fixture();
+  const file = await write(
+    '.gemini/antigravity-cli/settings.json',
+    JSON.stringify({
+      modelProvider: 'gemini',
+      model: 'saved',
+      customModelsConfig: {
+        customModels: { saved: { modelName: 'gemini-api://old.example.test/models/real-id', label: 'Old' } },
+      },
+    }),
+  );
+  await environment.save('antigravity', {
+    revision: 'missing',
+    variables: [
+      { name: 'GOOGLE_GEMINI_BASE_URL', mode, ...(mode === 'set' ? { value: 'https://current.example.test' } : {}) },
+    ],
+  });
+  const initial = await service.read('antigravity');
+  await service.save('antigravity', { revision: initial.revision, changes: { displayName: 'New' } });
+  expect(JSON.parse(await fs.readFile(file, 'utf8')).customModelsConfig.customModels.saved.modelName).toBe('real-id');
+  expect((await environment.resolve('antigravity')).GOOGLE_GEMINI_BASE_URL).toBe(
+    mode === 'set' ? 'https://current.example.test' : undefined,
+  );
 });
 
 it('外部修改、损坏文件和非法地址均不会被覆盖', async () => {
