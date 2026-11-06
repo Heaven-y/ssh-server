@@ -232,7 +232,24 @@ const handlers: Record<string, (message: Message) => void> = {
   initialize: (message) => reply(message, { userAgent: 'fixture' }),
   initialized: () => {},
   'config/read': config,
-  'thread/start': (message) => reply(message, { thread: thread(), model: 'native-model' }),
+  'thread/start': (message) => {
+    if (mode === 'permission-denied')
+      return write({
+        id: message.id,
+        error: { code: -32600, message: 'approvalsReviewer auto_review is not allowed; private-fixture-details' },
+      });
+    if (message.params?.ephemeral)
+      return reply(message, {
+        thread: thread('permission-baseline'),
+        model: 'native-model',
+        approvalPolicy: 'on-request',
+        approvalsReviewer: mode === 'native-incomplete' ? undefined : 'auto_review',
+        sandbox: { type: 'readOnly' },
+        ...(mode === 'native-profile' ? { activePermissionProfile: { id: 'project-custom' } } : {}),
+      });
+    reply(message, { thread: thread(), model: 'native-model' });
+  },
+  'thread/unsubscribe': (message) => reply(message, {}),
   'thread/resume': (message) =>
     reply(message, { thread: thread(String(message.params?.threadId)), model: 'native-model' }),
   'thread/read': readThread,

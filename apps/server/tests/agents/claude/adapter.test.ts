@@ -361,3 +361,15 @@ describe('Claude 推理强度', () => {
     expect(events.at(-1)).toEqual({ type: 'turn_end', isError: true });
   });
 });
+
+it.each(['default', 'acceptEdits', 'auto', 'plan', 'dontAsk', 'bypassPermissions'] as const)(
+  'Claude 原生权限 %s 进入启动选项，仅显式跳过时开启 bypass',
+  async (mode) => {
+    const fake = fakeQuery();
+    const { handle, requestPermission } = run(fake, { permission: { agent: 'claude', mode } });
+    await handle.done;
+    expect(fake.state.options?.permissionMode).toBe(mode);
+    expect(fake.state.options?.allowDangerouslySkipPermissions).toBe(mode === 'bypassPermissions' ? true : undefined);
+    expect(requestPermission).not.toHaveBeenCalled();
+  },
+);

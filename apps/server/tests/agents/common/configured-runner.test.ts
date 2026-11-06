@@ -132,3 +132,34 @@ it('并发完成启动环境解析时仍限制32个原生实例，重启后可�
     await runner.dispose?.();
   }
 });
+
+it('权限变化先回收旧实例，切回原生默认也重新启动且保留同一原生会话', async () => {
+  let started = 0;
+  const closed: number[] = [];
+  const history: string[] = [];
+  const runner = createConfiguredRunner({
+    environment: async () => ({}),
+    create: () => {
+      const id = ++started;
+      const native: TurnRunner = (value) => {
+        history.push(value.sessionId!);
+        return { done: Promise.resolve(), interrupt: async () => undefined };
+      };
+      native.dispose = async () => {
+        closed.push(id);
+      };
+      return native;
+    },
+  });
+  try {
+    await runner({ ...input('same-session'), permission: { agent: 'codex', mode: 'full-access' } }).done;
+    await runner(input('same-session')).done;
+    expect(closed).toEqual([1]);
+    expect(started).toBe(2);
+    await runner(input('same-session')).done;
+    expect(started).toBe(2);
+    expect(history).toEqual(['same-session', 'same-session', 'same-session']);
+  } finally {
+    await runner.dispose?.();
+  }
+});

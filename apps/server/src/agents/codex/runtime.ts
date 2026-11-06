@@ -5,6 +5,7 @@ import { sameSessionDirectory } from '../common/session-scope';
 import { CodexClient } from './client';
 import { validateCodexSkill } from './capabilities';
 import { threadParams } from './config';
+import { nativePermissionRestore } from './permission-mode';
 import { CodexEventMapper, turnEnd } from './mapper';
 import { CodexPermissions } from './permissions';
 import { checkedThread } from './sessions';
@@ -125,6 +126,7 @@ export class CodexRuntime {
     const id = input.sessionId;
     const params = threadParams(input, this.nativeConfig ?? {});
     if (id) await checkedThread(client, id, input.workspace.dir);
+    Object.assign(params, await nativePermissionRestore(client, input));
     if (signal.aborted) throw cancelled();
     const response = await client.request(id ? 'thread/resume' : 'thread/start', {
       ...params,

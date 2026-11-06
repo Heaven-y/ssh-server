@@ -28,10 +28,15 @@ export function historyViewVersion(
 
 export function historyParameters(current: ChatState, session: SessionRef) {
   if (current.agent === session.agent && current.sessionId === session.sessionId)
-    return { modelOverrides: current.modelOverrides, reasoningEfforts: current.reasoningEfforts };
+    return {
+      modelOverrides: current.modelOverrides,
+      reasoningEfforts: current.reasoningEfforts,
+      permission: current.permission,
+    };
   return {
     modelOverrides: { ...EMPTY_MODEL_OVERRIDES },
     reasoningEfforts: { ...DEFAULT_REASONING_EFFORTS },
+    permission: undefined,
   };
 }
 

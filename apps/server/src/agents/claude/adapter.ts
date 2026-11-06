@@ -38,6 +38,7 @@ export function createClaudeRunner(options: { idleMs?: number; env?: NodeJS.Proc
       input.sessionId ?? '',
       input.model ?? '',
       input.reasoningEffort ?? '',
+      input.permission?.mode ?? '',
     ]);
   const drop = async (entry: Entry) => {
     clearTimeout(entry.timer);

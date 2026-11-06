@@ -43,6 +43,7 @@ export function createCodexRunner(options: CodexRuntimeOptions & { idleMs?: numb
       input.sessionId ?? '',
       input.model ?? '',
       input.reasoningEffort ?? '',
+      input.permission?.mode ?? '',
     ]);
   const drop = async (entry: Entry) => {
     clearTimeout(entry.timer);

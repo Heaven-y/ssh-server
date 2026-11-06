@@ -279,6 +279,7 @@ export class TurnManager {
       sessionId: msg.sessionId,
       model: msg.model,
       reasoningEffort: msg.reasoningEffort,
+      permission: msg.permission,
       text: prepared.text,
       invocation: prepared.invocation,
       emit: (event) => this.event(turn, event),

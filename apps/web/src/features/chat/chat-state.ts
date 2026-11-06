@@ -1,3 +1,4 @@
+import type { PermissionSelection } from '@agentdeck/shared/conversation';
 import type {
   AgentKind,
   AgentCapability,
@@ -19,6 +20,8 @@ export type ChatState = {
   defaults: Pick<ProductSettings, 'defaultAgent'>;
   initialDefaultsEligible: boolean;
   reasoningEfforts: Record<AgentKind, string>;
+  permission?: PermissionSelection;
+  setPermission(permission?: PermissionSelection): void;
   actualModel?: string;
   /** 仅保存本页已读取/运行的原生模型元数据，不从默认或显式选择推导。 */
   sessionModels: Record<string, { actualModel?: string; nativeModel?: string }>;

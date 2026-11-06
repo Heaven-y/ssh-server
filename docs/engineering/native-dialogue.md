@@ -74,3 +74,24 @@ Antigravity 的公开 ACP 初始化目前没有 fork/delete 能力，本机 1.5.
 写入前用原生轨迹核实会话 ID、唯一工作目录、空闲状态和非内部子代理身份。创建分支按已完成原生步骤执行，再核对新 ID、目录、父引用和摘要落库；删除轨迹后以 `JetboxDeleteSummary` 清原生索引，确认两者均已移除。若轨迹已删而摘要清理中断，重试必须重新验证摘要身份与目录，且只有明确的原生 not_found 响应才进入补清理；接口不存在或通信错误不能当作会话缺失。
 
 管理器关闭自己的进程、请求和临时日志，应用退出时统一取消待启动操作。隔离验证用原生空会话与合成已完成步骤，不能代替真实账号模型回合验收。
+
+## 原生权限模式
+
+输入区权限菜单只覆盖当前会话后续轮次，运行/准备/管理期间禁用；换会话、工作区或新建恢复“原生权限”。未选择权限时省略参数，由 CLI 决定新建默认或恢复原生会话的已保存权限；这不表示默认完全访问，也不替用户开启自动审查。选择不写 CLI 的原生文件；持久默认仍由原始配置入口管理。
+
+| CLI | 菜单选择 | 原生映射 |
+|---|---|---|
+| Claude | 手动审批、接受编辑、自动审查、计划模式、不询问、跳过权限检查 | SDK permissionMode: default、acceptEdits、auto、plan、dontAsk、bypassPermissions |
+| Codex | 请求批准 | workspace-write + on-request + user |
+| Codex | 帮我批准 | workspace-write + on-request + auto_review |
+| Codex | 完全访问 | danger-full-access + never；不创建自动批准回调 |
+| Antigravity | 接受编辑、自动模式、计划模式 | --mode accept-edits / auto / plan |
+| Antigravity | 跳过权限检查 | 显式 --dangerously-skip-permissions |
+
+Claude 仅显式 bypass 时设置 SDK 的 allowDangerouslySkipPermissions。auto 使用 Claude 原生分类器；Codex 自动审查也由原生执行，不在网页静默回答权限请求。Antigravity headless 仍没有交互批准通道，不把软拒伪装成已允许。
+
+Codex 已有会话会恢复历史权限，所以用户显式选择“沿用原生配置”使用单独的 native 动作：先创建不持久化的空线程，让原生解析当前有效配置，读取审批策略、审查对象及权限 profile/沙箱后取消订阅，再显式用于正式会话续接。空线程不发送 turn/start 或模型 prompt。必要字段缺失就停止，不能省略字段后误回到历史的完全访问。无选择的普通续接仍尊重原生会话，不强改其权限。
+
+菜单列出已核对协议支持的模式；组织策略、账号/模型可用性与 CLI 版本仍由原生校验，不能把菜单可见当成账号已获权限。原生拒绝时本轮停止并显示错误，不降级策略、不换模式重发。Codex 权限字段拒绝使用固定说明，不泄漏原始 RPC 错误中的路径、配置或凭据。高级自定义 permission profiles、Claude rules 和其他原生细项仍走原生配置，常用预设不覆盖未显式选择的值。
+
+依据：[Claude 权限](https://code.claude.com/docs/en/permissions)、[Agent SDK 权限](https://platform.claude.com/docs/en/agent-sdk/permissions)、[Codex 权限模式](https://learn.chatgpt.com/docs/permission-modes)、[Codex 自动审查](https://learn.chatgpt.com/docs/sandboxing/auto-review)、[app-server](https://learn.chatgpt.com/docs/app-server)。本机 SDK 类型、Claude/agy --help 和 Codex 生成 schema 已核对；这不等于真实模型回合验证。

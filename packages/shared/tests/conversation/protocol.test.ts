@@ -95,3 +95,19 @@ describe('WorkspaceInputSchema', () => {
       expect(WorkspaceInputSchema.parse({ ...base, ...extra })).toEqual(base);
   });
 });
+
+it('权限选择携带 CLI 身份，拒绝跨来源、未知模式与额外参数', () => {
+  const send = { type: 'chat.send', agent: 'claude', workspaceId: 'w', text: '任务', clientTurnId: 'c' };
+  expect(ClientMessageSchema.parse({ ...send, permission: { agent: 'claude', mode: 'auto' } })).toHaveProperty(
+    'permission',
+    { agent: 'claude', mode: 'auto' },
+  );
+  expect(ClientMessageSchema.parse(send)).not.toHaveProperty('permission');
+  for (const permission of [
+    { agent: 'codex', mode: 'full-access' },
+    { agent: 'claude', mode: 'unknown' },
+    { agent: 'claude', mode: 'auto', allowAll: true },
+  ]) {
+    expect(ClientMessageSchema.safeParse({ ...send, permission }).success).toBe(false);
+  }
+});

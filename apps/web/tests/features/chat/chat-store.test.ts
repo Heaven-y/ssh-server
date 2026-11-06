@@ -838,3 +838,20 @@ function finishTurn() {
     });
   emit({ type: 'turn.finished', turnId, workspaceId: current.workspaceId!, agent: current.agent });
 }
+
+it('权限只作用于当前会话，运行中锁定，新建和跨CLI选择不继承', () => {
+  useChat.getState().setPermission({ agent: 'claude', mode: 'auto' });
+  useChat.getState().send('带权限选择');
+  expect(sent.at(-1)).toMatchObject({ permission: { agent: 'claude', mode: 'auto' } });
+  useChat.getState().setPermission({ agent: 'claude', mode: 'bypassPermissions' });
+  expect(useChat.getState().permission).toEqual({ agent: 'claude', mode: 'auto' });
+  useChat.setState({ running: false, pendingClientTurnId: undefined });
+  useChat.getState().newSession('codex');
+  expect(useChat.getState().permission).toBeUndefined();
+  useChat.getState().setPermission({ agent: 'claude', mode: 'auto' });
+  expect(useChat.getState().permission).toBeUndefined();
+  useChat.getState().setPermission({ agent: 'codex', mode: 'auto-review' });
+  useChat.getState().setPermission(undefined);
+  useChat.getState().send('清除覆盖');
+  expect(JSON.parse(JSON.stringify(sent.at(-1)))).not.toHaveProperty('permission');
+});

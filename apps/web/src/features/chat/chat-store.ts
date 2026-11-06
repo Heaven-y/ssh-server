@@ -96,6 +96,7 @@ function newDefaults(current: ChatState) {
     agent: current.defaults.defaultAgent,
     modelOverrides: { ...EMPTY_MODEL_OVERRIDES },
     reasoningEfforts: { ...DEFAULT_REASONING_EFFORTS },
+    permission: undefined,
   };
 }
 export function lastWorkspaceId(): string | undefined {
@@ -169,7 +170,7 @@ export const useChat = create<ChatState>()((set, get) => ({
     set({ initialDefaultsEligible: false });
     if (current.agent !== agent) {
       const conversationVersion = changeSelection();
-      set({ ...emptyConversation, agent, conversationVersion });
+      set({ ...emptyConversation, agent, permission: undefined, conversationVersion });
     }
   },
   async openSession(session, options) {
@@ -245,6 +246,12 @@ export const useChat = create<ChatState>()((set, get) => ({
           : { ...current.reasoningEfforts, [current.agent]: '' },
       initialDefaultsEligible: false,
     })),
+  setPermission(permission) {
+    const current = get();
+    if (current.running || current.pendingClientTurnId || current.loadingHistory || managementPending(current)) return;
+    if (permission && permission.agent !== current.agent) return;
+    set({ permission, initialDefaultsEligible: false });
+  },
   setReasoningEffort: (reasoningEffort) =>
     set((current) => ({
       reasoningEfforts: { ...current.reasoningEfforts, [current.agent]: reasoningEffort },
@@ -278,6 +285,7 @@ export const useChat = create<ChatState>()((set, get) => ({
           ...emptyConversation,
           modelOverrides: { ...EMPTY_MODEL_OVERRIDES },
           reasoningEfforts: { ...DEFAULT_REASONING_EFFORTS },
+          permission: undefined,
           conversationVersion,
         });
       }
@@ -324,6 +332,7 @@ export const useChat = create<ChatState>()((set, get) => ({
       ...(current.selectedCapability ? { selection: { id: current.selectedCapability.id } } : {}),
       model: current.modelOverrides[current.agent].trim() || undefined,
       reasoningEffort: current.reasoningEfforts[current.agent].trim() || undefined,
+      ...(current.permission ? { permission: current.permission } : {}),
       clientTurnId,
     });
     if (!sent) {

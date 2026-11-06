@@ -146,7 +146,8 @@ describe('Codex app-server 核心边界', () => {
     ).done;
     const records = await messages();
     const start = records.find((value) => value.method === 'thread/start')?.params;
-    expect(start).toMatchObject({ cwd: workspace.dir, approvalsReviewer: 'user' });
+    expect(start).toMatchObject({ cwd: workspace.dir });
+    expect(start).not.toHaveProperty('approvalsReviewer');
     // 审批与沙箱策略沿用原生配置，网页不再用常量覆盖
     expect(start).not.toHaveProperty('sandbox');
     expect(start).not.toHaveProperty('approvalPolicy');
@@ -519,4 +520,105 @@ it.each(['usage-late', 'usage-missing'])('%s 不把上一轮未确认的用量�
   } finally {
     await runner.dispose?.();
   }
+});
+
+it.each([
+  ['ask', 'workspace-write', 'on-request', 'user'],
+  ['auto-review', 'workspace-write', 'on-request', 'auto_review'],
+  ['full-access', 'danger-full-access', 'never', 'user'],
+] as const)('Codex %s 使用原生审批与沙箱参数', async (mode, sandbox, approvalPolicy, approvalsReviewer) => {
+  const { workspace, options, messages } = await setup();
+  const handle = runCodexTurn(
+    {
+      workspace,
+      text: '合成任务',
+      permission: { agent: 'codex', mode },
+      emit: () => undefined,
+      requestPermission: async () => ({ allow: false }),
+    },
+    options,
+  );
+  await handle.done;
+  const start = (await messages()).find((message) => message.method === 'thread/start')?.params;
+  expect(start).toMatchObject({ sandbox, approvalPolicy, approvalsReviewer });
+});
+
+it('原生拒绝权限模式时显示权限原因，停止本轮且不自动改策略重发', async () => {
+  const { workspace, options, messages } = await setup('permission-denied');
+  const events: AgentEvent[] = [];
+  await runCodexTurn(
+    {
+      workspace,
+      text: '合成任务',
+      permission: { agent: 'codex', mode: 'auto-review' },
+      emit: (event) => events.push(event),
+      requestPermission: async () => ({ allow: false }),
+    },
+    options,
+  ).done;
+  expect(events).toContainEqual({ type: 'error', message: 'Codex 未接受所选权限模式，请检查当前版本和原生权限策略。' });
+  const records = await messages();
+  expect(records.filter((message) => message.method === 'thread/start')).toHaveLength(1);
+  expect(records.some((message) => message.method === 'turn/start')).toBe(false);
+});
+
+it.each(['native-defaults', 'native-profile'])(
+  'Codex 显式恢复配置时覆盖历史权限，使用 %s 的有效默认且不发探测对话',
+  async (mode) => {
+    const { workspace, options, messages } = await setup(mode);
+    const events: AgentEvent[] = [];
+    await runCodexTurn(
+      {
+        workspace,
+        sessionId: 'native-thread',
+        text: '合成任务',
+        permission: { agent: 'codex', mode: 'native' },
+        emit: (event) => events.push(event),
+        requestPermission: async () => ({ allow: false }),
+      },
+      options,
+    ).done;
+    const records = await messages();
+    const baseline = records.find((message) => message.method === 'thread/start');
+    expect(baseline?.params).toMatchObject({ ephemeral: true, cwd: workspace.dir });
+    expect(baseline?.params).not.toHaveProperty('approvalPolicy');
+    const resumed = records.find((message) => message.method === 'thread/resume')?.params;
+    expect(resumed).toMatchObject({
+      threadId: 'native-thread',
+      approvalPolicy: 'on-request',
+      approvalsReviewer: 'auto_review',
+    });
+    if (mode === 'native-profile') {
+      expect(resumed).toHaveProperty('permissions', 'project-custom');
+      expect(resumed).not.toHaveProperty('sandbox');
+    } else expect(resumed).toHaveProperty('sandbox', 'read-only');
+    const turns = records.filter((message) => message.method === 'turn/start');
+    expect(turns).toHaveLength(1);
+    expect(turns[0]?.params?.threadId).toBe('native-thread');
+    expect(records.find((message) => message.method === 'thread/unsubscribe')?.params).toEqual({
+      threadId: 'permission-baseline',
+    });
+  },
+);
+
+it('恢复原生权限缺少必要字段时停止，不退回历史完全访问', async () => {
+  const { workspace, options, messages } = await setup('native-incomplete');
+  const events: AgentEvent[] = [];
+  await runCodexTurn(
+    {
+      workspace,
+      sessionId: 'native-thread',
+      text: '合成任务',
+      permission: { agent: 'codex', mode: 'native' },
+      emit: (event) => events.push(event),
+      requestPermission: async () => ({ allow: false }),
+    },
+    options,
+  ).done;
+  expect(events).toContainEqual({ type: 'error', message: 'Codex 未返回完整权限配置，未继续本轮。' });
+  const records = await messages();
+  expect(records.some((message) => ['thread/resume', 'turn/start'].includes(message.method ?? ''))).toBe(false);
+  expect(records.find((message) => message.method === 'thread/unsubscribe')?.params?.threadId).toBe(
+    'permission-baseline',
+  );
 });

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { AgentKindSchema, NativeSessionIdSchema, type AgentKind } from './agents';
 import { CapabilitySelectionSchema } from './capabilities';
 import type { AgentEvent } from './events';
+import { PermissionSelectionSchema } from './permissions';
 
 const ClaudeEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 
@@ -20,11 +21,16 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
       model: z.string().min(1).optional(),
       /** 下轮推理强度；Claude 映射 SDK effort，实际支持由原生运行时决定；不传沿用原生配置。 */
       reasoningEffort: z.string().min(1).max(40).optional(),
+      permission: PermissionSelectionSchema.optional(),
       /** 前端生成，用于把 turn.started 与本次发送对应起来 */
       clientTurnId: z.string().min(1),
     })
     .refine((message) => message.text.trim().length > 0 || !!message.selection, {
       message: '请输入消息或选择技能与命令',
+    })
+    .refine((message) => !message.permission || message.permission.agent === message.agent, {
+      path: ['permission'],
+      message: '权限模式不属于当前 CLI',
     })
     .refine(
       (message) =>

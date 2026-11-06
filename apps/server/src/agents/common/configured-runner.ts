@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { AgentTurnInput, TurnHandle, TurnRunner } from '../contracts';
 
-type Entry = { key: string; native: TurnRunner; timer?: NodeJS.Timeout };
+type Entry = { key: string; permission?: string; native: TurnRunner; timer?: NodeJS.Timeout };
 type Deps = { environment(): Promise<NodeJS.ProcessEnv>; create(env: NodeJS.ProcessEnv): TurnRunner; idleMs?: number };
+const permissionOf = (input: AgentTurnInput) => input.permission?.mode;
 const keyOf = (input: AgentTurnInput) => JSON.stringify([input.workspace.id, input.workspace.dir, input.sessionId]);
 
 /** 每个会话的进程保留启动快照；显式重启只回收空闲实例，不向 CLI 发送任何消息。 */
@@ -27,12 +28,13 @@ export function createConfiguredRunner(deps: Deps): TurnRunner & { restart(): Pr
   async function entryFor(input: AgentTurnInput, cancelled: () => boolean) {
     const key = input.sessionId ? keyOf(input) : randomUUID();
     const existing = entries.get(key);
-    if (existing) return existing;
+    if (existing && existing.permission === permissionOf(input)) return existing;
+    if (existing) await drop(existing);
     if (entries.size >= 32) throw new Error();
     const env = await deps.environment();
     // 环境解析期间其他会话可能先占满实例；分配前须再次核对上限。
     if (cancelled() || disposed || entries.size >= 32) throw new Error();
-    const entry = { key, native: deps.create(env) };
+    const entry = { key, permission: permissionOf(input), native: deps.create(env) };
     entries.set(key, entry);
     return entry;
   }

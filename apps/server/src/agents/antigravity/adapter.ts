@@ -1,3 +1,4 @@
+import { antigravityPermissionArgs } from './permissions';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { AgentTurnInput, TurnHandle, TurnRunner } from '../contracts';
 import { resolveLocalCommand } from '../../platform/process/executable';
@@ -31,6 +32,7 @@ function argumentsFor(input: AgentTurnInput): string[] {
   if (input.sessionId) args.push('--conversation', input.sessionId);
   if (input.model) args.push('--model', input.model);
   if (input.reasoningEffort) args.push('--effort', input.reasoningEffort);
+  args.push(...antigravityPermissionArgs(input.permission));
   return args;
 }
 

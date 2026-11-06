@@ -4,6 +4,7 @@ import {
   cancelled,
   CodexError,
   record,
+  text,
   type CodexRuntimeOptions,
   type RecordValue,
   type RpcId,
@@ -15,6 +16,14 @@ export const MAX_PENDING_REQUESTS = 128;
 export const RPC_TIMEOUT_MS = 30_000;
 type Pending = { resolve(value: RecordValue): void; reject(error: Error): void; timer: NodeJS.Timeout };
 type ClientOptions = CodexRuntimeOptions & { cwd?: string; timeoutMs?: number };
+
+function requestFailure(error: unknown): CodexError {
+  const message = text(record(error).message);
+  // 只识别权限字段并返回固定说明，不把服务端错误中的配置值或路径透给网页。
+  if (/approvals?[ _]?(reviewer|policy)|auto_review|guardian_subagent|sandbox|permission.?profile/i.test(message))
+    return new CodexError('Codex 未接受所选权限模式，请检查当前版本和原生权限策略。');
+  return new CodexError('Codex 请求失败，请检查本机配置、登录状态或会话是否仍存在。');
+}
 
 /** app-server 的 stdio 仅接受逐行 JSON-RPC；stderr 持续排空而不泄露诊断原文。 */
 export class CodexClient {
@@ -155,7 +164,7 @@ export class CodexClient {
     if (!pending) return;
     this.pending.delete(id);
     clearTimeout(pending.timer);
-    if (message.error) pending.reject(new CodexError('Codex 请求失败，请检查本机配置、登录状态或会话是否仍存在。'));
+    if (message.error) pending.reject(requestFailure(message.error));
     else pending.resolve(record(message.result));
   }
 

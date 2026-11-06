@@ -53,6 +53,10 @@ Windows 10/11、Node.js 22+ 与 Git 是开发基础。按需安装 `claude`、`c
 
 测试放各包 `tests/`，路径与模块相呼应。只补核心行为和实际回归，用临时目录生成绝对路径，不写开发机固定路径；脚本枚举回归复用服务端 `tests/dev` 发现范围。生命周期测试用明确屏障，不凭放宽超时掩盖竞争。
 
+重构后按目录增加独立聚合门槛（行/语句/函数/分支）：platform、Claude、Codex、chat/sessions 为 90/90/90/80；Antigravity、agents/common、plugins 宿主、web/cli 为 85/85/85/75。shared 与 HTTP 安全模块继续使用原更高门槛，总体门槛仍保留。目录分组能防止一个高覆盖模块掩盖另一个适配器退步，不要求复制相同测试到每一层。
+
+jscpd 递归扫描 server/web/desktop 的 src、shared/src、scripts/dev 与 scripts/packaging，新 CLI、platform、内置插件无需额外登记单文件。仍检查跨目录重复，限制 3%；合理的协议差异不强行抽象成全能基类。构建产物、依赖和测试不计入生产重复率。
+
 覆盖率排除项由根 Vitest 配置统一维护：进程入口、需要真实 SSH 的池、前端组件及特定浏览器封装分别由相应验证覆盖。不得放宽全局门槛；必要的局部 lint 例外写明原因。jsdom 放根开发依赖，组件测试用 Testing Library，普通逻辑使用 Node 环境。
 
 ### 1.4 进度与证据

@@ -3,7 +3,7 @@ import { PassThrough } from 'node:stream';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AgentEvent } from '@agentdeck/shared/conversation';
+import type { PermissionSelection, AgentEvent } from '@agentdeck/shared/conversation';
 import { createAntigravityRunner, type AntigravityProcess } from '../../../src/agents/antigravity/adapter';
 
 const cwd = path.join(tmpdir(), 'agentdeck-agy-fixture');
@@ -12,6 +12,7 @@ async function setup(
   sessionId?: string,
   defaultModel: () => Promise<string | undefined> = async () => undefined,
   model?: string,
+  permission?: PermissionSelection,
 ) {
   const child = Object.assign(new EventEmitter(), {
     stdin: new PassThrough(),
@@ -26,6 +27,7 @@ async function setup(
     workspace: { id: 'p', name: '项目', dir: cwd },
     sessionId,
     model,
+    permission,
     text: '只作为测试输入',
     emit: (event) => events.push(event),
     requestPermission: async () => ({ allow: false }),
@@ -207,3 +209,16 @@ describe('Antigravity 原生对话运行器', () => {
     expect(f.events.at(-1)).toMatchObject({ type: 'turn_end', isError: true });
   });
 });
+
+it.each(['accept-edits', 'auto', 'plan', 'bypass'] as const)(
+  'Antigravity %s 交给原生模式，不伪造审批',
+  async (mode) => {
+    const f = await setup(undefined, async () => undefined, undefined, { agent: 'antigravity', mode });
+    const args = f.launch.mock.calls[0]![0].args;
+    if (mode === 'bypass') expect(args).toContain('--dangerously-skip-permissions');
+    else expect(args.slice(-2)).toEqual(['--mode', mode]);
+    f.init();
+    f.finish();
+    await f.handle.done;
+  },
+);

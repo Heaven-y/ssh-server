@@ -5,3 +5,4 @@ export * from './session';
 export * from './capabilities';
 export * from './legacy-session-capabilities';
 export * from './protocol-version';
+export * from './permissions';

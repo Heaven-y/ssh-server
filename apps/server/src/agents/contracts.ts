@@ -1,3 +1,4 @@
+import type { PermissionSelection } from '@agentdeck/shared/conversation';
 import type {
   AgentEvent,
   SessionActionInput,
@@ -14,6 +15,7 @@ export type AgentTurnInput = {
   sessionId?: string;
   model?: string;
   reasoningEffort?: string;
+  permission?: PermissionSelection;
   text: string;
   invocation?: NativeInvocation;
   emit(event: AgentEvent): void;

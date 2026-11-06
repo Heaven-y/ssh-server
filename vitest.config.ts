@@ -36,6 +36,15 @@ export default defineConfig({
         branches: 75,
         functions: 85,
         statements: 85,
+        // 按职责聚合，防止大模块的高分掩盖独立适配器或基础设施退步。
+        'apps/server/src/platform/**': { lines: 90, branches: 80, functions: 90, statements: 90 },
+        'apps/server/src/agents/claude/**': { lines: 90, branches: 80, functions: 90, statements: 90 },
+        'apps/server/src/agents/codex/**': { lines: 90, branches: 80, functions: 90, statements: 90 },
+        'apps/server/src/agents/antigravity/**': { lines: 85, branches: 75, functions: 85, statements: 85 },
+        'apps/server/src/agents/common/**': { lines: 85, branches: 75, functions: 85, statements: 85 },
+        'apps/server/src/{chat,sessions}/**': { lines: 90, branches: 80, functions: 90, statements: 90 },
+        'apps/server/src/plugins/**': { lines: 85, branches: 75, functions: 85, statements: 85 },
+        'apps/web/src/cli/**': { lines: 85, branches: 75, functions: 85, statements: 85 },
         // 安全边界：访问控制要求更高
         'apps/server/src/http/security.ts': { lines: 95, branches: 90, functions: 95, statements: 95 },
         'packages/shared/src/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
