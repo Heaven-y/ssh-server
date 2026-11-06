@@ -113,17 +113,194 @@ it('Antigravity不可回放保留会话身份并允许续接', async () => {
   expect(sent.at(-1)).toMatchObject({ agent: 'antigravity', sessionId: 'agy-native' });
 });
 
-it('准备或运行中的导航保留原回合，避免审批和停止失联', async () => {
-  const read = vi.spyOn(sessionsApi, 'sessionEvents');
-  const turnId = startTurn();
+it('运行中可离开并新建，后台输出和审批仍归属原会话', async () => {
+  useChat.getState().setModel('selected-a');
+  useChat.getState().setReasoningEffort('high');
+  useChat.getState().setPermission({ agent: 'claude', mode: 'auto' });
+  const turnId = startTurn('任务A');
+  const firstId = useChat.getState().conversationId;
   useChat.getState().selectWorkspace('another');
-  useChat.getState().newSession('antigravity');
-  await useChat.getState().openSession({ agent: 'codex', sessionId: 'other' });
+  useChat.getState().newSession('codex');
+  expect(useChat.getState().permission).toBeUndefined();
+  expect(useChat.getState().send('任务B')).toBe(true);
+  const second = sent.at(-1) as Extract<ClientMessage, { type: 'chat.send' }>;
+  emit({
+    type: 'turn.started',
+    turnId: 'turn-b',
+    clientTurnId: second.clientTurnId,
+    workspaceId: 'another',
+    agent: 'codex',
+  });
+  emit({
+    type: 'agent.event',
+    turnId,
+    event: { type: 'session', sessionId: 'native-a', agent: 'claude', model: 'model-a', cwd: 'project' },
+  });
+  emit({ type: 'agent.event', turnId, event: { type: 'text', delta: 'A后台结果' } });
+  emit({
+    type: 'agent.event',
+    turnId,
+    event: { type: 'permission_request', requestId: 'approve-a', toolName: 'Bash', input: {} },
+  });
+  expect(useChat.getState()).toMatchObject({ workspaceId: 'another', agent: 'codex', turnId: 'turn-b', running: true });
+  expect(JSON.stringify(useChat.getState().items)).not.toContain('A后台结果');
+  expect(useChat.getState().background[firstId]).toMatchObject({ sessionId: 'native-a', running: true, unread: true });
+  const read = vi.spyOn(sessionsApi, 'sessionEvents');
+  useChat.getState().selectWorkspace('w1');
+  await useChat.getState().openSession({ agent: 'claude', sessionId: 'native-a' });
   expect(read).not.toHaveBeenCalled();
-  expect(useChat.getState()).toMatchObject({ workspaceId: 'w1', agent: 'claude', turnId, running: true });
-  expect(useChat.getState().banner).toContain('先停止');
+  expect(JSON.stringify(useChat.getState().items)).toContain('A后台结果');
+  expect(useChat.getState()).toMatchObject({
+    modelOverrides: { claude: 'selected-a' },
+    reasoningEfforts: { claude: 'high' },
+    permission: { agent: 'claude', mode: 'auto' },
+  });
+  expect(useChat.getState().send('重复启动A')).toBe(false);
+  useChat.getState().respondPermission('approve-a', true);
+  expect(sent.at(-1)).toMatchObject({ type: 'permission.respond', turnId, requestId: 'approve-a', allow: true });
   useChat.getState().interrupt();
   expect(sent.at(-1)).toEqual({ type: 'chat.interrupt', turnId });
+  expect(Object.values(useChat.getState().background).find((entry) => entry.turnId === 'turn-b')?.running).toBe(true);
+});
+
+it('历史加载时离开再返回会重新读取，迟到的旧结果不覆盖新结果和草稿', async () => {
+  const pending = deferred<SessionHistory>();
+  const read = vi
+    .spyOn(sessionsApi, 'sessionEvents')
+    .mockReturnValueOnce(pending.promise)
+    .mockResolvedValue(history('codex', '有效历史'));
+  const firstLoad = useChat.getState().openSession({ agent: 'codex', sessionId: 'same-id' });
+  const original = useChat.getState().conversationId;
+  useChat.getState().setDraft('原会话草稿');
+  useChat.getState().newSession('claude');
+  expect(read.mock.calls[0]?.[3]?.aborted).toBe(true);
+  useChat.getState().openConversation(original);
+  await vi.waitFor(() => expect(useChat.getState().loadingHistory).toBe(false));
+  pending.resolve(history('codex', '迟到旧历史'));
+  await firstLoad;
+  expect(useChat.getState()).toMatchObject({ conversationId: original, draft: '原会话草稿' });
+  expect(JSON.stringify(useChat.getState().items)).toContain('有效历史');
+  expect(JSON.stringify(useChat.getState().items)).not.toContain('迟到旧历史');
+});
+
+it('首次原生身份晚到时合并已从列表打开的同会话，取消旧历史并保留审批与草稿', async () => {
+  const turnId = startTurn('任务A');
+  const original = useChat.getState().conversationId;
+  useChat.getState().newSession('codex');
+  const pending = deferred<SessionHistory>();
+  const read = vi.spyOn(sessionsApi, 'sessionEvents').mockReturnValue(pending.promise);
+  const loading = useChat.getState().openSession({ agent: 'claude', sessionId: 'native-a' });
+  useChat.getState().setDraft('待发送草稿');
+  emit({
+    type: 'agent.event',
+    turnId,
+    event: { type: 'session', sessionId: 'native-a', agent: 'claude', model: '', cwd: 'project' },
+  });
+  emit({
+    type: 'agent.event',
+    turnId,
+    event: { type: 'permission_request', requestId: 'approve', toolName: 'Bash', input: {} },
+  });
+  expect(useChat.getState()).toMatchObject({
+    conversationId: original,
+    running: true,
+    turnId,
+    loadingHistory: false,
+    draft: '待发送草稿',
+  });
+  expect(read.mock.calls[0]?.[3]?.aborted).toBe(true);
+  expect(Object.values(useChat.getState().background).filter((view) => view.sessionId === 'native-a')).toHaveLength(0);
+  expect(useChat.getState().send('禁止重复发送')).toBe(false);
+  useChat.getState().respondPermission('approve', true);
+  expect(sent.at(-1)).toMatchObject({ type: 'permission.respond', turnId, requestId: 'approve' });
+  pending.resolve({
+    session: { agent: 'claude', sessionId: 'native-a', summary: '临时历史', lastModified: 1 },
+    events: [{ type: 'text', delta: '过时读取' }],
+  });
+  await loading;
+  expect(JSON.stringify(useChat.getState().items)).not.toContain('过时读取');
+  expect(useChat.getState().running).toBe(true);
+});
+
+it('后台会话完成后管理仍按目标检查，归档不会留下可续接的后台入口', async () => {
+  const action = vi.spyOn(sessionsApi, 'sessionAction').mockResolvedValue(undefined);
+  const turnId = startTurn('任务A');
+  const first = useChat.getState().conversationId;
+  emit({
+    type: 'agent.event',
+    turnId,
+    event: { type: 'session', sessionId: 'native-a', agent: 'claude', model: '', cwd: 'project' },
+  });
+  useChat.getState().newSession('codex');
+  const second = useChat.getState().conversationId;
+  const session = { agent: 'claude', sessionId: 'native-a' } as const;
+  expect(await useChat.getState().manageSession('w1', session, { action: 'archive' })).toBe(false);
+  expect(action).not.toHaveBeenCalled();
+  emit({ type: 'turn.finished', turnId, workspaceId: 'w1', agent: 'claude' });
+  expect(await useChat.getState().manageSession('w1', session, { action: 'archive' })).toBe(true);
+  expect(useChat.getState().background[first]).toBeUndefined();
+  expect(useChat.getState().conversationId).toBe(second);
+});
+
+it('跨项目从普通列表返回已完成的AGY会话直接恢复内存，显式重读失败也不丢正文', async () => {
+  useChat.getState().newSession('antigravity');
+  const turnId = startTurn('AGY任务');
+  emit({
+    type: 'agent.event',
+    turnId,
+    event: { type: 'session', sessionId: 'agy-native', agent: 'antigravity', model: 'native', cwd: 'project' },
+  });
+  useChat.getState().selectWorkspace('another');
+  emit({ type: 'agent.event', turnId, event: { type: 'text', delta: '后台执行结果' } });
+  emit({ type: 'turn.finished', turnId, workspaceId: 'w1', agent: 'antigravity' });
+  const read = vi
+    .spyOn(sessionsApi, 'sessionEvents')
+    .mockRejectedValue(new ApiError(501, '不可回放', { code: 'session_not_replayable' }));
+  useChat.getState().selectWorkspace('w1');
+  await useChat.getState().openSession({ agent: 'antigravity', sessionId: 'agy-native' });
+  expect(read).not.toHaveBeenCalled();
+  expect(JSON.stringify(useChat.getState().items)).toContain('后台执行结果');
+  await useChat.getState().openSession({ agent: 'antigravity', sessionId: 'agy-native' }, { preserveDraft: true });
+  expect(JSON.stringify(useChat.getState().items)).toContain('后台执行结果');
+});
+
+it('准备期间离开后可找回和停止，迟到开始与结束不抢占新页面', () => {
+  useChat.getState().send('准备A');
+  const clientTurnId = useChat.getState().pendingClientTurnId!;
+  const id = useChat.getState().conversationId;
+  useChat.getState().newSession('antigravity');
+  const current = useChat.getState().conversationId;
+  useChat.getState().interruptConversation(id);
+  emit({ type: 'turn.started', turnId: 'late', clientTurnId, workspaceId: 'w1', agent: 'claude' });
+  expect(sent.at(-1)).toEqual({ type: 'chat.interrupt', turnId: 'late' });
+  emit({ type: 'turn.finished', turnId: 'late', workspaceId: 'w1', agent: 'claude' });
+  expect(useChat.getState().conversationId).toBe(current);
+  expect(useChat.getState().background[id]).toMatchObject({
+    running: false,
+    pendingClientTurnId: undefined,
+    unread: true,
+  });
+});
+
+it('后台草稿与参数独立保存，断线收尾全部回合且不自动重发', () => {
+  startTurn('任务A');
+  const a = useChat.getState().conversationId;
+  useChat.getState().setDraft('A后续草稿');
+  useChat.getState().newSession('codex');
+  useChat.getState().setDraft('B草稿');
+  const b = useChat.getState().conversationId;
+  useChat.getState().send('任务B');
+  status('closed');
+  expect(useChat.getState()).toMatchObject({ running: false, historyError: expect.any(String) });
+  expect(useChat.getState().background[a]).toMatchObject({
+    running: false,
+    draft: 'A后续草稿',
+    historyError: expect.any(String),
+  });
+  const count = sent.length;
+  status('open');
+  expect(sent).toHaveLength(count);
+  expect(useChat.getState().conversationId).toBe(b);
 });
 
 it.each(['claude', 'codex', 'antigravity'] as const)('打开另一条%s会话不沿用上一会话的模型和强度', async (agent) => {
@@ -179,7 +356,7 @@ it.each([
   expect(useChat.getState().send('继续')).toBe(canSend);
 });
 
-it('视图代次只随选择变化，首次原生会话id不重置；重开同一历史仍新建视图', async () => {
+it('视图代次只随选择变化，首次原生会话id和重选已打开会话不重置', async () => {
   const selected = useChat.getState().conversationVersion;
   useChat.getState().selectWorkspace('w1');
   expect(useChat.getState().conversationVersion).toBe(selected);
@@ -192,7 +369,7 @@ it('视图代次只随选择变化，首次原生会话id不重置；重开同�
   await useChat.getState().openSession({ agent: 'codex', sessionId: 'same-id' });
   const firstOpen = useChat.getState().conversationVersion;
   await useChat.getState().openSession({ agent: 'codex', sessionId: 'same-id' });
-  expect(useChat.getState().conversationVersion).toBeGreaterThan(firstOpen);
+  expect(useChat.getState().conversationVersion).toBe(firstOpen);
   useChat.getState().newSession('claude');
   const live = useChat.getState().conversationVersion;
   const turnId = startTurn();
@@ -783,10 +960,11 @@ describe('chat-store', () => {
     expect(useChat.getState().running).toBe(true);
   });
 
-  it('轮次尚未返回 ID 时保留停止意图，并阻止切换视图', () => {
+  it('轮次尚未返回 ID 时保留停止意图，切换视图后只停止原回合', () => {
     useChat.getState().setAgent('codex');
     useChat.getState().send('开始');
     const request = sent[0] as Extract<ClientMessage, { type: 'chat.send' }>;
+    const original = useChat.getState().conversationId;
     useChat.getState().interrupt();
     useChat.getState().interrupt();
     expect(sent).toHaveLength(1);
@@ -799,7 +977,12 @@ describe('chat-store', () => {
       agent: 'codex',
     });
     expect(sent.at(-1)).toEqual({ type: 'chat.interrupt', turnId: 'old-turn' });
-    expect(useChat.getState()).toMatchObject({ agent: 'codex', running: true, turnId: 'old-turn' });
+    expect(useChat.getState()).toMatchObject({ agent: 'claude', running: false, turnId: undefined });
+    expect(useChat.getState().background[original]).toMatchObject({
+      agent: 'codex',
+      running: true,
+      turnId: 'old-turn',
+    });
   });
 });
 
@@ -824,7 +1007,7 @@ it.each(['claude', 'codex', 'antigravity'] as const)('新建%s会话清空旧强
   expect(sent.at(-1)).toMatchObject({ agent, reasoningEffort: undefined });
 });
 
-/** 完成真实协议中的准备和结束阶段，让下一条操作不绕过导航保护。 */
+/** 完成真实协议中的准备和结束阶段，让下一条操作使用已收尾的会话。 */
 function finishTurn() {
   const current = useChat.getState();
   const turnId = current.turnId ?? 'finished-test-turn';

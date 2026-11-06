@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react';
 import type { AgentKind, SessionSummary } from '@agentdeck/shared/conversation';
 import type { Workspace } from '@agentdeck/shared/projects';
-import { allowConversationNavigation, useChat } from '../features/chat/chat-store';
+import { useChat } from '../features/chat/chat-store';
 
 import { TopBar } from './TopBar';
 import { useProductSettings } from '../features/settings/use-product-settings';
@@ -133,12 +133,10 @@ export function App() {
   const activePlugin = plugins.active;
   const [archiveOpen, setArchiveOpen] = useState(false);
   const showPlugin = (id?: string) => {
-    if (!allowConversationNavigation()) return;
     setArchiveOpen(false);
     plugins.show(id);
   };
   const showArchive = () => {
-    if (!allowConversationNavigation()) return;
     plugins.show(undefined);
     setArchiveOpen(true);
   };
@@ -152,6 +150,10 @@ export function App() {
   const [bindingProject, setBindingProject] = useState<Workspace | undefined>(undefined);
   const dock = useConversationSidebar();
   const conversationVisible = !activePlugin && !archiveOpen;
+  const conversationId = useChat((s) => s.conversationId);
+  useEffect(() => {
+    useChat.setState({ conversationVisible, ...(conversationVisible ? { unread: false } : {}) });
+  }, [conversationVisible, conversationId]);
   const sidebarVisible = dock.open && conversationVisible;
   const projects = useQuery({
     queryKey: projectsKeys.workspaces,
@@ -169,14 +171,12 @@ export function App() {
   const [showOtherSessions, setShowOtherSessions] = useState(false);
   const others = useOtherSessions(showOtherSessions);
   const openSession = (targetProject: string, session: SessionSummary) => {
-    if (!allowConversationNavigation()) return;
     setArchiveOpen(false);
     plugins.show(undefined);
     if (useChat.getState().workspaceId !== targetProject) useChat.getState().selectWorkspace(targetProject);
     void useChat.getState().openSession(session);
   };
   const startSession = (targetProject: string, agent: AgentKind) => {
-    if (!allowConversationNavigation()) return;
     setArchiveOpen(false);
     plugins.show(undefined);
     const chat = useChat.getState();
@@ -211,7 +211,6 @@ export function App() {
             },
           })),
           conversation: () => {
-            if (!allowConversationNavigation()) return false;
             setArchiveOpen(false);
             plugins.show(undefined);
             return true;
@@ -256,8 +255,12 @@ export function App() {
             onAddProject={(initial) => setAddingProject(initial ?? {})}
             onManageProject={(project, action) => setManagingProject({ project, action })}
             onNewSession={startSession}
+            onOpenConversation={(id) => {
+              setArchiveOpen(false);
+              plugins.show(undefined);
+              useChat.getState().openConversation(id);
+            }}
             onSelectProject={(id) => {
-              if (!allowConversationNavigation()) return;
               setArchiveOpen(false);
               plugins.show(undefined);
               if (useChat.getState().workspaceId !== id) useChat.getState().selectWorkspace(id);
@@ -266,9 +269,7 @@ export function App() {
             onOpenCommands={palette.open}
             onOpenArchive={showArchive}
             onSelectSession={openSession}
-            onBindServer={(project) => {
-              if (allowConversationNavigation()) setBindingProject(project);
-            }}
+            onBindServer={setBindingProject}
           />
         }
       >

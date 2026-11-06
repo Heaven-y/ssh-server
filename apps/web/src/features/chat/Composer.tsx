@@ -1,5 +1,5 @@
 import { ArrowUp, Square } from 'lucide-react';
-import { useId, useState, type FormEvent } from 'react';
+import { useId, type FormEvent } from 'react';
 import { managementPending, useChat } from './chat-store';
 import { CapabilityPicker } from './CapabilityPicker';
 import { selectionRestriction } from './capability-selection';
@@ -58,7 +58,8 @@ const emptyInput = (text: string, selection: AgentCapability | undefined) => !te
 /** 输入框：Enter 发送、Shift+Enter 换行（输入法组字时不发送）；运行中按钮变为"停止" */
 export function Composer() {
   const id = useId();
-  const [text, setText] = useState('');
+  const text = useChat((s) => s.draft);
+  const setText = useChat((s) => s.setDraft);
   const running = useChat((s) => s.running);
   const connected = useChat((s) => s.connection === 'open');
   const loading = useChat((s) => s.loadingHistory);
@@ -67,7 +68,6 @@ export function Composer() {
   const sessionId = useChat((s) => s.sessionId);
   const managing = useChat(managementPending);
   const send = useChat((s) => s.send);
-  const touchDraft = useChat((s) => s.touchDraft);
   const restriction = selectionRestriction(selection, sessionId, text);
   const busy = running || loading || managing;
   const empty = emptyInput(text, selection);
@@ -75,7 +75,7 @@ export function Composer() {
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
-    if (send(text.trim())) setText('');
+    send(text.trim());
   };
 
   return (
@@ -87,10 +87,7 @@ export function Composer() {
         <ComposerInput
           id={id}
           text={text}
-          onChange={(value) => {
-            touchDraft();
-            setText(value);
-          }}
+          onChange={setText}
           onSend={submit}
           busy={busy}
           placeholder={placeholder(connected, selection?.argumentHint)}

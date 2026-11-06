@@ -64,15 +64,16 @@ it('非法或不存在的项目链接只提示，不发送历史请求', () => {
   expect(sessionsApi.sessionEvents).not.toHaveBeenCalled();
 });
 
-it('当前轮次或原生管理尚未结束时链接不切走会话，也不在结束后自动重试', () => {
+it('运行期间深链接可打开其他会话，原回合继续在后台', async () => {
   useChat.getState().selectWorkspace('one');
   useChat.setState({ sessionId: 'current', running: true });
+  const id = useChat.getState().conversationId;
   renderHook(() => useProjectNavigation(projects));
   act(() => hash('#session?workspace=two&agent=codex&id=next'));
-  expect(useChat.getState()).toMatchObject({ workspaceId: 'one', sessionId: 'current', running: true });
-  expect(useChat.getState().banner).toContain('结束当前会话操作后再打开链接');
-  act(() => useChat.setState({ running: false }));
-  expect(sessionsApi.sessionEvents).not.toHaveBeenCalled();
+  await waitFor(() =>
+    expect(useChat.getState()).toMatchObject({ workspaceId: 'two', sessionId: 'next', loadingHistory: false }),
+  );
+  expect(useChat.getState().background[id]).toMatchObject({ workspaceId: 'one', sessionId: 'current', running: true });
 });
 
 it('迟到历史不会覆盖之后的选择；项目查询迟到也不能重放初始链接', async () => {

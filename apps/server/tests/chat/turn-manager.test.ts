@@ -95,15 +95,21 @@ it('CLI重启排斥准备期回合，重启期间不允许新回合插入', asyn
   await restarting;
 });
 
-it('连接关闭时中断所属运行回合，取消准备中的启动且不影响另一连接', async () => {
+it('连接关闭时中断所属全部回合，取消准备中的启动且不影响另一连接', async () => {
   const { turns, fake, sessions } = setup();
   const first = fakeSocket();
   const other = fakeSocket();
   await turns.handle(first.socket, send({ sessionId: 'first' }));
-  await turns.handle(other.socket, send({ sessionId: 'other' }));
+  await turns.handle(first.socket, send({ sessionId: 'second', clientTurnId: 'c2' }));
+  await turns.handle(other.socket, send({ sessionId: 'other', clientTurnId: 'other-client' }));
+  const firstApproval = fake.turns[0]!.input.requestPermission({ requestId: 'p1', toolName: 'command', input: {} });
+  const secondApproval = fake.turns[1]!.input.requestPermission({ requestId: 'p2', toolName: 'command', input: {} });
   turns.socketClosed(first.socket);
   expect(fake.turns[0]!.interrupt).toHaveBeenCalledOnce();
-  expect(fake.turns[1]!.interrupt).not.toHaveBeenCalled();
+  expect(fake.turns[1]!.interrupt).toHaveBeenCalledOnce();
+  expect(fake.turns[2]!.interrupt).not.toHaveBeenCalled();
+  expect(await firstApproval).toMatchObject({ allow: false, message: '网页连接已断开' });
+  expect(await secondApproval).toMatchObject({ allow: false, message: '网页连接已断开' });
   let release!: () => void;
   sessions.assertBelongs.mockImplementationOnce(
     () =>
@@ -113,14 +119,15 @@ it('连接关闭时中断所属运行回合，取消准备中的启动且不影�
   );
   const preparing = fakeSocket();
   const pending = turns.handle(preparing.socket, send({ sessionId: 'preparing' }));
-  await vi.waitFor(() => expect(sessions.assertBelongs).toHaveBeenCalledTimes(3));
+  await vi.waitFor(() => expect(sessions.assertBelongs).toHaveBeenCalledTimes(4));
   turns.socketClosed(preparing.socket);
   await pending;
   release();
   await flush();
-  expect(fake.turns).toHaveLength(2);
+  expect(fake.turns).toHaveLength(3);
   fake.turns[0]!.finish();
   fake.turns[1]!.finish();
+  fake.turns[2]!.finish();
   await flush();
   await turns.dispose();
 });
@@ -301,6 +308,54 @@ describe('TurnManager', () => {
       message: '不允许',
     });
     expect(await pending).toEqual({ allow: false, message: '不允许' });
+  });
+
+  it('同一连接的两条会话分别审批，停止一条不影响另一条继续输出', async () => {
+    const { fake, turns } = setup();
+    const { socket, sent } = fakeSocket();
+    await turns.handle(socket, send({ sessionId: 'session-a', clientTurnId: 'client-a' }));
+    await turns.handle(socket, send({ sessionId: 'session-b', clientTurnId: 'client-b' }));
+    const starts = sent.filter((message) => message.type === 'turn.started');
+    const a = fake.turns[0]!;
+    const b = fake.turns[1]!;
+    const aId = starts[0]!.turnId;
+    const bId = starts[1]!.turnId;
+    const aAnswer = a.input.requestPermission({ requestId: 'approve-a', toolName: 'command', input: {} });
+    const bAnswer = b.input.requestPermission({ requestId: 'approve-b', toolName: 'command', input: {} });
+    const bSettled = vi.fn();
+    void bAnswer.then(bSettled);
+    await turns.handle(socket, { type: 'permission.respond', turnId: aId, requestId: 'approve-b', allow: true });
+    await turns.handle(socket, { type: 'permission.respond', turnId: aId, requestId: 'approve-a', allow: true });
+    expect(await aAnswer).toMatchObject({ allow: true });
+    expect(bSettled).not.toHaveBeenCalled();
+
+    await turns.handle(socket, { type: 'chat.interrupt', turnId: aId });
+    expect(a.interrupt).toHaveBeenCalledOnce();
+    expect(b.interrupt).not.toHaveBeenCalled();
+    a.finish();
+    await flush();
+    expect(turns.isRunning({ agent: 'claude', sessionId: 'session-a' })).toBe(false);
+    expect(turns.isRunning({ agent: 'claude', sessionId: 'session-b' })).toBe(true);
+    expect(bSettled).not.toHaveBeenCalled();
+    expect(sent.filter((message) => message.type === 'turn.finished')).toEqual([
+      { type: 'turn.finished', turnId: aId, workspaceId: 'w1', agent: 'claude' },
+    ]);
+
+    await turns.handle(socket, { type: 'permission.respond', turnId: bId, requestId: 'approve-b', allow: false });
+    expect(await bAnswer).toMatchObject({ allow: false });
+    b.input.emit({ type: 'text', delta: '会话 B 继续执行' });
+    expect(sent.at(-1)).toEqual({
+      type: 'agent.event',
+      turnId: bId,
+      event: { type: 'text', delta: '会话 B 继续执行' },
+    });
+    await turns.handle(socket, send({ sessionId: 'session-b', clientTurnId: 'duplicate' }));
+    expect(sent.at(-1)).toEqual({ type: 'error', clientTurnId: 'duplicate', message: '该会话正在运行' });
+    expect(fake.turns).toHaveLength(2);
+    b.finish();
+    await flush();
+    expect(turns.isRunning({ agent: 'claude', sessionId: 'session-b' })).toBe(false);
+    await turns.dispose();
   });
 
   it('连接关闭或原生取消后拒绝迟到审批，另一连接的轮次仍可正常结束', async () => {

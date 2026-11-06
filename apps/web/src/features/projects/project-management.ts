@@ -4,6 +4,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { SessionSummary } from '@agentdeck/shared/conversation';
 import type { Workspace } from '@agentdeck/shared/projects';
 import { useChat } from '../chat/chat-store';
+import { projectIsRunning } from '../chat/conversations';
 
 export type ProjectManageAction = 'rename' | 'directory' | 'remove';
 export type ProjectDraft = { dir?: string; name?: string };
@@ -18,7 +19,7 @@ export function projectFolderName(directory: string) {
   );
 }
 function chatBusy(state: ReturnType<typeof useChat.getState>, projectId?: string) {
-  if (state.running || state.pendingClientTurnId) return true;
+  if (projectIsRunning(state, projectId)) return true;
   const prefix = JSON.stringify([projectId]).slice(0, -1) + ',';
   return Object.entries(state.sessionOperations).some(
     ([key, operation]) => operation.pending && key.startsWith(prefix),

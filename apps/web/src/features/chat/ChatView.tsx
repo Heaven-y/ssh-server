@@ -1,5 +1,4 @@
 import { CircleAlert, ListTree, MessageSquare, X } from 'lucide-react';
-import { useState } from 'react';
 import type { Workspace } from '@agentdeck/shared/projects';
 import { buttonClass } from '../../ui/styles';
 import { useChat } from './chat-store';
@@ -84,7 +83,8 @@ function Messages({ view }: { view: 'chat' | 'trajectory' }) {
 
 export function ChatView({ workspace }: { workspace: Workspace }) {
   const version = useChat((s) => s.conversationVersion);
-  const [view, setView] = useState<'chat' | 'trajectory'>('chat');
+  const view = useChat((s) => s.view);
+  const setView = useChat((s) => s.setView);
   return (
     <section className="conversation" aria-label={`${workspace.name}会话`}>
       <div role="group" aria-label="会话视图" className="flex shrink-0 items-center gap-1 px-5 py-2">

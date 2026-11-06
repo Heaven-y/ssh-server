@@ -193,7 +193,7 @@ it('项目菜单独立于服务器绑定，运行准备中连已打开的菜单�
   );
   fireEvent.click(screen.getByRole('button', { name: '管理项目“示例项目”' }));
   const rename = await screen.findByRole('menuitem', { name: '重命名项目' });
-  act(() => useChat.setState({ pendingClientTurnId: 'pending' }));
+  act(() => useChat.setState({ workspaceId: project.id, pendingClientTurnId: 'pending' }));
   expect(rename.getAttribute('aria-disabled')).toBe('true');
   fireEvent.click(rename);
   expect(manage).not.toHaveBeenCalled();

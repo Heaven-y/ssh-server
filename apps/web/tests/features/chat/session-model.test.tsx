@@ -89,22 +89,9 @@ it('已加载历史模型保留于所属来源缓存，切回同一会话时模�
   expect(screen.queryByText(model)).toBeNull();
   expect(useChat.getState().sessionModels[sessionActionKey('workspace', claude)]?.actualModel).toBe(model);
   expect(useChat.getState().sessionModels[sessionActionKey('workspace', codex)]).toBeUndefined();
-  let resolve!: (history: SessionHistory) => void;
-  read.mockImplementationOnce(
-    () =>
-      new Promise((done) => {
-        resolve = done;
-      }),
-  );
-  let reopening!: Promise<void>;
-  act(() => {
-    reopening = useChat.getState().openSession(claude);
-  });
+  await act(() => useChat.getState().openSession(claude));
   expect(screen.getByRole('button', { name: '模型选项' }).title).toContain(`最近实际运行：${model}`);
-  await act(async () => {
-    resolve({ session: record(claude), events: [], actualModel: model });
-    await reopening;
-  });
+  expect(read).toHaveBeenCalledTimes(1);
 });
 it('迟到默认不覆盖历史模型，空模型和迟到旧历史不污染另一来源', async () => {
   let resolve!: (history: SessionHistory) => void;

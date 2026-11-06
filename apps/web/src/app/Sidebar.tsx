@@ -15,6 +15,7 @@ import { SidebarBrand, SidebarFooter, SidebarWorkspaces } from './SidebarChrome'
 import { SidebarOtherSessions } from './SidebarOtherSessions';
 import type { ProjectDraft, ProjectManageAction } from '../features/projects/project-management';
 import type { SessionListFailure } from '../features/projects/use-project-sessions';
+import { BackgroundConversations } from '../features/chat/BackgroundConversations';
 
 export type SidebarProps = {
   pages?: ReactNode;
@@ -36,6 +37,7 @@ export type SidebarProps = {
   onOpenSettings?(): void;
   onOpenCommands?(): void;
   onOpenArchive?(): void;
+  onOpenConversation?(id: string): void;
   /** 会话仍在读取时不要把加载中误报成空列表。 */
   loadingSessions?: boolean;
   currentProjectId?: string;
@@ -247,6 +249,7 @@ export function Sidebar({
   onOpenSettings,
   onOpenCommands,
   onOpenArchive,
+  onOpenConversation,
   loadingSessions = false,
   currentProjectId,
 }: SidebarProps) {
@@ -298,6 +301,7 @@ export function Sidebar({
           onOpenArchive={onOpenArchive}
         />
       </div>
+      <BackgroundConversations projects={projects} collapsed={collapsed} open={onOpenConversation} />
       <SidebarWorkspaces
         collapsed={collapsed}
         query={search}

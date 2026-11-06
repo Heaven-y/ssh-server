@@ -11,6 +11,7 @@ import type { Workspace } from '@agentdeck/shared/projects';
 import { ProjectManageDialog } from '../../../src/features/projects/ProjectManageDialog';
 
 import { sessionActionKey, useChat } from '../../../src/features/chat/chat-store';
+import { projectChatBusy } from '../../../src/features/projects/project-management';
 
 const project: Workspace = { id: 'demo', name: '原项目', dir: path.resolve('fixtures', 'demo') };
 const other: Workspace = { id: 'other', name: '其他项目', dir: path.resolve('fixtures', 'other') };
@@ -44,6 +45,16 @@ function mount(action: 'rename' | 'directory' | 'remove', target = project) {
   );
   return close;
 }
+
+it('后台运行只锁定所属项目的目录管理，其他项目可以修改', () => {
+  useChat.setState({ running: true, sessionId: 'native-running' });
+  useChat.getState().selectWorkspace(other.id);
+  expect(projectChatBusy(project.id)).toBe(true);
+  expect(projectChatBusy(other.id)).toBe(false);
+  mount('directory', project);
+  fireEvent.change(screen.getByLabelText('项目目录'), { target: { value: other.dir } });
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: '更换目录' }).disabled).toBe(true);
+});
 
 it('改名只提交名称，目录离线也不触碰目录或原生会话', async () => {
   const update = vi.spyOn(projectsApi, 'updateProject').mockResolvedValue({ ...project, name: '新的名称' });

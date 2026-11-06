@@ -12,6 +12,16 @@ import type { ConnectionStatus } from '../../lib/ws';
 import type { ChatItem } from './chat-reducer';
 export type SessionOperation = { action: SessionActionInput['action'] | 'fork'; pending: boolean; error?: string };
 export type ChatState = {
+  conversationId: string;
+  background: Record<string, ConversationView>;
+  conversationVisible: boolean;
+  draft: string;
+  unread: boolean;
+  view: 'chat' | 'trajectory';
+  setDraft(text: string): void;
+  setView(view: 'chat' | 'trajectory'): void;
+  openConversation(id: string): void;
+  interruptConversation(id: string): void;
   connection: ConnectionStatus;
   workspaceId?: string;
   agent: AgentKind;
@@ -60,3 +70,33 @@ export type ChatState = {
   respondPermission(requestId: string, allow: boolean): void;
   dismissBanner(): void;
 };
+
+/** 只有页面选择和运行内容随会话保存，连接、配置默认与管理索引仍由宿主持有。 */
+export type ConversationView = Pick<
+  ChatState,
+  | 'conversationId'
+  | 'workspaceId'
+  | 'agent'
+  | 'sessionId'
+  | 'modelOverrides'
+  | 'reasoningEfforts'
+  | 'permission'
+  | 'actualModel'
+  | 'selectedCapability'
+  | 'contextUsage'
+  | 'compaction'
+  | 'items'
+  | 'inspectedItemId'
+  | 'conversationVersion'
+  | 'running'
+  | 'turnId'
+  | 'pendingClientTurnId'
+  | 'interruptRequested'
+  | 'loadingHistory'
+  | 'historyError'
+  | 'historyNotice'
+  | 'banner'
+  | 'draft'
+  | 'unread'
+  | 'view'
+>;

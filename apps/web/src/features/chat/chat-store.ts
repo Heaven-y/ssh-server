@@ -2,68 +2,34 @@ import type { ChatState } from './chat-state';
 import {
   DEFAULT_REASONING_EFFORTS,
   EMPTY_MODEL_OVERRIDES,
-  historyFailure,
-  historyViewVersion,
-  historyParameters,
-  historyRetryItems,
   sameSession,
-  nativeStatus,
-  reportedModel,
+  sessionActionKey,
+  emptyConversation,
 } from './chat-state-helpers';
 import { sessionsApi } from '../sessions/api';
 // 会话身份包含 Agent；历史请求与实时轮次分别校验选择代次和关联 ID。
 import { create } from 'zustand';
-import type { AgentEvent, ServerMessage, SessionRef } from '@agentdeck/shared/conversation';
 
 import { refreshSessionLists } from '../sessions/session-queries';
-import { connectChat, type ChatSocket, type ConnectionStatus } from '../../lib/ws';
-import { markPermissionPending, reduceChat, type ChatItem } from './chat-reducer';
+import { connectChat, type ChatSocket } from '../../lib/ws';
+import { markPermissionPending, reduceChat } from './chat-reducer';
 import { capabilityRestriction, selectionRestriction } from './capability-selection';
+import { createChatEvents } from './chat-events';
+import { createChatHistory } from './chat-history';
+import {
+  conversationBusy,
+  conversationById,
+  conversationForSession,
+  retainConversation,
+  sessionIsRunning,
+  updateConversation,
+} from './conversations';
 
 const LAST_WORKSPACE_KEY = 'agentdeck.lastProject';
-export const sessionActionKey = (workspaceId: string, session: SessionRef): string =>
-  JSON.stringify([workspaceId, session.agent, session.sessionId]);
+export { sessionActionKey } from './chat-state-helpers';
 
 let socket: ChatSocket | undefined;
-let historyRequest: AbortController | undefined;
-let selectionGeneration = 0;
 const pendingInterrupts = new Set<string>();
-const emptyConversation = {
-  sessionId: undefined,
-  actualModel: undefined,
-  selectedCapability: undefined,
-  contextUsage: undefined,
-  compaction: undefined,
-  items: [] as ChatItem[],
-  inspectedItemId: undefined,
-  running: false,
-  turnId: undefined,
-  pendingClientTurnId: undefined,
-  interruptRequested: false,
-  loadingHistory: false,
-  historyError: undefined,
-  historyNotice: undefined,
-  banner: undefined,
-};
-function changeSelection(): number {
-  historyRequest?.abort();
-  historyRequest = undefined;
-  return ++selectionGeneration;
-}
-function historyIsCurrent(controller: AbortController, generation: number, workspaceId: string, session: SessionRef) {
-  const current = useChat.getState();
-  return (
-    !controller.signal.aborted &&
-    generation === selectionGeneration &&
-    current.workspaceId === workspaceId &&
-    current.agent === session.agent &&
-    current.sessionId === session.sessionId
-  );
-}
-/** 重试期间先保留已收到的正文；只有成功读取的历史才有资格替换它。 */
-function isSessionRunning(current: ChatState, workspaceId: string, session: SessionRef): boolean {
-  return sameSession(current, workspaceId, session) && (current.running || !!current.pendingClientTurnId);
-}
 export function managementPending(current: ChatState): boolean {
   if (!current.workspaceId || !current.sessionId) return false;
   return (
@@ -74,19 +40,12 @@ export function managementPending(current: ChatState): boolean {
 }
 function cannotSend(current: ChatState, text: string): boolean {
   return (
-    current.running ||
+    conversationBusy(current) ||
     current.loadingHistory ||
     !!current.historyError ||
     (!text.trim() && !current.selectedCapability) ||
     managementPending(current)
   );
-}
-/** 本阶段保留当前回合控制权，不能通过导航抹掉仍在运行的身份。 */
-export function allowConversationNavigation(): boolean {
-  const current = useChat.getState();
-  if (!current.running && !current.pendingClientTurnId) return true;
-  useChat.setState({ banner: '当前会话正在运行，请先停止或等待本轮结束后再切换。' });
-  return false;
 }
 function sendRestriction(current: ChatState, text: string): string | undefined {
   return selectionRestriction(current.selectedCapability, current.sessionId, text);
@@ -115,264 +74,291 @@ function persistWorkspace(id?: string): void {
   }
 }
 
-export const useChat = create<ChatState>()((set, get) => ({
-  connection: 'connecting',
-  conversationVersion: 0,
-  agent: 'claude',
-  modelOverrides: { ...EMPTY_MODEL_OVERRIDES },
-  defaults: { defaultAgent: 'claude' },
-  initialDefaultsEligible: true,
-  reasoningEfforts: { ...DEFAULT_REASONING_EFFORTS },
-  sessionOperations: {},
-  sessionModels: {},
-  inspectorRequest: 0,
-  ...emptyConversation,
-  inspectItem(id) {
-    if (id && !get().items.some((item) => item.id === id)) return;
-    set((state) => ({ inspectedItemId: id, inspectorRequest: state.inspectorRequest + 1 }));
-  },
-  selectWorkspace(id) {
-    if (get().workspaceId === id) return;
-    if (!allowConversationNavigation()) return;
-    const conversationVersion = changeSelection();
-    persistWorkspace(id);
-    set({ workspaceId: id, ...emptyConversation, ...newDefaults(get()), conversationVersion });
-  },
-  removeWorkspace(id, nextId) {
-    const prefix = JSON.stringify([id]).slice(0, -1) + ',';
-    const sessionOperations = Object.fromEntries(
-      Object.entries(get().sessionOperations).filter(([key]) => !key.startsWith(prefix)),
-    );
-    if (lastWorkspaceId() === id) persistWorkspace();
-    // 迟到的删除结果只清理所属状态，不能切走用户已经选择的其他工作区。
-    if (get().workspaceId === id) get().selectWorkspace(nextId);
-    set({
-      sessionOperations,
-      sessionModels: Object.fromEntries(Object.entries(get().sessionModels).filter(([key]) => !key.startsWith(prefix))),
-    });
-  },
-  newSession(agent = get().defaults.defaultAgent) {
-    if (!allowConversationNavigation()) return;
-    const conversationVersion = changeSelection();
-    set({ ...emptyConversation, ...newDefaults(get()), agent, initialDefaultsEligible: false, conversationVersion });
-  },
-  resetWorkspaceConversation(id, expectedVersion) {
-    const prefix = JSON.stringify([id]).slice(0, -1) + ',';
-    set({
-      sessionModels: Object.fromEntries(Object.entries(get().sessionModels).filter(([key]) => !key.startsWith(prefix))),
-    });
-    // 迟到的改目录结果只清理来源项目，不能抢走用户的新选择。
-    if (get().workspaceId === id && get().conversationVersion === expectedVersion) get().newSession(get().agent);
-  },
-  setAgent(agent) {
-    const current = get();
-    if (current.sessionId || current.running || current.loadingHistory || current.pendingClientTurnId) return;
-    set({ initialDefaultsEligible: false });
-    if (current.agent !== agent) {
-      const conversationVersion = changeSelection();
-      set({ ...emptyConversation, agent, permission: undefined, conversationVersion });
-    }
-  },
-  async openSession(session, options) {
-    if (!allowConversationNavigation()) return;
-    const { workspaceId } = get();
-    if (!workspaceId) return;
-    const generation = changeSelection();
-    const conversationVersion = historyViewVersion(get(), session, generation, options);
-    const controller = new AbortController();
-    historyRequest = controller;
-    set({
-      ...emptyConversation,
-      ...historyParameters(get(), session),
-      items: historyRetryItems(get(), session, options),
-      agent: session.agent,
-      sessionId: session.sessionId,
-      actualModel: get().sessionModels[sessionActionKey(workspaceId, session)]?.actualModel,
-      loadingHistory: true,
-      conversationVersion,
-      initialDefaultsEligible: false,
-    });
-    try {
-      const history = await sessionsApi.sessionEvents(workspaceId, session.sessionId, session.agent, controller.signal);
-      if (!historyIsCurrent(controller, generation, workspaceId, session)) return;
-      if (history.session.agent !== session.agent || history.session.sessionId !== session.sessionId)
-        throw new Error('会话身份不匹配，未载入历史');
-      const items = [...history.events, { type: 'turn_end', isError: false } as const].reduce(reduceChat, []);
-      const statuses = history.events.reduce((result, event) => ({ ...result, ...nativeStatus(event) }), {});
-      const actualModel = reportedModel(history.actualModel);
-      set((current) => ({
-        items,
-        loadingHistory: false,
-        actualModel,
-        ...statuses,
-        sessionModels: {
-          ...current.sessionModels,
-          [sessionActionKey(workspaceId, session)]: {
-            actualModel,
-            nativeModel: reportedModel(history.session.nativeModel),
-          },
-        },
-      }));
-    } catch (error) {
-      if (historyIsCurrent(controller, generation, workspaceId, session)) {
-        set({ loadingHistory: false, ...historyFailure(session.agent, error) });
-      }
-    } finally {
-      if (historyRequest === controller) historyRequest = undefined;
-    }
-  },
-  setDefaults(settings) {
-    const current = get();
-    const defaults = { defaultAgent: settings.defaultAgent };
-    set({ defaults });
-    if (
-      current.initialDefaultsEligible &&
-      !current.sessionId &&
-      !current.running &&
-      !current.loadingHistory &&
-      !current.pendingClientTurnId &&
-      !current.items.length
-    ) {
-      set({ agent: defaults.defaultAgent, initialDefaultsEligible: false });
-    }
-  },
-  touchDraft: () => set({ initialDefaultsEligible: false }),
-  setModel: (model) =>
-    set((current) => ({
-      modelOverrides: { ...current.modelOverrides, [current.agent]: model },
-      reasoningEfforts:
-        model.trim() === current.modelOverrides[current.agent].trim()
-          ? current.reasoningEfforts
-          : { ...current.reasoningEfforts, [current.agent]: '' },
-      initialDefaultsEligible: false,
-    })),
-  setPermission(permission) {
-    const current = get();
-    if (current.running || current.pendingClientTurnId || current.loadingHistory || managementPending(current)) return;
-    if (permission && permission.agent !== current.agent) return;
-    set({ permission, initialDefaultsEligible: false });
-  },
-  setReasoningEffort: (reasoningEffort) =>
-    set((current) => ({
-      reasoningEfforts: { ...current.reasoningEfforts, [current.agent]: reasoningEffort },
-      initialDefaultsEligible: false,
-    })),
-  selectCapability(capability) {
-    const current = get();
-    if (current.running || current.loadingHistory || managementPending(current)) return;
-    if (capability && capabilityRestriction(capability, current.sessionId)) return;
-    set({ selectedCapability: capability, initialDefaultsEligible: false });
-  },
-  async manageSession(workspaceId, session, input) {
-    const key = sessionActionKey(workspaceId, session);
-    const current = get();
-    if (current.sessionOperations[key]?.pending) return false;
-    if (isSessionRunning(current, workspaceId, session)) {
+export const useChat = create<ChatState>()((set, get) => {
+  const history = createChatHistory(get, set);
+  return {
+    connection: 'connecting',
+    conversationId: crypto.randomUUID(),
+    background: {},
+    conversationVisible: true,
+    conversationVersion: 0,
+    agent: 'claude',
+    modelOverrides: { ...EMPTY_MODEL_OVERRIDES },
+    defaults: { defaultAgent: 'claude' },
+    initialDefaultsEligible: true,
+    reasoningEfforts: { ...DEFAULT_REASONING_EFFORTS },
+    sessionOperations: {},
+    sessionModels: {},
+    inspectorRequest: 0,
+    ...emptyConversation,
+    setDraft: (draft) => set({ draft, initialDefaultsEligible: false }),
+    setView: (view) => set({ view }),
+    inspectItem(id) {
+      if (id && !get().items.some((item) => item.id === id)) return;
+      set((state) => ({ inspectedItemId: id, inspectorRequest: state.inspectorRequest + 1 }));
+    },
+    selectWorkspace(id) {
+      if (get().workspaceId === id) return;
+      const saved = Object.values(get().background).findLast((view) => view.workspaceId === id);
+      if (saved) return get().openConversation(saved.conversationId);
+      const conversationVersion = history.changeSelection();
+      persistWorkspace(id);
       set({
-        sessionOperations: {
-          ...current.sessionOperations,
-          [key]: { action: input.action, pending: false, error: '会话正在运行，请结束后再管理' },
-        },
+        workspaceId: id,
+        ...emptyConversation,
+        ...newDefaults(get()),
+        conversationVersion,
+        conversationId: crypto.randomUUID(),
+        background: retainConversation(get()),
       });
-      return false;
-    }
-    set({ sessionOperations: { ...current.sessionOperations, [key]: { action: input.action, pending: true } } });
-    try {
-      await sessionsApi.sessionAction(workspaceId, session.sessionId, session.agent, input);
-      if ((input.action === 'delete' || input.action === 'archive') && sameSession(get(), workspaceId, session)) {
-        const conversationVersion = changeSelection();
+    },
+    openConversation(id) {
+      const current = get();
+      const saved = conversationById(current, id);
+      if (!saved) return;
+      if (id !== current.conversationId) {
+        history.changeSelection();
+        const background = { ...retainConversation(current) };
+        delete background[id];
+        persistWorkspace(saved.workspaceId);
+        set({ ...saved, background, unread: false, initialDefaultsEligible: false });
+      }
+      // 离开时取消了历史请求；回来后重读，不能永远停在加载状态。
+      if (saved.loadingHistory && saved.sessionId)
+        void get().openSession({ agent: saved.agent, sessionId: saved.sessionId }, { preserveDraft: true });
+    },
+    removeWorkspace(id, nextId) {
+      const prefix = JSON.stringify([id]).slice(0, -1) + ',';
+      const sessionOperations = Object.fromEntries(
+        Object.entries(get().sessionOperations).filter(([key]) => !key.startsWith(prefix)),
+      );
+      if (lastWorkspaceId() === id) persistWorkspace();
+      // 迟到的删除结果只清理所属状态，不能切走用户已经选择的其他工作区。
+      if (get().workspaceId === id) get().selectWorkspace(nextId);
+      set({
+        background: Object.fromEntries(Object.entries(get().background).filter(([, view]) => view.workspaceId !== id)),
+        sessionOperations,
+        sessionModels: Object.fromEntries(
+          Object.entries(get().sessionModels).filter(([key]) => !key.startsWith(prefix)),
+        ),
+      });
+    },
+    newSession(agent = get().defaults.defaultAgent) {
+      const conversationVersion = history.changeSelection();
+      set({
+        ...emptyConversation,
+        ...newDefaults(get()),
+        agent,
+        initialDefaultsEligible: false,
+        conversationVersion,
+        conversationId: crypto.randomUUID(),
+        background: retainConversation(get()),
+      });
+    },
+    resetWorkspaceConversation(id, expectedVersion) {
+      const prefix = JSON.stringify([id]).slice(0, -1) + ',';
+      // 迟到的改目录结果只清理来源项目，不能抢走用户的新选择。
+      if (get().workspaceId === id && get().conversationVersion === expectedVersion) get().newSession(get().agent);
+      set({
+        sessionModels: Object.fromEntries(
+          Object.entries(get().sessionModels).filter(([key]) => !key.startsWith(prefix)),
+        ),
+        background: Object.fromEntries(Object.entries(get().background).filter(([, view]) => view.workspaceId !== id)),
+      });
+    },
+    setAgent(agent) {
+      const current = get();
+      if (current.sessionId || current.running || current.loadingHistory || current.pendingClientTurnId) return;
+      set({ initialDefaultsEligible: false });
+      if (current.agent !== agent) {
+        const conversationVersion = history.changeSelection();
+        set({ ...emptyConversation, draft: current.draft, agent, permission: undefined, conversationVersion });
+      }
+    },
+    async openSession(session, options) {
+      const { workspaceId } = get();
+      if (!workspaceId) return;
+      const saved = conversationForSession(get(), workspaceId, session);
+      if (saved && saved.conversationId !== get().conversationId) {
+        // 恢复内存内容而不是重新读取覆盖仍在更新的轮次。
+        const background = { ...retainConversation(get()) };
+        delete background[saved.conversationId];
+        history.changeSelection();
+        set({ ...saved, background, unread: false, initialDefaultsEligible: false });
+      }
+      if (saved) {
+        if (conversationBusy(saved)) return;
+        if (!saved.loadingHistory && !saved.historyError && !options) return;
+        options = { preserveDraft: true };
+      }
+      await history.read(workspaceId, session, options);
+    },
+    setDefaults(settings) {
+      const current = get();
+      const defaults = { defaultAgent: settings.defaultAgent };
+      set({ defaults });
+      if (
+        current.initialDefaultsEligible &&
+        !current.sessionId &&
+        !current.running &&
+        !current.loadingHistory &&
+        !current.pendingClientTurnId &&
+        !current.items.length
+      ) {
+        set({ agent: defaults.defaultAgent, initialDefaultsEligible: false });
+      }
+    },
+    touchDraft: () => set({ initialDefaultsEligible: false }),
+    setModel: (model) =>
+      set((current) => ({
+        modelOverrides: { ...current.modelOverrides, [current.agent]: model },
+        reasoningEfforts:
+          model.trim() === current.modelOverrides[current.agent].trim()
+            ? current.reasoningEfforts
+            : { ...current.reasoningEfforts, [current.agent]: '' },
+        initialDefaultsEligible: false,
+      })),
+    setPermission(permission) {
+      const current = get();
+      if (current.running || current.pendingClientTurnId || current.loadingHistory || managementPending(current))
+        return;
+      if (permission && permission.agent !== current.agent) return;
+      set({ permission, initialDefaultsEligible: false });
+    },
+    setReasoningEffort: (reasoningEffort) =>
+      set((current) => ({
+        reasoningEfforts: { ...current.reasoningEfforts, [current.agent]: reasoningEffort },
+        initialDefaultsEligible: false,
+      })),
+    selectCapability(capability) {
+      const current = get();
+      if (current.running || current.loadingHistory || managementPending(current)) return;
+      if (capability && capabilityRestriction(capability, current.sessionId)) return;
+      set({ selectedCapability: capability, initialDefaultsEligible: false });
+    },
+    async manageSession(workspaceId, session, input) {
+      const key = sessionActionKey(workspaceId, session);
+      const current = get();
+      if (current.sessionOperations[key]?.pending) return false;
+      if (sessionIsRunning(current, workspaceId, session)) {
         set({
-          ...emptyConversation,
-          modelOverrides: { ...EMPTY_MODEL_OVERRIDES },
-          reasoningEfforts: { ...DEFAULT_REASONING_EFFORTS },
-          permission: undefined,
-          conversationVersion,
-        });
-      }
-      const operations = { ...get().sessionOperations };
-      delete operations[key];
-      if (input.action === 'delete') {
-        const sessionModels = { ...get().sessionModels };
-        delete sessionModels[key];
-        set({ sessionModels });
-      }
-      set({ sessionOperations: operations });
-      await refreshSessionLists(session.agent);
-      return true;
-    } catch (error) {
-      set((latest) => ({
-        sessionOperations: {
-          ...latest.sessionOperations,
-          [key]: {
-            action: input.action,
-            pending: false,
-            error: error instanceof Error ? error.message : '会话操作未确认，请重新读取列表核对',
+          sessionOperations: {
+            ...current.sessionOperations,
+            [key]: { action: input.action, pending: false, error: '会话正在运行，请结束后再管理' },
           },
-        },
+        });
+        return false;
+      }
+      set({ sessionOperations: { ...current.sessionOperations, [key]: { action: input.action, pending: true } } });
+      try {
+        await sessionsApi.sessionAction(workspaceId, session.sessionId, session.agent, input);
+        if (input.action === 'delete' || input.action === 'archive') {
+          if (sameSession(get(), workspaceId, session)) {
+            const conversationVersion = history.changeSelection();
+            set({
+              ...emptyConversation,
+              ...newDefaults(get()),
+              agent: session.agent,
+              conversationVersion,
+              conversationId: crypto.randomUUID(),
+            });
+          }
+          set({
+            background: Object.fromEntries(
+              Object.entries(get().background).filter(([, view]) => !sameSession(view, workspaceId, session)),
+            ),
+          });
+        }
+        const operations = { ...get().sessionOperations };
+        delete operations[key];
+        if (input.action === 'delete') {
+          const sessionModels = { ...get().sessionModels };
+          delete sessionModels[key];
+          set({ sessionModels });
+        }
+        set({ sessionOperations: operations });
+        await refreshSessionLists(session.agent);
+        return true;
+      } catch (error) {
+        set((latest) => ({
+          sessionOperations: {
+            ...latest.sessionOperations,
+            [key]: {
+              action: input.action,
+              pending: false,
+              error: error instanceof Error ? error.message : '会话操作未确认，请重新读取列表核对',
+            },
+          },
+        }));
+        return false;
+      }
+    },
+    send(text) {
+      const current = get();
+      if (!current.workspaceId || !socket || cannotSend(current, text)) return false;
+      const restriction = sendRestriction(current, text);
+      if (restriction) {
+        set({ banner: restriction });
+        return false;
+      }
+      const clientTurnId = crypto.randomUUID();
+      const message = text;
+      const sent = socket.send({
+        type: 'chat.send',
+        workspaceId: current.workspaceId,
+        agent: current.agent,
+        sessionId: current.sessionId,
+        text: message,
+        ...(current.selectedCapability ? { selection: { id: current.selectedCapability.id } } : {}),
+        model: current.modelOverrides[current.agent].trim() || undefined,
+        reasoningEffort: current.reasoningEfforts[current.agent].trim() || undefined,
+        ...(current.permission ? { permission: current.permission } : {}),
+        clientTurnId,
+      });
+      if (!sent) {
+        set({ banner: '连接已断开，消息未发送。请等待重新连接后再试。' });
+        return false;
+      }
+      set((state) => ({
+        items: reduceChat(state.items, {
+          type: 'user_message',
+          text: current.selectedCapability ? `/${current.selectedCapability.name}${text ? ` ${text}` : ''}` : message,
+        }),
+        selectedCapability: undefined,
+        draft: '',
+        // 旧轮次未确认的压缩留在历史中，新轮次不能把它重新显示为进行中。
+        compaction: state.compaction?.status === 'running' ? undefined : state.compaction,
+        running: true,
+        pendingClientTurnId: clientTurnId,
+        interruptRequested: false,
+        banner: undefined,
       }));
-      return false;
-    }
-  },
-  send(text) {
-    const current = get();
-    if (!current.workspaceId || !socket || cannotSend(current, text)) return false;
-    const restriction = sendRestriction(current, text);
-    if (restriction) {
-      set({ banner: restriction });
-      return false;
-    }
-    const clientTurnId = crypto.randomUUID();
-    const message = text;
-    const sent = socket.send({
-      type: 'chat.send',
-      workspaceId: current.workspaceId,
-      agent: current.agent,
-      sessionId: current.sessionId,
-      text: message,
-      ...(current.selectedCapability ? { selection: { id: current.selectedCapability.id } } : {}),
-      model: current.modelOverrides[current.agent].trim() || undefined,
-      reasoningEffort: current.reasoningEfforts[current.agent].trim() || undefined,
-      ...(current.permission ? { permission: current.permission } : {}),
-      clientTurnId,
-    });
-    if (!sent) {
-      set({ banner: '连接已断开，消息未发送。请等待重新连接后再试。' });
-      return false;
-    }
-    set((state) => ({
-      items: reduceChat(state.items, {
-        type: 'user_message',
-        text: current.selectedCapability ? `/${current.selectedCapability.name}${text ? ` ${text}` : ''}` : message,
-      }),
-      selectedCapability: undefined,
-      // 旧轮次未确认的压缩留在历史中，新轮次不能把它重新显示为进行中。
-      compaction: state.compaction?.status === 'running' ? undefined : state.compaction,
-      running: true,
-      pendingClientTurnId: clientTurnId,
-      interruptRequested: false,
-      banner: undefined,
-    }));
-    return true;
-  },
-  interrupt() {
-    const current = get();
-    if (!current.running || current.interruptRequested) return;
-    if (current.turnId) {
-      if (!socket?.send({ type: 'chat.interrupt', turnId: current.turnId })) return;
-    } else if (current.pendingClientTurnId) pendingInterrupts.add(current.pendingClientTurnId);
-    set({ interruptRequested: true });
-  },
-  respondPermission(requestId, allow) {
-    const current = get();
-    if (!canRespond(current, requestId)) return;
-    if (!socket?.send({ type: 'permission.respond', turnId: current.turnId!, requestId, allow })) {
-      set({ banner: '连接已断开，答复未发送。' });
-      return;
-    }
-    set((state) => ({ items: markPermissionPending(state.items, requestId) }));
-  },
-  dismissBanner: () => set({ banner: undefined }),
-}));
+      return true;
+    },
+    interrupt() {
+      get().interruptConversation(get().conversationId);
+    },
+    interruptConversation(id) {
+      const state = get();
+      const view = conversationById(state, id);
+      if (!view || !conversationBusy(view) || view.interruptRequested) return;
+      if (view.turnId) {
+        if (!socket?.send({ type: 'chat.interrupt', turnId: view.turnId })) return;
+      } else if (view.pendingClientTurnId) pendingInterrupts.add(view.pendingClientTurnId);
+      set(updateConversation(state, view, { interruptRequested: true }));
+    },
+    respondPermission(requestId, allow) {
+      const current = get();
+      if (!canRespond(current, requestId)) return;
+      if (!socket?.send({ type: 'permission.respond', turnId: current.turnId!, requestId, allow })) {
+        set({ banner: '连接已断开，答复未发送。' });
+        return;
+      }
+      set((state) => ({ items: markPermissionPending(state.items, requestId) }));
+    },
+    dismissBanner: () => set({ banner: undefined }),
+  };
+});
 
 function canRespond(current: ChatState, requestId: string): boolean {
   if (!current.running || !current.turnId || current.interruptRequested || current.connection !== 'open') return false;
@@ -380,92 +366,15 @@ function canRespond(current: ChatState, requestId: string): boolean {
     (item) => item.kind === 'permission' && item.id === requestId && !item.resolved && !item.responding,
   );
 }
-type Msg<T extends ServerMessage['type']> = Extract<ServerMessage, { type: T }>;
-function onTurnStarted(msg: Msg<'turn.started'>): void {
-  if (pendingInterrupts.delete(msg.clientTurnId)) socket?.send({ type: 'chat.interrupt', turnId: msg.turnId });
-  const current = useChat.getState();
-  if (
-    msg.clientTurnId !== current.pendingClientTurnId ||
-    msg.workspaceId !== current.workspaceId ||
-    msg.agent !== current.agent
-  )
-    return;
-  useChat.setState({ turnId: msg.turnId, pendingClientTurnId: undefined });
-}
-function reportedSession(current: ChatState, event: AgentEvent): Partial<ChatState> {
-  if (event.type !== 'session' || !current.workspaceId) return {};
-  const actualModel = event.model.trim() || undefined;
-  const key = sessionActionKey(current.workspaceId, { agent: current.agent, sessionId: event.sessionId });
-  return {
-    sessionId: event.sessionId,
-    actualModel,
-    sessionModels: { ...current.sessionModels, [key]: { ...current.sessionModels[key], actualModel } },
-  };
-}
-function onAgentEvent(msg: Msg<'agent.event'>): void {
-  const current = useChat.getState();
-  if (msg.turnId !== current.turnId) return;
-  const event = msg.event;
-  if (event.type === 'session' && event.agent && event.agent !== current.agent) return;
-  if (event.type === 'session' && current.sessionId && current.sessionId !== event.sessionId) return;
-  useChat.setState({
-    items: reduceChat(current.items, event),
-    ...nativeStatus(event),
-    ...reportedSession(current, event),
-  });
-  if (event.type === 'session' && !current.sessionId) void refreshSessionLists(current.agent);
-}
-function onTurnFinished(msg: Msg<'turn.finished'>): void {
-  void refreshSessionLists(msg.agent);
-  const current = useChat.getState();
-  if (msg.turnId !== current.turnId || msg.workspaceId !== current.workspaceId || msg.agent !== current.agent) return;
-  useChat.setState({
-    running: false,
-    turnId: undefined,
-    interruptRequested: false,
-    items: reduceChat(current.items, { type: 'turn_end', isError: false }),
-  });
-}
-function onError(msg: Msg<'error'>): void {
-  const current = useChat.getState();
-  if (msg.clientTurnId) pendingInterrupts.delete(msg.clientTurnId);
-  if (msg.turnId && msg.turnId === current.turnId) {
-    useChat.setState({ banner: msg.message });
-    return;
-  }
-  if (!msg.clientTurnId || msg.clientTurnId !== current.pendingClientTurnId) return;
-  useChat.setState({ banner: msg.message, running: false, pendingClientTurnId: undefined, interruptRequested: false });
-}
-function handleServerMessage(msg: ServerMessage): void {
-  switch (msg.type) {
-    case 'turn.started':
-      return onTurnStarted(msg);
-    case 'agent.event':
-      return onAgentEvent(msg);
-    case 'turn.finished':
-      return onTurnFinished(msg);
-    case 'error':
-      return onError(msg);
-  }
-}
-function handleStatus(status: ConnectionStatus): void {
-  const current = useChat.getState();
-  if (status !== 'open') pendingInterrupts.clear();
-  if (status !== 'open' && current.running) {
-    useChat.setState({
-      running: false,
-      turnId: undefined,
-      pendingClientTurnId: undefined,
-      interruptRequested: false,
-      items: reduceChat(current.items, { type: 'turn_end', isError: true }),
-      banner: '连接已断开，本轮输出可能不完整。重新连接后可从会话列表重新打开查看。',
-      historyError: '连接已断开，已请求中断本轮。请恢复连接后重新读取原生历史，再继续发送。',
-    });
-  }
-  useChat.setState({ connection: status });
-}
 type Connect = typeof connectChat;
 export function startChatConnection(connect: Connect = connectChat): void {
-  socket ??= connect({ onMessage: handleServerMessage, onStatus: handleStatus });
+  socket ??= connect(
+    createChatEvents(
+      useChat.getState,
+      useChat.setState,
+      (message) => socket?.send(message) ?? false,
+      pendingInterrupts,
+    ),
+  );
 }
 export const reconnectChat = () => socket?.reconnect();

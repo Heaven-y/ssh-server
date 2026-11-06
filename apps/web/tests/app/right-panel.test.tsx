@@ -196,22 +196,37 @@ it('窄窗折叠为图标导航，右侧仍只在主动打开后出现', async (
   fireEvent.click(screen.getByRole('button', { name: '打开右侧边栏' }));
   expect(screen.getByRole('complementary', { name: '右侧边栏' })).toBeTruthy();
 });
-it('运行中从另一工作区新建不会抢占当前原生回合', async () => {
+it('运行中可打开插件和在另一工作区新建，后台入口能返回原回合', async () => {
   mount();
   await screen.findByLabelText('输入消息');
   act(() => useChat.setState({ running: true, pendingClientTurnId: 'pending', agent: 'claude' }));
+  const id = useChat.getState().conversationId;
   const nav = screen.getByRole('navigation', { name: '项目与会话' });
   fireEvent.click(await within(nav).findByRole('button', { name: 'SSH Console' }));
-  expect(screen.queryByRole('region', { name: 'SSH Console页面' })).toBeNull();
-  expect(screen.getByLabelText('输入消息')).toBeTruthy();
+  expect(await screen.findByRole('region', { name: 'SSH Console页面' })).toBeTruthy();
+  expect(useChat.getState().conversationVisible).toBe(false);
+  expect(within(nav).getByRole('region', { name: '后台会话' })).toBeTruthy();
   fireEvent.click(within(nav).getByRole('button', { name: /^另一个项目/ }));
   fireEvent.click(within(nav).getByRole('button', { name: '新建会话' }));
   const entry = await screen.findByRole('menuitem', { name: 'Antigravity' });
   fireEvent.click(entry);
   expect(useChat.getState()).toMatchObject({
+    workspaceId: other.id,
+    agent: 'antigravity',
+    running: false,
+    pendingClientTurnId: undefined,
+  });
+  expect(useChat.getState().background[id]).toMatchObject({
     workspaceId: workspace.id,
-    agent: 'claude',
     running: true,
     pendingClientTurnId: 'pending',
   });
+  fireEvent.click(within(nav).getByRole('button', { name: '返回新会话（运行中）' }));
+  expect(useChat.getState()).toMatchObject({
+    conversationId: id,
+    workspaceId: workspace.id,
+    running: true,
+    pendingClientTurnId: 'pending',
+  });
+  expect(screen.getByRole('button', { name: '停止' })).toBeTruthy();
 });

@@ -408,7 +408,9 @@ it('更换模型清除旧模型的强度覆盖，避免发送不支持的参数'
 
 it('切换会话隔离草稿，首次原生身份回填保留当前输入框', async () => {
   showChat();
+  const first = useChat.getState().conversationId;
   fireEvent.change(screen.getByLabelText('输入消息'), { target: { value: '旧草稿' } });
+  fireEvent.click(screen.getByRole('button', { name: '轨迹' }));
   act(() => useChat.getState().newSession('antigravity'));
   const input = screen.getByLabelText<HTMLTextAreaElement>('输入消息');
   expect(input.value).toBe('');
@@ -429,6 +431,9 @@ it('切换会话隔离草稿，首次原生身份回填保留当前输入框', a
     });
   });
   expect(screen.getByLabelText('输入消息')).toBe(input);
+  act(() => useChat.getState().openConversation(first));
+  expect(screen.getByLabelText<HTMLTextAreaElement>('输入消息').value).toBe('旧草稿');
+  expect(screen.getByRole('button', { name: '轨迹' }).getAttribute('aria-pressed')).toBe('true');
 });
 
 it.each(['claude', 'codex'] as const)('一体输入底栏用菜单设置%s模型与强度，发送带参数且停止有效', async (agent) => {

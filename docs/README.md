@@ -50,3 +50,5 @@ DSH 界面对齐和整体验证计划归档至 `08ed6df:docs/superpowers/plans/2
 内部结构迁移已完成。迁移前独立审查保存在 `cdcef47:docs/engineering/structure-review.md`，执行完成的计划保存在 `d6028db:docs/superpowers/plans/2026-11-06-workbench-structure.md`。当前模块边界由架构文档维护，取舍和验收分别归现行决策与路线图；不继续并列维护完成计划和旧路径清单。
 
 原生权限与质量门禁适配已完成，执行计划保存在 `ebfbf21:docs/superpowers/plans/2026-11-06-native-permissions.md`。各 CLI 权限映射与恢复语义见原生对话接入，覆盖率分域与扫描范围见开发指南，验证结果在路线图记录。
+
+后台会话与自由导航已完成，计划与验收步骤保存在 `45edc9c:docs/superpowers/plans/2026-11-06-background-conversations.md`。当前运行边界由原生对话与架构说明维护，页面入口见交互文档，修复与验证证据见路线图。

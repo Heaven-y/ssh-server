@@ -1,6 +1,9 @@
 import type { AgentKind, AgentEvent, ContextUsage, CompactionState, SessionRef } from '@agentdeck/shared/conversation';
-import type { ChatState } from './chat-state';
+import type { ChatState, ConversationView } from './chat-state';
+import type { ChatItem } from './chat-reducer';
 import { ApiError } from '../../lib/http';
+export const sessionActionKey = (workspaceId: string, session: SessionRef): string =>
+  JSON.stringify([workspaceId, session.agent, session.sessionId]);
 export const DEFAULT_REASONING_EFFORTS: Record<AgentKind, string> = {
   claude: '',
   codex: '',
@@ -46,7 +49,7 @@ export function historyRetryItems(current: ChatState, session: SessionRef, optio
     : [];
 }
 
-export function sameSession(current: ChatState, workspaceId: string, session: SessionRef): boolean {
+export function sameSession(current: ConversationView, workspaceId: string, session: SessionRef): boolean {
   return (
     current.workspaceId === workspaceId && current.agent === session.agent && current.sessionId === session.sessionId
   );
@@ -61,3 +64,24 @@ export function nativeStatus(event: AgentEvent): { contextUsage?: ContextUsage |
 export function reportedModel(model?: string): string | undefined {
   return model?.trim() || undefined;
 }
+
+export const emptyConversation = {
+  draft: '',
+  unread: false,
+  view: 'chat' as const,
+  sessionId: undefined,
+  actualModel: undefined,
+  selectedCapability: undefined,
+  contextUsage: undefined,
+  compaction: undefined,
+  items: [] as ChatItem[],
+  inspectedItemId: undefined,
+  running: false,
+  turnId: undefined,
+  pendingClientTurnId: undefined,
+  interruptRequested: false,
+  loadingHistory: false,
+  historyError: undefined,
+  historyNotice: undefined,
+  banner: undefined,
+};

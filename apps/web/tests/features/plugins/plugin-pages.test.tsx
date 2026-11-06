@@ -43,10 +43,11 @@ it('命令绑定来源插件，侧栏打开另一插件不重放旧命令', asyn
   act(() => useChat.setState({ running: true, pendingClientTurnId: 'pending' }));
   act(() => {
     result.current.show('first');
-    expect(result.current.commands[0]!.run()).toBe(false);
+    expect(result.current.commands[0]!.run()).toBe(true);
   });
-  expect(result.current.selected).toBe('second');
-  expect(result.current.command).toBeUndefined();
+  expect(result.current.selected).toBe('first');
+  expect(result.current.command).toMatchObject({ pluginId: 'first', id: 'open' });
+  expect(useChat.getState()).toMatchObject({ running: true, pendingClientTurnId: 'pending' });
   act(() => result.current.show(undefined));
   expect(result.current.selected).toBeUndefined();
   client.clear();
