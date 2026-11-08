@@ -49,7 +49,7 @@ function edit(content: string) {
 async function openCatalog() {
   fireEvent.click(await screen.findByRole('button', { name: 'Antigravity' }));
   fireEvent.click(await screen.findByText('高级设置'));
-  fireEvent.click(await screen.findByRole('button', { name: '修改 Antigravity 原始配置' }));
+  fireEvent.click(await screen.findByRole('button', { name: '编辑 Antigravity 配置文件' }));
   return screen.findByRole('heading', { name: '原生配置与扩展 · Antigravity' });
 }
 beforeEach(() => {

@@ -400,31 +400,20 @@ dialog::backdrop {
 }
 .trajectory-context {
   flex-shrink: 0;
-  margin: 0 24px 12px;
+  margin: 0 24px 8px;
   max-height: 180px;
   overflow: auto;
 }
 .trajectory-turn {
-  padding: 8px 24px;
+  padding: 0 24px;
 }
 .trajectory-turn-label {
   font-size: 11px;
   color: var(--color-muted-foreground);
-  margin: 8px 0 10px;
-}
-.trajectory-user {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  width: 100%;
-  padding: 13px;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: var(--color-muted);
-  text-align: left;
+  margin: 8px 0 4px;
 }
 .trajectory-user > svg {
-  margin-top: 3px;
+  justify-self: center;
   color: var(--color-muted-foreground);
 }
 .trajectory-user[aria-pressed='true'] {
@@ -435,13 +424,15 @@ dialog::backdrop {
   margin: 0 24px;
   border-bottom: 1px solid var(--color-border);
 }
-.trajectory-step {
+.trajectory-step,
+.trajectory-user {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 3.5rem 3rem 14px;
+  grid-template-columns: 20px 3.2rem minmax(0, 1fr) 3.5rem 3rem 14px;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
-  padding: 13px 7px;
+  min-height: 36px;
+  padding: 7px;
   border-radius: 6px;
   text-align: left;
   font-size: 11px;
@@ -456,30 +447,18 @@ dialog::backdrop {
 .trajectory-icon {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--color-border);
-  border-radius: 7px;
+  width: 20px;
+  height: 20px;
   color: var(--color-muted-foreground);
 }
-.trajectory-content {
-  min-width: 0;
-}
-.trajectory-label {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 10px;
-  color: var(--color-muted-foreground);
-}
-.trajectory-label > b {
+.trajectory-role {
   font-size: 12px;
   font-weight: 500;
   color: var(--color-foreground);
 }
 .trajectory-summary {
   display: block;
-  margin-top: 5px;
+  min-width: 0;
   font-size: 12px;
   line-height: 21px;
   overflow: hidden;
@@ -536,8 +515,12 @@ dialog::backdrop {
   .trajectory-entry {
     margin-inline: 12px;
   }
-  .trajectory-step {
-    grid-template-columns: 24px minmax(0, 1fr) 2.7rem 2.7rem 12px;
+  .trajectory-turn {
+    padding-inline: 12px;
+  }
+  .trajectory-step,
+  .trajectory-user {
+    grid-template-columns: 18px 2.8rem minmax(0, 1fr) 2.7rem 2.7rem 12px;
     gap: 5px;
   }
 }

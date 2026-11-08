@@ -127,7 +127,7 @@ export function createClaudeSessions(api: ClaudeSessionsApi = nativeApi): Sessio
         session: await summary(record, signal),
         cwd: record.cwd ?? dir,
         actualModel: lastModel(messages),
-        events: messages.flatMap((message) => mapper.mapHistory(message)),
+        events: mapper.mapHistoryBatch(messages),
       };
     },
     async assertBelongs(id, dir) {

@@ -134,20 +134,22 @@ function AdvancedSettings({
             type="button"
             className={buttonClass('ghost')}
             disabled={state.saving || state.modelsLoading}
-            aria-label={`修改 ${nativeAgentNames[state.document!.agent]} 原始配置`}
+            aria-label={`编辑 ${nativeAgentNames[state.document!.agent]} 配置文件`}
+            title="打开 CLI 自己的配置、规则与扩展文件"
             onClick={() => state.leave(onNative)}
           >
             <FileCode2 aria-hidden className="size-3.5" />
-            原始配置
+            CLI 配置文件
           </button>
           {onLaunchEnvironment && (
             <button
               type="button"
               className={buttonClass('ghost')}
               disabled={state.saving || state.modelsLoading}
+              title="仅为工作台启动的 CLI 设置环境变量"
               onClick={() => state.leave(onLaunchEnvironment)}
             >
-              启动环境
+              CLI 环境变量
               <ArrowUpRight aria-hidden className="size-3.5" />
             </button>
           )}

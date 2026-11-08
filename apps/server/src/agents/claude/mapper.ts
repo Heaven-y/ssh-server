@@ -1,7 +1,13 @@
 // 把 Claude Agent SDK 的消息转换成统一的 AgentEvent
 import { NativeSessionIdSchema, type AgentEvent } from '@agentdeck/shared/conversation';
 import { claudeCompactionBoundary, claudeCompactionStatus, ClaudeReplayFilter } from './compaction';
-import { claudeTokenUsage, ClaudeToolMetrics, claudeToolProgress, nonnegative as num } from './metrics';
+import {
+  claudeHistoryUsage,
+  claudeTokenUsage,
+  ClaudeToolMetrics,
+  claudeToolProgress,
+  nonnegative as num,
+} from './metrics';
 
 type Rec = Record<string, unknown>;
 const isRec = (v: unknown): v is Rec => typeof v === 'object' && v !== null;
@@ -9,6 +15,33 @@ const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
 const TERMINAL_STOPS = new Set(['end_turn', 'stop_sequence', 'max_tokens', 'refusal', 'model_context_window_exceeded']);
 type MessageIdentity = { sessionId: string; pointId: string };
 const isChild = (message: Rec) => !!message.parent_tool_use_id || !!message.parent_agent_id;
+
+type HistoryBlock = { id?: string; events: AgentEvent[] };
+type HistoryUsage = { position: number; event: Extract<AgentEvent, { type: 'step_usage' }> };
+function historyMessageId(message: unknown): string | undefined {
+  if (!isRec(message) || isChild(message) || message.type !== 'assistant' || !isRec(message.message)) return;
+  return message.message.model === '<synthetic>' ? undefined : str(message.message.id) || undefined;
+}
+
+/** 最后一个可显示内容块决定统计位置；缺失/无效的新用量不能吞掉此前有效报告。 */
+function historyUsagePositions(blocks: HistoryBlock[]): Map<string, HistoryUsage> {
+  const statistics = new Map<string, HistoryUsage>();
+  blocks.forEach((block, position) => {
+    if (!block.id || !block.events.length) return;
+    const event = block.events.find((value) => value.type === 'step_usage') ?? statistics.get(block.id)?.event;
+    if (event) statistics.set(block.id, { position, event });
+  });
+  return statistics;
+}
+
+function withHistoryUsage(block: HistoryBlock, position: number, statistics: Map<string, HistoryUsage>): AgentEvent[] {
+  const events: AgentEvent[] = block.events.filter((event) => event.type !== 'step_usage');
+  const usage = block.id ? statistics.get(block.id) : undefined;
+  if (usage?.position !== position) return events;
+  const end = events.findIndex((event) => event.type === 'turn_end');
+  events.splice(end < 0 ? events.length : end, 0, usage.event);
+  return events;
+}
 
 function assistantIdentity(msg: Rec): MessageIdentity | undefined {
   if (msg.type !== 'assistant' || msg.parent_tool_use_id || msg.parent_agent_id || msg.aborted) return;
@@ -160,12 +193,19 @@ export class ClaudeEventMapper {
     if (msg.type === 'system') return claudeCompactionBoundary(msg);
     if (msg.type === 'assistant') {
       const forkPoint = claudeHistoryForkPoint(msg, this.historySessionId);
-      const events = this.assistant(msg, true);
+      const events = [...this.assistant(msg, true), ...claudeHistoryUsage(msg.message)];
       if (forkPoint) events.push({ type: 'turn_end', isError: !!msg.error, forkPoint });
       return events;
     }
     if (msg.type !== 'user') return [];
     return [...userTexts(msg), ...this.toolResults(msg, false)];
+  }
+
+  /** SDK 将同一 API 回复拆成多条内容块；统计只放在最后一块之后，保持正文连续。 */
+  mapHistoryBatch(messages: unknown[]): AgentEvent[] {
+    const blocks = messages.map((message) => ({ id: historyMessageId(message), events: this.mapHistory(message) }));
+    const statistics = historyUsagePositions(blocks);
+    return blocks.flatMap((block, position) => withHistoryUsage(block, position, statistics));
   }
 
   private end(msg: Rec): AgentEvent[] {

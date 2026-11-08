@@ -1,6 +1,7 @@
 import type { ChatItem } from './chat-reducer';
 import { shortToolName, toolPrimaryArgument } from './tool-presentation';
 import { activityStatus } from './activity-presentation';
+import { tokenFields, formatTokens } from './chat-metrics';
 
 export type TrajectoryItem = Exclude<ChatItem, { kind: 'fork-point' }>;
 export type TrajectoryRow =
@@ -112,10 +113,17 @@ export function trajectorySummary(item: TrajectoryItem): string {
     case 'compaction':
       return compactionSummary(item);
     case 'statistics':
-      return item.scope === 'turn' ? '回合统计' : '模型步骤统计';
+      return statisticsSummary(item);
     default:
       return item.text;
   }
+}
+
+function statisticsSummary(item: Extract<TrajectoryItem, { kind: 'statistics' }>) {
+  const fields = tokenFields(item.usage)
+    .map(({ label, value }) => `${label} ${formatTokens(value)}`)
+    .join(' · ');
+  return fields || (item.scope === 'turn' ? '回合统计' : '模型步骤统计');
 }
 
 function compactionSummary(item: Extract<TrajectoryItem, { kind: 'compaction' }>): string {

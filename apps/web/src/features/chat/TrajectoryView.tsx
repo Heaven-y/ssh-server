@@ -16,7 +16,6 @@ import {
   type TrajectoryRow,
 } from './trajectory-model';
 import { PermissionCard } from './PermissionCard';
-import { StatisticsLine } from './StatisticsLine';
 import { buttonClass } from '../../ui/styles';
 import { SegmentedControl } from '../../ui/SegmentedControl';
 import { TrajectoryContext } from './TrajectoryContext';
@@ -33,7 +32,7 @@ const initialPosition = (running: boolean, filter: TrajectoryFilter) =>
 
 function StepIndicators({ item }: { item: Extract<TrajectoryRow, { kind: 'step' }>['item'] }) {
   const status = trajectoryStatus(item);
-  const duration = item.kind === 'tool' || item.kind === 'activity' ? item.durationMs : undefined;
+  const duration = 'durationMs' in item ? item.durationMs : undefined;
   return (
     <>
       <span className={`text-right ${status?.tone ?? ''}`}>{status?.label}</span>
@@ -57,12 +56,6 @@ function StepRow({
   const { item } = row;
   const role = trajectoryRole(item);
   const Icon = roleIcons[role];
-  if (item.kind === 'statistics')
-    return (
-      <div className="border-b border-border/50 px-4 py-2">
-        <StatisticsLine statistics={item} />
-      </div>
-    );
   return (
     <div className="trajectory-entry" data-role={role}>
       <button
@@ -75,15 +68,14 @@ function StepRow({
         <span className="trajectory-icon">
           <Icon aria-hidden className="size-3.5" />
         </span>
-        <span className="trajectory-content">
-          <span className="trajectory-label">
-            <b>{trajectoryRoles[role]}</b>
-            <span>{trajectoryCategory(item)}</span>
-            <span className="ml-auto tabular-nums">{row.number}</span>
-          </span>
-          <span className="trajectory-summary" title={trajectorySummary(item)}>
-            {trajectorySummary(item) || trajectoryCategory(item)}
-          </span>
+        <span className="trajectory-role" title={trajectoryCategory(item)}>
+          {trajectoryRoles[role]}
+        </span>
+        <span className="trajectory-summary" title={trajectorySummary(item)}>
+          {item.kind !== 'assistant' && item.kind !== 'compaction' && (
+            <span className="mr-2 text-muted-foreground">{trajectoryCategory(item)}</span>
+          )}
+          {trajectorySummary(item) || trajectoryCategory(item)}
         </span>
         <StepIndicators item={item} />
       </button>
@@ -112,11 +104,13 @@ function TrajectoryEntry({ row, filter }: { row: TrajectoryRow; filter: Trajecto
             onClick={() => inspect(row.user!.id)}
           >
             <User aria-hidden className="size-3.5 shrink-0" />
-            <span className="min-w-0">
-              <b className="block text-xs font-medium">用户</b>
-              <span className="mt-1 block line-clamp-2 text-[13px] leading-6">{row.prompt}</span>
+            <span className="trajectory-role">用户</span>
+            <span className="trajectory-summary" title={row.prompt}>
+              {row.prompt}
             </span>
-            <ChevronRight aria-hidden className="ml-auto size-3.5 shrink-0" />
+            <span />
+            <span />
+            <ChevronRight aria-hidden className="size-3.5 shrink-0" />
           </button>
         )}
       </div>
@@ -160,7 +154,7 @@ export function TrajectoryView({ items, running }: { items: ChatItem[]; running:
           className="min-h-0 flex-1"
           data={rows}
           computeItemKey={(_index, row) => row.id}
-          defaultItemHeight={48}
+          defaultItemHeight={38}
           increaseViewportBy={{ top: 200, bottom: 200 }}
           initialTopMostItemIndex={initialPosition(running, filter)}
           followOutput={(isAtBottom) => (isAtBottom ? 'auto' : false)}

@@ -64,13 +64,11 @@ function ContextMeter({ percentage }: { percentage: number }) {
     </span>
   );
 }
-/** 摘要只显示有数据的字段，缺窗口时只显示已用量。 */
-function usageSummary(usage: ContextUsage): string {
+/** 用量与窗口分别保留；缺失字段用横线表示，不能用压缩事件代替。 */
+export function usageSummary(usage: ContextUsage): string {
   const used = usage.usedTokens === undefined ? undefined : tokens(usage.usedTokens);
   const window = usage.windowTokens === undefined ? undefined : tokens(usage.windowTokens);
-  if (used === undefined && window === undefined) return '';
-  if (used === undefined) return `${window} / 窗口`;
-  return window === undefined ? used : `${used} / ${window}`;
+  return `${used ?? '—'} / ${window ?? '—'}`;
 }
 export function UsageDetails({ usage }: { usage: ContextUsage }) {
   const percentage = contextPercentage(usage);
@@ -88,7 +86,7 @@ export function UsageDetails({ usage }: { usage: ContextUsage }) {
 }
 
 function usageTitle(usage: ContextUsage | null | undefined, summary: string | undefined): string | undefined {
-  if (!usage) return undefined;
+  if (!usage) return '此会话尚无可用的上下文用量与窗口报告';
   return summary ? `${usageSource(usage)} · ${summary} tokens` : usageSource(usage);
 }
 
@@ -105,16 +103,15 @@ function ContextLabel({
   const percentage = usage ? contextPercentage(usage) : undefined;
   return (
     <>
-      {summary && <span className="whitespace-nowrap">上下文 {summary}</span>}
+      <span className="whitespace-nowrap">上下文 {summary ?? '—'}</span>
       {percentage !== undefined && <ContextMeter percentage={percentage} />}
-      {compaction && <span>{compactionTitle(compaction, incomplete)}</span>}
+      {compaction?.status === 'running' && !incomplete && <span>正在压缩</span>}
       <ChevronDown aria-hidden className="size-3.5 shrink-0" />
     </>
   );
 }
 /**
- * 位于输入框下方；有原生报告或压缩事件才显示，无数据整体隐藏。
- * 只显示原生数据，详情不占常驻高度。
+ * 位于输入框下方，报告缺失时用横线保留位置；过去的压缩结果只留在详情。
  */
 export function ContextStatus() {
   const popover = usePopoverStore({ placement: 'top-end' });
@@ -122,7 +119,6 @@ export function ContextStatus() {
   const compaction = useChat((state) => state.compaction);
   const running = useChat((state) => state.running);
   const incomplete = compaction?.status === 'running' && !running;
-  if (!usage && !compaction) return null;
   const summary = usage ? usageSummary(usage) : undefined;
   return (
     <>
@@ -143,7 +139,7 @@ export function ContextStatus() {
         aria-label="上下文用量详情"
         className="z-50 max-h-[min(360px,var(--popover-available-height))] w-80 max-w-[calc(100vw-32px)] space-y-2 overflow-y-auto rounded-2xl border border-border bg-card p-3 text-[13px] leading-6 text-muted-foreground shadow-lg"
       >
-        {usage && <UsageDetails usage={usage} />}
+        {usage ? <UsageDetails usage={usage} /> : <p>此会话尚无可用的上下文用量与窗口报告。</p>}
         {compaction && <CompactionStatus state={compaction} incomplete={incomplete} />}
       </Popover>
     </>

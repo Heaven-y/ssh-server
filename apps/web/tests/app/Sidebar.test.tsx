@@ -114,8 +114,7 @@ it('无项目的新会话进入添加流程，折叠后仍能展开与打开设�
   fireEvent.click(screen.getByRole('button', { name: '收起侧栏' }));
   expect(screen.queryByText('还没有项目')).toBeNull();
   expect(screen.getByRole('button', { name: '新建会话' })).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: '设置与外观' }));
-  fireEvent.click(await screen.findByRole('menuitem', { name: '设置' }));
+  fireEvent.click(screen.getByRole('button', { name: '设置' }));
   expect(settings).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole('button', { name: '展开侧栏' }));
   expect(screen.getByText('还没有项目')).toBeTruthy();

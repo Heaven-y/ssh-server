@@ -129,6 +129,81 @@ describe('ClaudeEventMapper.map', () => {
 });
 
 describe('ClaudeEventMapper.mapHistory', () => {
+  it('整批历史把同一 API 回复的统计放在最后文本块后，忽略子代理和无效尾块', () => {
+    const mapper = new ClaudeEventMapper();
+    const block = (text: string, usage?: unknown) => ({
+      ...assistant('shared-api-id', [{ type: 'text', text }]),
+      message: { id: 'shared-api-id', model: 'native-model', content: [{ type: 'text', text }], usage },
+    });
+    const first = block('第一部分', { input_tokens: 100, output_tokens: 10 });
+    const final = block('第二部分', { output_tokens: 20 });
+    const events = mapper.mapHistoryBatch([
+      first,
+      { ...block('子代理', { output_tokens: 999 }), parent_tool_use_id: 'child' },
+      final,
+      { type: 'assistant', message: { id: 'shared-api-id', model: 'native-model' } },
+      {
+        ...block('工具占位', { output_tokens: 9999 }),
+        message: { id: 'shared-api-id', model: '<synthetic>', content: [] },
+      },
+    ]);
+    expect(events).toEqual([
+      { type: 'text', delta: '第一部分' },
+      { type: 'text', delta: '第二部分' },
+      { type: 'step_usage', id: 'shared-api-id', usage: { source: 'claude', scope: 'step', outputTokens: 20 } },
+    ]);
+    const invalidFinal = block('末块未带有效用量', { output_tokens: -1 });
+    expect(new ClaudeEventMapper().mapHistoryBatch([first, invalidFinal])).toEqual([
+      { type: 'text', delta: '第一部分' },
+      { type: 'text', delta: '末块未带有效用量' },
+      {
+        type: 'step_usage',
+        id: 'shared-api-id',
+        usage: { source: 'claude', scope: 'step', inputTokens: 100, outputTokens: 10 },
+      },
+    ]);
+  });
+  it('恢复原生模型步骤用量，同一回复分块共用身份，不拿时间戳或累计量计算速度和上下文', () => {
+    const mapper = new ClaudeEventMapper();
+    const message = {
+      ...assistant('api-message', [{ type: 'text', text: '历史回复' }]),
+      timestamp: '2026-01-01T00:00:03Z',
+      duration_ms: 3000,
+      message: {
+        id: 'api-message',
+        model: 'native-model',
+        content: [{ type: 'text', text: '历史回复' }],
+        usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 0 },
+      },
+      modelUsage: { demo: { outputTokens: 9999 } },
+    };
+    const first = mapper.mapHistory(message);
+    expect(first).toContainEqual({
+      type: 'step_usage',
+      id: 'api-message',
+      usage: { source: 'claude', scope: 'step', inputTokens: 100, outputTokens: 20, cachedInputTokens: 0 },
+    });
+    expect(first.some((event) => event.type === 'context')).toBe(false);
+    expect(first.find((event) => event.type === 'step_usage')).not.toHaveProperty('durationMs');
+    const updated = mapper.mapHistory({
+      ...message,
+      message: { ...message.message, usage: { input_tokens: 100, output_tokens: 30 } },
+    });
+    expect(updated.find((event) => event.type === 'step_usage')).toMatchObject({
+      id: 'api-message',
+      usage: { outputTokens: 30 },
+    });
+    expect(mapper.mapHistory({ ...message, parent_tool_use_id: 'child' })).toEqual([]);
+    for (const inner of [
+      { ...message.message, model: '<synthetic>' },
+      { ...message.message, id: undefined },
+      { ...message.message, usage: { input_tokens: -1, output_tokens: NaN } },
+    ]) {
+      expect(mapper.mapHistory({ ...message, message: inner }).some((event) => event.type === 'step_usage')).toBe(
+        false,
+      );
+    }
+  });
   it('历史仅保留原生压缩边界，不据历史回复补造上下文估计', () => {
     const m = new ClaudeEventMapper();
     expect(

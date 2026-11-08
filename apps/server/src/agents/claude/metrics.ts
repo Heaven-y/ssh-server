@@ -7,8 +7,8 @@ const record = (value: unknown): RecordValue =>
 export const nonnegative = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 
-/** result.usage 是主循环本轮统计；modelUsage 和费用的累计值不并入。 */
-export function claudeTokenUsage(value: unknown): TokenUsage | undefined {
+/** result.usage 属于本轮，历史 assistant.message.usage 属于模型步骤；累计 modelUsage 不并入。 */
+export function claudeTokenUsage(value: unknown, scope: TokenUsage['scope'] = 'turn'): TokenUsage | undefined {
   const usage = record(value);
   const fields = {
     inputTokens: usage.input_tokens,
@@ -19,7 +19,16 @@ export function claudeTokenUsage(value: unknown): TokenUsage | undefined {
     totalTokens: usage.total_tokens,
   };
   const counts = Object.entries(fields).filter(([, count]) => Number.isSafeInteger(count) && Number(count) >= 0);
-  return counts.length ? { source: 'claude', scope: 'turn', ...Object.fromEntries(counts) } : undefined;
+  return counts.length ? { source: 'claude', scope, ...Object.fromEntries(counts) } : undefined;
+}
+
+/** 一次 API 回复可分成多条 transcript 消息；使用 API message.id 让前端更新而不是累加。 */
+export function claudeHistoryUsage(message: unknown): AgentEvent[] {
+  const inner = record(message);
+  if (typeof inner.id !== 'string' || !inner.id || inner.model === '<synthetic>') return [];
+  const usage = claudeTokenUsage(inner.usage, 'step');
+  // transcript 时间戳只是内容块完成时间，没有同范围的生成起点，不能补造 tok/s。
+  return usage ? [{ type: 'step_usage', id: inner.id, usage }] : [];
 }
 
 /** 同一工具只开始一次；历史不用本机接收时间补造耗时。 */

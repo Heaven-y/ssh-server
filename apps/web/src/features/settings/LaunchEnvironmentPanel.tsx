@@ -131,7 +131,7 @@ export default function LaunchEnvironmentPanel({
   const state = useLaunchEnvironment(agent);
   return (
     <SettingsDetailDialog
-      title={`CLI 启动环境 · ${nativeAgentNames[agent]}`}
+      title={`CLI 环境变量 · ${nativeAgentNames[agent]}`}
       busy={!!state.operation}
       onBack={() => state.leave(onBack)}
       onClose={() => state.leave(onClose)}
@@ -154,7 +154,7 @@ function LaunchFooter({ state }: { state: LaunchState }) {
         onClick={() => void state.save()}
       >
         <Save aria-hidden className="size-4" />
-        {state.operation === 'save' ? '正在保存…' : '保存启动环境'}
+        {state.operation === 'save' ? '正在保存…' : '保存环境变量'}
       </button>
     </>
   );
@@ -165,10 +165,13 @@ function LaunchContent({ state }: { state: LaunchState }) {
   const loading = !state.document && !state.error;
   return (
     <>
+      <p className="text-xs leading-6 text-muted-foreground">
+        这里的变量仅传给工作台启动的 CLI，用于需要环境变量的代理、认证等高级配置。
+      </p>
       <div className="flex flex-wrap gap-2">
         <button type="button" className={buttonClass('outline')} disabled={busy || loading} onClick={state.reread}>
           <RefreshCw aria-hidden className="size-4" />
-          重新读取启动环境
+          重新读取环境变量
         </button>
         <button
           type="button"
@@ -181,7 +184,7 @@ function LaunchContent({ state }: { state: LaunchState }) {
       </div>
       {loading && (
         <p role="status" className="py-8 text-center text-sm text-muted-foreground">
-          正在读取启动环境…
+          正在读取环境变量…
         </p>
       )}
       {state.document && (

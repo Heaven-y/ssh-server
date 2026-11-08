@@ -852,10 +852,10 @@ it('上下文用量位于输入框下方，来源及原生比例通过详情说�
   expect(sent).toHaveLength(0);
 });
 
-it('无数据不渲染上下文按钮，有有效窗口时显示最近报告的占比', async () => {
+it('缺少报告保留未知状态，有有效窗口时显示最近报告的占比', async () => {
   showComposer();
-  // 无原生报告且无压缩事件时，上下文按钮整体隐藏，不再猜测窗口或比例
-  expect(screen.queryByRole('button', { name: '上下文用量' })).toBeNull();
+  // 缺少原生报告时不猜测窗口或比例。
+  expect(screen.getByRole('button', { name: '上下文用量' }).textContent).toContain('上下文 —');
   act(() => useChat.setState({ contextUsage: { source: 'codex_native', usedTokens: 200, windowTokens: 1000 } }));
   const context = screen.getByRole('button', { name: '上下文用量' });
   expect(context.textContent).toContain('200 / 1,000');
@@ -879,7 +879,8 @@ it('输入框下方保留压缩进度与未确认状态，展开可看原生说�
   const context = within(screen.getByRole('group', { name: '会话统计' })).getByRole('button', { name: '上下文用量' });
   expect(context.textContent).toContain('正在压缩');
   act(() => useChat.setState({ running: false }));
-  expect(context.textContent).toContain('压缩结果未确认');
+  expect(context.textContent).toContain('上下文 —');
+  expect(context.textContent).not.toContain('压缩结果未确认');
   fireEvent.click(context);
   const details = within(await screen.findByRole('dialog', { name: '上下文用量详情' }));
   expect(details.getByText('原生压缩说明')).toBeTruthy();

@@ -34,8 +34,8 @@ async function openEnvironment() {
   );
   fireEvent.click(await screen.findByRole('button', { name: 'Codex' }));
   fireEvent.click(await screen.findByText('高级设置'));
-  fireEvent.click(await screen.findByRole('button', { name: '启动环境' }));
-  await screen.findByRole('heading', { name: 'CLI 启动环境 · Codex' });
+  fireEvent.click(await screen.findByRole('button', { name: 'CLI 环境变量' }));
+  await screen.findByRole('heading', { name: 'CLI 环境变量 · Codex' });
   return screen.findByLabelText('API 密钥模式');
 }
 beforeEach(() => {
@@ -84,7 +84,7 @@ it('启动环境只显示来源，新值显式保存且保存后清空；重启�
   expect(secret.type).toBe('password');
   fireEvent.change(secret, { target: { value: 'synthetic-new-secret' } });
   expect(screen.getByRole<HTMLButtonElement>('button', { name: '重新启动 CLI' }).disabled).toBe(true);
-  fireEvent.click(screen.getByRole('button', { name: '保存启动环境' }));
+  fireEvent.click(screen.getByRole('button', { name: '保存环境变量' }));
   await screen.findByText(/启动环境已保存/);
   const saved = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')!;
   expect(JSON.parse(saved[1]?.body as string)).toEqual({
@@ -102,7 +102,7 @@ it('启动环境只显示来源，新值显式保存且保存后清空；重启�
 it('停用和恢复继承不发送旧密钥；冲突保留新值与未保存保护', async () => {
   await openEnvironment();
   fireEvent.change(screen.getByLabelText('API 密钥模式'), { target: { value: 'disabled' } });
-  fireEvent.click(screen.getByRole('button', { name: '保存启动环境' }));
+  fireEvent.click(screen.getByRole('button', { name: '保存环境变量' }));
   await screen.findByText(/启动环境已保存/);
   const saved = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')!;
   expect(JSON.parse(saved[1]?.body as string)).toMatchObject({
@@ -110,11 +110,11 @@ it('停用和恢复继承不发送旧密钥；冲突保留新值与未保存保�
   });
   conflict = true;
   fireEvent.change(screen.getByLabelText('API 密钥新值'), { target: { value: 'synthetic-retained-draft' } });
-  fireEvent.click(screen.getByRole('button', { name: '保存启动环境' }));
+  fireEvent.click(screen.getByRole('button', { name: '保存环境变量' }));
   await screen.findByRole('alert');
   expect(screen.getByLabelText<HTMLInputElement>('API 密钥新值').value).toBe('synthetic-retained-draft');
   fireEvent.click(screen.getByRole('button', { name: '返回模型设置' }));
-  expect(screen.getByRole('heading', { name: 'CLI 启动环境 · Codex' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'CLI 环境变量 · Codex' })).toBeTruthy();
   expect(window.confirm).toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText('API 密钥模式'), { target: { value: 'inherit' } });
   expect(screen.queryByLabelText('API 密钥新值')).toBeNull();
@@ -131,7 +131,7 @@ it('加密不可用时禁止重填密钥，但允许显式停用该变量', asyn
     }).disabled,
   ).toBe(true);
   fireEvent.change(screen.getByLabelText('API 密钥模式'), { target: { value: 'disabled' } });
-  expect(screen.getByRole<HTMLButtonElement>('button', { name: '保存启动环境' }).disabled).toBe(false);
-  fireEvent.click(screen.getByRole('button', { name: '保存启动环境' }));
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: '保存环境变量' }).disabled).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: '保存环境变量' }));
   await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(true));
 });

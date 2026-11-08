@@ -42,18 +42,32 @@ it('底部摘要保留上下文与 tok/s，token 明细按需展开，运行中�
       button.getAttribute('aria-label'),
     ),
   ).toEqual(['本轮统计详情', '上下文用量']);
-  expect(screen.getByText('回合平均 60.0 tok/s')).toBeTruthy();
+  expect(screen.getByText('60.0 tok/s')).toBeTruthy();
   expect(screen.queryByText('输入 300')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '本轮统计详情' }));
   expect(await screen.findByRole('dialog', { name: '本轮统计详情' })).toBeTruthy();
   expect(screen.getByText('输入 300')).toBeTruthy();
   act(() => useChat.setState({ running: true }));
-  expect(screen.queryByRole('button', { name: '本轮统计详情' })).toBeNull();
-  expect(screen.queryByText('回合平均 60.0 tok/s')).toBeNull();
+  expect(screen.getByRole('button', { name: '本轮统计详情' }).textContent).toContain('— tok/s');
+  expect(screen.queryByText('60.0 tok/s')).toBeNull();
 });
 
-it('没有原生统计时不显示空行或零速', () => {
-  const { container } = render(<ComposerStatus />);
-  expect(container.textContent).toBe('');
-  expect(screen.queryByRole('group', { name: '会话统计' })).toBeNull();
+it('没有原生统计时固定显示未知值，不伪造零速与窗口', () => {
+  render(<ComposerStatus />);
+  expect(screen.getByText('— tok/s')).toBeTruthy();
+  expect(screen.getByText('上下文 —')).toBeTruthy();
+  expect(screen.queryByText('0.0 tok/s')).toBeNull();
+});
+
+it('历史压缩完成不替代当前上下文，结果只在详情中出现', async () => {
+  useChat.setState({ compaction: { status: 'completed', trigger: 'auto', beforeTokens: 500, afterTokens: 100 } });
+  render(<ComposerStatus />);
+  const button = screen.getByRole('button', { name: '上下文用量' });
+  expect(button.textContent).toContain('上下文 —');
+  expect(screen.queryByText(/压缩已完成/)).toBeNull();
+  fireEvent.click(button);
+  expect(await screen.findByText('压缩已完成 · 自动')).toBeTruthy();
+  act(() => useChat.setState({ contextUsage: { source: 'codex_native', usedTokens: 100, windowTokens: 200000 } }));
+  expect(button.textContent).toContain('100 / 200,000');
+  expect(button.textContent).not.toContain('压缩');
 });

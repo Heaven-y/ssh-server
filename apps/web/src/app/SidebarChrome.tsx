@@ -1,21 +1,9 @@
-import { Menu, MenuButton, MenuItem, useMenuStore } from '@ariakit/react';
-import {
-  ChevronUp,
-  CircleUserRound,
-  Moon,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Plus,
-  Search,
-  Settings2,
-  Sun,
-  X,
-} from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Plus, Search, Settings2, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useUiPreferences } from '../ui/ui-preferences';
 import { SessionSortMenu } from '../features/sessions/SessionSortMenu';
 import { desktopChrome } from '../lib/desktop-bridge';
-import { sidebarItemClass, sidebarMenuClass, sidebarMenuItemClass } from '../ui/sidebar-styles';
+import { sidebarItemClass } from '../ui/sidebar-styles';
 
 const iconButtonClass =
   'inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent';
@@ -119,50 +107,18 @@ export function SidebarWorkspaces({
 }
 
 export function SidebarFooter({ collapsed, onOpenSettings }: { collapsed: boolean; onOpenSettings?(): void }) {
-  const theme = useUiPreferences((state) => state.theme);
-  const menu = useMenuStore({ placement: collapsed ? 'right-end' : 'top-start' });
-  const ThemeIcon = theme === 'light' ? Moon : Sun;
   return (
     <footer className="shrink-0 pt-2">
-      <MenuButton
-        store={menu}
-        render={<button type="button" />}
-        aria-label="设置与外观"
-        title="设置与外观"
+      <button
+        type="button"
+        aria-label="设置"
+        title="设置"
         className={sidebarItemClass(collapsed)}
+        onClick={onOpenSettings}
       >
-        <CircleUserRound aria-hidden className="size-5 shrink-0" />
-        {!collapsed && (
-          <>
-            <span className="flex-1">设置与外观</span>
-            <ChevronUp aria-hidden className="size-3.5 text-muted-foreground" />
-          </>
-        )}
-      </MenuButton>
-      <Menu store={menu} portal unmountOnHide gutter={6} aria-label="设置与外观" className={sidebarMenuClass}>
-        {onOpenSettings && (
-          <MenuItem
-            className={sidebarMenuItemClass}
-            onClick={() => {
-              menu.hide();
-              onOpenSettings();
-            }}
-          >
-            <Settings2 aria-hidden className="size-4" />
-            设置
-          </MenuItem>
-        )}
-        <MenuItem
-          className={sidebarMenuItemClass}
-          onClick={() => {
-            menu.hide();
-            useUiPreferences.getState().toggleTheme();
-          }}
-        >
-          <ThemeIcon aria-hidden className="size-4" />
-          {theme === 'light' ? '切换为深色模式' : '切换为浅色模式'}
-        </MenuItem>
-      </Menu>
+        <Settings2 aria-hidden className="size-4 shrink-0" />
+        {!collapsed && <span>设置</span>}
+      </button>
     </footer>
   );
 }

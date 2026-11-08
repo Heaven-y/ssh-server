@@ -138,7 +138,7 @@ it('冲突保留草稿，侧栏、关闭、原始配置和重读共用未保存�
   fireEvent.click(screen.getByRole('button', { name: '保存配置' }));
   await screen.findByRole('alert');
   fireEvent.click(screen.getByText('高级设置'));
-  for (const name of ['Codex', '关闭设置', '修改 Claude Code 原始配置', '重新读取配置'])
+  for (const name of ['Codex', '关闭设置', '编辑 Claude Code 配置文件', '重新读取配置'])
     fireEvent.click(screen.getByRole('button', { name }));
   expect(window.confirm).toHaveBeenCalledTimes(4);
   expect(close).not.toHaveBeenCalled();
