@@ -1,10 +1,11 @@
-import { ChevronRight, FolderPlus } from 'lucide-react';
-import { useMemo, useState, type ReactNode } from 'react';
+import { Folder, FolderOpen, FolderPlus } from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { AgentKind, SessionSummary } from '@agentdeck/shared/conversation';
 import type { Workspace } from '@agentdeck/shared/projects';
 import { AGENT_LABELS } from '../cli/shared/labels';
 import { sessionActionKey, useChat } from '../features/chat/chat-store';
-import { ProjectSessionRow as SessionRow } from '../features/sessions/ProjectSessionRow';
+import { SortableSessionRow as SessionRow } from '../features/sessions/SortableSessionRow';
+import { sessionOrderKey, sortSessions, useSessionOrder } from '../features/sessions/session-order';
 import { ProjectSessionDialog, type ProjectSessionSelection } from '../features/sessions/ProjectSessionDialog';
 import type { SessionDialogAction } from '../features/sessions/SessionMenu';
 import { buttonClass } from '../ui/styles';
@@ -107,6 +108,7 @@ function ProjectItem({
   onBindServer?: SidebarProps['onBindServer'];
   onManageProject?: SidebarProps['onManageProject'];
 }) {
+  const FolderIcon = expanded ? FolderOpen : Folder;
   return (
     <li className="min-w-0">
       <div className="group flex min-w-0 items-center rounded-lg hover:bg-muted/70">
@@ -118,10 +120,7 @@ function ProjectItem({
           className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-1 text-left text-[13px] text-foreground focus-visible:outline-2 focus-visible:outline-accent"
           onClick={toggle}
         >
-          <ChevronRight
-            aria-hidden
-            className={`size-3.5 shrink-0 text-muted-foreground motion-safe:transition-transform ${expanded ? 'rotate-90' : ''}`}
-          />
+          <FolderIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate font-medium">{project.name}</span>
           <span title="已加载会话数" className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
             {sessions.length}
@@ -149,6 +148,7 @@ function ProjectItem({
                 <SessionRow
                   key={`${session.agent}:${session.sessionId}`}
                   session={session}
+                  sessions={sessions}
                   workspaceId={project.id}
                   active={activeKey === sessionActionKey(project.id, session)}
                   select={selectSession ? () => selectSession(session) : undefined}
@@ -230,22 +230,25 @@ function WorkspaceListNotice({
 
 function useSidebarSelection(projects: Workspace[], currentProjectId?: string) {
   const chatProjectId = useChat((state) => state.workspaceId);
-  const chatAgent = useChat((state) => state.agent);
-  const chatSessionId = useChat((state) => state.sessionId);
-  const selectedProject = currentProjectId ?? chatProjectId;
+  const conversationId = useChat((state) => state.conversationId);
+  const [focused, setFocused] = useState<{ projectId: string; conversationId: string }>();
+  const selectedProject =
+    focused?.conversationId === conversationId ? focused.projectId : (currentProjectId ?? chatProjectId);
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
-  const defaultExpanded = selectedProject ?? projects[0]?.id;
+  const defaultExpanded = currentProjectId ?? chatProjectId ?? projects[0]?.id;
+  if (defaultExpanded && toggled[defaultExpanded] === undefined) setToggled({ ...toggled, [defaultExpanded]: true });
   const isExpanded = (projectId: string) => toggled[projectId] ?? projectId === defaultExpanded;
-  const activeKey =
-    chatSessionId && chatProjectId
-      ? sessionActionKey(chatProjectId, { agent: chatAgent, sessionId: chatSessionId })
-      : '';
+  const activeKey = useChat((state) => {
+    if (!state.workspaceId || !state.sessionId) return '';
+    return sessionActionKey(state.workspaceId, { agent: state.agent, sessionId: state.sessionId });
+  });
   return {
     selectedProject,
     activeKey,
     isExpanded,
     toggle(projectId: string) {
-      const collapse = projectId === selectedProject && isExpanded(projectId);
+      const collapse = isExpanded(projectId);
+      setFocused({ projectId, conversationId });
       setToggled((previous) => ({ ...previous, [projectId]: !collapse }));
     },
   };
@@ -292,18 +295,28 @@ export function Sidebar({
   const query = search.trim().toLocaleLowerCase();
   const [showOtherSessions, setShowOtherSessions] = useState(false);
   const [managing, setManaging] = useState<ProjectSessionSelection | undefined>(undefined);
+  const sortMode = useSessionOrder((state) => state.mode);
+  const orders = useSessionOrder((state) => state.orders);
+  const knownOrder = useSessionOrder((state) => state.known);
+  const rememberOrder = useSessionOrder((state) => state.remember);
   const projectSessions = useMemo(
     () =>
       Object.fromEntries(
         projects.map((project) => [
           project.id,
-          (sessionsByProject[project.id] ?? EMPTY_SESSIONS)
-            .filter((session) => session.projectId === project.id)
-            .toSorted(newestFirst),
+          sortSessions(
+            (sessionsByProject[project.id] ?? EMPTY_SESSIONS).filter((session) => session.projectId === project.id),
+            sortMode,
+            orders[project.id] ?? knownOrder[project.id],
+          ),
         ]),
       ) as Record<string, SessionSummary[]>,
-    [projects, sessionsByProject],
+    [projects, sessionsByProject, sortMode, orders, knownOrder],
   );
+  useEffect(() => {
+    for (const [project, sessions] of Object.entries(projectSessions))
+      rememberOrder(project, sessions.map(sessionOrderKey), !!query);
+  }, [projectSessions, rememberOrder, query]);
   const otherSessions = useMemo(
     () => unassignedSessions(sessionsByProject, extraSessions),
     [sessionsByProject, extraSessions],

@@ -18,6 +18,7 @@ import { WorkspaceLayout } from './WorkspaceLayout';
 import { useProjectNavigation } from './use-project-navigation';
 import { useOtherSessions, useProjectSessions } from '../features/projects/use-project-sessions';
 import { useConversationSidebar } from './use-conversation-sidebar';
+import { ConversationTabs } from '../features/chat/ConversationTabs';
 import { AddProjectDialog } from '../features/projects/AddProjectDialog';
 import { BindServerDialog } from '../builtin-plugins/ssh-console/legacy/BindServerDialog';
 import { ProjectManageDialog } from '../features/projects/ProjectManageDialog';
@@ -174,17 +175,23 @@ export function App() {
   } = useProjectSessions(projects.data, sessionSearch);
   const [showOtherSessions, setShowOtherSessions] = useState(false);
   const others = useOtherSessions(showOtherSessions, sessionSearch);
+  const openConversation = (id: string) => {
+    setArchiveOpen(false);
+    plugins.show(undefined);
+    useChat.getState().openConversation(id);
+  };
   const openSession = (targetProject: string, session: SessionSummary) => {
     setArchiveOpen(false);
     plugins.show(undefined);
-    if (useChat.getState().workspaceId !== targetProject) useChat.getState().selectWorkspace(targetProject);
+    if (useChat.getState().workspaceId !== targetProject)
+      useChat.getState().selectWorkspace(targetProject, { restore: false });
     void useChat.getState().openSession(session);
   };
   const startSession = (targetProject: string, agent: AgentKind) => {
     setArchiveOpen(false);
     plugins.show(undefined);
     const chat = useChat.getState();
-    if (chat.workspaceId !== targetProject) chat.selectWorkspace(targetProject);
+    if (chat.workspaceId !== targetProject) chat.selectWorkspace(targetProject, { restore: false });
     useChat.getState().newSession(agent);
   };
 
@@ -263,16 +270,7 @@ export function App() {
             onAddProject={(initial) => setAddingProject(initial ?? {})}
             onManageProject={(project, action) => setManagingProject({ project, action })}
             onNewSession={startSession}
-            onOpenConversation={(id) => {
-              setArchiveOpen(false);
-              plugins.show(undefined);
-              useChat.getState().openConversation(id);
-            }}
-            onSelectProject={(id) => {
-              setArchiveOpen(false);
-              plugins.show(undefined);
-              if (useChat.getState().workspaceId !== id) useChat.getState().selectWorkspace(id);
-            }}
+            onOpenConversation={openConversation}
             onOpenSettings={() => setSettingsOpen(true)}
             onOpenCommands={palette.open}
             onOpenArchive={showArchive}
@@ -281,39 +279,53 @@ export function App() {
           />
         }
       >
-        <div className="h-full min-h-0 min-w-0 w-full flex-1">
-          <div
-            hidden={!conversationVisible}
-            inert={!conversationVisible}
-            className={conversationVisible ? 'flex h-full min-h-0 flex-col' : 'hidden'}
-          >
-            <TopBar workspace={current} sidebarOpen={dock.open} onToggleSidebar={dock.toggle} />
-            <EnvironmentSummary onOpenSettings={() => setSettingsOpen(true)} />
-            <SessionPane
-              project={current}
-              pending={projects.isPending}
-              error={projects.error}
-              onAddProject={() => setAddingProject({})}
-            />
-          </div>
-          <PluginWorkspace
-            plugin={activePlugin}
-            builtinPlugins={plugins.builtinPlugins}
-            project={current}
-            close={() => plugins.show(undefined)}
-            command={plugins.command}
-          />
-          {archiveOpen && (
-            <Suspense
-              fallback={
-                <p role="status" className="p-4">
-                  正在打开归档会话…
-                </p>
-              }
+        <div className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col">
+          <ConversationTabs projects={projects.data ?? []} visible={conversationVisible} onOpen={openConversation} />
+          <div className="min-h-0 flex-1">
+            <div
+              hidden={!conversationVisible}
+              inert={!conversationVisible}
+              className={conversationVisible ? 'flex h-full min-h-0 flex-col' : 'hidden'}
             >
-              <ArchivedSessionsPage projects={projects.data ?? []} close={closeArchive} addProject={setAddingProject} />
-            </Suspense>
-          )}
+              <div
+                id="conversation-panel"
+                role="tabpanel"
+                aria-label="会话内容"
+                className="flex min-h-0 flex-1 flex-col"
+              >
+                <TopBar workspace={current} sidebarOpen={dock.open} onToggleSidebar={dock.toggle} />
+                <EnvironmentSummary onOpenSettings={() => setSettingsOpen(true)} />
+                <SessionPane
+                  project={current}
+                  pending={projects.isPending}
+                  error={projects.error}
+                  onAddProject={() => setAddingProject({})}
+                />
+              </div>
+            </div>
+            <PluginWorkspace
+              plugin={activePlugin}
+              builtinPlugins={plugins.builtinPlugins}
+              project={current}
+              close={() => plugins.show(undefined)}
+              command={plugins.command}
+            />
+            {archiveOpen && (
+              <Suspense
+                fallback={
+                  <p role="status" className="p-4">
+                    正在打开归档会话…
+                  </p>
+                }
+              >
+                <ArchivedSessionsPage
+                  projects={projects.data ?? []}
+                  close={closeArchive}
+                  addProject={setAddingProject}
+                />
+              </Suspense>
+            )}
+          </div>
         </div>
       </WorkspaceLayout>
     </div>

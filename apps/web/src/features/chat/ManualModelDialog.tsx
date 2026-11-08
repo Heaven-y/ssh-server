@@ -38,7 +38,7 @@ export function ManualModelDialog({
           />
         </label>
         <p id={`${id}-hint`} className="text-sm leading-6 text-muted-foreground">
-          填写所选 CLI 支持的原生模型名称或标识，仅设置当前覆盖；恢复原生配置请使用“清除模型覆盖”。
+          填写模型名称或 ID。
         </p>
         {invalid && (
           <p id={`${id}-error`} role="alert" className="text-sm text-destructive-foreground">

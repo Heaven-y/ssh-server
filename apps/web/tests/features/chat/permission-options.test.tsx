@@ -14,7 +14,7 @@ it.each([
   useChat.getState().newSession(agent);
   const { rerender } = render(<PermissionOptionsMenu disabled={false} />);
   const trigger = screen.getByRole('button', { name: '权限模式' });
-  expect(trigger.textContent).toContain('原生权限');
+  expect(trigger.textContent).toBe('');
   fireEvent.click(trigger);
   fireEvent.click(await screen.findByRole('menuitemradio', { name: new RegExp('^' + label) }));
   expect(useChat.getState().permission).toEqual({ agent, mode });
@@ -23,6 +23,6 @@ it.each([
   expect((trigger as HTMLButtonElement).disabled).toBe(true);
   rerender(<PermissionOptionsMenu disabled={false} />);
   fireEvent.click(trigger);
-  fireEvent.click(await screen.findByRole('menuitemradio', { name: '沿用原生配置' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: '重置权限' }));
   expect(useChat.getState().permission).toEqual(agent === 'codex' ? { agent: 'codex', mode: 'native' } : undefined);
 });

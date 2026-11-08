@@ -22,7 +22,7 @@ function followLink(hash: string, projects: Workspace[]): void {
     const current = useChat.getState();
     const targetPending = current.sessionOperations[sessionActionKey(target.workspaceId, target)]?.pending;
     if (targetPending) throw new Error('目标会话正在管理，请稍后再打开链接');
-    current.selectWorkspace(target.workspaceId);
+    current.selectWorkspace(target.workspaceId, { restore: false });
     // openSession 自身校验选择代次，后续选择会取消本次历史请求。
     void useChat.getState().openSession(target);
   } catch (error) {

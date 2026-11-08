@@ -3,6 +3,7 @@ import type { ChatState } from './chat-state';
 import { sessionsApi } from '../sessions/api';
 import { reduceChat } from './chat-reducer';
 import { retainConversation } from './conversations';
+import { openedTab } from './conversation-tabs';
 import {
   emptyConversation,
   historyFailure,
@@ -43,6 +44,7 @@ export function createChatHistory(get: () => ChatState, set: SetState) {
     const generation = changeSelection();
     const conversationVersion = historyViewVersion(current, session, generation, options);
     const controller = new AbortController();
+    const conversationId = same ? current.conversationId : crypto.randomUUID();
     historyRequest = controller;
     set({
       ...emptyConversation,
@@ -51,7 +53,8 @@ export function createChatHistory(get: () => ChatState, set: SetState) {
       draft: same ? current.draft : '',
       view: same ? current.view : 'chat',
       selectedCapability: same ? current.selectedCapability : undefined,
-      conversationId: same ? current.conversationId : crypto.randomUUID(),
+      conversationId,
+      tabIds: openedTab(current.tabIds, conversationId),
       background: same ? current.background : retainConversation(current),
       agent: session.agent,
       sessionId: session.sessionId,

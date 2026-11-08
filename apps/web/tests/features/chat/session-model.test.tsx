@@ -90,7 +90,7 @@ it('已加载历史模型保留于所属来源缓存，切回同一会话时模�
   expect(useChat.getState().sessionModels[sessionActionKey('workspace', claude)]?.actualModel).toBe(model);
   expect(useChat.getState().sessionModels[sessionActionKey('workspace', codex)]).toBeUndefined();
   await act(() => useChat.getState().openSession(claude));
-  expect(screen.getByRole('button', { name: '模型选项' }).title).toContain(`最近实际运行：${model}`);
+  expect(screen.getByRole('button', { name: '模型选项' }).title).toContain(model);
   expect(read).toHaveBeenCalledTimes(1);
 });
 it('迟到默认不覆盖历史模型，空模型和迟到旧历史不污染另一来源', async () => {
@@ -132,7 +132,7 @@ it('历史是会话模型的唯一来源：更新列表不改变模型按钮，�
   vi.spyOn(sessionsApi, 'sessionEvents').mockResolvedValue({ session: record(codex, 'model-A'), events: [] });
   showList(true);
   await act(() => useChat.getState().openSession(codex));
-  expect(screen.getByRole('button', { name: '模型选项' }).title).toContain('原生会话配置：model-A');
+  expect(screen.getByRole('button', { name: '模型选项' }).title).toContain('model-A');
   act(() => {
     client.setQueryData(sessionsKeys.sessions('workspace', 'codex'), [{ ...codex, title: '刷新后的标题' }]);
   });
@@ -141,7 +141,5 @@ it('历史是会话模型的唯一来源：更新列表不改变模型按钮，�
   act(() => {
     client.setQueryData(sessionsKeys.sessions('workspace', 'codex'), []);
   });
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: '模型选项' }).title).toContain('原生会话配置：model-A'),
-  );
+  await waitFor(() => expect(screen.getByRole('button', { name: '模型选项' }).title).toContain('model-A'));
 });

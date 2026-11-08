@@ -4,7 +4,7 @@ import { ClaudeContextChoices } from '../../cli/claude/ContextChoices';
 import { ApiError } from '../../lib/http';
 import { projectsKeys } from '../projects/api';
 import { Menu, MenuButton, MenuGroup, MenuItem, MenuProvider, MenuSeparator, useMenuStore } from '@ariakit/react';
-import { ChevronDown, ChevronRight, LoaderCircle, RefreshCw } from 'lucide-react';
+import { Brain, ChevronDown, ChevronRight, LoaderCircle, RefreshCw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AgentCapabilities, AgentKind } from '@agentdeck/shared/conversation';
@@ -62,12 +62,6 @@ function RefreshModels({ catalog, disabled }: { catalog: ReturnType<typeof useAg
 }
 
 type CatalogProps = { disabled: boolean; catalog: ReturnType<typeof useAgentCapabilities> };
-function modelOrigin(model: string, native?: string, actual?: string, configured?: string): string {
-  if (model) return `当前覆盖：${model}`;
-  if (native) return `原生会话配置：${native}`;
-  if (actual) return `最近实际运行：${actual}`;
-  return configured ? `原生配置：${configured}` : '沿用原生配置';
-}
 function inheritedModel(native?: string, actual?: string, configured?: string) {
   return native || actual || configured || '';
 }
@@ -91,14 +85,12 @@ function useModelPresentation(model: string, catalog: AgentCapabilities | undefi
     id,
     label: modelDisplay(id, candidate),
     loading: !id && (reading || fetching),
-    title: modelOrigin(model, native, actual, configured),
-    actual,
     // 旧会话未报告原生强度，不能用新会话的目录默认冒充其有效值。
     defaultEffort: historical ? undefined : configuredModelEffort(agent, id, catalog),
   };
 }
 function effortLabel(effort?: string) {
-  return effort === 'auto' ? '自动' : effort || '跟随配置';
+  return effort === 'auto' ? '自动' : effort || '';
 }
 function ExtendedContextLabel({ label }: { label: string }) {
   if (!/\[1m\]$/i.test(label)) return null;
@@ -161,7 +153,7 @@ function ModelActions({ disabled, model, onManual }: { disabled: boolean; model:
       </MenuButton>
       <Menu portal unmountOnHide gutter={8} aria-label="更多模型操作" className={menuClass}>
         <MenuItem className={itemClass} disabled={disabled || !model} onClick={() => setModel('')}>
-          清除模型覆盖
+          重置模型
         </MenuItem>
         <MenuSeparator className="my-1 border-t border-border" />
         <MenuItem className={itemClass} disabled={disabled} onClick={onManual}>
@@ -253,14 +245,23 @@ function EffortChoices({
     <>
       <p className="px-3 py-2 text-xs text-muted-foreground">推理强度</p>
       {efforts.map((value) => (
-        <Choice key={value} checked={effort === value} disabled={disabled} choose={() => setEffort(value)}>
+        <Choice
+          key={value}
+          checked={(effort || defaultEffort) === value}
+          disabled={disabled}
+          choose={() => setEffort(value)}
+        >
           {effortLabel(value)}
         </Choice>
       ))}
-      <MenuSeparator className="my-1 border-t border-border" />
-      <Choice checked={!effort} disabled={disabled} choose={() => setEffort('')}>
-        {defaultEffort ? `跟随配置 · ${effortLabel(defaultEffort)}` : '跟随配置'}
-      </Choice>
+      {effort && (
+        <>
+          <MenuSeparator className="my-1 border-t border-border" />
+          <MenuItem className={itemClass} disabled={disabled} onClick={() => setEffort('')}>
+            重置强度
+          </MenuItem>
+        </>
+      )}
     </>
   );
 }
@@ -294,7 +295,11 @@ function EffortControls({
         className={`${triggerClass} max-w-36`}
         title="选择推理强度"
       >
-        <span className="truncate">{effortLabel(effort || defaultEffort)}</span>
+        {effort || defaultEffort ? (
+          <span className="truncate">{effortLabel(effort || defaultEffort)}</span>
+        ) : (
+          <Brain aria-hidden className="size-3.5" />
+        )}
         <ChevronDown aria-hidden className="size-3.5 shrink-0" />
       </MenuButton>
       <Menu store={store} portal unmountOnHide gutter={8} aria-label="推理强度菜单" className={menuClass}>
@@ -337,7 +342,7 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
         aria-busy={presentation.loading}
         disabled={disabled}
         className={`${triggerClass} max-w-64`}
-        title={[AGENT_LABELS[agent], presentation.label, presentation.title].filter(Boolean).join(' · ')}
+        title={[AGENT_LABELS[agent], presentation.label].filter(Boolean).join(' · ')}
       >
         <ModelButtonContent agent={agent} label={presentation.label} loading={presentation.loading} />
       </MenuButton>
@@ -364,9 +369,6 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
             if (project) setRepairProject(project);
           }}
         />
-        {presentation.actual && (
-          <p className="px-3 pt-2 pb-1 text-xs leading-5 text-muted-foreground">最近实际运行：{presentation.actual}</p>
-        )}
       </Menu>
       {manual && (
         <ManualModelDialog

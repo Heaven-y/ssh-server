@@ -13,6 +13,7 @@ import { SessionError } from '../errors';
 import { type SessionProvider } from '../contracts';
 import { ClaudeEventMapper, claudeHistoryForkPoint } from './mapper';
 import { sameSessionDirectory, sessionDirectoryWithin } from '../common/session-scope';
+import { claudeSessionActivity } from './session-activity';
 
 export type ClaudeSessionsApi = {
   list(dir: string, page?: NativeSessionPageInput): Promise<SDKSessionInfo[]>;
@@ -51,6 +52,31 @@ function lastModel(messages: unknown[]): string | undefined {
   return undefined;
 }
 
+async function summary(record: SDKSessionInfo, signal?: AbortSignal) {
+  return {
+    sessionId: record.sessionId,
+    summary: record.summary,
+    lastModified: await claudeSessionActivity(record, { signal }),
+  };
+}
+
+async function summaries(records: SDKSessionInfo[], signal?: AbortSignal) {
+  const rows = [];
+  // 兼容全量入口也限制同时读取的尾块数量；日常分页仅处理 SDK 已返回的那一页。
+  for (let index = 0; index < records.length; index += 6) {
+    signal?.throwIfAborted();
+    rows.push(
+      ...(await Promise.all(
+        records.slice(index, index + 6).map(async (record) => ({
+          ...(await summary(record, signal)),
+          ...(record.cwd ? { cwd: record.cwd } : {}),
+        })),
+      )),
+    );
+  }
+  return rows;
+}
+
 export function createClaudeSessions(api: ClaudeSessionsApi = nativeApi): SessionProvider {
   async function info(id: string, dir: string): Promise<SDKSessionInfo> {
     const record = await api.info(id, dir);
@@ -71,7 +97,7 @@ export function createClaudeSessions(api: ClaudeSessionsApi = nativeApi): Sessio
     if (!record || record.sessionId !== newId || !record.cwd || !(await sameSessionDirectory(record.cwd, dir)))
       throw new SessionError(503, 'session_runtime_failed', 'Claude Code 分叉返回了无效的新会话');
     return {
-      session: { sessionId: record.sessionId, summary: record.summary, lastModified: record.lastModified },
+      session: await summary(record),
       cwd: record.cwd,
     };
   }
@@ -82,32 +108,23 @@ export function createClaudeSessions(api: ClaudeSessionsApi = nativeApi): Sessio
       const records = await api.list(dir, page);
       signal?.throwIfAborted();
       return {
-        items: records.map(({ sessionId, summary, lastModified, cwd }) => ({
-          sessionId,
-          summary,
-          lastModified,
-          ...(cwd ? { cwd } : {}),
-        })),
+        items: await summaries(records, signal),
         nextCursor: records.length === page.limit ? String(Number(page.cursor ?? 0) + page.limit) : undefined,
       };
     },
-    async list(dir, _signal, archived = false) {
+    async list(dir, signal, archived = false) {
+      signal?.throwIfAborted();
       if (archived) throw new SessionError(400, 'unsupported_action', 'Claude Code 不支持归档会话');
       const records = await api.list(dir);
-      return records.map(({ sessionId, summary, lastModified, cwd }) => ({
-        sessionId,
-        summary,
-        lastModified,
-        // 老会话可能没有 cwd；带出来让上层判为未归属，而不是拿当前项目目录兜底。
-        ...(cwd ? { cwd } : {}),
-      }));
+      return summaries(records, signal);
     },
-    async read(id, dir) {
+    async read(id, dir, signal) {
+      signal?.throwIfAborted();
       const record = await info(id, dir);
       const messages = await api.messages(id, dir);
       const mapper = new ClaudeEventMapper(id);
       return {
-        session: { sessionId: record.sessionId, summary: record.summary, lastModified: record.lastModified },
+        session: await summary(record, signal),
         cwd: record.cwd ?? dir,
         actualModel: lastModel(messages),
         events: messages.flatMap((message) => mapper.mapHistory(message)),

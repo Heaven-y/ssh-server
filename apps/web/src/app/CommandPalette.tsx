@@ -211,7 +211,7 @@ export default function CommandPalette({
                     return;
                   }
                   if (actions.conversation?.() === false) return;
-                  useChat.getState().selectWorkspace(target.id);
+                  useChat.getState().selectWorkspace(target.id, { restore: false });
                   close();
                 }}
               >

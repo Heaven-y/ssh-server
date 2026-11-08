@@ -60,7 +60,10 @@ export function createChatEvents(
       }),
     );
     const obsolete = new Set(duplicates.map((entry) => entry.conversationId));
-    set({ background: Object.fromEntries(Object.entries(get().background).filter(([key]) => !obsolete.has(key))) });
+    set({
+      background: Object.fromEntries(Object.entries(get().background).filter(([key]) => !obsolete.has(key))),
+      tabIds: [...new Set(get().tabIds.map((entry) => (obsolete.has(entry) ? id : entry)))],
+    });
   }
   function event(msg: Msg<'agent.event'>) {
     const view = conversationViews(get()).find((entry) => entry.turnId === msg.turnId);

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useUiPreferences } from '../ui/ui-preferences';
+import { SessionSortMenu } from '../features/sessions/SessionSortMenu';
 import { desktopChrome } from '../lib/desktop-bridge';
 import { sidebarItemClass, sidebarMenuClass, sidebarMenuItemClass } from '../ui/sidebar-styles';
 
@@ -62,6 +63,7 @@ export function SidebarWorkspaces({
     <div className={collapsed ? 'hidden' : 'shrink-0 pt-4 pb-1'}>
       <div className="flex min-h-9 items-center gap-0.5 pl-3">
         <h2 className="mr-auto text-xs font-medium text-muted-foreground">工作区</h2>
+        <SessionSortMenu />
         <button
           ref={searchButton}
           type="button"

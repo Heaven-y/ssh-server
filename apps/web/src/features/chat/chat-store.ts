@@ -17,6 +17,7 @@ import { markPermissionPending, reduceChat } from './chat-reducer';
 import { capabilityRestriction, selectionRestriction } from './capability-selection';
 import { createChatEvents } from './chat-events';
 import { createChatHistory } from './chat-history';
+import { createConversationTabs, existingTabs, openedTab } from './conversation-tabs';
 import {
   conversationBusy,
   conversationById,
@@ -87,6 +88,8 @@ export const useChat = create<ChatState>()((set, get) => {
     connection: 'connecting',
     conversationId: crypto.randomUUID(),
     background: {},
+    tabIds: [],
+    ...createConversationTabs(get, set, history.changeSelection),
     conversationVisible: true,
     conversationVersion: 0,
     agent: 'claude',
@@ -98,16 +101,21 @@ export const useChat = create<ChatState>()((set, get) => {
     sessionModels: {},
     inspectorRequest: 0,
     ...emptyConversation,
-    setDraft: (draft) => set({ draft, initialDefaultsEligible: false }),
+    setDraft: (draft) =>
+      set((state) => ({
+        draft,
+        initialDefaultsEligible: false,
+        tabIds: draft ? openedTab(state.tabIds, state.conversationId) : state.tabIds,
+      })),
     setView: (view) => set({ view }),
     inspectItem(id) {
       if (id && !get().items.some((item) => item.id === id)) return;
       set((state) => ({ inspectedItemId: id, inspectorRequest: state.inspectorRequest + 1 }));
     },
-    selectWorkspace(id) {
+    selectWorkspace(id, options) {
       if (get().workspaceId === id) return;
       const saved = Object.values(get().background).findLast((view) => view.workspaceId === id);
-      if (saved) return get().openConversation(saved.conversationId);
+      if (saved && options?.restore !== false) return get().openConversation(saved.conversationId);
       const conversationVersion = history.changeSelection();
       persistWorkspace(id);
       set({
@@ -123,6 +131,7 @@ export const useChat = create<ChatState>()((set, get) => {
       const current = get();
       const saved = conversationById(current, id);
       if (!saved) return;
+      if (!current.tabIds.includes(id)) set({ tabIds: openedTab(current.tabIds, id) });
       if (id !== current.conversationId) {
         history.changeSelection();
         const background = { ...retainConversation(current) };
@@ -149,16 +158,19 @@ export const useChat = create<ChatState>()((set, get) => {
           Object.entries(get().sessionModels).filter(([key]) => !key.startsWith(prefix)),
         ),
       });
+      set({ tabIds: existingTabs(get()) });
     },
     newSession(agent = get().defaults.defaultAgent) {
       const conversationVersion = history.changeSelection();
+      const conversationId = crypto.randomUUID();
       set({
         ...emptyConversation,
         ...newDefaults(get()),
         agent,
         initialDefaultsEligible: false,
         conversationVersion,
-        conversationId: crypto.randomUUID(),
+        conversationId,
+        tabIds: openedTab(get().tabIds, conversationId),
         background: retainConversation(get()),
       });
     },
@@ -172,6 +184,7 @@ export const useChat = create<ChatState>()((set, get) => {
         ),
         background: Object.fromEntries(Object.entries(get().background).filter(([, view]) => view.workspaceId !== id)),
       });
+      set({ tabIds: existingTabs(get()) });
     },
     setAgent(agent) {
       const current = get();
@@ -191,9 +204,16 @@ export const useChat = create<ChatState>()((set, get) => {
         const background = { ...retainConversation(get()) };
         delete background[saved.conversationId];
         history.changeSelection();
-        set({ ...saved, background, unread: false, initialDefaultsEligible: false });
+        set({
+          ...saved,
+          background,
+          tabIds: openedTab(get().tabIds, saved.conversationId),
+          unread: false,
+          initialDefaultsEligible: false,
+        });
       }
       if (saved) {
+        set({ tabIds: openedTab(get().tabIds, saved.conversationId) });
         if (session.title) set({ title: session.title });
         if (conversationBusy(saved)) return;
         if (!needsHistory(saved) && !options) return;
@@ -262,6 +282,8 @@ export const useChat = create<ChatState>()((set, get) => {
         await sessionsApi.sessionAction(workspaceId, session.sessionId, session.agent, input);
         set(renamedConversation(get(), workspaceId, session, input));
         if (input.action === 'delete' || input.action === 'archive') {
+          const view = conversationForSession(get(), workspaceId, session);
+          if (view) get().closeConversationTab(view.conversationId);
           if (sameSession(get(), workspaceId, session)) {
             const conversationVersion = history.changeSelection();
             set({
@@ -286,6 +308,7 @@ export const useChat = create<ChatState>()((set, get) => {
           set({ sessionModels });
         }
         set({ sessionOperations: operations });
+        set({ tabIds: existingTabs(get()) });
         await refreshSessionLists(session.agent);
         return true;
       } catch (error) {
@@ -329,6 +352,7 @@ export const useChat = create<ChatState>()((set, get) => {
         return false;
       }
       set((state) => ({
+        tabIds: openedTab(state.tabIds, state.conversationId),
         items: reduceChat(state.items, {
           type: 'user_message',
           text: current.selectedCapability ? `/${current.selectedCapability.name}${text ? ` ${text}` : ''}` : message,

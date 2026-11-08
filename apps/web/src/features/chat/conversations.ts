@@ -64,7 +64,11 @@ export function projectIsRunning(state: ChatState, workspaceId?: string) {
 export function retainConversation(state: ChatState): ChatState['background'] {
   if (
     !state.workspaceId ||
-    (!state.sessionId && !state.items.length && !conversationHasDraft(state) && !conversationBusy(state))
+    (!state.sessionId &&
+      !state.items.length &&
+      !conversationHasDraft(state) &&
+      !conversationBusy(state) &&
+      !state.tabIds.includes(state.conversationId))
   )
     return state.background;
   const snapshot = Object.fromEntries(fields.map((field) => [field, state[field]])) as ConversationView;

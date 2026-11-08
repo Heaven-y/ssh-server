@@ -10,6 +10,7 @@ import {
   renameSession,
 } from '@anthropic-ai/claude-agent-sdk';
 import { createClaudeSessions } from '../../../src/agents/claude/sessions';
+import * as activity from '../../../src/agents/claude/session-activity';
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   deleteSession: vi.fn(),
@@ -36,6 +37,18 @@ it('摘要分页只调用SDK请求的一页，不遍历其他记录', async () =
   expect(listSessions).toHaveBeenCalledExactlyOnceWith({ includeWorktrees: false, limit: 1, offset: 50 });
   expect(page.nextCursor).toBe('51');
   expect(page.items[0]?.sessionId).toBe(id);
+});
+
+it('分页摘要、兼容列表与历史使用同一活动时间且不为列表读取完整历史', async () => {
+  vi.mocked(listSessions).mockResolvedValue([metadata]);
+  vi.mocked(getSessionMessages).mockResolvedValue([]);
+  const time = vi.spyOn(activity, 'claudeSessionActivity').mockResolvedValue(42);
+  const provider = createClaudeSessions();
+  expect((await provider.page!(dir, { limit: 50 })).items[0]?.lastModified).toBe(42);
+  expect((await provider.list(dir))[0]?.lastModified).toBe(42);
+  expect(getSessionMessages).not.toHaveBeenCalled();
+  expect((await provider.read(id, dir)).session.lastModified).toBe(42);
+  time.mockRestore();
 });
 
 describe('Claude 原生会话管理', () => {

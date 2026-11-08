@@ -14,6 +14,9 @@ export type SessionOperation = { action: SessionActionInput['action'] | 'fork'; 
 export type ChatState = {
   conversationId: string;
   background: Record<string, ConversationView>;
+  tabIds: string[];
+  closeConversationTab(id: string): void;
+  moveConversationTab(id: string, target: string): void;
   conversationVisible: boolean;
   draft: string;
   unread: boolean;
@@ -57,7 +60,7 @@ export type ChatState = {
   banner?: string;
   sessionOperations: Record<string, SessionOperation>;
   manageSession(workspaceId: string, session: SessionRef, input: SessionActionInput): Promise<boolean>;
-  selectWorkspace(id?: string): void;
+  selectWorkspace(id?: string, options?: { restore?: boolean }): void;
   removeWorkspace(id: string, nextId?: string): void;
   resetWorkspaceConversation(id: string, expectedVersion: number): void;
   newSession(agent?: AgentKind): void;
