@@ -84,7 +84,8 @@ function RowFrame({ active, rowProps, children }: Pick<RowProps, 'active' | 'row
   return (
     <li
       {...rowProps}
-      className={`flex min-w-0 items-center gap-0.5 rounded-lg ${active ? 'bg-interactive/10 text-foreground ring-1 ring-inset ring-interactive/30' : 'text-muted-foreground'}`}
+      data-active={active || undefined}
+      className="project-session-row flex min-w-0 items-center gap-0.5 rounded-lg"
     >
       {rowProps?.draggable && (
         <GripVertical aria-hidden className="ml-1 size-3 shrink-0 cursor-grab text-muted-foreground" />

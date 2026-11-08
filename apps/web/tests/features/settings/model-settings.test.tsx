@@ -115,7 +115,8 @@ it('Codex 登录或环境认证均可直接填写 Key，切换服务商丢弃旧
   render(<ProductSettingsDialog initialPage="codex" onClose={vi.fn()} onNative={vi.fn()} />);
   fireEvent.change(await screen.findByLabelText('服务地址'), { target: { value: 'https://draft.example/v1' } });
   fireEvent.change(screen.getByLabelText('API Key'), { target: { value: 'synthetic-draft-secret' } });
-  fireEvent.change(screen.getByLabelText('服务商'), { target: { value: 'second' } });
+  fireEvent.click(screen.getByLabelText('服务商'));
+  fireEvent.click(await screen.findByRole('option', { name: '第二服务' }));
   expect(screen.getByLabelText<HTMLInputElement>('服务地址').value).toBe('https://second.example/v1');
   expect(screen.getByLabelText<HTMLInputElement>('API Key').value).toBe('');
   fireEvent.click(screen.getByRole('button', { name: '保存配置' }));
@@ -194,15 +195,15 @@ it('缓存模型可直接选择，显式获取先保存修改，参数和高级�
   await screen.findByRole('button', { name: '重新获取' });
   expect(modelSettingsApi.catalog).toHaveBeenCalledWith('claude', 'demo', expect.any(AbortSignal));
   expect(modelSettingsApi.refreshCatalog).not.toHaveBeenCalled();
-  const options = globalThis.document.getElementById(model.getAttribute('list')!)!;
-  expect(within(options).getByRole('option', { name: '自定义模型', hidden: true }).getAttribute('value')).toBe(
-    'custom-model',
-  );
+  fireEvent.click(screen.getByRole('button', { name: '展开默认模型选项' }));
+  const options = await screen.findByRole('listbox', { name: '默认模型选项' });
+  fireEvent.click(within(options).getByRole('option', { name: '自定义模型' }));
+  expect(model.value).toBe('custom-model');
   expect(screen.getByLabelText<HTMLInputElement>('上下文窗口').readOnly).toBe(true);
   expect(screen.queryByRole('textbox', { name: 'Auth Token' })).toBeNull();
   fireEvent.change(model, { target: { value: 'custom-model' } });
-  const effort = screen.getByLabelText<HTMLInputElement>('推理强度');
-  expect(globalThis.document.getElementById(effort.getAttribute('list')!)?.children).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button', { name: '展开推理强度选项' }));
+  expect(within(await screen.findByRole('listbox', { name: '推理强度选项' })).getAllByRole('option')).toHaveLength(2);
   fireEvent.click(screen.getByRole('button', { name: '保存并获取模型' }));
   await waitFor(() => expect(modelSettingsApi.save).toHaveBeenCalledOnce());
   expect(modelSettingsApi.refreshCatalog).not.toHaveBeenCalled();

@@ -2,7 +2,6 @@ import { useLayoutEffect, type MutableRefObject } from 'react';
 import { ArrowUpRight, FileCode2, RefreshCw } from 'lucide-react';
 import type { AgentKind } from '@agentdeck/shared/conversation';
 import type { ModelSettingField } from '@agentdeck/shared/settings';
-import { AgentIcon } from '../../ui/BrandIcons';
 import { buttonClass } from '../../ui/styles';
 import { nativeAgentNames } from './native-resource-labels';
 import { ModelSettingsField } from './ModelSettingsField';
@@ -60,15 +59,14 @@ function Fields({ fields, state }: { fields: ModelSettingField[]; state: State }
   ));
 }
 function ConnectionFields({ fields, state }: { fields: ModelSettingField[]; state: State }) {
-  const paired =
-    fields.some((field) => field.key === 'provider') && fields.some((field) => field.key === 'displayName');
+  const paired = fields.some((field) => field.key === 'provider')
+    ? ['provider', 'displayName']
+    : ['displayName', 'baseUrl'];
+  const showPair = paired.every((key) => fields.some((field) => field.key === key));
   return (
     <div className="grid gap-3.5 sm:grid-cols-2">
       {fields.map((field) => (
-        <div
-          key={field.key}
-          className={paired && ['provider', 'displayName'].includes(field.key) ? 'min-w-0' : 'min-w-0 sm:col-span-2'}
-        >
+        <div key={field.key} className={showPair && paired.includes(field.key) ? 'min-w-0' : 'min-w-0 sm:col-span-2'}>
           <Fields fields={[field]} state={state} />
         </div>
       ))}
@@ -90,7 +88,6 @@ function ModelSettingsForm({ state, fields }: { state: State; fields: ModelSetti
         </section>
       )}
       <section aria-label="模型选择" className="space-y-3.5 border-t border-border pt-5">
-        <h4 className="text-xs font-medium text-muted-foreground">模型</h4>
         <Fields fields={models.filter((field) => !parameters.includes(field))} state={state} />
         {state.modelsError && (
           <p role="alert" className="text-xs leading-5 text-destructive-foreground">
@@ -186,7 +183,7 @@ function SettingsFeedback({ state }: { state: State }) {
 }
 function SettingsFooter({ state }: { state: State }) {
   return (
-    <footer className="mt-4 flex shrink-0 items-center justify-between gap-3 border-t border-border pt-4">
+    <footer className="settings-footer mt-4 flex shrink-0 items-center justify-between gap-3 border-t border-border pt-4">
       <p role={state.message ? 'status' : undefined} className="min-w-0 text-xs text-muted-foreground">
         {state.message || (state.dirty ? '有未保存修改' : '对新会话生效')}
       </p>
@@ -231,14 +228,11 @@ export function ModelSettingsPanel({
     };
   });
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <header className="mb-5 shrink-0">
-        <h3 className="flex items-center gap-2.5 text-base font-semibold">
-          <AgentIcon agent={agent} className="size-5" />
-          {nativeAgentNames[agent]}
-        </h3>
-      </header>
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-1 pb-1 pr-4 [scrollbar-gutter:stable]">
+    <div
+      aria-label={`${nativeAgentNames[agent]} 模型设置`}
+      className="settings-model-panel flex min-h-0 flex-1 flex-col"
+    >
+      <div className="settings-form-scroll min-h-0 flex-1 space-y-5 overflow-y-auto px-1 pb-1 pr-4 [scrollbar-gutter:stable]">
         <SettingsFeedback state={state} />
         {state.document && (
           <>

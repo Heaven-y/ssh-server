@@ -6,6 +6,7 @@ import { LocalSessionGate } from './app/LocalSessionGate';
 import { startChatConnection } from './features/chat/chat-store';
 import { queryClient } from './lib/query-client';
 import './styles.css';
+import './ui/interactions.css';
 
 const mountApp = () => (
   <QueryClientProvider client={queryClient}>

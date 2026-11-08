@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import type { ChatItem } from '../../../src/features/chat/chat-reducer';
 import { useChat } from '../../../src/features/chat/chat-store';
 import { averageTokenRate } from '../../../src/features/chat/chat-metrics';
-import { projectTrajectory } from '../../../src/features/chat/trajectory-model';
+import { filterTrajectory, projectTrajectory } from '../../../src/features/chat/trajectory-model';
 import { TrajectoryView } from '../../../src/features/chat/TrajectoryView';
 import { StatisticsLine } from '../../../src/features/chat/StatisticsLine';
 import { ConversationSidebar } from '../../../src/app/ConversationSidebar';
@@ -66,6 +66,29 @@ it('速度只配对同范围数据，未知耗时、失败、非有限 token 均
   expect(averageTokenRate({ ...statistics, usage: { ...usage, outputTokens: NaN } })).toBeUndefined();
   render(<StatisticsLine statistics={statistics} />);
   expect(screen.getByText('回合平均 60.0 tok/s')).toBeTruthy();
+});
+
+it('角色筛选保留原始顺序和轮次，用户可查看全文，上下文只采用原生报告', async () => {
+  const items: ChatItem[] = [
+    { kind: 'user', id: 'prompt', text: '检查示例目录' },
+    { kind: 'tool', id: 'read', name: 'Read', input: { path: 'demo.ts' }, status: 'done' },
+    { kind: 'assistant', id: 'reply', text: '目录已检查', streaming: false },
+    { kind: 'compaction', id: 'compact', state: { status: 'completed', beforeTokens: 1000, afterTokens: 400 } },
+  ];
+  const rows = projectTrajectory(items);
+  expect(filterTrajectory(rows, 'tool').map((row) => row.id)).toEqual(['turn:prompt', 'step:read']);
+  expect(filterTrajectory(rows, 'assistant').map((row) => row.id)).toEqual(['turn:prompt', 'step:reply']);
+  expect(filterTrajectory(rows, 'context').map((row) => row.id)).toEqual(['turn:prompt', 'step:compact']);
+  useChat.setState({ items, contextUsage: { source: 'codex_native', usedTokens: 400, windowTokens: 200000 } });
+  render(<Fixture />);
+  fireEvent.click(screen.getByRole('button', { name: '用户' }));
+  expect(screen.queryByRole('button', { name: /查看步骤/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '查看用户消息：检查示例目录' }));
+  expect(await screen.findByRole('heading', { name: '步骤详情' })).toBeTruthy();
+  expect(useChat.getState().inspectedItemId).toBe('prompt');
+  fireEvent.click(screen.getByRole('button', { name: '上下文' }));
+  expect(screen.getByText('最近报告')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '查看用户消息：检查示例目录' })).toBeNull();
 });
 
 function Fixture() {

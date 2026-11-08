@@ -17,7 +17,7 @@ export function ToolGroup({
   const counts = toolCounts(items);
   return (
     <details
-      className="group/reads min-w-0 text-[13px]"
+      className="tool-card group/reads min-w-0 text-[13px]"
       open={expanded}
       onToggle={(event) => {
         if (event.currentTarget.open !== expanded) onExpandedChange?.(event.currentTarget.open);

@@ -134,7 +134,7 @@ function ProjectItem({
         />
       </div>
       {expanded && (
-        <section aria-label={`${project.name}会话`} className="mb-2 pl-3">
+        <section aria-label={`${project.name}会话`} className="project-session-list mb-2 pl-3">
           <ProjectSessionStatus
             loading={loading}
             incomplete={incomplete}

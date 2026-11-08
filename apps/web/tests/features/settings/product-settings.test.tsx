@@ -97,7 +97,7 @@ it('保存发布新设置前取消旧共享GET，迟到响应不能回退偏好'
   expect(queryClient.getQueryData(settingsKeys.productSettings)).toEqual(saved);
 });
 
-it('设置侧栏区分三类 CLI 与工作台，通用偏好保存后可查看本机环境', async () => {
+it('设置侧栏按用途分类，通用偏好保存后可查看本机环境', async () => {
   vi.spyOn(settingsApi, 'readProductSettings').mockResolvedValue(document);
   const save = vi
     .spyOn(settingsApi, 'saveProductSettings')
@@ -107,7 +107,8 @@ it('设置侧栏区分三类 CLI 与工作台，通用偏好保存后可查看�
   render(<ProductSettingsDialog initialPage="general" onClose={vi.fn()} onNative={vi.fn()} />, { wrapper });
   const agent = await screen.findByLabelText('默认 Agent');
   const navigation = screen.getByRole('navigation', { name: '设置分类' });
-  expect(within(navigation).getAllByRole('button')).toHaveLength(5);
+  expect(within(navigation).getAllByRole('button')).toHaveLength(3);
+  expect(within(navigation).getByRole('button', { name: '模型与连接' })).toBeTruthy();
   expect(screen.queryByLabelText(/资源检查间隔/)).toBeNull();
   expect(readEnvironment).not.toHaveBeenCalled();
   fireEvent.change(agent, { target: { value: 'codex' } });
@@ -135,7 +136,7 @@ it('跨分类保存冲突保留草稿，关闭、原生视图、重读与Esc均�
   fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
   await screen.findByRole('alert');
   fireEvent.click(screen.getByRole('button', { name: '关闭设置' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Claude Code' }));
+  fireEvent.click(screen.getByRole('button', { name: '模型与连接' }));
   fireEvent.click(screen.getByRole('button', { name: '重新读取' }));
   fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }));
   expect(confirm).toHaveBeenCalledTimes(4);

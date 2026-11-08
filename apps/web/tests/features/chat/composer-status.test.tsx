@@ -37,6 +37,11 @@ it('底部摘要保留上下文与 tok/s，token 明细按需展开，运行中�
   render(<ComposerStatus />);
   expect(screen.getByRole('group', { name: '会话统计' })).toBeTruthy();
   expect(screen.getByRole('button', { name: '上下文用量' })).toBeTruthy();
+  expect(
+    Array.from(screen.getByRole('group', { name: '会话统计' }).querySelectorAll('button')).map((button) =>
+      button.getAttribute('aria-label'),
+    ),
+  ).toEqual(['本轮统计详情', '上下文用量']);
   expect(screen.getByText('回合平均 60.0 tok/s')).toBeTruthy();
   expect(screen.queryByText('输入 300')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '本轮统计详情' }));

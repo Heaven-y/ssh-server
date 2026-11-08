@@ -39,7 +39,8 @@ function ConversationTab({ view, project, active }: { view: ConversationView; pr
         event.preventDefault();
         move(event.dataTransfer.getData('application/x-agentdeck-tab'), view.conversationId);
       }}
-      className={`group flex min-w-28 max-w-64 shrink-0 items-center border-r border-border ${active ? 'bg-background shadow-[inset_0_2px_var(--color-interactive)]' : 'text-muted-foreground hover:bg-muted/60'}`}
+      data-active={active || undefined}
+      className="conversation-tab group flex min-w-28 max-w-64 shrink-0 items-center border-r border-border"
     >
       <Tab
         id={`tab-${view.conversationId}`}
@@ -96,7 +97,7 @@ export function ConversationTabs({
       <TabList
         ref={bar}
         aria-label="已打开的会话"
-        className="flex shrink-0 overflow-x-auto border-b border-border bg-sidebar"
+        className="conversation-tabs flex shrink-0 overflow-x-auto border-b border-border bg-sidebar"
       >
         {tabs.map((view) => (
           <ConversationTab

@@ -6,6 +6,7 @@ import { ComposerInput } from './ComposerInput';
 import type { AgentCapability } from '@agentdeck/shared/conversation';
 import { AgentControls } from './AgentControls';
 import { ComposerStatus } from './ComposerStatus';
+import { SpotlightSurface } from '../../ui/SpotlightSurface';
 
 function ComposerActions({ disabled }: { disabled: boolean }) {
   const running = useChat((s) => s.running);
@@ -79,7 +80,7 @@ export function Composer() {
 
   return (
     <form onSubmit={submit} className="composer">
-      <div className="composer-card">
+      <SpotlightSurface className="composer-card">
         <label htmlFor={id} className="sr-only">
           输入消息
         </label>
@@ -97,7 +98,7 @@ export function Composer() {
             <ComposerActions disabled={blocked} />
           </AgentControls>
         </div>
-      </div>
+      </SpotlightSurface>
       <ComposerStatus />
     </form>
   );

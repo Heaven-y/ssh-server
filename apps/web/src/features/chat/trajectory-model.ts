@@ -4,7 +4,7 @@ import { activityStatus } from './activity-presentation';
 
 export type TrajectoryItem = Exclude<ChatItem, { kind: 'fork-point' }>;
 export type TrajectoryRow =
-  | { kind: 'turn'; id: string; number: number; prompt?: string }
+  | { kind: 'turn'; id: string; number: number; prompt?: string; user?: Extract<ChatItem, { kind: 'user' }> }
   | { kind: 'step'; id: string; number: number; item: TrajectoryItem };
 
 /** 逐步骤虚拟化，单个长回合不会绕过列表的 DOM 预算。 */
@@ -22,12 +22,50 @@ export function projectTrajectory(items: ChatItem[]): TrajectoryRow[] {
         id: `turn:${item.id}`,
         number: turn,
         prompt: item.kind === 'user' ? item.text : undefined,
+        user: item.kind === 'user' ? item : undefined,
       });
     }
     if (item.kind === 'user') continue;
     rows.push({ kind: 'step', id: `step:${item.id}`, number: ++step, item });
   }
   return rows;
+}
+
+export type TrajectoryRole = 'context' | 'user' | 'tool' | 'assistant';
+export type TrajectoryFilter = 'all' | TrajectoryRole;
+export const trajectoryRoles: Record<TrajectoryRole, string> = {
+  context: '上下文',
+  user: '用户',
+  tool: '工具',
+  assistant: '助手',
+};
+
+/** 保留原始顺序；角色与命令/读取等动作类型分别展示。 */
+export function trajectoryRole(item: TrajectoryItem): TrajectoryRole {
+  if (item.kind === 'compaction') return 'context';
+  if (item.kind === 'user') return 'user';
+  if (item.kind === 'tool' || item.kind === 'permission') return 'tool';
+  return 'assistant';
+}
+
+export function filterTrajectory(rows: TrajectoryRow[], filter: TrajectoryFilter): TrajectoryRow[] {
+  if (filter === 'all') return rows;
+  if (filter === 'user') return rows.filter((row) => row.kind === 'turn' && !!row.user);
+  const visible: TrajectoryRow[] = [];
+  let turn: TrajectoryRow | undefined;
+  for (const row of rows) {
+    if (row.kind === 'turn') {
+      turn = row;
+      continue;
+    }
+    if (trajectoryRole(row.item) !== filter) continue;
+    if (turn) {
+      visible.push(turn);
+      turn = undefined;
+    }
+    visible.push(row);
+  }
+  return visible;
 }
 
 const toolCategories = [

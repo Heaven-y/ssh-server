@@ -9,6 +9,7 @@ import { ProductSettingsForm } from './ProductSettingsForm';
 import { parseSettingsDraft, settingsDraft, type ProductSettingsDraft } from './product-settings-draft';
 import { nativeSettingsError } from './native-resource-labels';
 import type { SettingsLeave } from './use-model-settings';
+import { AppearanceSettings } from './AppearanceSettings';
 
 function useGeneralSettings() {
   const [document, setDocument] = useState<ProductSettingsDocument>();
@@ -117,6 +118,7 @@ export function GeneralSettingsPanel({ guardRef }: { guardRef: MutableRefObject<
         <h3 className="text-lg font-semibold">通用设置</h3>
         <p className="mt-2 text-[13px] leading-6 text-muted-foreground">工作台的使用偏好保存在本机。</p>
       </header>
+      <AppearanceSettings />
       <GeneralFeedback state={state} />
       {state.draft && (
         <ProductSettingsForm
@@ -127,7 +129,7 @@ export function GeneralSettingsPanel({ guardRef }: { guardRef: MutableRefObject<
       )}
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
         <p className="text-xs text-muted-foreground">
-          {state.dirty ? '有未保存修改' : '模型和认证请在左侧选择对应 CLI。'}
+          {state.dirty ? '有未保存修改' : '模型和认证在“模型与连接”中设置。'}
         </p>
         <div className="flex gap-2">
           <button

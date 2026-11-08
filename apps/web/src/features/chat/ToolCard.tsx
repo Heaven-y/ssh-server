@@ -45,7 +45,7 @@ export function ToolCard({ item, expanded, onExpandedChange }: { item: ToolItem 
 
   return (
     <details
-      className="group/tool min-w-0 rounded-lg text-[13px]"
+      className="tool-card group/tool min-w-0 rounded-lg text-[13px]"
       open={expanded}
       onToggle={(event) => {
         if (event.currentTarget.open !== expanded) onExpandedChange?.(event.currentTarget.open);

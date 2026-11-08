@@ -27,13 +27,9 @@ function TurnStatistics({ item }: { item: StatisticsItem }) {
         store={popover}
         render={<button type="button" />}
         aria-label="本轮统计详情"
-        className="inline-flex min-h-6 max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-1 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+        className="composer-statistic inline-flex min-h-6 max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-1 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+        title={item.scope === 'turn' ? '本轮平均生成速度与耗时' : '模型步骤平均生成速度与耗时'}
       >
-        {duration !== undefined && (
-          <span className="inline-flex items-center gap-1 tabular-nums">
-            <Clock3 aria-hidden className="size-3" /> {formatDuration(duration)}
-          </span>
-        )}
         {rate !== undefined ? (
           <span className="inline-flex items-center gap-1 tabular-nums">
             <Gauge aria-hidden className="size-3" />
@@ -41,6 +37,11 @@ function TurnStatistics({ item }: { item: StatisticsItem }) {
           </span>
         ) : (
           <span>用量详情</span>
+        )}
+        {duration !== undefined && (
+          <span className="inline-flex items-center gap-1 tabular-nums">
+            <Clock3 aria-hidden className="size-3" /> {formatDuration(duration)}
+          </span>
         )}
         <ChevronDown aria-hidden className="size-3" />
       </PopoverDisclosure>
@@ -68,8 +69,8 @@ export function ComposerStatus() {
   if (!context && !compaction && !latest) return null;
   return (
     <div role="group" aria-label="会话统计" className="composer-status">
-      <ContextStatus />
       {latest && <TurnStatistics key={latest.id} item={latest} />}
+      <ContextStatus />
     </div>
   );
 }

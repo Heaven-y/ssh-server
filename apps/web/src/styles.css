@@ -7,17 +7,17 @@
 
 /* 参考 DSH 本机主题的中性层级；品牌操作与状态颜色分别定义。 */
 @theme {
-  --color-background: #151517;
-  --color-sidebar: #1b1b1c;
-  --color-card: #232324;
-  --color-muted: #2c2c2e;
-  --color-muted-foreground: #adb2b8;
-  --color-foreground: #f9fafb;
-  --color-border: #ffffff1f;
-  --color-border-strong: #ffffff33;
+  --color-background: #191b20;
+  --color-sidebar: #15171b;
+  --color-card: #202329;
+  --color-muted: #24272e;
+  --color-muted-foreground: #a0a8b8;
+  --color-foreground: #dce0e8;
+  --color-border: #2c3039;
+  --color-border-strong: #3d4451;
   --color-accent: #f9fafb;
   --color-accent-foreground: #0f1115;
-  --color-interactive: #7aaaff;
+  --color-interactive: #a8bee7;
   --color-success: #81cba4;
   --color-warning: #f0c77f;
   --color-destructive: #e66f7a;
@@ -31,33 +31,37 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --surface-composer: #2c2c2e;
-  --surface-user-message: #2c2c2e;
-  --surface-code: #1b1b1c;
-  --control-hover: #ffffff14;
+  --surface-composer: #202329;
+  --surface-user-message: #24272e;
+  --surface-code: #16191f;
+  --surface-selected: #2b3548;
+  --control-hover: #2b2f38;
+  --popover-shadow: 0 16px 48px #0005, 0 2px 8px #0003;
   --control-shadow: 0 0 0 0.5px #ffffff1f, 0 2px 6px #00000024;
 }
 :root:not([data-theme='dark']) {
   color-scheme: light;
   --color-background: #ffffff;
-  --color-sidebar: #f9fafb;
+  --color-sidebar: #f5f6f8;
   --color-card: #ffffff;
-  --color-muted: #f1f3f5;
-  --color-muted-foreground: #61666b;
-  --color-foreground: #0f1115;
-  --color-border: #0000001a;
-  --color-border-strong: #00000029;
+  --color-muted: #f4f5f7;
+  --color-muted-foreground: #656d7b;
+  --color-foreground: #30343d;
+  --color-border: #e8eaef;
+  --color-border-strong: #d9dde5;
   --color-accent: #0f1115;
   --color-accent-foreground: #ffffff;
-  --color-interactive: #4176e6;
+  --color-interactive: #50698f;
   --color-success: #23613e;
   --color-warning: #805100;
   --color-destructive: #b6273f;
   --color-destructive-foreground: #a51c34;
   --surface-composer: #ffffff;
-  --surface-user-message: #edf3fe;
-  --surface-code: #f9fafb;
-  --control-hover: #2631480f;
+  --surface-user-message: #f4f5f7;
+  --surface-code: #f6f7f9;
+  --surface-selected: #e8edf5;
+  --control-hover: #eaecef;
+  --popover-shadow: 0 12px 44px #242c4314, 0 2px 6px #242c4308;
   --control-shadow: 0 0 0 0.5px #0000001a, 0 2px 6px #0000000a;
 }
 
@@ -72,6 +76,7 @@
   gap: 4px;
   padding: 0 148px 0 8px;
   background: var(--color-sidebar);
+  border-bottom: 1px solid var(--color-border);
   -webkit-app-region: drag;
 }
 .desktop-titlebar[data-platform='darwin'] {
@@ -148,7 +153,7 @@
   width: fit-content;
   max-width: min(82%, 648px);
   margin-left: auto;
-  border-radius: 20px;
+  border-radius: 14px 14px 4px 14px;
   background: var(--surface-user-message);
   padding: 10px 16px;
   font-size: 14px;
@@ -192,18 +197,18 @@
   width: 100%;
   max-width: calc(var(--conversation-width, 748px) + 32px);
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   margin-inline: auto;
-  border-radius: 28px;
+  border-radius: 16px;
   background: var(--surface-composer);
-  padding-top: 8px;
+  padding-top: 12px;
   box-shadow: var(--control-shadow);
   transition: box-shadow 0.15s ease;
 }
 .composer-card:focus-within {
   box-shadow:
-    0 0 0 1px var(--color-border-strong),
-    0 2px 8px #0000000a;
+    0 0 0 1px color-mix(in srgb, var(--color-interactive) 60%, var(--color-border)),
+    0 2px 10px #00000008;
 }
 .composer-status {
   display: flex;
@@ -211,8 +216,8 @@
   min-width: 0;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 2px 16px;
+  justify-content: center;
+  gap: 2px 12px;
   margin: 6px auto 0;
   padding-inline: 4px;
 }
@@ -220,7 +225,7 @@
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  min-height: 52px;
+  min-height: 64px;
   max-height: 336px;
   resize: none;
   field-sizing: content;

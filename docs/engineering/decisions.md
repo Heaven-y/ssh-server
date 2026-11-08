@@ -176,6 +176,12 @@
 
 工作台插件宿主与 SSH 业务分离；注册项持有内置页面和生命周期，旧工具集中 legacy 并保留 URL/磁盘数据。平台文件、进程和密钥保护独立于业务，shared 按域提供子路径而不拆更多 npm 包。导入方向由 ESLint 检查，测试和构建资产随实现迁移。结构审查实施前版本可从 `cdcef47:docs/engineering/structure-review.md` 追溯，已执行计划的锚点为 `d6028db:docs/superpowers/plans/2026-11-06-workbench-structure.md`。
 
+## UI 组件与交互层
+
+正式界面沿用已确认预览的中性样式和轻量反馈，公共层提供 FieldSelect、FieldSuggestions、SegmentedControl、SpotlightSurface 及集中样式。业务只传状态和事件，模型目录、原生字段、会话草稿和运行状态仍由各功能模块管理。菜单和焦点依赖现有 Ariakit，动效使用 CSS；没有把独立预览的演示逻辑、组件源码和依赖复制到生产。
+
+原生 dialog 位于浏览器顶层，因此字段浮层必须挂在所属 dialog 下并使用固定定位。打开菜单不能挤动布局，Esc 先取消浏览器关闭外层的默认动作；对话框不保留会改变 fixed 包含块的变换。输入焦点采用内侧标记，减少与相邻控件重叠。终端和编辑器继续各自适配，不用统一万能组件替换。
+
 ## 历史追溯
 
 | 范围 | 提交与路径 |

@@ -1,0 +1,559 @@
+/* 动效只作用于展示层：不为流式文字或虚拟列表逐帧重排。 */
+:root {
+  --ui-fast: 130ms;
+  --ui-enter: 180ms;
+  --ui-ease: cubic-bezier(0.2, 0.7, 0.25, 1);
+}
+
+/* 焦点标记留在控件内，避免与相邻按钮、标签及滚动边缘重叠。 */
+.ui-control {
+  min-width: 0;
+  min-height: 36px;
+  border-radius: 8px;
+  transition:
+    border-color var(--ui-fast),
+    box-shadow var(--ui-fast),
+    background var(--ui-fast);
+}
+.ui-control:focus-visible {
+  outline: 2px solid var(--color-interactive);
+  outline-offset: -2px;
+  box-shadow: none;
+}
+.ui-control[aria-invalid='true'] {
+  border-color: var(--color-destructive);
+}
+.ui-control:disabled {
+  cursor: default;
+}
+:is(input, textarea, select):focus-visible {
+  outline-offset: -2px;
+}
+:is(button, summary):focus-visible {
+  outline-offset: -2px;
+}
+.composer-input:focus-visible {
+  outline: none;
+}
+.field-suggestions {
+  flex: 1;
+  min-width: 0;
+}
+.field-suggestions .ui-control {
+  padding-right: 34px;
+}
+.field-disclosure {
+  color: var(--color-muted-foreground);
+  border-radius: 6px;
+}
+.field-disclosure:hover {
+  color: var(--color-foreground);
+  background: var(--control-hover);
+}
+.field-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+.field-options {
+  z-index: 80;
+  border-radius: 10px;
+  box-shadow: var(--popover-shadow);
+  overscroll-behavior: contain;
+  scroll-padding: 6px;
+  animation: ui-popover-in var(--ui-fast) var(--ui-ease);
+}
+.field-option {
+  border-radius: 6px;
+  transition: background var(--ui-fast);
+}
+.field-option[aria-selected='true'] {
+  color: var(--color-interactive);
+  background: var(--surface-selected);
+}
+.field-option[data-active-item] {
+  outline: 1px solid var(--color-interactive);
+  outline-offset: -1px;
+}
+
+/* 原生 dialog 的顶层内承载菜单，不留下会改变 fixed 包含块的 transform。 */
+dialog[open] {
+  animation: ui-fade-in var(--ui-enter) var(--ui-ease);
+}
+dialog::backdrop {
+  background: #10182842;
+  backdrop-filter: blur(3px);
+}
+.settings-dialog {
+  box-shadow:
+    0 24px 80px #11182730,
+    0 4px 16px #1118270d;
+}
+.settings-navigation {
+  background: var(--color-sidebar);
+}
+.settings-navigation-item {
+  border-radius: 7px;
+}
+.settings-navigation-item[aria-current='page'] {
+  color: var(--color-interactive);
+  background: var(--surface-selected);
+}
+.settings-model-tabs {
+  gap: 5px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--color-border);
+}
+.settings-model-tab {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  border-radius: 7px;
+  padding: 7px 11px;
+  font-size: 12px;
+}
+.settings-model-tab[aria-pressed='true'] {
+  background: var(--surface-selected);
+}
+.settings-model-panel {
+  animation: ui-fade-in var(--ui-enter) ease;
+}
+.settings-form-scroll {
+  scroll-padding-block: 14px;
+  overscroll-behavior: contain;
+}
+.settings-footer {
+  position: relative;
+  background: var(--color-card);
+}
+.settings-footer button {
+  white-space: nowrap;
+}
+.appearance-theme {
+  width: 145px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  padding: 7px;
+  text-align: left;
+}
+.appearance-theme[aria-pressed='true'] {
+  border-color: var(--color-interactive);
+  box-shadow: 0 0 0 2px var(--surface-selected);
+}
+.appearance-window {
+  display: flex;
+  height: 76px;
+  background: #fff;
+  border: 1px solid #e5e7ec;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.appearance-window > i {
+  width: 28%;
+  background: #f1f2f5;
+  border-right: 1px solid #e5e7ec;
+}
+.appearance-window > span {
+  flex: 1;
+  padding: 12px;
+}
+.appearance-window > span > i {
+  display: block;
+  height: 4px;
+  margin: 7px 0;
+  width: 75%;
+  background: #e0e4eb;
+  border-radius: 2px;
+}
+.appearance-window > span > i:nth-child(2) {
+  width: 100%;
+}
+.appearance-theme[data-theme='dark'] .appearance-window {
+  background: #22252b;
+  border-color: #343943;
+}
+.appearance-theme[data-theme='dark'] .appearance-window > i {
+  background: #191b20;
+  border-color: #343943;
+}
+.appearance-theme[data-theme='dark'] .appearance-window > span > i {
+  background: #3d4351;
+}
+
+/* 共用菜单跟随锚点，不参与侧栏布局；内容保留现有 Ariakit 键盘行为。 */
+[role='menu'] {
+  box-shadow: var(--popover-shadow);
+  max-height: min(560px, var(--popover-available-height, 75vh));
+  overscroll-behavior: contain;
+  animation: ui-popover-in var(--ui-fast) var(--ui-ease);
+  transform-origin: var(--popover-transform-origin);
+}
+[role='menuitem'],
+[role='menuitemradio'],
+[role='menuitemcheckbox'] {
+  transition:
+    background var(--ui-fast),
+    color var(--ui-fast);
+}
+[role='menuitemradio'][aria-checked='true'] {
+  color: var(--color-interactive);
+}
+[role='menuitem']:focus-visible,
+[role='menuitemradio']:focus-visible {
+  outline-offset: -2px;
+}
+
+.project-session-list {
+  animation: ui-reveal-in var(--ui-enter) var(--ui-ease);
+}
+.project-session-row {
+  color: var(--color-muted-foreground);
+  transition:
+    background var(--ui-fast),
+    box-shadow var(--ui-fast);
+}
+.project-session-row[data-active] {
+  color: var(--color-foreground);
+  background: var(--surface-selected);
+  box-shadow: inset 2px 0 var(--color-interactive);
+}
+.project-session-row:hover {
+  background: var(--control-hover);
+}
+.project-session-row[data-active]:hover {
+  background: var(--surface-selected);
+}
+.conversation-tabs {
+  background: color-mix(in srgb, var(--color-sidebar) 55%, var(--color-background));
+}
+.conversation-tab {
+  position: relative;
+  color: var(--color-muted-foreground);
+  transition:
+    background var(--ui-fast),
+    color var(--ui-fast);
+}
+.conversation-tab::after {
+  content: '';
+  position: absolute;
+  height: 2px;
+  bottom: 0;
+  left: 12px;
+  right: 12px;
+  background: var(--color-interactive);
+  border-radius: 2px;
+  scale: 0 1;
+  transition: scale var(--ui-enter) var(--ui-ease);
+}
+.conversation-tab[data-active] {
+  color: var(--color-foreground);
+  background: var(--color-background);
+}
+.conversation-tab[data-active]::after {
+  scale: 1;
+}
+.conversation-tab:hover {
+  color: var(--color-foreground);
+}
+#workspace-topbar {
+  height: 66px;
+  padding-inline: 24px;
+}
+#workspace-topbar h1 {
+  line-height: 24px;
+}
+#workspace-topbar p {
+  font-size: 11px;
+}
+.conversation-view-bar {
+  display: flex;
+  flex-shrink: 0;
+  padding: 0 24px 13px;
+  border-bottom: 1px solid var(--color-border);
+}
+.ui-segment {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--color-muted);
+  border-radius: 8px;
+  max-width: 100%;
+}
+.ui-segment > button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 6px;
+  min-height: 28px;
+  padding: 4px 12px;
+  color: var(--color-muted-foreground);
+  font-size: 12px;
+  white-space: nowrap;
+  transition:
+    background var(--ui-fast),
+    box-shadow var(--ui-fast),
+    color var(--ui-fast);
+}
+.ui-segment > button:hover {
+  color: var(--color-foreground);
+}
+.ui-segment > button[aria-pressed='true'] {
+  color: var(--color-foreground);
+  background: var(--color-card);
+  box-shadow: 0 1px 3px #00000010;
+}
+.conversation-view-content {
+  animation: ui-fade-in var(--ui-enter) ease;
+}
+.conversation-row {
+  padding-block: 10px;
+}
+.conversation-sidebar {
+  background: var(--color-sidebar);
+}
+.conversation-sidebar[data-open] > :is(header, div) {
+  animation: ui-panel-in var(--ui-enter) var(--ui-ease);
+}
+.tool-card {
+  border: 1px solid var(--color-border);
+  background: var(--color-background);
+  border-radius: 9px;
+}
+.tool-card > summary {
+  padding: 9px 11px;
+  min-height: 36px;
+}
+.tool-card[open] > div {
+  animation: ui-reveal-in var(--ui-enter) ease;
+}
+.tool-card .tool-card {
+  border: 0;
+}
+.composer-status {
+  text-align: center;
+}
+.composer-statistic {
+  justify-content: center;
+  font-size: 11px;
+}
+.composer-statistic + .composer-statistic {
+  border-left: 1px solid var(--color-border-strong);
+  padding-left: 12px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.composer-submit {
+  transition:
+    background var(--ui-fast),
+    transform var(--ui-fast),
+    opacity var(--ui-fast);
+}
+.composer-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.composer-submit:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.ui-spotlight {
+  position: relative;
+  isolation: isolate;
+}
+.ui-spotlight::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  background: radial-gradient(
+    260px circle at var(--spotlight-x, 50%) var(--spotlight-y, 0%),
+    color-mix(in srgb, var(--color-interactive) 8%, transparent),
+    transparent 75%
+  );
+  transition: opacity 180ms;
+}
+@media (hover: hover) {
+  .ui-spotlight:hover::after {
+    opacity: 1;
+  }
+}
+
+.trajectory-toolbar {
+  flex-shrink: 0;
+  padding: 12px 24px;
+}
+.trajectory-toolbar .ui-segment {
+  background: transparent;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.trajectory-toolbar .ui-segment > button {
+  font-size: 11px;
+}
+.trajectory-toolbar .ui-segment > button[aria-pressed='true'] {
+  background: var(--surface-selected);
+  box-shadow: none;
+  color: var(--color-interactive);
+}
+.trajectory-context {
+  flex-shrink: 0;
+  margin: 0 24px 12px;
+  max-height: 180px;
+  overflow: auto;
+}
+.trajectory-turn {
+  padding: 8px 24px;
+}
+.trajectory-turn-label {
+  font-size: 11px;
+  color: var(--color-muted-foreground);
+  margin: 8px 0 10px;
+}
+.trajectory-user {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 13px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-muted);
+  text-align: left;
+}
+.trajectory-user > svg {
+  margin-top: 3px;
+  color: var(--color-muted-foreground);
+}
+.trajectory-user[aria-pressed='true'] {
+  background: var(--surface-selected);
+  border-color: var(--color-interactive);
+}
+.trajectory-entry {
+  margin: 0 24px;
+  border-bottom: 1px solid var(--color-border);
+}
+.trajectory-step {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 3.5rem 3rem 14px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 7px;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 11px;
+  transition: background var(--ui-fast);
+}
+.trajectory-step:hover {
+  background: var(--color-muted);
+}
+.trajectory-step[aria-pressed='true'] {
+  background: var(--surface-selected);
+}
+.trajectory-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  color: var(--color-muted-foreground);
+}
+.trajectory-content {
+  min-width: 0;
+}
+.trajectory-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--color-muted-foreground);
+}
+.trajectory-label > b {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-foreground);
+}
+.trajectory-summary {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 21px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes ui-fade-in {
+  from {
+    opacity: 0.25;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes ui-reveal-in {
+  from {
+    opacity: 0.2;
+    translate: 0 -3px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes ui-popover-in {
+  from {
+    opacity: 0;
+    scale: 0.985;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes ui-panel-in {
+  from {
+    opacity: 0.2;
+    translate: 10px 0;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@container (max-width: 560px) {
+  .composer-status {
+    gap: 2px 8px;
+  }
+  .composer-statistic + .composer-statistic {
+    border: 0;
+    padding-left: 4px;
+  }
+  .trajectory-entry {
+    margin-inline: 12px;
+  }
+  .trajectory-step {
+    grid-template-columns: 24px minmax(0, 1fr) 2.7rem 2.7rem 12px;
+    gap: 5px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  .ui-spotlight::after {
+    display: none;
+  }
+  .composer-submit:hover:not(:disabled),
+  .composer-submit:active:not(:disabled) {
+    transform: none;
+  }
+}

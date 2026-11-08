@@ -5,6 +5,7 @@ import { useChat } from './chat-store';
 import { Composer } from './Composer';
 import { ChatTimeline } from './ChatTimeline';
 import { TrajectoryView } from './TrajectoryView';
+import { SegmentedControl } from '../../ui/SegmentedControl';
 
 function Banner() {
   const banner = useChat((s) => s.banner);
@@ -87,29 +88,36 @@ export function ChatView({ workspace }: { workspace: Workspace }) {
   const setView = useChat((s) => s.setView);
   return (
     <section className="conversation" aria-label={`${workspace.name}会话`}>
-      <div role="group" aria-label="会话视图" className="flex shrink-0 items-center gap-1 px-5 py-2">
-        <button
-          type="button"
-          aria-pressed={view === 'chat'}
-          className={`${buttonClass('ghost')} rounded-lg px-3 ${view === 'chat' ? 'bg-muted text-foreground' : ''}`}
-          onClick={() => setView('chat')}
-        >
-          <MessageSquare aria-hidden className="size-3.5" />
-          对话
-        </button>
-        <button
-          type="button"
-          aria-pressed={view === 'trajectory'}
-          className={`${buttonClass('ghost')} rounded-lg px-3 ${view === 'trajectory' ? 'bg-muted text-foreground' : ''}`}
-          onClick={() => setView('trajectory')}
-        >
-          <ListTree aria-hidden className="size-3.5" />
-          轨迹
-        </button>
+      <div className="conversation-view-bar">
+        <SegmentedControl
+          label="会话视图"
+          value={view}
+          onChange={setView}
+          options={[
+            {
+              value: 'chat',
+              label: (
+                <>
+                  <MessageSquare aria-hidden className="size-3.5" />
+                  对话
+                </>
+              ),
+            },
+            {
+              value: 'trajectory',
+              label: (
+                <>
+                  <ListTree aria-hidden className="size-3.5" />
+                  轨迹
+                </>
+              ),
+            },
+          ]}
+        />
       </div>
       <Banner />
       <HistoryFailure />
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div key={view} className="conversation-view-content flex min-h-0 flex-1 flex-col">
         <Messages view={view} />
       </div>
       <Composer key={version} />

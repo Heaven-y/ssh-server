@@ -1,10 +1,8 @@
 import { useId, useRef, type ReactNode, type RefObject } from 'react';
 import { CircleHelp } from 'lucide-react';
 import type { ModelSettingField } from '@agentdeck/shared/settings';
-import { buttonClass } from '../../ui/styles';
-
-const controlClass =
-  'min-w-0 w-full rounded-lg border border-border-strong bg-background px-3 py-2 text-[13px] leading-5 text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-interactive disabled:opacity-50';
+import { buttonClass, inputClass } from '../../ui/styles';
+import { FieldSelect, FieldSuggestions } from '../../ui/FieldSelect';
 type Props = {
   field: ModelSettingField;
   value: string;
@@ -72,26 +70,35 @@ function FieldControl({
 }: Props & { id: string; inputRef: RefObject<HTMLInputElement | null> }) {
   if (field.options)
     return (
-      <select
+      <FieldSelect
         id={id}
-        className={controlClass}
+        label={field.label}
         disabled={disabled || field.readOnly}
         value={value}
-        onChange={(event) => change(event.target.value)}
-      >
-        {field.options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        options={field.options}
+        onChange={change}
+      />
+    );
+  if (suggestions && !field.secret)
+    return (
+      <FieldSuggestions
+        id={id}
+        label={field.label}
+        inputRef={inputRef}
+        value={value}
+        options={suggestions}
+        disabled={disabled}
+        readOnly={field.readOnly}
+        onChange={change}
+        placeholder={placeholderFor(field, cleared)}
+      />
     );
   return (
     <input
       id={id}
       ref={inputRef}
       type={field.secret ? 'password' : (field.inputType ?? 'text')}
-      className={`${controlClass} read-only:bg-muted/40 read-only:text-muted-foreground`}
+      className={`${inputClass} min-h-10 read-only:bg-muted/40 read-only:text-muted-foreground`}
       value={value}
       disabled={disabled}
       readOnly={field.readOnly}
@@ -99,7 +106,6 @@ function FieldControl({
       spellCheck={false}
       maxLength={4096}
       {...(field.inputType === 'number' ? { min: 1, step: 1 } : {})}
-      list={suggestions?.length ? `${id}-options` : undefined}
       placeholder={placeholderFor(field, cleared)}
       onChange={(event) => change(event.target.value)}
     />
@@ -119,20 +125,11 @@ export function ModelSettingsField({ field, value, cleared, disabled, change, su
           </span>
         )}
       </label>
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="model-field-row flex min-w-0 items-center gap-2">
         <FieldControl {...{ id, inputRef, field, value, cleared, disabled, change, suggestions }} />
         {action}
         <SecretActions field={field} cleared={cleared} disabled={disabled} change={change} inputRef={inputRef} />
       </div>
-      {!!suggestions?.length && (
-        <datalist id={`${id}-options`}>
-          {suggestions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </datalist>
-      )}
     </div>
   );
 }

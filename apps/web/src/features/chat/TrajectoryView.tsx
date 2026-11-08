@@ -1,4 +1,4 @@
-import { ArrowDown, ChevronRight } from 'lucide-react';
+import { ArrowDown, Bot, ChevronRight, Layers, User, Wrench } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import type { ChatItem } from './chat-reducer';
@@ -6,6 +6,10 @@ import { useChat } from './chat-store';
 import { finiteCount, formatDuration } from './chat-metrics';
 import {
   projectTrajectory,
+  filterTrajectory,
+  trajectoryRole,
+  trajectoryRoles,
+  type TrajectoryFilter,
   trajectoryCategory,
   trajectoryStatus,
   trajectorySummary,
@@ -14,6 +18,18 @@ import {
 import { PermissionCard } from './PermissionCard';
 import { StatisticsLine } from './StatisticsLine';
 import { buttonClass } from '../../ui/styles';
+import { SegmentedControl } from '../../ui/SegmentedControl';
+import { TrajectoryContext } from './TrajectoryContext';
+
+const roleIcons = { context: Layers, user: User, tool: Wrench, assistant: Bot };
+const filters = [
+  { value: 'all', label: '全部' },
+  ...Object.entries(trajectoryRoles).map(([value, label]) => ({ value: value as TrajectoryFilter, label })),
+] as const;
+const initialPosition = (running: boolean, filter: TrajectoryFilter) =>
+  running && filter === 'all'
+    ? { index: 'LAST' as const, align: 'end' as const }
+    : { index: 0, align: 'start' as const };
 
 function StepIndicators({ item }: { item: Extract<TrajectoryRow, { kind: 'step' }>['item'] }) {
   const status = trajectoryStatus(item);
@@ -39,6 +55,8 @@ function StepRow({
   inspect(): void;
 }) {
   const { item } = row;
+  const role = trajectoryRole(item);
+  const Icon = roleIcons[role];
   if (item.kind === 'statistics')
     return (
       <div className="border-b border-border/50 px-4 py-2">
@@ -46,18 +64,26 @@ function StepRow({
       </div>
     );
   return (
-    <div className="border-b border-border/50">
+    <div className="trajectory-entry" data-role={role}>
       <button
         type="button"
         onClick={inspect}
         aria-label={`查看步骤 ${row.number}：${trajectoryCategory(item)} ${trajectorySummary(item)}`}
         aria-pressed={selected}
-        className={`grid w-full grid-cols-[1.5rem_2.5rem_minmax(0,1fr)_3rem_3.5rem_0.75rem] items-center gap-2 px-4 py-3 text-left text-xs hover:bg-muted/50 ${selected ? 'bg-muted' : ''}`}
+        className="trajectory-step"
       >
-        <span className="tabular-nums text-muted-foreground">{row.number}</span>
-        <span className="text-muted-foreground">{trajectoryCategory(item)}</span>
-        <span className="truncate leading-5" title={trajectorySummary(item)}>
-          {trajectorySummary(item) || trajectoryCategory(item)}
+        <span className="trajectory-icon">
+          <Icon aria-hidden className="size-3.5" />
+        </span>
+        <span className="trajectory-content">
+          <span className="trajectory-label">
+            <b>{trajectoryRoles[role]}</b>
+            <span>{trajectoryCategory(item)}</span>
+            <span className="ml-auto tabular-nums">{row.number}</span>
+          </span>
+          <span className="trajectory-summary" title={trajectorySummary(item)}>
+            {trajectorySummary(item) || trajectoryCategory(item)}
+          </span>
         </span>
         <StepIndicators item={item} />
       </button>
@@ -70,17 +96,28 @@ function StepRow({
   );
 }
 
-function TrajectoryEntry({ row }: { row: TrajectoryRow }) {
-  const selected = useChat((state) => state.inspectedItemId === (row.kind === 'step' ? row.item.id : undefined));
+function TrajectoryEntry({ row, filter }: { row: TrajectoryRow; filter: TrajectoryFilter }) {
+  const selected = useChat((state) => state.inspectedItemId === (row.kind === 'step' ? row.item.id : row.user?.id));
   const inspect = useChat((state) => state.inspectItem);
   if (row.kind === 'turn')
     return (
-      <div className="border-b border-border bg-sidebar px-4 py-3">
-        <div className="mb-1 text-xs font-medium text-muted-foreground">第 {row.number} 轮</div>
-        {row.prompt && (
-          <p className="line-clamp-2 text-[13px] leading-5" title={row.prompt}>
-            {row.prompt}
-          </p>
+      <div className="trajectory-turn">
+        <div className="trajectory-turn-label">第 {row.number} 轮</div>
+        {row.user && (filter === 'all' || filter === 'user') && (
+          <button
+            type="button"
+            className="trajectory-user"
+            aria-label={`查看用户消息：${row.prompt}`}
+            aria-pressed={selected}
+            onClick={() => inspect(row.user!.id)}
+          >
+            <User aria-hidden className="size-3.5 shrink-0" />
+            <span className="min-w-0">
+              <b className="block text-xs font-medium">用户</b>
+              <span className="mt-1 block line-clamp-2 text-[13px] leading-6">{row.prompt}</span>
+            </span>
+            <ChevronRight aria-hidden className="ml-auto size-3.5 shrink-0" />
+          </button>
         )}
       </div>
     );
@@ -89,48 +126,57 @@ function TrajectoryEntry({ row }: { row: TrajectoryRow }) {
 
 /** 同一组聊天条目提供另一种投影，不维护第二份会话正文。 */
 export function TrajectoryView({ items, running }: { items: ChatItem[]; running: boolean }) {
-  const rows = useMemo(() => projectTrajectory(items), [items]);
+  const [filter, setFilter] = useState<TrajectoryFilter>('all');
+  const context = useChat((state) => state.contextUsage);
+  const rows = useMemo(() => filterTrajectory(projectTrajectory(items), filter), [items, filter]);
   const list = useRef<VirtuosoHandle>(null);
   const atBottom = useRef(true);
   const [bottom, setBottom] = useState(true);
   useEffect(() => {
-    if (atBottom.current) list.current?.autoscrollToBottom();
-  }, [items]);
-  if (!rows.length) return <p className="m-auto text-sm text-muted-foreground">发送消息后，执行步骤会显示在这里。</p>;
+    if (running && atBottom.current) list.current?.autoscrollToBottom();
+  }, [items, running]);
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col px-4 pb-2">
-      <div
-        aria-hidden
-        className="grid grid-cols-[1.5rem_2.5rem_minmax(0,1fr)_3rem_3.5rem_0.75rem] gap-2 border-b border-border px-4 py-2 text-[11px] text-muted-foreground"
-      >
-        <span>#</span>
-        <span>类型</span>
-        <span>执行内容</span>
-        <span className="text-right">状态</span>
-        <span className="text-right">耗时</span>
-        <span />
+    <div className="trajectory-view relative flex min-h-0 flex-1 flex-col">
+      <div className="trajectory-toolbar">
+        <SegmentedControl<TrajectoryFilter>
+          label="轨迹类型"
+          value={filter}
+          onChange={(value) => {
+            setFilter(value);
+            atBottom.current = false;
+          }}
+          options={filters}
+        />
       </div>
-      <Virtuoso
-        ref={list}
-        className="min-h-0 flex-1"
-        data={rows}
-        computeItemKey={(_index, row) => row.id}
-        defaultItemHeight={48}
-        increaseViewportBy={{ top: 200, bottom: 200 }}
-        initialTopMostItemIndex={{ index: 'LAST', align: 'end' }}
-        followOutput={(isAtBottom) => (isAtBottom ? 'auto' : false)}
-        atBottomThreshold={32}
-        atBottomStateChange={(value) => {
-          atBottom.current = value;
-          setBottom(value);
-        }}
-        role="log"
-        aria-label="执行轨迹"
-        aria-live="polite"
-        aria-busy={running}
-        itemContent={(_index, row) => <TrajectoryEntry row={row} />}
-      />
-      {!bottom && (
+      {(filter === 'all' || filter === 'context') && <TrajectoryContext />}
+      {!rows.length ? (
+        <p className="m-auto px-4 py-8 text-sm text-muted-foreground">
+          {context && filter === 'context' ? '暂无压缩事件' : '暂无此类记录'}
+        </p>
+      ) : (
+        <Virtuoso
+          key={filter}
+          ref={list}
+          className="min-h-0 flex-1"
+          data={rows}
+          computeItemKey={(_index, row) => row.id}
+          defaultItemHeight={48}
+          increaseViewportBy={{ top: 200, bottom: 200 }}
+          initialTopMostItemIndex={initialPosition(running, filter)}
+          followOutput={(isAtBottom) => (isAtBottom ? 'auto' : false)}
+          atBottomThreshold={32}
+          atBottomStateChange={(value) => {
+            atBottom.current = value;
+            setBottom(value);
+          }}
+          role="log"
+          aria-label="执行轨迹"
+          aria-live="off"
+          aria-busy={running}
+          itemContent={(_index, row) => <TrajectoryEntry row={row} filter={filter} />}
+        />
+      )}
+      {!bottom && rows.length > 0 && (
         <button
           type="button"
           className={`${buttonClass('outline')} absolute bottom-4 left-1/2 -translate-x-1/2 bg-card shadow-sm`}

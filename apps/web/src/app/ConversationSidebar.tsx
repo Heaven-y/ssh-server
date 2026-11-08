@@ -33,7 +33,8 @@ export function ConversationSidebar({
     <aside
       id="conversation-sidebar"
       aria-label="右侧边栏"
-      className="flex h-full min-h-0 flex-col bg-background"
+      className="conversation-sidebar flex h-full min-h-0 flex-col bg-background"
+      data-open={open || undefined}
       onKeyDown={(event) => {
         if (
           event.key !== 'Escape' ||

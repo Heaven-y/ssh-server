@@ -72,7 +72,7 @@ function usageSummary(usage: ContextUsage): string {
   if (used === undefined) return `${window} / 窗口`;
   return window === undefined ? used : `${used} / ${window}`;
 }
-function UsageDetails({ usage }: { usage: ContextUsage }) {
+export function UsageDetails({ usage }: { usage: ContextUsage }) {
   const percentage = contextPercentage(usage);
   return (
     <>
@@ -131,7 +131,7 @@ export function ContextStatus() {
         render={<button type="button" />}
         aria-label="上下文用量"
         title={usageTitle(usage, summary)}
-        className="inline-flex min-h-6 min-w-0 max-w-full flex-wrap items-center gap-1 rounded-md px-1 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+        className="composer-statistic inline-flex min-h-6 min-w-0 max-w-full flex-wrap items-center gap-1 rounded-md px-1 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
       >
         <ContextLabel usage={usage} compaction={compaction} incomplete={incomplete} />
       </PopoverDisclosure>
