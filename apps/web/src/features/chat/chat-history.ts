@@ -4,6 +4,7 @@ import { sessionsApi } from '../sessions/api';
 import { reduceChat } from './chat-reducer';
 import { retainConversation } from './conversations';
 import { openedTab } from './conversation-tabs';
+import { permissionReadState } from './chat-permission';
 import {
   emptyConversation,
   historyFailure,
@@ -61,6 +62,7 @@ export function createChatHistory(get: () => ChatState, set: SetState) {
       sessionId: session.sessionId,
       actualModel: get().sessionModels[sessionActionKey(workspaceId, session)]?.actualModel,
       loadingHistory: true,
+      permissionLoading: true,
       conversationVersion,
       initialDefaultsEligible: false,
     });
@@ -69,8 +71,14 @@ export function createChatHistory(get: () => ChatState, set: SetState) {
   async function read(workspaceId: string, session: SessionRef, options?: Options) {
     const { controller, generation } = begin(workspaceId, session, options);
     try {
-      const history = await sessionsApi.sessionEvents(workspaceId, session.sessionId, session.agent, controller.signal);
+      const [historyResult, permissionResult] = await Promise.allSettled([
+        sessionsApi.sessionEvents(workspaceId, session.sessionId, session.agent, controller.signal),
+        sessionsApi.sessionPermission(workspaceId, session.sessionId, session.agent, controller.signal),
+      ]);
       if (!historyIsCurrent(controller, generation, workspaceId, session)) return;
+      set(permissionReadState(permissionResult));
+      if (historyResult.status === 'rejected') throw historyResult.reason;
+      const history = historyResult.value;
       if (history.session.agent !== session.agent || history.session.sessionId !== session.sessionId)
         throw new Error('会话身份不匹配，未载入历史');
       const items = [...history.events, { type: 'turn_end', isError: false } as const].reduce(reduceChat, []);

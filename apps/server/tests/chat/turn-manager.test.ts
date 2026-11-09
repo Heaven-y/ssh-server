@@ -5,6 +5,7 @@ import type { AgentEvent, ServerMessage } from '@agentdeck/shared/conversation';
 import type { Workspace } from '@agentdeck/shared/projects';
 import type { AgentTurnInput } from '../../src/agents/contracts';
 import { SessionError } from '../../src/agents/errors';
+import { SessionPreferencesError } from '../../src/sessions/preferences';
 import { TurnManager, type Socket, type TurnManagerDeps } from '../../src/chat/turn-manager';
 
 const ws: Workspace = {
@@ -26,7 +27,7 @@ function fakeRunTurn() {
     input: AgentTurnInput;
     finish(): void;
     fail(error: Error): void;
-    interrupt: ReturnType<typeof vi.fn>;
+    interrupt: ReturnType<typeof vi.fn<() => Promise<void>>>;
   }> = [];
   const runTurn = (input: AgentTurnInput) => {
     let finish!: () => void;
@@ -605,3 +606,245 @@ it('Claude轮次不丢弃推理强度，未指定时沿用原生设置', async (
   await flush();
   await turns.dispose();
 });
+
+it.each([false, true])('新会话首次收到原生身份后等待显式权限保存，无论模型是否失败：%s', async (failed) => {
+  const fake = fakeRunTurn();
+  let save!: () => void;
+  const rememberPermission = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        save = resolve;
+      }),
+  );
+  const sessions = {
+    assertBelongs: vi.fn(async (): Promise<Workspace | void> => undefined),
+    rememberPermission,
+  };
+  const turns = new TurnManager({
+    getWorkspace: async () => ws,
+    runners: { claude: fake.runTurn },
+    sessions,
+  });
+  const { socket, sent } = fakeSocket();
+  await turns.handle(socket, send({ permission: { agent: 'claude', mode: 'auto' } }));
+  expect(rememberPermission).not.toHaveBeenCalled();
+  fake.turns[0]!.input.emit({ type: 'session', sessionId: 'new-native', model: 'm', cwd: ws.dir });
+  if (failed) fake.turns[0]!.fail(new Error('模型失败'));
+  else fake.turns[0]!.finish();
+  await vi.waitFor(() =>
+    expect(rememberPermission).toHaveBeenCalledWith(
+      { agent: 'claude', sessionId: 'new-native' },
+      { agent: 'claude', mode: 'auto' },
+    ),
+  );
+  expect(sent.some((message) => message.type === 'turn.finished')).toBe(false);
+  expect(turns.isRunning({ agent: 'claude', sessionId: 'new-native' })).toBe(true);
+  save();
+  await vi.waitFor(() => expect(sent.at(-1)?.type).toBe('turn.finished'));
+  expect(sent.at(-1)?.type).toBe('turn.finished');
+  expect(turns.isRunning({ agent: 'claude', sessionId: 'new-native' })).toBe(false);
+  await turns.dispose();
+});
+
+it('续接会话未显式指定权限时恢复工作台偏好，显式消息优先且只保存显式选择', async () => {
+  const fake = fakeRunTurn();
+  const permission = vi.fn(async () => ({ agent: 'claude' as const, mode: 'plan' as const }));
+  const rememberPermission = vi.fn(async () => undefined);
+  const sessions = {
+    assertBelongs: vi.fn(async (): Promise<Workspace | void> => undefined),
+    permission,
+    rememberPermission,
+  };
+  const turns = new TurnManager({ getWorkspace: async () => ws, runners: { claude: fake.runTurn }, sessions });
+  const socket = fakeSocket();
+  await turns.handle(socket.socket, send({ sessionId: 'resume-native' }));
+  expect(fake.turns[0]!.input.permission).toEqual({ agent: 'claude', mode: 'plan' });
+  fake.turns[0]!.finish();
+  await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe('turn.finished'));
+  expect(permission).toHaveBeenCalledWith({ agent: 'claude', sessionId: 'resume-native' });
+  expect(rememberPermission).not.toHaveBeenCalled();
+  await turns.handle(
+    socket.socket,
+    send({ sessionId: 'resume-native-2', permission: { agent: 'claude', mode: 'dontAsk' }, clientTurnId: 'explicit' }),
+  );
+  expect(fake.turns[1]!.input.permission).toEqual({ agent: 'claude', mode: 'dontAsk' });
+  expect(permission).toHaveBeenCalledTimes(1);
+  fake.turns[1]!.finish();
+  await vi.waitFor(() =>
+    expect(rememberPermission).toHaveBeenCalledWith(
+      { agent: 'claude', sessionId: 'resume-native-2' },
+      { agent: 'claude', mode: 'dontAsk' },
+    ),
+  );
+  await turns.dispose();
+});
+
+it('权限元数据保存失败只提示权限未保存，不伪装模型失败且仍释放会话锁', async () => {
+  const fake = fakeRunTurn();
+  const rememberPermission = vi.fn(async () => {
+    throw new Error('private metadata failure');
+  });
+  const sessions = {
+    assertBelongs: vi.fn(async (): Promise<Workspace | void> => undefined),
+    rememberPermission,
+  };
+  const turns = new TurnManager({ getWorkspace: async () => ws, runners: { claude: fake.runTurn }, sessions });
+  const socket = fakeSocket();
+  await turns.handle(
+    socket.socket,
+    send({ sessionId: 'metadata-failure', permission: { agent: 'claude', mode: 'auto' } }),
+  );
+  fake.turns[0]!.finish();
+  await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe('turn.finished'));
+  expect(socket.sent).toContainEqual({
+    type: 'error',
+    turnId: expect.any(String),
+    message: '会话权限未保存，请稍后重新选择。',
+  });
+  expect(socket.sent).not.toContainEqual({
+    type: 'error',
+    turnId: expect.any(String),
+    message: 'Agent 运行失败，请检查本机运行时和配置',
+  });
+  await turns.handle(socket.socket, send({ sessionId: 'metadata-failure', clientTurnId: 'retry' }));
+  expect(fake.turns).toHaveLength(2);
+  fake.turns[1]!.finish();
+  await turns.dispose();
+});
+
+it('关闭等待首次原生会话权限写入和锁释放，不在模型结束时提前退出', async () => {
+  const fake = fakeRunTurn();
+  let save!: () => void;
+  const rememberPermission = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        save = resolve;
+      }),
+  );
+  const release = vi.fn();
+  const turns = new TurnManager({
+    getWorkspace: async () => ws,
+    runners: { claude: fake.runTurn },
+    sessions: { assertBelongs: async () => ws, rememberPermission },
+    acquireWorkspace: () => release,
+  });
+  await turns.handle(fakeSocket().socket, send({ permission: { agent: 'claude', mode: 'plan' } }));
+  fake.turns[0]!.input.emit({ type: 'session', sessionId: 'new-native', model: 'm', cwd: ws.dir });
+  fake.turns[0]!.interrupt.mockImplementation(async () => fake.turns[0]!.finish());
+  let closed = false;
+  const closing = turns.dispose().then(() => {
+    closed = true;
+  });
+  await vi.waitFor(() => expect(rememberPermission).toHaveBeenCalledOnce());
+  try {
+    expect(closed).toBe(false);
+    expect(release).not.toHaveBeenCalled();
+  } finally {
+    save();
+    await closing;
+  }
+  expect(turns.isRunning({ agent: 'claude', sessionId: 'new-native' })).toBe(false);
+  expect(release).toHaveBeenCalledOnce();
+});
+
+it('权限读取失败准确说明权限问题，不启动模型或泄漏底层信息', async () => {
+  const fake = fakeRunTurn();
+  const turns = new TurnManager({
+    getWorkspace: async () => ws,
+    runners: { claude: fake.runTurn },
+    sessions: {
+      assertBelongs: async () => ws,
+      permission: async () => {
+        throw new SessionPreferencesError();
+      },
+    },
+  });
+  const socket = fakeSocket();
+  await turns.handle(socket.socket, send({ sessionId: 'native' }));
+  expect(fake.turns).toHaveLength(0);
+  expect(socket.sent.at(-2)).toMatchObject({ type: 'error', message: '会话权限读取失败，请重新读取权限后再发送。' });
+  expect(socket.sent.at(-1)).toMatchObject({ type: 'turn.finished' });
+  expect(turns.isRunning({ agent: 'claude', sessionId: 'native' })).toBe(false);
+  await turns.dispose();
+});
+
+it('新会话不读取其他会话默认，未收到原生身份时不创建权限记录', async () => {
+  const fake = fakeRunTurn();
+  const permission = vi.fn(async () => ({ agent: 'claude' as const, mode: 'auto' as const }));
+  const rememberPermission = vi.fn(async () => undefined);
+  const turns = new TurnManager({
+    getWorkspace: async () => ws,
+    runners: { claude: fake.runTurn },
+    sessions: { assertBelongs: async () => undefined, permission, rememberPermission },
+  });
+  const socket = fakeSocket();
+  await turns.handle(socket.socket, send());
+  expect(fake.turns[0]!.input.permission).toBeUndefined();
+  fake.turns[0]!.finish();
+  await flush();
+  await turns.handle(socket.socket, send({ permission: { agent: 'claude', mode: 'plan' }, clientTurnId: 'selected' }));
+  fake.turns[1]!.finish();
+  await flush();
+  expect(permission).not.toHaveBeenCalled();
+  expect(rememberPermission).not.toHaveBeenCalled();
+  await turns.dispose();
+});
+
+it('恢复权限必须在归属核验后，拒绝跨 CLI 偏好并释放准备阶段锁', async () => {
+  const fake = fakeRunTurn();
+  const permission = vi.fn(async () => ({ agent: 'codex' as const, mode: 'ask' as const }));
+  const sessions = { assertBelongs: vi.fn(async () => undefined), permission };
+  const turns = new TurnManager({ getWorkspace: async () => ws, runners: { claude: fake.runTurn }, sessions });
+  const socket = fakeSocket();
+  sessions.assertBelongs.mockRejectedValueOnce(new SessionError(404, 'session_missing', '无权访问'));
+  await turns.handle(socket.socket, send({ sessionId: 'foreign' }));
+  expect(permission).not.toHaveBeenCalled();
+  await turns.handle(socket.socket, send({ sessionId: 'foreign', clientTurnId: 'retry' }));
+  expect(fake.turns).toHaveLength(0);
+  expect(socket.sent.at(-2)).toMatchObject({ type: 'error', message: '权限模式不属于当前 CLI' });
+  expect(turns.isRunning({ agent: 'claude', sessionId: 'foreign' })).toBe(false);
+  await turns.dispose();
+});
+
+it('新原生身份保存前核验其项目归属，失败仅提示权限未保存且释放锁', async () => {
+  const fake = fakeRunTurn();
+  const rememberPermission = vi.fn(async () => undefined);
+  const sessions = {
+    assertBelongs: vi.fn(async () => {
+      throw new SessionError(404, 'session_missing', '无权访问');
+    }),
+    rememberPermission,
+  };
+  const turns = new TurnManager({ getWorkspace: async () => ws, runners: { claude: fake.runTurn }, sessions });
+  const socket = fakeSocket();
+  await turns.handle(socket.socket, send({ permission: { agent: 'claude', mode: 'auto' } }));
+  fake.turns[0]!.input.emit({ type: 'session', sessionId: 'foreign', model: 'm', cwd: ws.dir });
+  fake.turns[0]!.finish();
+  await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe('turn.finished'));
+  expect(rememberPermission).not.toHaveBeenCalled();
+  expect(socket.sent.at(-2)).toMatchObject({ type: 'error', message: '会话权限未保存，请稍后重新选择。' });
+  expect(turns.isRunning({ agent: 'claude', sessionId: 'foreign' })).toBe(false);
+  await turns.dispose();
+});
+
+it.each([{ sessionId: 'native', agent: 'codex' as const }, { sessionId: '../invalid' }])(
+  '非法原生身份不绑定、不保存权限：$sessionId $agent',
+  async (identity) => {
+    const fake = fakeRunTurn();
+    const rememberPermission = vi.fn(async () => undefined);
+    const turns = new TurnManager({
+      getWorkspace: async () => ws,
+      runners: { claude: fake.runTurn },
+      sessions: { assertBelongs: async () => undefined, rememberPermission },
+    });
+    const socket = fakeSocket();
+    await turns.handle(socket.socket, send({ permission: { agent: 'claude', mode: 'plan' } }));
+    fake.turns[0]!.input.emit({ type: 'session', ...identity, model: 'm', cwd: ws.dir });
+    expect(fake.turns[0]!.interrupt).toHaveBeenCalledOnce();
+    expect(socket.sent.at(-1)).toMatchObject({ type: 'error', message: '原生会话身份发生变化，已停止本轮' });
+    fake.turns[0]!.finish();
+    await flush();
+    expect(rememberPermission).not.toHaveBeenCalled();
+    await turns.dispose();
+  },
+);

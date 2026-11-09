@@ -11,6 +11,7 @@ import {
   type SessionPageQuery,
   type SubagentQuery,
   type SubagentRead,
+  type PermissionSelection,
 } from '@agentdeck/shared/conversation';
 import { type Workspace } from '@agentdeck/shared/projects';
 import { homedir } from 'node:os';
@@ -127,6 +128,16 @@ export function createSessionsService(
       );
     });
   }
+  async function permission(session: SessionRef): Promise<PermissionSelection | undefined> {
+    return operations.preferences?.permission(session);
+  }
+  async function rememberPermission(session: SessionRef, selected: PermissionSelection | null): Promise<void> {
+    if (selected && selected.agent !== session.agent)
+      throw new SessionError(400, 'permission_agent_mismatch', '权限模式不属于当前 CLI');
+    if (!operations.preferences)
+      throw new SessionError(503, 'session_preferences_unavailable', '工作台会话偏好暂不可用');
+    await operations.preferences.setPermission(session, selected);
+  }
   return {
     invalidate: paging.invalidate,
     page(query: SessionPageQuery, signal?: AbortSignal) {
@@ -180,6 +191,31 @@ export function createSessionsService(
         await assertNotArchived(agent, id);
         return native;
       });
+    },
+    // 仅供已经持有轮次锁并核实原生身份的 TurnManager 调用，避免再次取得空闲锁。
+    permission,
+    rememberPermission,
+    readPermission(
+      ws: Workspace,
+      agent: AgentKind,
+      id: string,
+      signal?: AbortSignal,
+    ): Promise<PermissionSelection | undefined> {
+      return safeOperation(agent, async () => {
+        await scopedWorkspace(ws, agent, id, signal);
+        return permission({ agent, sessionId: id });
+      });
+    },
+    setPermission(ws: Workspace, agent: AgentKind, id: string, permission: PermissionSelection | null): Promise<void> {
+      return safeOperation(
+        agent,
+        () =>
+          operations.withIdleSession({ agent, sessionId: id }, async () => {
+            await scopedWorkspace(ws, agent, id);
+            await rememberPermission({ agent, sessionId: id }, permission);
+          }),
+        '保存权限',
+      );
     },
     fork(ws: Workspace, agent: AgentKind, id: string, input: SessionForkInput): Promise<SessionHistory['session']> {
       return safeOperation(

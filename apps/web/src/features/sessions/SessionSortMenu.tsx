@@ -26,13 +26,16 @@ export function SessionSortMenu() {
           [
             ['recent', '最近活动'],
             ['name', '名称'],
-            ['manual', '手动排序'],
+            ['manual', '手动顺序'],
           ] as const
         ).map(([value, label]) => (
           <MenuChoice key={value} checked={mode === value} choose={() => choose(value)}>
             {label}
           </MenuChoice>
         ))}
+        <p className="mt-1 w-48 border-t border-border px-2 pt-2 pb-1 text-xs leading-5 text-muted-foreground">
+          任意排序下均可拖动，或用 Alt+↑/↓ 调整。
+        </p>
       </Menu>
     </MenuProvider>
   );

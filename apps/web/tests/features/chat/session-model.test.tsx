@@ -32,6 +32,7 @@ const record = (source: SessionSummary, nativeModel?: string) => ({
 });
 let client: QueryClient;
 beforeEach(() => {
+  vi.spyOn(sessionsApi, 'sessionPermission').mockResolvedValue({ permission: null });
   useChat.setState(useChat.getInitialState(), true);
   // jsdom 缺少原生 dialog 方法；保留真实组件，只模拟开关属性。
   HTMLDialogElement.prototype.showModal = function () {

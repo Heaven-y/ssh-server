@@ -72,6 +72,12 @@ Antigravity 的 Gemini 密钥还需要原生 `modelProvider: "gemini"`；ADC 使
 
 这些变量只传给工作台新启动的进程。用户在另一个终端直接执行 CLI 时，仍使用那个终端的环境；工作台不会修改系统环境变量。设置页会标明已有工作台覆盖，避免把原生文件中的值误当作最终有效值。
 
+## 会话权限偏好
+
+工作台在自己的 `session-preferences.json` 中保存会话权限覆盖，与原生默认配置分开。version 1 文档保留 `archived`，增加可选 `permissions` 数组；每项只有 `agent`、原生 `sessionId` 和该 CLI 支持的权限选择，不写会话正文、标题或项目路径。旧文档缺少该数组时视为空。
+
+归档和恢复保留权限，删除会话时清理对应记录。Claude/Antigravity 重置时移除覆盖；Codex 的显式重置保留 `native` 动作，以便续接时重新读取原生有效配置。写入沿用事务与文件身份核对，不能覆盖同时发生的其他偏好更新；记录损坏时报告不可用，不静默重建。
+
 ## Antigravity MCP 工具加载
 
 默认按原生方式加载 MCP。AGY 1.5.1 的通用工具包装未限制 Arguments 的类型；部分模型服务会返回 JSON 字符串，标准 MCP 服务要求对象而拒绝执行。可以在设置的 MCP 配置文件中，对确实需要的工具启用原生 `eager`：在已有服务器项内添加 `tools: { "read_notes": { "eager": true } }`，保留原来的 command、args、env 或地址。这会让模型直接看到该工具的完整参数定义，可能增加请求长度；不需要把所有工具改为 eager。

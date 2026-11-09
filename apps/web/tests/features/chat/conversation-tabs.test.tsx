@@ -10,6 +10,7 @@ const projects = [
   { id: 'two', name: '项目二', dir: 'project-two' },
 ];
 beforeEach(() => {
+  vi.spyOn(sessionsApi, 'sessionPermission').mockResolvedValue({ permission: null });
   useChat.setState(useChat.getInitialState(), true);
 });
 afterEach(() => {

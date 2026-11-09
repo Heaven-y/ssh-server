@@ -7,6 +7,7 @@ import {
   SessionActionSchema,
   SessionForkSchema,
   SessionPageQuerySchema,
+  SessionPermissionInputSchema,
   SubagentQuerySchema,
 } from '@agentdeck/shared/conversation';
 import { type Workspace } from '@agentdeck/shared/projects';
@@ -124,6 +125,38 @@ export function registerSessionRoutes(app: FastifyInstance, deps: Deps): void {
 
   app.get('/api/projects/:id/sessions', routeOptions, list);
   app.get('/api/projects/:id/sessions/:agent/:sessionId', routeOptions, read);
+  app.get('/api/projects/:id/sessions/:agent/:sessionId/permission', routeOptions, async (req, reply) => {
+    const params = ProjectHistoryParams.safeParse(req.params);
+    if (!params.success || !EmptyQuery.safeParse(req.query).success)
+      return reply.code(400).send({ message: '会话权限请求格式不正确' });
+    const ws = await deps.store.get(params.data.id);
+    if (!ws) return reply.code(404).send({ message: '项目不存在' });
+    const watch = watchAbort(reply);
+    try {
+      return {
+        permission:
+          (await deps.sessions.readPermission(ws, params.data.agent, params.data.sessionId, watch.signal)) ?? null,
+      };
+    } catch (error) {
+      return sendFailure(reply, error, '会话权限读取失败');
+    } finally {
+      watch.dispose();
+    }
+  });
+  app.put('/api/projects/:id/sessions/:agent/:sessionId/permission', routeOptions, async (req, reply) => {
+    const params = ProjectHistoryParams.safeParse(req.params);
+    const input = SessionPermissionInputSchema.safeParse(req.body);
+    if (!params.success || !EmptyQuery.safeParse(req.query).success || !input.success)
+      return reply.code(400).send({ message: '会话权限请求格式不正确' });
+    try {
+      await writeInProject(params.data.id, (workspace) =>
+        deps.sessions.setPermission(workspace, params.data.agent, params.data.sessionId, input.data.permission),
+      );
+      return { permission: input.data.permission };
+    } catch (error) {
+      return sendFailure(reply, error, '会话权限保存失败');
+    }
+  });
   app.get('/api/projects/:id/sessions/:agent/:sessionId/subagents', routeOptions, async (req, reply) => {
     const params = ProjectHistoryParams.safeParse(req.params);
     const query = SubagentQuerySchema.safeParse(req.query);

@@ -33,6 +33,7 @@ it('工作台归档只保存来源和会话身份，并发修改保留各项，�
       { agent: 'claude', sessionId: 'first' },
       { agent: 'claude', sessionId: 'second' },
     ],
+    permissions: [],
   });
   await preferences.setArchived({ agent: 'claude', sessionId: 'first' }, false);
   expect(await preferences.archived('claude')).toEqual(new Set(['second']));
@@ -43,6 +44,66 @@ it('损坏的归档索引停止读写，不重置为空或覆盖原文', async (
   await fs.writeFile(file, 'invalid original');
   await expect(preferences.archived('claude')).rejects.toMatchObject({ code: 'session_preferences_unavailable' });
   await expect(preferences.setArchived({ agent: 'claude', sessionId: 'first' }, true)).rejects.toMatchObject({
+    code: 'session_preferences_unavailable',
+  });
+  expect(await fs.readFile(file, 'utf8')).toBe('invalid original');
+});
+
+it('旧归档文件兼容权限偏好，归档修改保留权限且重启后按 CLI 独立恢复', async () => {
+  const { preferences, file, root } = await fixture();
+  const claude = { agent: 'claude' as const, sessionId: 'same-id' };
+  const codex = { agent: 'codex' as const, sessionId: 'same-id' };
+  await fs.writeFile(file, JSON.stringify({ version: 1, archived: [claude] }));
+  expect(await preferences.permission(claude)).toBeUndefined();
+  await Promise.all([
+    preferences.setPermission(claude, { agent: 'claude', mode: 'acceptEdits' }),
+    preferences.setPermission(codex, { agent: 'codex', mode: 'ask' }),
+  ]);
+  await preferences.setArchived(claude, false);
+  await preferences.setArchived(codex, true);
+  const restarted = createSessionPreferences({ configDir: root });
+  expect(await restarted.permission(claude)).toEqual({ agent: 'claude', mode: 'acceptEdits' });
+  expect(await restarted.permission(codex)).toEqual({ agent: 'codex', mode: 'ask' });
+  expect(await restarted.archived('codex')).toEqual(new Set(['same-id']));
+  expect(JSON.parse(await fs.readFile(file, 'utf8'))).toEqual({
+    version: 1,
+    archived: [codex],
+    permissions: [
+      { ...claude, permission: { agent: 'claude', mode: 'acceptEdits' } },
+      { ...codex, permission: { agent: 'codex', mode: 'ask' } },
+    ],
+  });
+});
+
+it('重置仅移除目标权限，删除同时清理目标归档与权限且不波及同 ID 的其他 CLI', async () => {
+  const { preferences } = await fixture();
+  const claude = { agent: 'claude' as const, sessionId: 'same-id' };
+  const codex = { agent: 'codex' as const, sessionId: 'same-id' };
+  await preferences.setArchived(claude, true);
+  await preferences.setPermission(claude, { agent: 'claude', mode: 'plan' });
+  await preferences.setPermission(codex, { agent: 'codex', mode: 'full-access' });
+  await preferences.setPermission(claude, null);
+  expect(await preferences.permission(claude)).toBeUndefined();
+  expect(await preferences.archived('claude')).toEqual(new Set(['same-id']));
+  await preferences.setPermission(claude, { agent: 'claude', mode: 'default' });
+  await preferences.remove(claude);
+  expect(await preferences.permission(claude)).toBeUndefined();
+  expect(await preferences.archived('claude')).toEqual(new Set());
+  expect(await preferences.permission(codex)).toEqual({ agent: 'codex', mode: 'full-access' });
+});
+
+it('权限写入拒绝跨 CLI 和损坏内容，失败保留原文件', async () => {
+  const { preferences, file } = await fixture();
+  const session = { agent: 'claude' as const, sessionId: 'native' };
+  await preferences.setPermission(session, { agent: 'claude', mode: 'plan' });
+  const before = await fs.readFile(file, 'utf8');
+  await expect(preferences.setPermission(session, { agent: 'codex', mode: 'ask' })).rejects.toMatchObject({
+    code: 'session_preferences_unavailable',
+  });
+  expect(await fs.readFile(file, 'utf8')).toBe(before);
+  await fs.writeFile(file, 'invalid original');
+  await expect(preferences.permission(session)).rejects.toMatchObject({ code: 'session_preferences_unavailable' });
+  await expect(preferences.setPermission(session, null)).rejects.toMatchObject({
     code: 'session_preferences_unavailable',
   });
   expect(await fs.readFile(file, 'utf8')).toBe('invalid original');
@@ -95,9 +156,11 @@ it('Claude 工作台归档统一投影所有列表，原生删除后清理标记
   await service.mutate(project, 'claude', 'first', { action: 'unarchive' });
   expect((await service.list(project, 'claude')).map((entry) => entry.sessionId)).toEqual(['first']);
   await service.mutate(project, 'claude', 'first', { action: 'archive' });
+  await preferences.setPermission({ agent: 'claude', sessionId: 'first' }, { agent: 'claude', mode: 'plan' });
   await service.mutate(project, 'claude', 'first', { action: 'delete', confirmed: true });
   expect(mutations).toEqual(['delete']);
   expect(await preferences.archived('claude')).toEqual(new Set(['outside']));
+  expect(await preferences.permission({ agent: 'claude', sessionId: 'first' })).toBeUndefined();
 });
 
 it('原生删除成功后的标记清理失败不回报删除失败，运行与归属锁仍保护归档', async () => {

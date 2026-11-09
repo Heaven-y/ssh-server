@@ -257,20 +257,17 @@ dialog::backdrop {
   color: var(--color-foreground);
 }
 #workspace-topbar {
-  height: 66px;
-  padding-inline: 24px;
+  min-height: 58px;
+  height: auto;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--color-border);
+  flex-wrap: wrap;
 }
 #workspace-topbar h1 {
   line-height: 24px;
 }
 #workspace-topbar p {
   font-size: 11px;
-}
-.conversation-view-bar {
-  display: flex;
-  flex-shrink: 0;
-  padding: 0 24px 13px;
-  border-bottom: 1px solid var(--color-border);
 }
 .ui-segment {
   display: inline-flex;

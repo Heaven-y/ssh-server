@@ -10,6 +10,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { AgentCapabilities, ClientMessage, ServerMessage } from '@agentdeck/shared/conversation';
 import type { Workspace } from '@agentdeck/shared/projects';
 import { ChatView } from '../../../src/features/chat/ChatView';
+import { TopBar } from '../../../src/app/TopBar';
 import { Composer } from '../../../src/features/chat/Composer';
 import { ManualModelDialog } from '../../../src/features/chat/ManualModelDialog';
 import { startChatConnection, useChat } from '../../../src/features/chat/chat-store';
@@ -61,6 +62,7 @@ startChatConnection((handlers) => {
 });
 let client: QueryClient;
 beforeEach(() => {
+  vi.spyOn(sessionsApi, 'sessionPermission').mockResolvedValue({ permission: null });
   sent.length = 0;
   // jsdom 缺少原生 dialog 方法；保留真实组件，只模拟开关属性。
   HTMLDialogElement.prototype.showModal = function () {
@@ -87,6 +89,7 @@ afterEach(() => {
 function showChat() {
   render(
     <QueryClientProvider client={client}>
+      <TopBar workspace={workspace} sidebarOpen={false} onToggleSidebar={() => undefined} />
       <ChatView workspace={workspace} />
     </QueryClientProvider>,
   );

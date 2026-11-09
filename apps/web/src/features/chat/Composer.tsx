@@ -63,13 +63,14 @@ export function Composer() {
   const running = useChat((s) => s.running);
   const connected = useChat((s) => s.connection === 'open');
   const loading = useChat((s) => s.loadingHistory);
-  const historyError = useChat((s) => s.historyError);
+  const historyError = useChat((s) => s.historyError || s.permissionError);
   const selection = useChat((s) => s.selectedCapability);
+  const permissionPending = useChat((s) => s.permissionLoading || s.permissionSaving);
   const sessionId = useChat((s) => s.sessionId);
   const managing = useChat(managementPending);
   const send = useChat((s) => s.send);
   const restriction = selectionRestriction(selection, sessionId, text);
-  const busy = running || loading || managing;
+  const busy = running || loading || managing || permissionPending;
   const empty = emptyInput(text, selection);
   const blocked = !connected || empty || busy || !!historyError || !!restriction;
 

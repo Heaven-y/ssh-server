@@ -35,6 +35,9 @@ export type ChatState = {
   initialDefaultsEligible: boolean;
   reasoningEfforts: Record<AgentKind, string>;
   permission?: PermissionSelection;
+  permissionLoading: boolean;
+  permissionSaving: boolean;
+  permissionError?: string;
   setPermission(permission?: PermissionSelection): void;
   actualModel?: string;
   /** 仅保存本页已读取/运行的原生模型元数据，不从默认或显式选择推导。 */
@@ -90,6 +93,9 @@ export type ConversationView = Pick<
   | 'modelOverrides'
   | 'reasoningEfforts'
   | 'permission'
+  | 'permissionLoading'
+  | 'permissionSaving'
+  | 'permissionError'
   | 'actualModel'
   | 'selectedCapability'
   | 'contextUsage'

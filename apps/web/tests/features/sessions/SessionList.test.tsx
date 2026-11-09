@@ -26,6 +26,7 @@ const archived = {
 };
 let client: QueryClient;
 beforeEach(() => {
+  vi.spyOn(sessionsApi, 'sessionPermission').mockResolvedValue({ permission: null });
   useSessionPins.setState({ pins: [] });
   client = new QueryClient({ defaultOptions: { queries: { retry: false, retryOnMount: false, staleTime: Infinity } } });
   client.setQueryData(sessionsKeys.sessions('workspace', 'claude'), [session]);

@@ -88,4 +88,7 @@ export const emptyConversation = {
   historyError: undefined,
   historyNotice: undefined,
   banner: undefined,
+  permissionLoading: false,
+  permissionSaving: false,
+  permissionError: undefined,
 };

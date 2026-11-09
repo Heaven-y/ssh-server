@@ -23,6 +23,7 @@ function hash(value: string) {
   window.dispatchEvent(new HashChangeEvent('hashchange'));
 }
 beforeEach(() => {
+  vi.spyOn(sessionsApi, 'sessionPermission').mockResolvedValue({ permission: null });
   localStorage.clear();
   useChat.setState(useChat.getInitialState(), true);
   hash('');

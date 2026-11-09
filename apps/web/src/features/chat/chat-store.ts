@@ -17,6 +17,7 @@ import { markPermissionPending, reduceChat } from './chat-reducer';
 import { capabilityRestriction, selectionRestriction } from './capability-selection';
 import { createChatEvents } from './chat-events';
 import { createChatHistory } from './chat-history';
+import { saveConversationPermission } from './chat-permission';
 import { createConversationTabs, existingTabs, openedTab } from './conversation-tabs';
 import {
   conversationBusy,
@@ -45,6 +46,9 @@ function cannotSend(current: ChatState, text: string): boolean {
   return (
     conversationBusy(current) ||
     current.loadingHistory ||
+    current.permissionLoading ||
+    current.permissionSaving ||
+    !!current.permissionError ||
     !!current.historyError ||
     (!text.trim() && !current.selectedCapability) ||
     managementPending(current)
@@ -215,7 +219,7 @@ export const useChat = create<ChatState>()((set, get) => {
       if (saved) {
         set({ tabIds: openedTab(get().tabIds, saved.conversationId) });
         if (session.title) set({ title: session.title });
-        if (conversationBusy(saved)) return;
+        if (conversationBusy(saved) || saved.permissionSaving) return;
         if (!needsHistory(saved) && !options) return;
         options = { preserveDraft: true };
       }
@@ -248,10 +252,17 @@ export const useChat = create<ChatState>()((set, get) => {
       })),
     setPermission(permission) {
       const current = get();
-      if (current.running || current.pendingClientTurnId || current.loadingHistory || managementPending(current))
+      if (
+        current.running ||
+        current.pendingClientTurnId ||
+        current.loadingHistory ||
+        current.permissionLoading ||
+        current.permissionSaving ||
+        managementPending(current)
+      )
         return;
       if (permission && permission.agent !== current.agent) return;
-      set({ permission, initialDefaultsEligible: false });
+      saveConversationPermission(get, set, current, permission);
     },
     setReasoningEffort: (reasoningEffort) =>
       set((current) => ({

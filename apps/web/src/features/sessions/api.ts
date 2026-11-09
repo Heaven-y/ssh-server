@@ -9,10 +9,26 @@ import type {
   SessionPage,
   SubagentQuery,
   SubagentRead,
+  PermissionSelection,
 } from '@agentdeck/shared/conversation';
 import { request } from '../../lib/http';
 
 export const sessionsApi = {
+  sessionPermission: (workspaceId: string, sessionId: string, agent: AgentKind, signal?: AbortSignal) =>
+    request<{ permission: PermissionSelection | null }>(
+      `/api/projects/${encodeURIComponent(workspaceId)}/sessions/${agent}/${encodeURIComponent(sessionId)}/permission`,
+      { signal, cache: 'no-store' },
+    ),
+  saveSessionPermission: (
+    workspaceId: string,
+    sessionId: string,
+    agent: AgentKind,
+    permission: PermissionSelection | null,
+  ) =>
+    request<{ permission: PermissionSelection | null }>(
+      `/api/projects/${encodeURIComponent(workspaceId)}/sessions/${agent}/${encodeURIComponent(sessionId)}/permission`,
+      { method: 'PUT', body: JSON.stringify({ permission }), cache: 'no-store' },
+    ),
   page: (query: SessionPageQuery, signal?: AbortSignal) => {
     const values = Object.fromEntries(
       Object.entries(query).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && !!entry[1]),

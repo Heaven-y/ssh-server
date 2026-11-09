@@ -1,12 +1,10 @@
-import { CircleAlert, ListTree, MessageSquare, X } from 'lucide-react';
+import { CircleAlert, X } from 'lucide-react';
 import type { Workspace } from '@agentdeck/shared/projects';
 import { buttonClass } from '../../ui/styles';
 import { useChat } from './chat-store';
 import { Composer } from './Composer';
 import { ChatTimeline } from './ChatTimeline';
 import { TrajectoryView } from './TrajectoryView';
-import { SegmentedControl } from '../../ui/SegmentedControl';
-import { SubagentHistoryButton } from '../sessions/SubagentHistoryDialog';
 import { RunStatus } from './RunStatus';
 
 function Banner() {
@@ -34,16 +32,17 @@ function Banner() {
 
 function HistoryFailure() {
   const historyError = useChat((s) => s.historyError);
+  const permissionError = useChat((s) => s.permissionError);
   const sessionId = useChat((s) => s.sessionId);
   const agent = useChat((s) => s.agent);
   const openSession = useChat((s) => s.openSession);
   const newSession = useChat((s) => s.newSession);
 
-  if (!historyError) return null;
+  if (!historyError && !permissionError) return null;
   return (
     <div className="conversation-notice space-y-2 rounded-xl border border-border p-3">
       <p role="alert" className="text-sm text-destructive-foreground">
-        {historyError}
+        {historyError ?? permissionError}
       </p>
       <button
         type="button"
@@ -52,7 +51,7 @@ function HistoryFailure() {
           sessionId ? void openSession({ agent, sessionId }, { preserveDraft: true }) : newSession(agent)
         }
       >
-        {sessionId ? '重新读取历史' : '开始新会话'}
+        {sessionId ? (historyError ? '重新读取历史' : '重新读取权限') : '开始新会话'}
       </button>
     </div>
   );
@@ -87,37 +86,8 @@ function Messages({ view }: { view: 'chat' | 'trajectory' }) {
 export function ChatView({ workspace }: { workspace: Workspace }) {
   const version = useChat((s) => s.conversationVersion);
   const view = useChat((s) => s.view);
-  const setView = useChat((s) => s.setView);
   return (
     <section className="conversation" aria-label={`${workspace.name}会话`}>
-      <div className="conversation-view-bar">
-        <SegmentedControl
-          label="会话视图"
-          value={view}
-          onChange={setView}
-          options={[
-            {
-              value: 'chat',
-              label: (
-                <>
-                  <MessageSquare aria-hidden className="size-3.5" />
-                  对话
-                </>
-              ),
-            },
-            {
-              value: 'trajectory',
-              label: (
-                <>
-                  <ListTree aria-hidden className="size-3.5" />
-                  轨迹
-                </>
-              ),
-            },
-          ]}
-        />
-        <SubagentHistoryButton />
-      </div>
       <Banner />
       <HistoryFailure />
       <div key={view} className="conversation-view-content flex min-h-0 flex-1 flex-col">

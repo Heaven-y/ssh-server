@@ -71,6 +71,10 @@ beforeAll(() => {
 
 beforeEach(() => {
   sent.length = 0;
+  vi.spyOn(sessionsApi, 'sessionPermission').mockResolvedValue({ permission: null });
+  vi.spyOn(sessionsApi, 'saveSessionPermission').mockImplementation(
+    async (_workspace, _session, _agent, permission) => ({ permission }),
+  );
   open = true;
   useChat.setState(useChat.getInitialState(), true);
   useChat.getState().newSession('claude');
@@ -85,6 +89,74 @@ beforeEach(() => {
     initialDefaultsEligible: false,
   });
   useChat.getState().selectWorkspace('w1');
+});
+
+it('具体会话的权限重新读取后恢复，保存期间禁止抢先发送，迟到保存不影响新会话', async () => {
+  vi.spyOn(sessionsApi, 'sessionEvents').mockImplementation(async (_workspace, sessionId, agent) => ({
+    session: { agent, sessionId, summary: '示例', lastModified: 1 },
+    events: [],
+  }));
+  vi.mocked(sessionsApi.sessionPermission).mockResolvedValueOnce({ permission: { agent: 'codex', mode: 'ask' } });
+  await useChat.getState().openSession({ agent: 'codex', sessionId: 'saved' });
+  expect(useChat.getState().permission).toEqual({ agent: 'codex', mode: 'ask' });
+  const saving = deferred<{ permission: { agent: 'codex'; mode: 'auto-review' } }>();
+  vi.mocked(sessionsApi.saveSessionPermission).mockReturnValueOnce(saving.promise);
+  useChat.getState().setPermission({ agent: 'codex', mode: 'auto-review' });
+  expect(useChat.getState().send('尚未保存')).toBe(false);
+  const savedId = useChat.getState().conversationId;
+  useChat.getState().newSession('claude');
+  saving.resolve({ permission: { agent: 'codex', mode: 'auto-review' } });
+  await saving.promise;
+  await Promise.resolve();
+  expect(useChat.getState().permission).toBeUndefined();
+  expect(useChat.getState().banner).toBeUndefined();
+  useChat.getState().openConversation(savedId);
+  expect(useChat.getState().permission).toEqual({ agent: 'codex', mode: 'auto-review' });
+  expect(useChat.getState().send('保存后发送')).toBe(true);
+  expect(sent.at(-1)).toMatchObject({ permission: { agent: 'codex', mode: 'auto-review' } });
+});
+
+it('会话权限读取失败时不按未知权限发送，重新读取后可恢复', async () => {
+  vi.spyOn(sessionsApi, 'sessionEvents').mockResolvedValue(history('codex', '示例'));
+  vi.mocked(sessionsApi.sessionPermission).mockRejectedValueOnce(new Error('unavailable'));
+  await useChat.getState().openSession({ agent: 'codex', sessionId: 'same-id' });
+  expect(useChat.getState().send('权限未知')).toBe(false);
+  expect(useChat.getState().permissionError).toContain('权限');
+  await useChat.getState().openSession({ agent: 'codex', sessionId: 'same-id' }, { preserveDraft: true });
+  expect(useChat.getState().send('恢复原生')).toBe(true);
+});
+
+it('会话权限保存失败保留旧选择并阻止发送，重置成功后没有额外提示', async () => {
+  vi.spyOn(sessionsApi, 'sessionEvents').mockResolvedValue(history('claude', '示例'));
+  vi.mocked(sessionsApi.sessionPermission).mockResolvedValueOnce({ permission: { agent: 'claude', mode: 'auto' } });
+  await useChat.getState().openSession({ agent: 'claude', sessionId: 'same-id' });
+  vi.mocked(sessionsApi.saveSessionPermission).mockRejectedValueOnce(new Error('未保存'));
+  useChat.getState().setPermission({ agent: 'claude', mode: 'plan' });
+  await vi.waitFor(() => expect(useChat.getState().permissionSaving).toBe(false));
+  expect(useChat.getState().permission).toEqual({ agent: 'claude', mode: 'auto' });
+  expect(useChat.getState().permissionError).toContain('保存失败');
+  expect(useChat.getState().send('不可发送')).toBe(false);
+  useChat.getState().setPermission();
+  await vi.waitFor(() => expect(useChat.getState().permissionSaving).toBe(false));
+  expect(sessionsApi.saveSessionPermission).toHaveBeenLastCalledWith('w1', 'same-id', 'claude', null);
+  expect(useChat.getState().permissionError).toBeUndefined();
+  expect(useChat.getState().banner).toBeUndefined();
+  expect(useChat.getState().send('原生默认')).toBe(true);
+  expect(sent.at(-1)).not.toHaveProperty('permission');
+});
+
+it('Antigravity 无历史回放时仍恢复所属会话权限，新会话没有继承', async () => {
+  vi.spyOn(sessionsApi, 'sessionEvents').mockRejectedValue(
+    new ApiError(501, '不可回放', { code: 'session_not_replayable' }),
+  );
+  vi.mocked(sessionsApi.sessionPermission).mockResolvedValueOnce({
+    permission: { agent: 'antigravity', mode: 'plan' },
+  });
+  await useChat.getState().openSession({ agent: 'antigravity', sessionId: 'saved' });
+  expect(useChat.getState().send('继续')).toBe(true);
+  expect(sent.at(-1)).toMatchObject({ permission: { agent: 'antigravity', mode: 'plan' } });
+  useChat.getState().newSession('antigravity');
+  expect(useChat.getState().permission).toBeUndefined();
 });
 
 it.each(['claude', 'codex', 'antigravity'] as const)('未显式选择时%s发送省略模型与强度', (agent) => {

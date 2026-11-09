@@ -43,7 +43,7 @@ it('工具调用与结果复用既有工具卡片', () => {
       ]}
     />,
   );
-  expect(screen.getByText('Read')).toBeTruthy();
+  expect(screen.getByText('读取文件')).toBeTruthy();
   expect(screen.getByText('src/example.py')).toBeTruthy();
 });
 

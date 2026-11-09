@@ -2,6 +2,7 @@ import { LoaderCircle, PanelRightClose, PanelRightOpen, RefreshCw, WifiOff } fro
 import type { Workspace } from '@agentdeck/shared/projects';
 import { reconnectChat, useChat } from '../features/chat/chat-store';
 import { conversationTitle } from '../features/chat/conversations';
+import { ConversationViewControls } from '../features/chat/ConversationViewControls';
 
 /** 会话标题栏位于中央列，不让服务器和全局工具占据对话导航。 */
 export function TopBar({
@@ -18,7 +19,7 @@ export function TopBar({
   const SidebarIcon = sidebarOpen ? PanelRightClose : PanelRightOpen;
   return (
     <header id="workspace-topbar" className="flex h-12 shrink-0 items-center gap-3 px-5">
-      <div className="min-w-0 flex-1">
+      <div className="min-w-12 flex-1">
         <h1 className="truncate text-sm font-medium" title={title}>
           {title}
         </h1>
@@ -28,6 +29,7 @@ export function TopBar({
           </p>
         )}
       </div>
+      {workspace && <ConversationViewControls />}
       {running && (
         <span role="status" className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <LoaderCircle aria-hidden className="size-3.5 motion-safe:animate-spin" />

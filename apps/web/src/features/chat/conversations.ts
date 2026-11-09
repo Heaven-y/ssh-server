@@ -10,6 +10,9 @@ const fields = [
   'modelOverrides',
   'reasoningEfforts',
   'permission',
+  'permissionLoading',
+  'permissionSaving',
+  'permissionError',
   'actualModel',
   'selectedCapability',
   'contextUsage',
@@ -86,6 +89,8 @@ function canReload(view: ConversationView) {
     [
       view.unread,
       view.loadingHistory,
+      view.permissionSaving,
+      view.permissionError,
       view.draft,
       view.selectedCapability,
       view.historyError,
@@ -97,7 +102,7 @@ function canReload(view: ConversationView) {
   return view.agent !== 'antigravity' || view.historyReplayable;
 }
 export const needsHistory = (view: ConversationView) =>
-  view.loadingHistory || !!view.historyError || view.historyReloadNeeded;
+  view.loadingHistory || !!view.historyError || !!view.permissionError || view.historyReloadNeeded;
 /** 参数和身份保留，只有原生可重读的空闲已读正文受预算约束。 */
 function trimConversationBodies(background: ChatState['background']) {
   const candidates = Object.values(background).filter(canReload);

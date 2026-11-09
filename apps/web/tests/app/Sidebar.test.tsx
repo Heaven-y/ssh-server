@@ -45,6 +45,7 @@ const render = (element: ReactElement) =>
   renderView(<QueryClientProvider client={queryClient}>{element}</QueryClientProvider>);
 
 beforeEach(() => {
+  vi.spyOn(sessionsApi, 'sessionPermission').mockResolvedValue({ permission: null });
   useChat.setState(useChat.getInitialState(), true);
   useUiPreferences.setState({ sidebarCollapsed: false, sidebarAutoCollapsed: false, theme: 'light' });
   // jsdom 不实现 showModal；动作对话框用它，这里按项目既有做法打桩。

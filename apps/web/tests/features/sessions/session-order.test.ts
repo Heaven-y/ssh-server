@@ -76,3 +76,49 @@ it('已有手动顺序也保留后来加载的条目，搜索中移动不把它�
   useSessionOrder.getState().move('one', 'a', 'd', ['a', 'd']);
   expect(useSessionOrder.getState().orders.one).toEqual(['b', 'c', 'd', 'a']);
 });
+
+it.each([
+  { mode: 'recent' as const, expected: ['Charlie', 'Alpha', 'Bravo'] },
+  { mode: 'name' as const, expected: ['Bravo', 'Alpha', 'Charlie'] },
+])('$mode 下首次移动从当前顺序开始，旧手动顺序不改变其他行', ({ mode, expected }) => {
+  const current = sortSessions(sessions, mode).map(sessionOrderKey);
+  useSessionOrder.setState({ mode, orders: { one: current.toReversed() } });
+  useSessionOrder.getState().remember('one', current, false);
+
+  useSessionOrder.getState().move('one', current[0]!, current[1]!, current);
+
+  const saved = readSessionOrder();
+  expect(saved.mode).toBe('manual');
+  expect(sortSessions(sessions, saved.mode, saved.orders.one).map((session) => session.title)).toEqual(expected);
+});
+
+it.each([
+  { source: 'a', target: 'd', expected: ['b', 'c', 'd', 'a', 'unloaded'] },
+  { source: 'd', target: 'a', expected: ['d', 'a', 'b', 'c', 'unloaded'] },
+])('搜索中将 $source 移至 $target 时保留当前完整顺序与其他项目', ({ source, target, expected }) => {
+  useSessionOrder.setState({ mode: 'name', orders: { one: ['d', 'c', 'b', 'a', 'unloaded'], two: ['other'] } });
+  useSessionOrder.getState().remember('one', ['a', 'b', 'c', 'd'], false);
+  useSessionOrder.getState().remember('one', ['a', 'd'], true);
+
+  useSessionOrder.getState().move('one', source, target, ['a', 'd']);
+
+  expect(readSessionOrder().orders).toEqual({ one: expected, two: ['other'] });
+});
+
+it('切换排序后调整已加载身份，分页外身份保留在已有间隔', () => {
+  useSessionOrder.setState({ mode: 'recent', orders: { one: ['a', 'unloaded', 'b', 'c'] } });
+  useSessionOrder.getState().remember('one', ['c', 'b', 'a'], false);
+
+  useSessionOrder.getState().move('one', 'a', 'b', ['c', 'b', 'a']);
+
+  expect(readSessionOrder().orders.one).toEqual(['c', 'unloaded', 'a', 'b']);
+});
+
+it('搜索返回的当前顺序会更新记忆，未显示身份的相对顺序保留', () => {
+  useSessionOrder.getState().remember('one', ['a', 'b', 'c', 'd'], false);
+  useSessionOrder.getState().remember('one', ['d', 'a'], true);
+
+  expect(useSessionOrder.getState().known.one).toEqual(['d', 'b', 'c', 'a']);
+  useSessionOrder.getState().move('one', 'd', 'a', ['d', 'a']);
+  expect(readSessionOrder().orders.one).toEqual(['b', 'c', 'a', 'd']);
+});

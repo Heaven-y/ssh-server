@@ -12,6 +12,7 @@ const created: SessionRecord = { ...source, sessionId: 'forked', summary: 'åˆ†å
 const key = sessionActionKey('workspace', source);
 const response = (session = created) => new Response(JSON.stringify({ session }), { status: 200 });
 beforeEach(() => {
+  vi.spyOn(sessionsApi, 'sessionPermission').mockResolvedValue({ permission: null });
   useChat.setState(useChat.getInitialState(), true);
   useChat.getState().selectWorkspace('workspace');
   useChat.setState({ agent: 'codex', sessionId: 'source' });

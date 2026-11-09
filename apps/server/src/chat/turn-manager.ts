@@ -1,6 +1,14 @@
 // 轮次按 Agent 与原生会话隔离；耗时准备前先建立应用轮次，允许及时中断。
 import { randomUUID } from 'node:crypto';
-import type { AgentEvent, AgentKind, ClientMessage, ServerMessage, SessionRef } from '@agentdeck/shared/conversation';
+import { NativeSessionIdSchema } from '@agentdeck/shared/conversation';
+import type {
+  AgentEvent,
+  AgentKind,
+  ClientMessage,
+  PermissionSelection,
+  ServerMessage,
+  SessionRef,
+} from '@agentdeck/shared/conversation';
 import type { Workspace } from '@agentdeck/shared/projects';
 import type { AgentTurnInput, PermissionAnswer, TurnHandle, TurnRunner } from '../agents/contracts';
 import { SessionError } from '../agents/errors';
@@ -12,6 +20,8 @@ export type TurnManagerDeps = {
   runners: Partial<Record<AgentKind, TurnRunner>>;
   sessions: {
     assertBelongs(ws: Workspace, agent: AgentKind, id: string, signal?: AbortSignal): Promise<Workspace | void>;
+    permission?(session: SessionRef): Promise<PermissionSelection | undefined>;
+    rememberPermission?(session: SessionRef, permission: PermissionSelection): Promise<void>;
     invalidate?(agent: AgentKind): void;
   };
   capabilities?: Pick<CapabilitiesService, 'prepare'>;
@@ -24,8 +34,12 @@ type Turn = {
   agent: AgentKind;
   controller: AbortController;
   handle?: TurnHandle;
+  completion?: Promise<void>;
   sessionId?: string;
   workspace?: Workspace;
+  explicitPermission?: PermissionSelection;
+  sessionVerified?: boolean;
+  sessionRejected?: boolean;
   finished: boolean;
   releaseWorkspace?: () => void;
   failed?: boolean;
@@ -123,14 +137,15 @@ export class TurnManager {
   /** 退出后端时停止本进程拥有的轮次，并关闭长驻运行时。 */
   async dispose(): Promise<void> {
     this.stopping = true;
-    const handles: TurnHandle[] = [];
+    const pending: Promise<unknown>[] = [];
     for (const turn of this.turns.values()) {
       this.closed.add(turn.socket);
       turn.controller.abort();
-      if (turn.handle) handles.push(turn.handle);
+      if (turn.handle) pending.push(turn.handle.interrupt(), turn.completion ?? turn.handle.done);
     }
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const stopped = Promise.allSettled(handles.flatMap((handle) => [handle.interrupt(), handle.done]));
+    // 原生退出后的权限保存和解锁也属于本轮收尾，关闭不能在 done 时提前返回。
+    const stopped = Promise.allSettled(pending);
     try {
       await Promise.race([
         stopped,
@@ -161,9 +176,7 @@ export class TurnManager {
     const key = sessionKey(turn.agent, id);
     const occupied = this.sessions.get(key);
     if ((turn.sessionId && turn.sessionId !== id) || (occupied && occupied !== turn.id)) {
-      this.send(turn.socket, { type: 'error', turnId: turn.id, message: '原生会话身份发生变化，已停止本轮' });
-      turn.controller.abort();
-      void turn.handle?.interrupt().catch(() => undefined);
+      this.rejectSession(turn);
       return false;
     }
     turn.sessionId = id;
@@ -171,11 +184,17 @@ export class TurnManager {
     return true;
   }
 
+  private rejectSession(turn: Turn): void {
+    turn.sessionRejected = true;
+    this.send(turn.socket, { type: 'error', turnId: turn.id, message: '原生会话身份发生变化，已停止本轮' });
+    turn.controller.abort();
+    void turn.handle?.interrupt().catch(() => undefined);
+  }
+
   private event(turn: Turn, event: AgentEvent): void {
     if (turn.finished) return;
     if (event.type === 'session') {
-      this.deps.sessions.invalidate?.(turn.agent);
-      if (!this.bindSession(turn, event.sessionId)) return;
+      if (!this.acceptSessionEvent(turn, event)) return;
       event = { ...event, agent: turn.agent };
     }
     if (event.type === 'permission_resolved') {
@@ -186,6 +205,15 @@ export class TurnManager {
       }
     }
     this.send(turn.socket, { type: 'agent.event', turnId: turn.id, event });
+  }
+
+  private acceptSessionEvent(turn: Turn, event: Extract<AgentEvent, { type: 'session' }>): boolean {
+    if (!NativeSessionIdSchema.safeParse(event.sessionId).success || (event.agent && event.agent !== turn.agent)) {
+      this.rejectSession(turn);
+      return false;
+    }
+    this.deps.sessions.invalidate?.(turn.agent);
+    return this.bindSession(turn, event.sessionId);
   }
 
   private permission(turn: Turn, req: Parameters<AgentTurnInput['requestPermission']>[0]): Promise<PermissionAnswer> {
@@ -265,9 +293,13 @@ export class TurnManager {
     const { signal } = turn.controller;
     let ws = await preparing(this.deps.getWorkspace(msg.workspaceId), signal);
     if (!ws) throw new SessionError(404, 'workspace_missing', '工作区不存在');
-    if (msg.sessionId)
+    if (msg.sessionId) {
       ws = (await preparing(this.deps.sessions.assertBelongs(ws, turn.agent, msg.sessionId, signal), signal)) ?? ws;
+      turn.sessionVerified = true;
+    }
     turn.workspace = ws;
+    const permission = await this.selectedPermission(turn, msg);
+    turn.explicitPermission = msg.permission;
     if (msg.selection && !this.deps.capabilities)
       throw new SessionError(503, 'capabilities_unavailable', '当前原生能力不可用');
     const prepared = this.deps.capabilities
@@ -281,19 +313,59 @@ export class TurnManager {
       sessionId: msg.sessionId,
       model: msg.model,
       reasoningEffort: msg.reasoningEffort,
-      permission: msg.permission,
+      permission,
       text: prepared.text,
       invocation: prepared.invocation,
       emit: (event) => this.event(turn, event),
       requestPermission: (req) => this.permission(turn, req),
     });
     if (signal.aborted) void turn.handle.interrupt();
-    void turn.handle.done
+    turn.completion = turn.handle.done
       .catch(() => {
         turn.failed = true;
         this.send(turn.socket, { type: 'error', turnId: turn.id, message: 'Agent 运行失败，请检查本机运行时和配置' });
       })
+      .then(() => this.rememberPermission(turn))
       .then(() => this.finish(turn));
+  }
+
+  private async selectedPermission(turn: Turn, msg: Send): Promise<PermissionSelection | undefined> {
+    let permission = msg.permission;
+    if (permission === undefined && msg.sessionId && this.deps.sessions.permission)
+      permission = await preparing(
+        this.readSavedPermission({ agent: turn.agent, sessionId: msg.sessionId }),
+        turn.controller.signal,
+      );
+    if (permission && permission.agent !== turn.agent)
+      throw new SessionError(400, 'permission_agent_mismatch', '权限模式不属于当前 CLI');
+    return permission;
+  }
+
+  private async readSavedPermission(session: SessionRef): Promise<PermissionSelection | undefined> {
+    try {
+      return await this.deps.sessions.permission!(session);
+    } catch {
+      throw new SessionError(503, 'session_permission_unavailable', '会话权限读取失败，请重新读取权限后再发送。');
+    }
+  }
+
+  private async rememberPermission(turn: Turn): Promise<void> {
+    if (turn.sessionRejected || !turn.explicitPermission || !turn.sessionId || !this.deps.sessions.rememberPermission)
+      return;
+    try {
+      // 新会话只接受运行器提供的原生身份，完成后再查原生索引核对项目归属。
+      if (!turn.sessionVerified) await this.deps.sessions.assertBelongs(turn.workspace!, turn.agent, turn.sessionId);
+      await this.deps.sessions.rememberPermission(
+        { agent: turn.agent, sessionId: turn.sessionId },
+        turn.explicitPermission,
+      );
+    } catch {
+      this.send(turn.socket, {
+        type: 'error',
+        turnId: turn.id,
+        message: '会话权限未保存，请稍后重新选择。',
+      });
+    }
   }
 
   private finish(turn: Turn): void {
