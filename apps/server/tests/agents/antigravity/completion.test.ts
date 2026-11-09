@@ -75,6 +75,24 @@ it('原生续接成功但累计 result 保留旧失败时，等待自然退出�
   expect(f.events.at(-1)).toEqual({ type: 'turn_end', isError: false });
 });
 
+it.each(['ERROR', 'DONE'])('本轮工具失败后正常答复不沿用历史524，工具自身仍显示失败：%s', async (state) => {
+  const f = await resumedTurn();
+  f.step(4, 'user_input');
+  f.step(5, 'tool', state, {
+    tool_name: 'view_file',
+    tool_info: { name: 'view_file', error: { type: 'TOOL_ERROR', message: '示例文件不存在' } },
+  });
+  f.step(6, 'agent_response', 'DONE', { text_delta: '已说明文件读取结果。' });
+  f.result();
+  f.child.emit('close', 0);
+  await f.handle.done;
+  expect(f.events).toContainEqual(
+    expect.objectContaining({ type: 'tool_result', isError: true, output: '示例文件不存在' }),
+  );
+  expect(f.events.filter((event) => event.type === 'error')).toEqual([]);
+  expect(f.events.at(-1)).toEqual({ type: 'turn_end', isError: false });
+});
+
 type Step = [number, string, string?, Record<string, unknown>?];
 const completedSteps: Step[] = [
   [4, 'user_input'],
@@ -103,7 +121,12 @@ const incompleteCases: [string, IncompleteEvidence][] = [
     {
       steps: [
         completedSteps[0]!,
-        [5, 'tool', 'DONE', { tool_info: { name: 'run_command', error: { message: 'Error 524' } } }],
+        [
+          5,
+          'tool',
+          'DONE',
+          { tool_info: { name: 'run_command', error: { type: 'TOOL_ERROR', message: 'Error 524' } } },
+        ],
         completedSteps[1]!,
       ],
     },

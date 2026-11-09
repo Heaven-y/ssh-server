@@ -16,11 +16,23 @@ const toolOutput = (info: RecordValue) => {
 };
 const toolFinished = (state: unknown) => state === 'DONE' || state === 'ERROR';
 const toolFailed = (state: unknown, info: RecordValue) => state === 'ERROR' || !!info.error;
-const currentStepFailed = (step: RecordValue) =>
-  step.step_type === 'error_message' ||
-  step.state === 'ERROR' ||
-  step.state === 'CANCELLED' ||
-  !!record(step.tool_info).error;
+function currentStepFailed(step: RecordValue): boolean {
+  const error = record(record(step.tool_info).error);
+  // TOOL_ERROR 可由模型继续处理；保留工具失败，仅在后续最终答复和自然成功退出齐备时纠正旧结果。
+  if (
+    step.step_type === 'tool' &&
+    toolFinished(step.state) &&
+    error.type === 'TOOL_ERROR' &&
+    !antigravityDiagnostic(text(error.message))
+  )
+    return false;
+  return (
+    step.step_type === 'error_message' ||
+    step.state === 'ERROR' ||
+    step.state === 'CANCELLED' ||
+    !!record(step.tool_info).error
+  );
+}
 
 function mayContainHistoricalError(result: RecordValue): boolean {
   return (
