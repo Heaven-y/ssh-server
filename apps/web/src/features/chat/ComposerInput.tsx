@@ -110,7 +110,8 @@ function ScopedInput({ id, text, onChange, onSend, placeholder, busy }: InputPro
         onCompositionEnd={() => setComposing(false)}
         onKeyDownCapture={(event) => {
           if (event.key !== 'Enter') return;
-          if (event.nativeEvent.isComposing) {
+          // 部分输入法在确认文字时已清除 isComposing，仍需识别组字状态或 IME 键码。
+          if (composing || event.nativeEvent.isComposing || event.keyCode === 229) {
             event.stopPropagation();
             return;
           }

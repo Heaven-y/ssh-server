@@ -3,6 +3,7 @@ import type { AgentTurnInput, PermissionAnswer } from '../contracts';
 import type { CodexClient } from './client';
 import type { CodexEventMapper } from './mapper';
 import { record, text, type RecordValue, type RpcId, type ServerRequest } from './types';
+import { isMcpToolApproval, mcpApprovalInput } from './mcp-approval';
 
 export const CODEX_PERMISSION_TIMEOUT_MS = 300_000;
 const METHODS = new Map([
@@ -26,6 +27,7 @@ function responseFor(request: ServerRequest, decision: Decision): RecordValue {
     return { permissions: decision === 'allowed' ? grantedPermissions(request.params) : {}, scope: 'turn' };
   }
   const decisions = { allowed: 'accept', denied: 'decline', cancelled: 'cancel' };
+  if (isMcpToolApproval(request)) return { action: decisions[decision], content: decision === 'allowed' ? {} : null };
   return { decision: decisions[decision] };
 }
 
@@ -40,7 +42,7 @@ export class CodexPermissions {
   ) {}
 
   request(request: ServerRequest): void {
-    const toolName = METHODS.get(request.method);
+    const toolName = METHODS.get(request.method) ?? (isMcpToolApproval(request) ? 'MCP 工具' : undefined);
     if (!toolName) {
       this.client.rejectRequest(request.id);
       this.input.emit({ type: 'error', message: 'Codex 请求了暂不支持的交互操作，已拒绝。' });
@@ -65,6 +67,7 @@ export class CodexPermissions {
   }
 
   private toolInput(toolName: string, params: RecordValue): RecordValue {
+    if (toolName === 'MCP 工具') return mcpApprovalInput(params);
     if (toolName === 'commandExecution') return { command: params.command, cwd: params.cwd, reason: params.reason };
     if (toolName === 'permissions') return { permissions: params.permissions, cwd: params.cwd, reason: params.reason };
     return {

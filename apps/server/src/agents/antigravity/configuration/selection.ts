@@ -1,7 +1,7 @@
 import type { AgentModel } from '@agentdeck/shared/conversation';
 import type { NativeModelSettingsInput } from '@agentdeck/shared/settings';
 import { object, string, type ConfigObject } from '../../common/configuration/fields';
-import { discoverGeminiModels } from '../model-discovery';
+import { discoverAntigravityModels } from '../model-discovery';
 import { selectedAntigravityModel } from './identity';
 
 type Changes = NativeModelSettingsInput['changes'];
@@ -9,7 +9,7 @@ export type AntigravityModelCatalog = () => Promise<AgentModel[]>;
 
 /** 复用隔离目录发现，仅取 CLI 内置 ID/label；不携带真实密钥或访问服务端点。 */
 export const nativeAntigravityModels: AntigravityModelCatalog = () =>
-  discoverGeminiModels(
+  discoverAntigravityModels(
     { modelProvider: 'gemini' },
     {
       ...process.env,

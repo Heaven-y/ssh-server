@@ -10,10 +10,12 @@ import {
   antigravityDefaultModel,
 } from '../../../src/agents/antigravity/model-catalog';
 import { runProcess } from '../../../src/platform/process/run';
+import { discoverAntigravityCommands } from '../../../src/agents/antigravity/commands';
 vi.mock('../../../src/platform/process/executable', () => ({
   resolveLocalCommand: () => ({ command: 'agy', args: [] }),
 }));
 vi.mock('../../../src/platform/process/run', () => ({ runProcess: vi.fn() }));
+vi.mock('../../../src/agents/antigravity/commands', () => ({ discoverAntigravityCommands: vi.fn(async () => []) }));
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -29,13 +31,19 @@ async function fixture(config: unknown) {
   return homeDir;
 }
 
-it('账号模式只读已配置模型，不启动可能加载 MCP 的真实 CLI', async () => {
+it('账号模式通过隔离 models 读取目录，不触发交互式登录或执行真实目录扩展', async () => {
   const homeDir = await fixture({ model: 'Example Native' });
+  vi.mocked(runProcess).mockImplementation(async (_command, args, options) => {
+    expect(args).toEqual(['models']);
+    expect(options.cwd).not.toBe(homeDir);
+    expect(options.env?.USERPROFILE).toBe(options.cwd);
+    return { exitCode: 0, stderr: Buffer.alloc(0), stdout: Buffer.from('Example Native\tExample Native\n') };
+  });
   const catalog = await discoverAntigravityCapabilities('project', { homeDir, env: {} });
-  expect(catalog.models).toEqual([{ id: 'Example Native', label: 'Example Native', description: '原生默认模型' }]);
+  expect(catalog.models).toEqual([{ id: 'Example Native', label: 'Example Native' }]);
   expect(catalog.defaultModel).toBe('Example Native');
   expect(catalog.modelWarning).toBe('');
-  expect(runProcess).not.toHaveBeenCalled();
+  expect(runProcess).toHaveBeenCalledOnce();
 });
 
 it('模型目录兼容裸 ID 和旧 URI，使用稳定键并保留显示名', async () => {
@@ -56,6 +64,21 @@ it('模型目录兼容裸 ID 和旧 URI，使用稳定键并保留显示名', as
     { id: 'old', label: '旧名称', modelId: 'old-model', description: '原生自定义模型' },
   ]);
   expect(await antigravityDefaultModel({ HOME: homeDir, USERPROFILE: homeDir })).toBe('stable');
+});
+
+it('命令目录失配不覆盖模型成功结果，诊断原文不回传', async () => {
+  const homeDir = await fixture({ modelProvider: 'gemini' });
+  vi.mocked(discoverAntigravityCommands).mockRejectedValueOnce(new Error('private-diagnostic'));
+  vi.mocked(runProcess).mockResolvedValue({
+    exitCode: 0,
+    stderr: Buffer.alloc(0),
+    stdout: Buffer.from('example\tExample\n'),
+  });
+  const result = await discoverAntigravityCapabilities('project', { homeDir, env: { GEMINI_API_KEY: 'fixture-key' } });
+  expect(result.models).toEqual([{ id: 'example', label: 'Example' }]);
+  expect(result.modelWarning).toBe('');
+  expect(result.commandWarnings).toEqual(['暂时无法读取技能与命令。']);
+  expect(JSON.stringify(result)).not.toContain('private-diagnostic');
 });
 
 it('Gemini 发现隔离用户目录和工作目录，保留自定义键与真实型号且不复制密钥或执行扩展', async () => {
@@ -151,6 +174,19 @@ it('Gemini 缺少 Key 只提示配置，旧数组格式不能伪装成可用自�
   expect(result.defaultModel).toBeUndefined();
   expect(result.modelWarning).toContain('API Key');
   expect(runProcess).not.toHaveBeenCalled();
+});
+
+it('原生 ADC 模式无需重复填写 API Key', async () => {
+  const homeDir = await fixture({ modelProvider: 'gemini' });
+  vi.mocked(runProcess).mockResolvedValue({
+    exitCode: 0,
+    stderr: Buffer.alloc(0),
+    stdout: Buffer.from('example\tExample\n'),
+  });
+  const result = await discoverAntigravityCapabilities('project', { homeDir, env: { AGY_ADC_AUTH: 'true' } });
+  expect(result.modelWarning).toBe('');
+  expect(result.models).toHaveLength(1);
+  expect(runProcess).toHaveBeenCalledOnce();
 });
 
 it('格式变化拒绝把说明文字当模型，取消发现清理临时目录并传播取消', async () => {

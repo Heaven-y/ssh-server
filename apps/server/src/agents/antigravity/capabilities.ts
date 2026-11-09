@@ -5,7 +5,8 @@ import {
   configuredAntigravityModels,
   readAntigravityModelSettings,
 } from './model-catalog';
-import { discoverGeminiModels } from './model-discovery';
+import { discoverAntigravityModels } from './model-discovery';
+import { discoverAntigravityCommands } from './commands';
 
 function mergeModels(discovered: AgentModel[], configured: AgentModel[]): AgentModel[] {
   const models = new Map<string, AgentModel>();
@@ -29,9 +30,27 @@ function defaultSelection(models: AgentModel[], configured?: string) {
 
 /** 模型发现不启动真实工作区的 MCP；账号目录缺口不表示无法使用 API Key 对话。 */
 export async function discoverAntigravityCapabilities(
-  _dir: string,
+  dir: string,
   options: { signal?: AbortSignal; env?: NodeJS.ProcessEnv; homeDir?: string } = {},
 ): Promise<NativeCapabilityCatalog> {
+  const [models, commands] = await Promise.allSettled([
+    discoverModels(options),
+    discoverAntigravityCommands(dir, options),
+  ]);
+  options.signal?.throwIfAborted();
+  if (models.status === 'rejected') throw models.reason;
+  return {
+    ...models.value,
+    entries: commands.status === 'fulfilled' ? commands.value : [],
+    commandWarnings: commands.status === 'rejected' ? ['暂时无法读取技能与命令。'] : [],
+  };
+}
+
+async function discoverModels(options: {
+  signal?: AbortSignal;
+  env?: NodeJS.ProcessEnv;
+  homeDir?: string;
+}): Promise<NativeCapabilityCatalog> {
   options.signal?.throwIfAborted();
   const settings = await readAntigravityModelSettings(options);
   const env = options.env ?? process.env;
@@ -44,10 +63,10 @@ export async function discoverAntigravityCapabilities(
     modelWarning: '',
     commandWarnings: [],
   };
-  if (settings.modelProvider !== 'gemini') return catalog;
-  if (!env.GEMINI_API_KEY?.trim()) return { ...catalog, modelWarning: '请在模型设置中填写 API Key。' };
+  if (settings.modelProvider === 'gemini' && !env.GEMINI_API_KEY?.trim() && env.AGY_ADC_AUTH !== 'true')
+    return { ...catalog, modelWarning: '请在模型设置中填写 API Key。' };
   try {
-    const models = mergeModels(await discoverGeminiModels(settings, env, options.signal), configured);
+    const models = mergeModels(await discoverAntigravityModels(settings, env, options.signal), configured);
     return {
       ...catalog,
       models,

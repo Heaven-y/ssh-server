@@ -5,6 +5,39 @@ import { expect, it } from 'vitest';
 import { AntigravityMapper } from '../../../src/agents/antigravity/mapper';
 import { antigravityHistory } from '../../../src/agents/antigravity/history';
 
+it('原生 ERROR 工具步骤及时结束并显示错误，重复事件去重，取消不伪装成功', () => {
+  const cwd = path.join(tmpdir(), 'agentdeck-error-observability');
+  const mapper = new AntigravityMapper(cwd);
+  mapper.map({ event: 'init', conversation_id: 'session', init: { cwd } });
+  const step = { conversation_id: 'session', step_index: 2, step_type: 'tool', tool_name: 'write_file' };
+  expect(mapper.map({ event: 'step_update', step_update: { ...step, state: 'ACTIVE' } })).toMatchObject([
+    { type: 'tool_call', id: 'agy-step-2' },
+  ]);
+  const failed = {
+    event: 'step_update',
+    step_update: {
+      ...step,
+      state: 'ERROR',
+      duration_seconds: 0.02,
+      tool_info: { name: 'write_file', error: { type: 'TOOL_ERROR', message: '文件不可写' } },
+    },
+  };
+  expect(mapper.map(failed)).toEqual([
+    {
+      type: 'tool_result',
+      id: 'agy-step-2',
+      output: '文件不可写',
+      isError: true,
+      durationMs: 20,
+      timingSource: 'native',
+    },
+  ]);
+  expect(mapper.map(failed)).toEqual([]);
+  expect(mapper.map({ event: 'step_update', step_update: { ...step, step_index: 3, state: 'CANCELLED' } })).toEqual([
+    { type: 'tool_call', id: 'agy-step-3', name: 'write_file', input: {} },
+  ]);
+});
+
 it('按原生步骤统计并去重，不把累计结果冒充本轮 token 或耗时', () => {
   const cwd = path.join(tmpdir(), 'agentdeck-observability');
   const mapper = new AntigravityMapper(cwd);

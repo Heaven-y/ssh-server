@@ -514,6 +514,22 @@ it('历史固定Agent，载入期间禁用选项；ShiftEnter与IME不发送且�
   });
 });
 
+it.each(['组字尚未结束', '组字结束键码229'] as const)('IME %s 时确认文字不发送，之后正常回车只发送一次', (stage) => {
+  showComposer();
+  const input = screen.getByLabelText<HTMLTextAreaElement>('输入消息');
+  fireEvent.compositionStart(input);
+  fireEvent.change(input, { target: { value: '中文草稿' } });
+  if (stage === '组字结束键码229') fireEvent.compositionEnd(input, { data: '中文草稿' });
+  fireEvent.keyDown(input, { key: 'Enter', isComposing: false, keyCode: stage === '组字结束键码229' ? 229 : 13 });
+  expect(sent).toHaveLength(0);
+  expect(input.value).toBe('中文草稿');
+  expect(useChat.getState().draft).toBe('中文草稿');
+  if (stage === '组字尚未结束') fireEvent.compositionEnd(input, { data: '中文草稿' });
+  fireEvent.keyDown(input, { key: 'Enter', keyCode: 13 });
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toMatchObject({ type: 'chat.send', text: '中文草稿' });
+});
+
 it('强度菜单只列当前模型实际报告的档位，默认不覆盖', async () => {
   showChat();
   expect(screen.getByRole('button', { name: '推理强度' }).textContent).toBe('');

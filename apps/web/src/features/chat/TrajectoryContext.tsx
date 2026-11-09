@@ -1,10 +1,9 @@
 import { Layers } from 'lucide-react';
-import { useChat } from './chat-store';
+import type { ContextUsage } from '@agentdeck/shared/conversation';
 import { UsageDetails, usageSummary } from './ContextStatus';
 
 /** 原生仅报告用量时展示用量，不将配置或 token 数伪装成完整提示词。 */
-export function TrajectoryContext() {
-  const usage = useChat((state) => state.contextUsage);
+export function TrajectoryContext({ usage }: { usage?: ContextUsage | null }) {
   if (!usage) return null;
   return (
     <details className="trajectory-context tool-card">

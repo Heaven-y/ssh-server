@@ -9,6 +9,8 @@ import {
   type SessionRef,
   type SessionSummary,
   type SessionPageQuery,
+  type SubagentQuery,
+  type SubagentRead,
 } from '@agentdeck/shared/conversation';
 import { type Workspace } from '@agentdeck/shared/projects';
 import { homedir } from 'node:os';
@@ -161,6 +163,15 @@ export function createSessionsService(
         if (record.session.sessionId !== id || !(await sameSessionDirectory(record.cwd, native.dir)))
           throw new SessionError(404, 'session_missing', '该 Agent 在当前项目目录中没有此会话');
         return { session: { ...record.session, agent }, events: record.events, actualModel: record.actualModel };
+      });
+    },
+    subagents(ws: Workspace, session: SessionRef, query: SubagentQuery, signal?: AbortSignal): Promise<SubagentRead> {
+      return safeOperation(session.agent, async () => {
+        const native = await scopedWorkspace(ws, session.agent, session.sessionId, signal);
+        await assertNotArchived(session.agent, session.sessionId);
+        const provider = providerOf(providers, session.agent);
+        if (!provider.subagents) throw new SessionError(400, 'unsupported_action', '此 CLI 没有可读取的子代理历史接口');
+        return provider.subagents(session.sessionId, native.dir, query, signal);
       });
     },
     assertBelongs(ws: Workspace, agent: AgentKind, id: string, signal?: AbortSignal): Promise<Workspace> {

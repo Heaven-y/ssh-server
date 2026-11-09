@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
@@ -53,4 +53,18 @@ it('没有本地文件证据时不猜创建时间，取消请求保持取消状�
   await expect(
     claudeSessionActivity(record, { configDir: root, signal: AbortSignal.abort(new Error('已取消')) }),
   ).rejects.toThrow('已取消');
+});
+
+it('会话目录使用别名时沿用SDK的真实项目键，不将文件时间当成会话时间', async () => {
+  const workspace = path.join(root, 'workspace');
+  const alias = path.join(root, 'workspace-alias');
+  await mkdir(workspace);
+  await symlink(workspace, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  const projectKey = (await realpath(workspace)).replace(/[^a-zA-Z0-9]/g, '-');
+  const transcript = path.join(root, 'projects', projectKey, `${sessionId}.jsonl`);
+  await mkdir(path.dirname(transcript), { recursive: true });
+  await writeFile(transcript, line('assistant', '2026-11-01T11:05:00Z'));
+  expect(await claudeSessionActivity({ ...record, cwd: alias }, { configDir: root })).toBe(
+    Date.parse('2026-11-01T11:05:00Z'),
+  );
 });

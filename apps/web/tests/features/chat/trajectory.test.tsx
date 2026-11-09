@@ -6,7 +6,7 @@ import type { ChatItem } from '../../../src/features/chat/chat-reducer';
 import { useChat } from '../../../src/features/chat/chat-store';
 import { averageTokenRate } from '../../../src/features/chat/chat-metrics';
 import { filterTrajectory, projectTrajectory } from '../../../src/features/chat/trajectory-model';
-import { TrajectoryView } from '../../../src/features/chat/TrajectoryView';
+import { TrajectoryContent, TrajectoryView } from '../../../src/features/chat/TrajectoryView';
 import { StatisticsLine } from '../../../src/features/chat/StatisticsLine';
 import { ConversationSidebar } from '../../../src/app/ConversationSidebar';
 import { useConversationSidebar } from '../../../src/app/use-conversation-sidebar';
@@ -54,6 +54,25 @@ it('按用户轮次分组、保留逐项步骤，不把分叉标识当作执行�
     ['turn', 2],
     ['step', 1],
   ]);
+});
+
+it('独立子代理轨迹只选择自己的步骤，不读取父上下文或改写父选中项', () => {
+  useChat.setState({
+    inspectedItemId: 'parent-step',
+    contextUsage: { source: 'claude_estimate', usedTokens: 600, windowTokens: 200000 },
+  });
+  const inspect = vi.fn();
+  render(
+    <TrajectoryContent
+      items={[{ kind: 'assistant', id: 'child-step', text: '子代理回复', streaming: false }]}
+      running={false}
+      inspect={inspect}
+    />,
+  );
+  expect(screen.queryByText('最近报告')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '查看步骤 1：回复 子代理回复' }));
+  expect(inspect).toHaveBeenCalledWith('child-step');
+  expect(useChat.getState().inspectedItemId).toBe('parent-step');
 });
 
 it('速度只配对同范围数据，未知耗时、失败、非有限 token 均隐藏', () => {

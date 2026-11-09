@@ -36,20 +36,67 @@ const request = (method: string, id: string | number = 'native-request'): Server
   },
 });
 
-describe('Codex MCP 确认不再进入网页审批', () => {
-  it('MCP 工具确认按不支持的交互直接拒绝并报错', () => {
+const mcpRequest = (): ServerRequest => ({
+  id: 'mcp-request',
+  method: 'mcpServer/elicitation/request',
+  params: {
+    serverName: 'my-server',
+    mode: 'form',
+    requestedSchema: { type: 'object', properties: {} },
+    _meta: { codex_approval_kind: 'mcp_tool_call', tool_params: { command: 'pwd' } },
+  },
+});
+
+describe('Codex 原生 MCP 工具确认', () => {
+  it.each([true, false])('只在用户答复后返回本次工具确认：允许=%s', async (allow) => {
+    let answer!: (value: PermissionAnswer) => void;
+    const { permissions, client, events } = setup(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    permissions.request(mcpRequest());
+    expect(client.respond).not.toHaveBeenCalled();
+    expect(events[0]).toMatchObject({
+      type: 'permission_request',
+      toolName: 'MCP 工具',
+      input: { server: 'my-server', arguments: { command: 'pwd' } },
+    });
+    answer({ allow });
+    await Promise.resolve();
+    expect(client.respond).toHaveBeenCalledExactlyOnceWith('mcp-request', {
+      action: allow ? 'accept' : 'decline',
+      content: allow ? {} : null,
+    });
+    expect(events.at(-1)).toMatchObject({ type: 'permission_resolved', decision: allow ? 'allowed' : 'denied' });
+  });
+  it('取消审批后迟到的批准不能重新放行工具', async () => {
+    let answer!: (value: PermissionAnswer) => void;
+    const { permissions, client } = setup(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    permissions.request(mcpRequest());
+    permissions.cancel();
+    answer({ allow: true });
+    await Promise.resolve();
+    expect(client.respond).toHaveBeenCalledExactlyOnceWith('mcp-request', { action: 'cancel', content: null });
+  });
+  it.each([
+    { mode: 'url', url: 'https://example.com/login' },
+    { _meta: {} },
+    { requestedSchema: { type: 'object', properties: { name: { type: 'string' } } } },
+    { requestedSchema: { type: 'object', properties: {}, required: ['name'] } },
+    { requestedSchema: { type: 'object', properties: {}, allOf: [{ required: ['account'] }] } },
+    { requestedSchema: { type: 'object', properties: {}, minProperties: 1 } },
+  ])('URL或需填写的表单不当作简单工具确认：%j', (params) => {
     const answer = vi.fn<AgentTurnInput['requestPermission']>();
     const { permissions, client, events } = setup(answer);
-    permissions.request({
-      id: 'mcp-request',
-      method: 'mcpServer/elicitation/request',
-      params: {
-        serverName: 'my-server',
-        mode: 'form',
-        requestedSchema: { type: 'object', properties: {} },
-        _meta: { codex_approval_kind: 'mcp_tool_call', tool_params: { command: 'pwd' } },
-      },
-    });
+    const request = mcpRequest();
+    permissions.request({ ...request, params: { ...request.params, ...params } });
     expect(answer).not.toHaveBeenCalled();
     expect(client.rejectRequest).toHaveBeenCalledWith('mcp-request');
     expect(client.respond).not.toHaveBeenCalled();

@@ -43,6 +43,51 @@ async function setup(
 }
 
 describe('Antigravity 原生对话运行器', () => {
+  it('选中技能通过原生斜杠调用发送，准备阶段取消不会迟到启动对话', async () => {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      kill: vi.fn(() => true),
+    });
+    const launch = vi.fn(() => child as unknown as AntigravityProcess);
+    const runner = createAntigravityRunner({
+      launch,
+      defaultModel: async () => undefined,
+      invocationText: async () => '/review 检查示例',
+    });
+    const input = {
+      workspace: { id: 'p', name: '项目', dir: cwd },
+      text: '检查示例',
+      invocation: { kind: 'skill' as const, name: 'review' },
+      emit: () => {},
+      requestPermission: async () => ({ allow: false }),
+    };
+    const turn = runner(input);
+    await vi.waitFor(() => expect(launch).toHaveBeenCalledOnce());
+    expect(JSON.parse(String(child.stdin.read()))).toEqual({ event: 'user', message: { content: '/review 检查示例' } });
+    child.emit('close', 0);
+    await turn.done;
+    launch.mockClear();
+    let resolve!: (value: string) => void;
+    let preparationSignal: AbortSignal | undefined;
+    const waiting = createAntigravityRunner({
+      launch,
+      defaultModel: async () => undefined,
+      invocationText: (_input, signal) => {
+        preparationSignal = signal;
+        return new Promise((done) => {
+          resolve = done;
+        });
+      },
+    });
+    const stopped = waiting(input);
+    await stopped.interrupt();
+    expect(preparationSignal?.aborted).toBe(true);
+    resolve('/review 检查示例');
+    await Promise.resolve();
+    expect(launch).not.toHaveBeenCalled();
+  });
   it('没有显式选择时使用已核验自定义默认键，显式模型不被覆盖', async () => {
     const defaultModel = vi.fn(async () => 'custom-key');
     const first = await setup(undefined, defaultModel);
@@ -163,12 +208,13 @@ describe('Antigravity 原生对话运行器', () => {
     };
     f.output({ event: 'step_update', step_update: { ...step, state: 'ACTIVE' } });
     f.output({ event: 'step_update', step_update: { ...step, state: 'DONE' } });
-    f.child.stderr.write('tool run_command soft-denied; token=synthetic-secret\n');
+    f.child.stderr.write('tool required permission; soft-denied; token=synthetic-secret\n');
     f.finish();
     await f.handle.done;
     expect(f.events.filter((event) => event.type === 'tool_call')).toHaveLength(1);
     expect(f.events).toContainEqual({ type: 'tool_result', id: 'agy-step-3', output: '示例输出', isError: false });
     expect(f.events.some((event) => event.type === 'error' && event.message.includes('权限'))).toBe(true);
+    expect(f.events.some((event) => event.type === 'error' && event.message.includes('required'))).toBe(false);
     expect(f.events.some((event) => event.type === 'permission_request')).toBe(false);
     expect(JSON.stringify(f.events)).not.toContain('synthetic-secret');
   });

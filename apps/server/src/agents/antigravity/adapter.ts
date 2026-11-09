@@ -5,6 +5,7 @@ import { resolveLocalCommand } from '../../platform/process/executable';
 import { AntigravityMapper } from './mapper';
 import { AntigravityLines } from './lines';
 import { antigravityDefaultModel } from './model-catalog';
+import { AntigravityInvocationError, antigravityInvocationText } from './commands';
 
 export type AntigravityProcess = Pick<
   ChildProcessWithoutNullStreams,
@@ -15,6 +16,7 @@ type Options = {
   launch?: (input: LaunchInput) => AntigravityProcess;
   env?: NodeJS.ProcessEnv;
   defaultModel?: () => Promise<string | undefined>;
+  invocationText?: (input: AgentTurnInput, signal: AbortSignal) => Promise<string>;
 };
 
 function launch(input: LaunchInput): AntigravityProcess {
@@ -52,11 +54,13 @@ class AntigravityTurn {
   /** 原生结果已经确认时，进程清理与模型回合成功是两个独立状态。 */
   private closingAfterResult = false;
   private cleanupSignalSent = false;
+  private readonly preparation = new AbortController();
 
   constructor(
     private readonly input: AgentTurnInput,
     start: (input: LaunchInput) => AntigravityProcess,
     defaultModel: () => Promise<string | undefined>,
+    invocationText: (input: AgentTurnInput, signal: AbortSignal) => Promise<string>,
   ) {
     this.done = new Promise((resolve) => {
       this.settle = resolve;
@@ -64,23 +68,28 @@ class AntigravityTurn {
     this.mapper = new AntigravityMapper(input.workspace.dir, input.sessionId);
     this.stdout = new AntigravityLines((line) => this.message(line));
     this.stderr = new AntigravityLines((line) => this.diagnostic(line), 65_536);
-    void this.start(start, defaultModel);
+    void this.start(start, defaultModel, invocationText);
   }
 
   private async start(
     start: (input: LaunchInput) => AntigravityProcess,
     defaultModel: () => Promise<string | undefined>,
+    invocationText: (input: AgentTurnInput, signal: AbortSignal) => Promise<string>,
   ) {
     try {
-      if (this.input.invocation) throw new Error('不支持此调用');
+      const text = this.input.invocation ? await invocationText(this.input, this.preparation.signal) : this.input.text;
       const model = this.input.model ?? (await defaultModel());
       if (this.ended || this.failed) return;
       this.child = start({ cwd: this.input.workspace.dir, args: argumentsFor({ ...this.input, model }) });
       this.listen(this.child);
       this.timer = setTimeout(() => this.fail('Antigravity 启动超时，请检查本机登录与配置。'), 30_000);
-      this.child.stdin.end(`${JSON.stringify({ event: 'user', message: { content: this.input.text } })}\n`);
-    } catch {
-      this.fail('无法启动 Antigravity，请检查本机 agy 安装与启动环境。');
+      this.child.stdin.end(`${JSON.stringify({ event: 'user', message: { content: text } })}\n`);
+    } catch (error) {
+      this.fail(
+        error instanceof AntigravityInvocationError
+          ? error.message
+          : '无法启动 Antigravity，请检查本机 agy 安装与启动环境。',
+      );
       if (!this.child) this.finish(null);
     }
   }
@@ -88,6 +97,7 @@ class AntigravityTurn {
   interrupt(): Promise<void> {
     if (!this.ended) {
       this.failed = true;
+      this.preparation.abort();
       if (this.child) this.stop();
       else this.finish(null);
     }
@@ -128,10 +138,10 @@ class AntigravityTurn {
     const permission = /soft.den|permission|approval|权限|拒绝/i.test(line);
     if (permission && !this.permissionNotice) {
       this.permissionNotice = true;
-      const tool = /\btool\s+([a-zA-Z_][a-zA-Z0-9_]{0,79})\b/.exec(line)?.[1];
       this.input.emit({
         type: 'error',
-        message: `Antigravity 报告了权限限制${tool ? `（${tool}）` : ''}：需要确认的工具可能被软拒绝。请检查原生 permissions 规则，本应用不会自动放行。`,
+        message:
+          'Antigravity 报告了权限限制：需要确认的工具可能被软拒绝。请检查原生 permissions 规则，本应用不会自动放行。',
       });
     } else if (!permission && !this.diagnosticNotice) {
       this.diagnosticNotice = true;
@@ -198,6 +208,7 @@ export function createAntigravityRunner(options: Options = {}): TurnRunner {
       input,
       (request) => (options.launch ?? launch)({ ...request, ...(options.env ? { env: options.env } : {}) }),
       options.defaultModel ?? (() => antigravityDefaultModel(options.env ?? process.env)),
+      options.invocationText ?? ((input, signal) => antigravityInvocationText(input, { env: options.env, signal })),
     );
     active.add(turn);
     return { interrupt: () => turn.interrupt(), done: turn.done.finally(() => active.delete(turn)) };

@@ -7,6 +7,8 @@ import type {
   SessionForkInput,
   SessionPageQuery,
   SessionPage,
+  SubagentQuery,
+  SubagentRead,
 } from '@agentdeck/shared/conversation';
 import { request } from '../../lib/http';
 
@@ -47,6 +49,15 @@ export const sessionsApi = {
       `/api/projects/${encodeURIComponent(workspaceId)}/sessions/${agent}/${encodeURIComponent(sessionId)}`,
       { signal, cache: 'no-store' },
     ),
+  subagents: (workspaceId: string, sessionId: string, query: SubagentQuery, signal?: AbortSignal) => {
+    const values = Object.fromEntries(
+      Object.entries(query).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+    );
+    return request<SubagentRead>(
+      `/api/projects/${encodeURIComponent(workspaceId)}/sessions/claude/${encodeURIComponent(sessionId)}/subagents?${new URLSearchParams(values)}`,
+      { signal, cache: 'no-store' },
+    );
+  },
   archivedSessions: (agent: AgentKind, signal?: AbortSignal) =>
     request<SessionSummary[]>(`/api/sessions/archived?agent=${agent}`, { signal, cache: 'no-store' }),
 };

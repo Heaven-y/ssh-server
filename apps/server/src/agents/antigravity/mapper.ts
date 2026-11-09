@@ -9,6 +9,8 @@ const text = (value: unknown) => (typeof value === 'string' ? value : '');
 const clip = (value: string) => (value.length > 20_000 ? `${value.slice(0, 20_000)}\n[输出已截断]` : value);
 const toolOutput = (info: RecordValue) =>
   clip(text(info.output)) || clip(text(record(info.error).message)) || (info.error ? '工具执行失败' : '');
+const toolFinished = (state: unknown) => state === 'DONE' || state === 'ERROR';
+const toolFailed = (state: unknown, info: RecordValue) => state === 'ERROR' || !!info.error;
 
 /** 按官方 headless 的 event/payload 结构映射，不能把它当成 Claude stream-json。 */
 export class AntigravityMapper {
@@ -130,9 +132,9 @@ export class AntigravityMapper {
       this.tools.add(id);
       events.push({ type: 'tool_call', id, name, input: info.parameters ?? {} });
     }
-    if (step.state === 'DONE' && !this.results.has(id)) {
+    if (toolFinished(step.state) && !this.results.has(id)) {
       this.results.add(id);
-      const isError = !!info.error;
+      const isError = toolFailed(step.state, info);
       const usage = stepUsage(step.usage, true);
       events.push({
         type: 'tool_result',

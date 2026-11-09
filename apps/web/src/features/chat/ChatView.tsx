@@ -6,6 +6,7 @@ import { Composer } from './Composer';
 import { ChatTimeline } from './ChatTimeline';
 import { TrajectoryView } from './TrajectoryView';
 import { SegmentedControl } from '../../ui/SegmentedControl';
+import { SubagentHistoryButton } from '../sessions/SubagentHistoryDialog';
 
 function Banner() {
   const banner = useChat((s) => s.banner);
@@ -114,6 +115,7 @@ export function ChatView({ workspace }: { workspace: Workspace }) {
             },
           ]}
         />
+        <SubagentHistoryButton />
       </div>
       <Banner />
       <HistoryFailure />

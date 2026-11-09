@@ -1,4 +1,4 @@
-import { lstat, open, readdir } from 'node:fs/promises';
+import { lstat, open, readdir, realpath } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { SDKSessionInfo } from '@anthropic-ai/claude-agent-sdk';
@@ -56,7 +56,9 @@ function tailTime(content: string, sessionId: string, truncated: boolean): numbe
 }
 
 async function projectDirectories(root: string, cwd: string): Promise<string[]> {
-  const key = cwd.replace(/[^a-zA-Z0-9]/g, '-');
+  // SDK 按真实目录查找项目键；Windows 短路径和目录联接不能退回文件修改时间。
+  const canonical = await realpath(cwd).catch(() => cwd);
+  const key = canonical.replace(/[^a-zA-Z0-9]/g, '-');
   if (key.length <= MAX_PROJECT_KEY_LENGTH) return [path.join(root, key)];
   // 长项目键由原生追加散列；只枚举匹配前缀的目录，不复制 SDK 的散列实现。
   const prefix = key.slice(0, MAX_PROJECT_KEY_LENGTH).toLowerCase() + '-';

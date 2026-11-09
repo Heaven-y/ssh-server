@@ -5,6 +5,8 @@ import type {
   SessionCapabilities,
   SessionForkInput,
   SessionRecord,
+  SubagentQuery,
+  SubagentRead,
 } from '@agentdeck/shared/conversation';
 import type { Workspace } from '@agentdeck/shared/projects';
 import type { NativeInvocation } from './capability-types';
@@ -60,6 +62,8 @@ export type SessionProvider = {
     archived?: boolean,
   ): Promise<NativeSessionPage>;
   read(id: string, dir: string, signal?: AbortSignal): Promise<NativeSessionRead>;
+  /** 按需读取原生子代理，保持与父会话正文、用量及分叉点分离。 */
+  subagents?(id: string, dir: string, query: SubagentQuery, signal?: AbortSignal): Promise<SubagentRead>;
   /** 返回已核实的原生目录；多目录 CLI 同时保留完整归属元数据。 */
   assertBelongs(
     id: string,

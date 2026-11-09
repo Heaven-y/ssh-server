@@ -14,6 +14,7 @@ import { type SessionProvider } from '../contracts';
 import { ClaudeEventMapper, claudeHistoryForkPoint } from './mapper';
 import { sameSessionDirectory, sessionDirectoryWithin } from '../common/session-scope';
 import { claudeSessionActivity } from './session-activity';
+import { createClaudeSubagents, type ClaudeSubagentApi } from './subagents';
 
 export type ClaudeSessionsApi = {
   list(dir: string, page?: NativeSessionPageInput): Promise<SDKSessionInfo[]>;
@@ -77,7 +78,11 @@ async function summaries(records: SDKSessionInfo[], signal?: AbortSignal) {
   return rows;
 }
 
-export function createClaudeSessions(api: ClaudeSessionsApi = nativeApi): SessionProvider {
+export function createClaudeSessions(
+  api: ClaudeSessionsApi = nativeApi,
+  subagentApi?: ClaudeSubagentApi,
+): SessionProvider {
+  const readSubagents = createClaudeSubagents(subagentApi);
   async function info(id: string, dir: string): Promise<SDKSessionInfo> {
     const record = await api.info(id, dir);
     // 老会话可能没有 cwd；SDK 带 dir 的读取仍限定原生项目存储位置。
@@ -102,6 +107,11 @@ export function createClaudeSessions(api: ClaudeSessionsApi = nativeApi): Sessio
     };
   }
   return {
+    async subagents(id, dir, query, signal) {
+      signal?.throwIfAborted();
+      await info(id, dir);
+      return readSubagents(id, dir, query, signal);
+    },
     async page(dir, page, signal, archived = false) {
       signal?.throwIfAborted();
       if (archived) throw new SessionError(400, 'unsupported_action', 'Claude Code 不支持原生归档');

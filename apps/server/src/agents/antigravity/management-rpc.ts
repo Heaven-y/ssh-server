@@ -3,6 +3,7 @@ import { SessionError } from '../errors';
 
 export type ManagementRecord = Record<string, unknown>;
 export type ManagementMethod =
+  | 'GetAllSkills'
   | 'GetCascadeTrajectory'
   | 'GetCascadeTrajectorySteps'
   | 'GetConversationMetadata'

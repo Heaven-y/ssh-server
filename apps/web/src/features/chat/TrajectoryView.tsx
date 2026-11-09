@@ -2,6 +2,7 @@ import { ArrowDown, Bot, ChevronRight, Layers, User, Wrench } from 'lucide-react
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import type { ChatItem } from './chat-reducer';
+import type { ContextUsage } from '@agentdeck/shared/conversation';
 import { useChat } from './chat-store';
 import { finiteCount, formatDuration } from './chat-metrics';
 import {
@@ -88,9 +89,18 @@ function StepRow({
   );
 }
 
-function TrajectoryEntry({ row, filter }: { row: TrajectoryRow; filter: TrajectoryFilter }) {
-  const selected = useChat((state) => state.inspectedItemId === (row.kind === 'step' ? row.item.id : row.user?.id));
-  const inspect = useChat((state) => state.inspectItem);
+function TrajectoryEntry({
+  row,
+  filter,
+  selectedItemId,
+  inspect,
+}: {
+  row: TrajectoryRow;
+  filter: TrajectoryFilter;
+  selectedItemId?: string;
+  inspect(id: string): void;
+}) {
+  const selected = selectedItemId === (row.kind === 'step' ? row.item.id : row.user?.id);
   if (row.kind === 'turn')
     return (
       <div className="trajectory-turn">
@@ -120,8 +130,35 @@ function TrajectoryEntry({ row, filter }: { row: TrajectoryRow; filter: Trajecto
 
 /** 同一组聊天条目提供另一种投影，不维护第二份会话正文。 */
 export function TrajectoryView({ items, running }: { items: ChatItem[]; running: boolean }) {
-  const [filter, setFilter] = useState<TrajectoryFilter>('all');
   const context = useChat((state) => state.contextUsage);
+  const selectedItemId = useChat((state) => state.inspectedItemId);
+  const inspect = useChat((state) => state.inspectItem);
+  return (
+    <TrajectoryContent
+      items={items}
+      running={running}
+      context={context}
+      selectedItemId={selectedItemId}
+      inspect={inspect}
+    />
+  );
+}
+
+/** 只渲染传入的记录；子代理视图不读取或修改父会话状态。 */
+export function TrajectoryContent({
+  items,
+  running,
+  context,
+  selectedItemId,
+  inspect,
+}: {
+  items: ChatItem[];
+  running: boolean;
+  context?: ContextUsage | null;
+  selectedItemId?: string;
+  inspect(id: string): void;
+}) {
+  const [filter, setFilter] = useState<TrajectoryFilter>('all');
   const rows = useMemo(() => filterTrajectory(projectTrajectory(items), filter), [items, filter]);
   const list = useRef<VirtuosoHandle>(null);
   const atBottom = useRef(true);
@@ -142,7 +179,7 @@ export function TrajectoryView({ items, running }: { items: ChatItem[]; running:
           options={filters}
         />
       </div>
-      {(filter === 'all' || filter === 'context') && <TrajectoryContext />}
+      {(filter === 'all' || filter === 'context') && <TrajectoryContext usage={context} />}
       {!rows.length ? (
         <p className="m-auto px-4 py-8 text-sm text-muted-foreground">
           {context && filter === 'context' ? '暂无压缩事件' : '暂无此类记录'}
@@ -167,7 +204,9 @@ export function TrajectoryView({ items, running }: { items: ChatItem[]; running:
           aria-label="执行轨迹"
           aria-live="off"
           aria-busy={running}
-          itemContent={(_index, row) => <TrajectoryEntry row={row} filter={filter} />}
+          itemContent={(_index, row) => (
+            <TrajectoryEntry row={row} filter={filter} selectedItemId={selectedItemId} inspect={inspect} />
+          )}
         />
       )}
       {!bottom && rows.length > 0 && (

@@ -70,6 +70,12 @@ Antigravity 的 Gemini 密钥还需要原生 `modelProvider: "gemini"`；ADC 使
 
 这些变量只传给工作台新启动的进程。用户在另一个终端直接执行 CLI 时，仍使用那个终端的环境；工作台不会修改系统环境变量。设置页会标明已有工作台覆盖，避免把原生文件中的值误当作最终有效值。
 
+## Antigravity MCP 工具加载
+
+默认按原生方式加载 MCP。AGY 1.5.1 的通用工具包装未限制 Arguments 的类型；部分模型服务会返回 JSON 字符串，标准 MCP 服务要求对象而拒绝执行。可以在设置的 MCP 配置文件中，对确实需要的工具启用原生 `eager`：在已有服务器项内添加 `tools: { "read_notes": { "eager": true } }`，保留原来的 command、args、env 或地址。这会让模型直接看到该工具的完整参数定义，可能增加请求长度；不需要把所有工具改为 eager。
+
+此选项与 `permissions.allow` 是不同配置：直接加载不代表允许执行。工作台不会自动写入用户的允许规则，也不会把返回的错误参数改成猜测值。真实工具执行仍由 CLI 按用户选择的权限处理。依据为[官方加载方式](https://antigravity.google/docs/mcp/#tool-loading-lazy-vs-eager)以及本机原生 CLI 与标准 MCP SDK 对照验收。
+
 ## 依据与验证
 
 2026-11-05 复核了本机帮助、官方配置文档和 CC Switch 当前 Direct 实现；版本升级后按真实协议调整。

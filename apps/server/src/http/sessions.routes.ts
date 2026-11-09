@@ -7,6 +7,7 @@ import {
   SessionActionSchema,
   SessionForkSchema,
   SessionPageQuerySchema,
+  SubagentQuerySchema,
 } from '@agentdeck/shared/conversation';
 import { type Workspace } from '@agentdeck/shared/projects';
 import { SessionError } from '../agents/errors';
@@ -123,6 +124,21 @@ export function registerSessionRoutes(app: FastifyInstance, deps: Deps): void {
 
   app.get('/api/projects/:id/sessions', routeOptions, list);
   app.get('/api/projects/:id/sessions/:agent/:sessionId', routeOptions, read);
+  app.get('/api/projects/:id/sessions/:agent/:sessionId/subagents', routeOptions, async (req, reply) => {
+    const params = ProjectHistoryParams.safeParse(req.params);
+    const query = SubagentQuerySchema.safeParse(req.query);
+    if (!params.success || !query.success) return reply.code(400).send({ message: '子代理请求格式不正确' });
+    const ws = await deps.store.get(params.data.id);
+    if (!ws) return reply.code(404).send({ message: '项目不存在' });
+    const watch = watchAbort(reply);
+    try {
+      return await deps.sessions.subagents(ws, params.data, query.data, watch.signal);
+    } catch (error) {
+      return sendFailure(reply, error, '子代理历史读取失败');
+    } finally {
+      watch.dispose();
+    }
+  });
 
   app.post('/api/projects/:id/sessions/:agent/:sessionId/actions', routeOptions, async (req, reply) => {
     const params = ProjectHistoryParams.safeParse(req.params);
