@@ -8,15 +8,17 @@ import type { TimelineRow } from './timeline-model';
  */
 export function TimelineRowView({
   row,
+  index,
   expanded,
   setOpen,
 }: {
   row: TimelineRow;
+  index?: number;
   expanded: ReadonlySet<string>;
   setOpen(id: string, open: boolean): void;
 }) {
   return (
-    <div data-chat-row={row.id} className="conversation-row">
+    <div data-chat-row={row.id} data-chat-index={index} className="conversation-row">
       {row.kind === 'message' ? (
         <MessageItem
           item={row.item}

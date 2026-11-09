@@ -183,7 +183,8 @@ function ModelChoices({
   const effort = useChat((state) => state.reasoningEfforts[state.agent]);
   const setEffort = useChat((state) => state.setReasoningEffort);
   const models = catalog.data?.models ?? [];
-  const candidates = modelCandidates(models, currentModel);
+  const visible = useChat((state) => state.defaults.modelVisibility?.[state.agent]);
+  const candidates = modelCandidates(models, currentModel, visible);
   const selected = findModel(candidates, currentModel)?.id;
   return (
     <>
@@ -202,7 +203,7 @@ function ModelChoices({
       </MenuGroup>
       {candidates.length > 20 && (
         <MenuItem className={itemClass} disabled={disabled} onClick={onSearch}>
-          搜索全部模型
+          搜索可见模型
         </MenuItem>
       )}
       <CatalogStatus catalog={catalog} />
@@ -332,6 +333,7 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
   const presentation = useModelPresentation(model, catalog.data, catalog.isFetching);
   const setModel = useChat((state) => state.setModel);
   const models = catalog.data?.models ?? [];
+  const visible = useChat((state) => state.defaults.modelVisibility?.[state.agent]);
   return (
     <>
       <MenuButton
@@ -383,7 +385,7 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
       )}
       {searchOpen && (
         <ModelSearchDialog
-          models={modelCandidates(models, presentation.id)}
+          models={modelCandidates(models, presentation.id, visible)}
           current={presentation.id}
           disabled={disabled}
           choose={(id) => {

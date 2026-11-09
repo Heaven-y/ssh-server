@@ -18,6 +18,7 @@ const fields = [
   'inspectedItemId',
   'conversationVersion',
   'running',
+  'lastSentAt',
   'turnId',
   'pendingClientTurnId',
   'interruptRequested',
@@ -32,7 +33,8 @@ const fields = [
   'view',
 ] as const satisfies readonly (keyof ConversationView)[];
 
-export const conversationBusy = (view: ConversationView) => view.running || !!view.pendingClientTurnId;
+export const conversationBusy = (view: Pick<ConversationView, 'running' | 'pendingClientTurnId'>) =>
+  view.running || !!view.pendingClientTurnId;
 export const conversationHasDraft = (view: ConversationView) =>
   !!(
     view.draft ||
@@ -126,7 +128,7 @@ export function updateConversation(
     ? patch
     : { background: { ...state.background, [view.conversationId]: { ...view, ...patch } } };
 }
-export function conversationTitle(view: ConversationView): string {
+export function conversationTitle(view: Pick<ConversationView, 'title' | 'items' | 'draft'>): string {
   if (view.title) return view.title;
   const first = view.items.find((item) => item.kind === 'user');
   return first?.kind === 'user' ? first.text.slice(0, 60) : view.draft.slice(0, 60) || '新会话';

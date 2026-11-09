@@ -245,6 +245,8 @@ it('后台会话完成后管理仍按目标检查，归档不会留下可续接�
 it('跨项目从普通列表返回已完成的AGY会话直接恢复内存，显式重读失败也不丢正文', async () => {
   useChat.getState().newSession('antigravity');
   const turnId = startTurn('AGY任务');
+  const lastSentAt = useChat.getState().lastSentAt;
+  expect(lastSentAt).toBeTypeOf('number');
   emit({
     type: 'agent.event',
     turnId,
@@ -262,6 +264,15 @@ it('跨项目从普通列表返回已完成的AGY会话直接恢复内存，显�
   expect(JSON.stringify(useChat.getState().items)).toContain('后台执行结果');
   await useChat.getState().openSession({ agent: 'antigravity', sessionId: 'agy-native' }, { preserveDraft: true });
   expect(JSON.stringify(useChat.getState().items)).toContain('后台执行结果');
+  expect(useChat.getState().lastSentAt).toBe(lastSentAt);
+  read.mockResolvedValue({
+    session: { agent: 'antigravity', sessionId: 'agy-native', summary: '已保存', lastModified: 1 },
+    events: [],
+  });
+  await useChat.getState().openSession({ agent: 'antigravity', sessionId: 'agy-native' }, { preserveDraft: true });
+  expect(useChat.getState().lastSentAt).toBe(lastSentAt);
+  useChat.getState().newSession('antigravity');
+  expect(useChat.getState().lastSentAt).toBeUndefined();
 });
 
 it('空闲已读正文超过预算后按需重读，参数、草稿和不可回放内容保留', async () => {

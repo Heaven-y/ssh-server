@@ -60,7 +60,7 @@ it('菜单只展示少量候选并优先保留当前选择，搜索能找到末�
       .getByRole('menuitemradio', { name: /custom-native/ })
       .getAttribute('aria-checked'),
   ).toBe('true');
-  fireEvent.click(screen.getByRole('menuitem', { name: '搜索全部模型' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '搜索可见模型' }));
   const dialog = screen.getByRole('dialog', { name: '选择模型' });
   const search = within(dialog).getByRole('combobox', { name: '搜索模型' });
   fireEvent.change(search, { target: { value: 'custom-native' } });
@@ -82,7 +82,7 @@ it('全部候选可继续展开，手填型号仍在菜单中保留，关闭搜�
   useChat.getState().setModel('manual-custom');
   mount();
   expect(await screen.findByRole('menuitemradio', { name: /manual-custom/ })).toBeTruthy();
-  fireEvent.click(screen.getByRole('menuitem', { name: '搜索全部模型' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '搜索可见模型' }));
   const dialog = screen.getByRole('dialog', { name: '选择模型' });
   expect(within(dialog).getAllByRole('option')).toHaveLength(50);
   fireEvent.click(within(dialog).getByRole('button', { name: '显示更多模型' }));
@@ -90,6 +90,26 @@ it('全部候选可继续展开，手填型号仍在菜单中保留，关闭搜�
   fireEvent.click(within(dialog).getByRole('button', { name: '关闭选择模型' }));
   expect(useChat.getState().modelOverrides.claude).toBe('manual-custom');
   await act(async () => undefined);
+});
+
+it('对话菜单应用显示范围且保留当前隐藏模型，不因筛选改变发送参数', async () => {
+  useChat.getState().setDefaults({
+    defaultAgent: 'claude',
+    resources: { intervalSeconds: 5, timeoutSeconds: 8 },
+    modelVisibility: { claude: ['model-1'] },
+  });
+  useChat.getState().setModel('model-64');
+  mount();
+  const group = await screen.findByRole('group', { name: '可选模型' });
+  expect(within(group).getAllByRole('menuitemradio')).toHaveLength(2);
+  expect(
+    within(group)
+      .getByRole('menuitemradio', { name: /custom-native/ })
+      .getAttribute('aria-checked'),
+  ).toBe('true');
+  expect(within(group).getByRole('menuitemradio', { name: /native-1$/ })).toBeTruthy();
+  expect(screen.queryByRole('menuitem', { name: '搜索可见模型' })).toBeNull();
+  expect(useChat.getState().modelOverrides.claude).toBe('model-64');
 });
 
 it('成功目录被回收后允许重新发现，读取与手动刷新仍由各自缓存状态触发', async () => {

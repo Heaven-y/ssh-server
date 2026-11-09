@@ -31,7 +31,7 @@ export type ChatState = {
   sessionId?: string;
   title?: string;
   modelOverrides: Record<AgentKind, string>;
-  defaults: Pick<ProductSettings, 'defaultAgent'>;
+  defaults: Pick<ProductSettings, 'defaultAgent' | 'modelVisibility'>;
   initialDefaultsEligible: boolean;
   reasoningEfforts: Record<AgentKind, string>;
   permission?: PermissionSelection;
@@ -49,6 +49,8 @@ export type ChatState = {
   /** 网页选择代次；原生首次返回sessionId不会重建时间线。 */
   conversationVersion: number;
   running: boolean;
+  /** 本页最后一次发送时间；用于运行计时和原生摘要落库前的导航。 */
+  lastSentAt?: number;
   turnId?: string;
   pendingClientTurnId?: string;
   interruptRequested: boolean;
@@ -96,6 +98,7 @@ export type ConversationView = Pick<
   | 'inspectedItemId'
   | 'conversationVersion'
   | 'running'
+  | 'lastSentAt'
   | 'turnId'
   | 'pendingClientTurnId'
   | 'interruptRequested'

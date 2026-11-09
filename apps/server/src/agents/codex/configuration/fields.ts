@@ -9,9 +9,9 @@ export function codexAuthMode(provider: ConfigObject) {
     hasAuthorization(provider.env_http_headers)
   )
     return 'command';
+  if (provider.requires_openai_auth === true) return 'native';
   if (string(provider.env_key)) return 'env';
-  if (string(provider.experimental_bearer_token)) return 'token';
-  return provider.requires_openai_auth === true ? 'native' : 'token';
+  return 'token';
 }
 export function nativeCodexProvider(config: ConfigObject, id: string) {
   return ['ollama', 'lmstudio'].includes(id) || (id !== 'agentdeck' && !has(object(config.model_providers), id));
@@ -29,26 +29,29 @@ function codexProviderFields(config: ConfigObject, id: string): ModelSettingFiel
   return [
     field('displayName', '服务名称', provider.name, { placeholder: '自定义服务' }),
     field('baseUrl', '服务地址', provider.base_url, { hint: '使用兼容 Responses API 的服务地址。' }),
-    field('authMode', '认证方式', mode, {
+    field('authMode', '凭据获取方式', mode, {
       advanced: true,
       options:
         mode === 'command'
-          ? [{ value: 'command', label: '沿用高级认证' }]
+          ? [{ value: 'command', label: '沿用已有高级认证' }]
           : [
-              { value: 'token', label: 'API Key' },
-              { value: 'env', label: '环境变量' },
-              { value: 'native', label: '沿用 OpenAI 登录' },
+              { value: 'token', label: '直接填写 API Key' },
+              { value: 'env', label: '从环境变量读取 API Key' },
+              { value: 'native', label: '沿用 Codex 登录' },
             ],
       hint:
         mode === 'command'
-          ? '已有高级认证，使用原始配置编辑，避免覆盖。'
-          : '直接填写 Key 使用原生 experimental_bearer_token；原生文件中为明文。',
+          ? '已有凭据命令、网关 OAuth、AWS 或请求头认证，请在 CLI 配置文件中编辑。'
+          : '选择一种来源即可。环境变量中存放的也是 API Key；沿用 Codex 登录时使用已有 ChatGPT 或 API Key 登录。',
     }),
-    field('envKey', '密钥环境变量名', provider.env_key, {
+    field('envKey', 'API Key 环境变量名', provider.env_key, {
       advanced: true,
-      hint: '填写变量名，例如 OPENAI_API_KEY；变量值由启动 CLI 的环境提供。',
+      hint: '只填变量名，例如 OPENAI_API_KEY；实际密钥在启动 Codex 的环境中设置。',
     }),
-    secret('apiKey', 'API Key', provider.experimental_bearer_token),
+    {
+      ...secret('apiKey', 'API Key', provider.experimental_bearer_token),
+      hint: '留空继续使用当前来源。直接填写时选择“直接填写 API Key”，密钥会明文保存在 Codex 配置文件中。',
+    },
   ];
 }
 export function codexFields(config: ConfigObject): Pick<NativeModelSettingsDocument, 'fields' | 'providers'> {

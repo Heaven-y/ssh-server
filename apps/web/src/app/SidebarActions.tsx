@@ -1,33 +1,40 @@
 import { sidebarMenuClass, sidebarMenuItemClass, sidebarItemClass } from '../ui/sidebar-styles';
 import { Menu, MenuButton, MenuItem, useMenuStore } from '@ariakit/react';
-import { Archive, Check, Command, Ellipsis, SquarePen } from 'lucide-react';
+import { Archive, Check, Command, Ellipsis, Plus, SquarePen } from 'lucide-react';
 import type { AgentKind } from '@agentdeck/shared/conversation';
 import type { Workspace } from '@agentdeck/shared/projects';
 import { AGENT_LABELS } from '../cli/shared/labels';
 import { AgentIcon } from '../ui/BrandIcons';
 
 const AGENT_ORDER: AgentKind[] = ['claude', 'codex', 'antigravity'];
+function NewSessionContent({ compact, collapsed }: { compact: boolean; collapsed: boolean }) {
+  const Icon = compact ? Plus : SquarePen;
+  return (
+    <>
+      <Icon aria-hidden className="size-4 shrink-0" />
+      {!collapsed && !compact && <span>新建会话</span>}
+    </>
+  );
+}
 export function NewSessionMenu({
   projects,
   currentProjectId,
   collapsed,
+  compact = false,
   onNewSession,
   onAddProject,
 }: {
   projects: Workspace[];
   currentProjectId?: string;
   collapsed: boolean;
+  compact?: boolean;
   onNewSession?(projectId: string, agent: AgentKind): void;
   onAddProject(): void;
 }) {
   const menu = useMenuStore({ placement: collapsed ? 'right-start' : 'bottom-start' });
   const target = projects.find((project) => project.id === currentProjectId) ?? projects[0];
-  const content = (
-    <>
-      <SquarePen aria-hidden className="size-4 shrink-0" />
-      {!collapsed && <span>新建会话</span>}
-    </>
-  );
+  const label = compact && target ? `在“${target.name}”新建会话` : '新建会话';
+  const content = <NewSessionContent compact={compact} collapsed={collapsed} />;
   if (!target)
     return (
       <button
@@ -45,9 +52,13 @@ export function NewSessionMenu({
       <MenuButton
         store={menu}
         render={<button type="button" />}
-        className={sidebarItemClass(collapsed)}
-        aria-label="新建会话"
-        title="新建会话"
+        className={
+          compact
+            ? 'flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent'
+            : sidebarItemClass(collapsed)
+        }
+        aria-label={label}
+        title={label}
       >
         {content}
       </MenuButton>

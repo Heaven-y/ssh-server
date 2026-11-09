@@ -18,6 +18,8 @@ import type { ProjectDraft, ProjectManageAction } from '../features/projects/pro
 import type { SessionListFailure } from '../features/projects/use-project-sessions';
 import { LoadMoreSessions } from '../features/sessions/LoadMoreSessions';
 import { BackgroundConversations } from '../features/chat/BackgroundConversations';
+import { ProjectSessionRow } from '../features/sessions/ProjectSessionRow';
+import { localSessionId, useWorkspaceSessions, type WorkspaceSession } from '../features/sessions/workspace-sessions';
 
 export type SidebarProps = {
   pages?: ReactNode;
@@ -66,7 +68,7 @@ function unassignedSessions(sessions: Record<string, SessionSummary[]>, extra: S
   return [...entries.values()].toSorted(newestFirst);
 }
 
-function visibleProjects(projects: Workspace[], sessions: Record<string, SessionSummary[]>, query: string) {
+function visibleProjects(projects: Workspace[], sessions: Record<string, WorkspaceSession[]>, query: string) {
   return projects.flatMap((project) => {
     const items = sessions[project.id] ?? EMPTY_SESSIONS;
     const matchesProject = `${project.name} ${project.dir}`.toLocaleLowerCase().includes(query);
@@ -88,12 +90,13 @@ function ProjectItem({
   activeKey,
   toggle,
   selectSession,
+  newSession,
   manageSession,
   onBindServer,
   onManageProject,
 }: {
   project: Workspace;
-  sessions: SessionSummary[];
+  sessions: WorkspaceSession[];
   expanded: boolean;
   current: boolean;
   loading: boolean;
@@ -103,12 +106,14 @@ function ProjectItem({
   running: boolean;
   activeKey: string;
   toggle(): void;
-  selectSession?: (session: SessionSummary) => void;
+  selectSession?: (session: WorkspaceSession) => void;
+  newSession?: SidebarProps['onNewSession'];
   manageSession: (session: SessionSummary, action: SessionDialogAction, archived: boolean) => void;
   onBindServer?: SidebarProps['onBindServer'];
   onManageProject?: SidebarProps['onManageProject'];
 }) {
   const FolderIcon = expanded ? FolderOpen : Folder;
+  const sortableSessions = useMemo(() => sessions.filter((session) => !session.local), [sessions]);
   return (
     <li className="min-w-0">
       <div className="group flex min-w-0 items-center rounded-lg hover:bg-muted/70">
@@ -126,6 +131,13 @@ function ProjectItem({
             {sessions.length}
           </span>
         </button>
+        <NewSessionMenu
+          projects={[project]}
+          collapsed={false}
+          compact
+          onNewSession={newSession}
+          onAddProject={() => {}}
+        />
         <ProjectMenu
           project={project}
           running={running}
@@ -144,17 +156,20 @@ function ProjectItem({
           />
           {sessions.length > 0 && (
             <ul className="flex flex-col gap-0.5">
-              {sessions.map((session) => (
-                <SessionRow
-                  key={`${session.agent}:${session.sessionId}`}
-                  session={session}
-                  sessions={sessions}
-                  workspaceId={project.id}
-                  active={activeKey === sessionActionKey(project.id, session)}
-                  select={selectSession ? () => selectSession(session) : undefined}
-                  manage={(action) => manageSession(session, action, false)}
-                />
-              ))}
+              {sessions.map((session) => {
+                const Row = session.local ? ProjectSessionRow : SessionRow;
+                return (
+                  <Row
+                    key={`${session.agent}:${session.sessionId}`}
+                    session={session}
+                    sessions={sortableSessions}
+                    workspaceId={project.id}
+                    active={activeKey === sessionActionKey(project.id, session)}
+                    select={selectSession ? () => selectSession(session) : undefined}
+                    manage={session.local ? undefined : (action) => manageSession(session, action, false)}
+                  />
+                );
+              })}
             </ul>
           )}
         </section>
@@ -239,13 +254,19 @@ function useSidebarSelection(projects: Workspace[], currentProjectId?: string) {
   if (defaultExpanded && toggled[defaultExpanded] === undefined) setToggled({ ...toggled, [defaultExpanded]: true });
   const isExpanded = (projectId: string) => toggled[projectId] ?? projectId === defaultExpanded;
   const activeKey = useChat((state) => {
-    if (!state.workspaceId || !state.sessionId) return '';
-    return sessionActionKey(state.workspaceId, { agent: state.agent, sessionId: state.sessionId });
+    if (!state.workspaceId) return '';
+    return sessionActionKey(state.workspaceId, {
+      agent: state.agent,
+      sessionId: state.sessionId ?? localSessionId(state.conversationId),
+    });
   });
   return {
     selectedProject,
     activeKey,
     isExpanded,
+    expand(projectId: string) {
+      setToggled((previous) => ({ ...previous, [projectId]: true }));
+    },
     toggle(projectId: string) {
       const collapse = isExpanded(projectId);
       setFocused({ projectId, conversationId });
@@ -299,23 +320,24 @@ export function Sidebar({
   const orders = useSessionOrder((state) => state.orders);
   const knownOrder = useSessionOrder((state) => state.known);
   const rememberOrder = useSessionOrder((state) => state.remember);
+  const workspaceSessions = useWorkspaceSessions(sessionsByProject);
   const projectSessions = useMemo(
     () =>
       Object.fromEntries(
         projects.map((project) => [
           project.id,
           sortSessions(
-            (sessionsByProject[project.id] ?? EMPTY_SESSIONS).filter((session) => session.projectId === project.id),
+            (workspaceSessions[project.id] ?? EMPTY_SESSIONS).filter((session) => session.projectId === project.id),
             sortMode,
             orders[project.id] ?? knownOrder[project.id],
           ),
         ]),
-      ) as Record<string, SessionSummary[]>,
-    [projects, sessionsByProject, sortMode, orders, knownOrder],
+      ) as Record<string, WorkspaceSession[]>,
+    [projects, workspaceSessions, sortMode, orders, knownOrder],
   );
   useEffect(() => {
     for (const [project, sessions] of Object.entries(projectSessions))
-      rememberOrder(project, sessions.map(sessionOrderKey), !!query);
+      rememberOrder(project, sessions.filter((session) => !session.local).map(sessionOrderKey), !!query);
   }, [projectSessions, rememberOrder, query]);
   const otherSessions = useMemo(
     () => unassignedSessions(sessionsByProject, extraSessions),
@@ -381,7 +403,15 @@ export function Sidebar({
                     onSelectProject?.(project.id);
                     selection.toggle(project.id);
                   }}
-                  selectSession={onSelectSession ? (session) => onSelectSession(project.id, session) : undefined}
+                  newSession={(id, agent) => {
+                    selection.expand(id);
+                    onNewSession?.(id, agent);
+                  }}
+                  selectSession={(session) => {
+                    if (session.conversationId)
+                      (onOpenConversation ?? useChat.getState().openConversation)(session.conversationId);
+                    else onSelectSession?.(project.id, session);
+                  }}
                   manageSession={(session, action, archived) =>
                     setManaging({ workspaceId: project.id, session, action, archived })
                   }

@@ -31,7 +31,6 @@ export function ProjectMenu({
         store={menu}
         ref={trigger}
         render={<button type="button" />}
-        disabled={disabled}
         aria-label={`管理项目“${project.name}”`}
         title={disabled ? '会话运行或操作中，结束后可管理项目' : '项目管理'}
         className={`${buttonClass('ghost')} mr-1 shrink-0 px-1.5 opacity-0 group-hover:opacity-100 focus:opacity-100 aria-expanded:opacity-100`}
@@ -47,6 +46,9 @@ export function ProjectMenu({
         className="z-50 min-w-40 rounded-xl border border-border-strong bg-card p-1.5 text-foreground shadow-xl"
       >
         <p className="max-w-64 px-3 py-2 font-mono text-[11px] break-all text-muted-foreground">{project.dir}</p>
+        {disabled && (
+          <p className="max-w-64 px-3 pb-2 text-xs text-muted-foreground">会话运行或操作中，结束后可修改项目。</p>
+        )}
         {bindServer && (
           <MenuItem
             disabled={disabled}

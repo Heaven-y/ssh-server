@@ -76,6 +76,64 @@ it('新建会话包含Antigravity，明确把所选来源交给主界面', async
   expect(start).toHaveBeenCalledExactlyOnceWith(project.id, 'antigravity');
 });
 
+it('当前工作区运行时仍能从行内新建，项目菜单可打开但修改动作禁用', async () => {
+  useChat.getState().selectWorkspace(project.id);
+  useChat.setState({ running: true });
+  const start = vi.fn();
+  render(
+    <Sidebar
+      projects={[project]}
+      sessionsByProject={{}}
+      onAddProject={vi.fn()}
+      onNewSession={start}
+      onManageProject={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: '在“示例项目”新建会话' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Antigravity' }));
+  expect(start).toHaveBeenCalledWith(project.id, 'antigravity');
+  fireEvent.click(screen.getByRole('button', { name: '管理项目“示例项目”' }));
+  expect((await screen.findByRole('menuitem', { name: '更换项目目录' })).getAttribute('aria-disabled')).toBe('true');
+});
+
+it('发送后即使原生摘要未落库也出现在工作区，身份返回和原生刷新不会重复，失败后可返回', async () => {
+  useChat.getState().selectWorkspace(project.id);
+  useChat.setState({
+    agent: 'antigravity',
+    running: true,
+    lastSentAt: 1000,
+    items: [{ kind: 'user', id: 'u', text: '检查示例文件' }],
+  });
+  const id = useChat.getState().conversationId;
+  const open = vi.fn();
+  const view = render(
+    <Sidebar projects={[project]} sessionsByProject={{}} onAddProject={vi.fn()} onOpenConversation={open} />,
+  );
+  const group = within(screen.getByRole('region', { name: '示例项目会话' }));
+  expect(group.getAllByRole('button', { name: /检查示例文件 · Antigravity/ })).toHaveLength(1);
+  act(() =>
+    useChat.setState({
+      sessionId: 'agy-new',
+      running: false,
+      items: [...useChat.getState().items, { kind: 'error', id: 'e', message: '服务暂不可用' }],
+    }),
+  );
+  const native: SessionSummary = { ...base, agent: 'antigravity', sessionId: 'agy-new', title: '检查示例文件' };
+  view.rerender(
+    <QueryClientProvider client={queryClient}>
+      <Sidebar
+        projects={[project]}
+        sessionsByProject={{ p1: [native] }}
+        onAddProject={vi.fn()}
+        onOpenConversation={open}
+      />
+    </QueryClientProvider>,
+  );
+  expect(group.getAllByRole('button', { name: /检查示例文件 · Antigravity/ })).toHaveLength(1);
+  fireEvent.click(group.getByRole('button', { name: /检查示例文件 · Antigravity/ }));
+  expect(open).toHaveBeenCalledWith(id);
+});
+
 it('按更新时间混排会话，同行显示来源并保留跨CLI同名身份', () => {
   const select = vi.fn();
   const claude = { ...claudeSession, sessionId: 'same-id' };

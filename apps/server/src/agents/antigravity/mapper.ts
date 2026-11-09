@@ -1,16 +1,36 @@
 import path from 'node:path';
 import { NativeSessionIdSchema, type AgentEvent } from '@agentdeck/shared/conversation';
 import { stepDuration, stepUsage } from './metrics';
+import { ANTIGRAVITY_PERMISSION_NOTICE, antigravityDiagnostic } from './diagnostics';
 
 type RecordValue = Record<string, unknown>;
+type DiagnosticEvent = Extract<AgentEvent, { type: 'error' | 'activity' }>;
 const record = (value: unknown): RecordValue =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as RecordValue) : {};
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 const clip = (value: string) => (value.length > 20_000 ? `${value.slice(0, 20_000)}\n[输出已截断]` : value);
-const toolOutput = (info: RecordValue) =>
-  clip(text(info.output)) || clip(text(record(info.error).message)) || (info.error ? '工具执行失败' : '');
+const toolOutput = (info: RecordValue) => {
+  const error = antigravityDiagnostic(text(record(info.error).message));
+  if (error?.type === 'error') return error.message;
+  return clip(text(info.output)) || clip(text(record(info.error).message)) || (info.error ? '工具执行失败' : '');
+};
 const toolFinished = (state: unknown) => state === 'DONE' || state === 'ERROR';
 const toolFailed = (state: unknown, info: RecordValue) => state === 'ERROR' || !!info.error;
+const currentStepFailed = (step: RecordValue) =>
+  step.step_type === 'error_message' ||
+  step.state === 'ERROR' ||
+  step.state === 'CANCELLED' ||
+  !!record(step.tool_info).error;
+
+function mayContainHistoricalError(result: RecordValue): boolean {
+  return (
+    result.status === 'ERROR' &&
+    !!text(result.error).trim() &&
+    !!text(result.response).trim() &&
+    Number.isSafeInteger(result.num_turns) &&
+    Number(result.num_turns) > 1
+  );
+}
 
 /** 按官方 headless 的 event/payload 结构映射，不能把它当成 Claude stream-json。 */
 export class AntigravityMapper {
@@ -22,6 +42,11 @@ export class AntigravityMapper {
   private statistics = new Set<number>();
   private checkpoints = new Set<number>();
   private subagents = new Map<number, string>();
+  private inputIndex?: number;
+  private latestStep?: { index: number; type: string; state: string; hasText: boolean };
+  private currentFailure = false;
+  private historicalErrorPossible = false;
+  private resultDiagnostic?: DiagnosticEvent;
   result?: Extract<AgentEvent, { type: 'turn_end' }>;
 
   constructor(
@@ -68,6 +93,7 @@ export class AntigravityMapper {
   private step(step: RecordValue): AgentEvent[] {
     if (!this.initialized) throw new Error('Antigravity 未完成会话初始化');
     this.identity(step.conversation_id);
+    this.observeCompletion(step);
     if (step.step_type === 'agent_response') {
       const delta = text(step.text_delta);
       if (delta) this.streamed = true;
@@ -76,6 +102,63 @@ export class AntigravityMapper {
     if (step.step_type === 'checkpoint') return this.checkpoint(step);
     if (Array.isArray(record(step.subagent_info).subagents)) return this.subagentStep(step);
     return step.step_type === 'tool' ? this.tool(step) : [];
+  }
+
+  private observeCompletion(step: RecordValue): void {
+    if (!Number.isSafeInteger(step.step_index) || Number(step.step_index) < 0) {
+      this.currentFailure = true;
+      return;
+    }
+    const index = Number(step.step_index);
+    const type = text(step.step_type);
+    const state = text(step.state);
+    this.observeInput(index, type, state);
+    // 输入边界前已出现步骤时，无法确定当前轮范围，后续不再纠正累计失败。
+    if (this.inputIndex === undefined) {
+      this.currentFailure = true;
+      return;
+    }
+    if (index <= this.inputIndex) return;
+    this.currentFailure ||= currentStepFailed(step);
+    this.observeLatest(index, type, state, step.text_delta);
+  }
+
+  private observeInput(index: number, type: string, state: string): void {
+    if (type === 'user_input' && state === 'DONE') {
+      if (this.inputIndex === undefined) this.inputIndex = index;
+      // 同一输入的重复事件不重置状态；多个不同输入边界不足以确认本轮。
+      else if (this.inputIndex !== index) this.currentFailure = true;
+    }
+  }
+
+  private observeLatest(index: number, type: string, state: string, delta: unknown): void {
+    if (this.latestStep && index < this.latestStep.index) return;
+    const hasText = type === 'agent_response' && !!text(delta).trim();
+    this.latestStep = {
+      index,
+      type,
+      state,
+      hasText: hasText || (this.latestStep?.index === index && this.latestStep.hasText),
+    };
+  }
+
+  private completedResponse(): boolean {
+    return (
+      !!this.expectedId &&
+      this.inputIndex !== undefined &&
+      this.inputIndex > 0 &&
+      !this.currentFailure &&
+      this.latestStep?.type === 'agent_response' &&
+      this.latestStep.state === 'DONE' &&
+      this.latestStep.hasText
+    );
+  }
+
+  /** 原生累计 result 会保留历史 ERROR；只以本轮完整答复和自然退出的共同证据纠正。 */
+  complete(naturalSuccess: boolean): DiagnosticEvent[] {
+    if (this.result && naturalSuccess && this.completedResponse() && this.historicalErrorPossible)
+      this.result = { ...this.result, isError: false };
+    return this.result?.isError && this.resultDiagnostic ? [this.resultDiagnostic] : [];
   }
 
   private stepStatistics(step: RecordValue): AgentEvent[] {
@@ -132,19 +215,25 @@ export class AntigravityMapper {
       this.tools.add(id);
       events.push({ type: 'tool_call', id, name, input: info.parameters ?? {} });
     }
-    if (toolFinished(step.state) && !this.results.has(id)) {
-      this.results.add(id);
-      const isError = toolFailed(step.state, info);
-      const usage = stepUsage(step.usage, true);
-      events.push({
+    if (toolFinished(step.state) && !this.results.has(id)) events.push(...this.toolResult(id, step, info));
+    return events;
+  }
+
+  private toolResult(id: string, step: RecordValue, info: RecordValue): AgentEvent[] {
+    this.results.add(id);
+    const usage = stepUsage(step.usage, true);
+    const events: AgentEvent[] = [
+      {
         type: 'tool_result',
         id,
         output: toolOutput(info),
-        isError,
+        isError: toolFailed(step.state, info),
         ...stepDuration(step.duration_seconds),
         ...(usage ? { usage } : {}),
-      });
-    }
+      },
+    ];
+    const diagnostic = antigravityDiagnostic(text(record(info.error).message));
+    if (diagnostic?.type === 'error') events.push(diagnostic);
     return events;
   }
 
@@ -155,13 +244,20 @@ export class AntigravityMapper {
     const events: AgentEvent[] = [];
     if (!this.streamed && text(result.response)) events.push({ type: 'text', delta: text(result.response) });
     const isError = result.status !== 'SUCCESS';
-    if (isError)
-      events.push({ type: 'error', message: 'Antigravity 未成功完成本轮，请检查原生模型、登录状态与权限配置。' });
+    events.push(...this.prepareResult(result));
     this.result = {
       type: 'turn_end',
       isError,
       // result 的 duration/usage 在续接时可能累计；单步统计独立保留，不冒充整轮。
     };
     return events;
+  }
+
+  private prepareResult(result: RecordValue): AgentEvent[] {
+    if (result.status !== 'SUCCESS') this.resultDiagnostic = antigravityDiagnostic(text(result.error));
+    const hasDeniedActions = Array.isArray(result.denied_actions) && result.denied_actions.length > 0;
+    this.historicalErrorPossible =
+      !hasDeniedActions && result.conversation_id === this.expectedId && mayContainHistoricalError(result);
+    return hasDeniedActions ? [{ type: 'error', message: ANTIGRAVITY_PERMISSION_NOTICE }] : [];
   }
 }

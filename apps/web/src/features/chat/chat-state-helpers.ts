@@ -78,6 +78,7 @@ export const emptyConversation = {
   items: [] as ChatItem[],
   inspectedItemId: undefined,
   running: false,
+  lastSentAt: undefined,
   turnId: undefined,
   pendingClientTurnId: undefined,
   interruptRequested: false,

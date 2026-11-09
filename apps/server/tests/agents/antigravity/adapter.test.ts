@@ -43,6 +43,170 @@ async function setup(
 }
 
 describe('Antigravity 原生对话运行器', () => {
+  it('普通 stderr 进度和包含 permission 的日志不会把成功回合标成诊断错误', async () => {
+    const f = await setup();
+    f.init();
+    f.child.stderr.write('Loading settings\ninfo: permission mode: request-review\nwarning: checking for updates\n');
+    f.finish();
+    await f.handle.done;
+    expect(f.events.filter((event) => event.type === 'error')).toEqual([]);
+    expect(f.events.at(-1)).toEqual({ type: 'turn_end', isError: false });
+  });
+
+  it('auto 的原生回退提示只显示一次且不改参数或成功结果', async () => {
+    const f = await setup(undefined, async () => undefined, undefined, { agent: 'antigravity', mode: 'auto' });
+    const warning =
+      'warning: --mode auto is not available because the terminal sandbox is not available on this host; continuing in the default mode.\n';
+    f.child.stderr.write(warning + warning);
+    f.init();
+    f.finish();
+    await f.handle.done;
+    expect(f.launch.mock.calls[0]?.[0].args.slice(-2)).toEqual(['--mode', 'auto']);
+    expect(f.events.filter((event) => event.type === 'error')).toEqual([]);
+    expect(f.events.filter((event) => event.type === 'activity')).toEqual([
+      expect.objectContaining({
+        name: '权限模式已回退',
+        status: 'completed',
+        output: expect.stringContaining('终端沙箱'),
+      }),
+    ]);
+    expect(f.events.at(-1)).toEqual({ type: 'turn_end', isError: false });
+  });
+
+  it('auto 不受支持但未报告回退时显示具体失败，不声称已经切换模式', async () => {
+    const f = await setup();
+    f.output({ event: 'result', result: { status: 'ERROR', error: 'auto mode is not available for this account' } });
+    f.child.emit('close', 1);
+    await f.handle.done;
+    expect(f.events.filter((event) => event.type === 'error')).toEqual([
+      { type: 'error', message: expect.stringContaining('auto') },
+    ]);
+    expect(JSON.stringify(f.events)).not.toContain('已回退');
+  });
+
+  it.each([
+    ['result-first', 'Error 401, Message: invalid API key, Status: UNAUTHENTICATED', '认证'],
+    ['stderr-first', 'Error 503, Message: model unavailable, Status: UNAVAILABLE', '503'],
+  ])('%s 的具体失败只报告一次且不会被泛化诊断覆盖', async (order, nativeError, expected) => {
+    const f = await setup();
+    f.init();
+    const detail = `${nativeError}; token=synthetic-secret; https://private.invalid/path`;
+    const result = () =>
+      f.output({ event: 'result', result: { conversation_id: 'native-1', status: 'ERROR', error: detail } });
+    const stderr = () =>
+      f.child.stderr.write(`error: ${detail}\nAGY_ERROR: ${JSON.stringify({ short_error: detail })}\n`);
+    if (order === 'result-first') {
+      result();
+      stderr();
+    } else {
+      stderr();
+      result();
+    }
+    f.child.emit('close', 3);
+    await f.handle.done;
+    expect(f.events.filter((event) => event.type === 'error')).toEqual([
+      { type: 'error', message: expect.stringContaining(expected) },
+    ]);
+    expect(f.events.at(-1)).toMatchObject({ type: 'turn_end', isError: true });
+    expect(JSON.stringify(f.events)).not.toMatch(/synthetic-secret|private\.invalid/);
+  });
+
+  it('认证失败在 result 前退出时保留原因，不再追加缺失结果的泛化错误', async () => {
+    const f = await setup();
+    f.child.stderr.write('error: authentication required; token=synthetic-secret');
+    f.child.emit('close', 1);
+    await f.handle.done;
+    expect(f.events.filter((event) => event.type === 'error')).toEqual([
+      { type: 'error', message: expect.stringContaining('认证') },
+    ]);
+    expect(f.events.at(-1)).toMatchObject({ type: 'turn_end', isError: true });
+    expect(JSON.stringify(f.events)).not.toContain('synthetic-secret');
+  });
+
+  it('未知失败等待 stderr 排空后仅给出一次安全兜底', async () => {
+    const f = await setup();
+    f.init();
+    f.output({ event: 'result', result: { conversation_id: 'native-1', status: 'ERROR', error: 'synthetic-secret' } });
+    expect(f.events.some((event) => event.type === 'error')).toBe(false);
+    f.child.stderr.write('error: synthetic-secret\n');
+    f.child.emit('close', 3);
+    await f.handle.done;
+    expect(f.events.filter((event) => event.type === 'error')).toHaveLength(1);
+    expect(JSON.stringify(f.events)).not.toContain('synthetic-secret');
+  });
+
+  it.each([true, false])('无 stderr 的 denied_actions 给出脱敏权限提示（有工具错误=%s）', async (toolError) => {
+    const f = await setup();
+    f.init();
+    if (toolError)
+      f.output({
+        event: 'step_update',
+        step_update: {
+          conversation_id: 'native-1',
+          step_index: 2,
+          state: 'ERROR',
+          step_type: 'tool',
+          tool_name: 'run_command',
+          tool_info: {
+            name: 'run_command',
+            parameters: { CommandLine: 'echo demo' },
+            error: {
+              type: 'TOOL_ERROR',
+              message: 'permission check failed: user denied permission to run command; token=synthetic-secret',
+            },
+          },
+        },
+      });
+    f.output({
+      event: 'result',
+      result: {
+        conversation_id: 'native-1',
+        status: 'SUCCESS',
+        denied_actions: [{ action: 'command', display_name: 'RunCommand' }],
+      },
+    });
+    f.child.emit('close', 0);
+    await f.handle.done;
+    expect(f.events.filter((event) => event.type === 'error')).toEqual([
+      { type: 'error', message: expect.stringContaining('权限') },
+    ]);
+    if (toolError)
+      expect(f.events).toContainEqual(
+        expect.objectContaining({ type: 'tool_result', isError: true, output: expect.stringContaining('权限') }),
+      );
+    expect(f.events.some((event) => event.type === 'permission_request')).toBe(false);
+    expect(f.events.at(-1)).toEqual({ type: 'turn_end', isError: false });
+    expect(JSON.stringify(f.events)).not.toContain('synthetic-secret');
+  });
+
+  it('文件系统 permission denied 不冒充工具审批被软拒', async () => {
+    const f = await setup();
+    f.init();
+    f.output({
+      event: 'step_update',
+      step_update: {
+        conversation_id: 'native-1',
+        step_index: 2,
+        state: 'ERROR',
+        step_type: 'tool',
+        tool_name: 'view_file',
+        tool_info: {
+          name: 'view_file',
+          error: { type: 'TOOL_ERROR', message: 'EACCES: permission denied opening demo.txt' },
+        },
+      },
+    });
+    f.finish();
+    await f.handle.done;
+    expect(f.events.filter((event) => event.type === 'error')).toEqual([]);
+    expect(f.events).toContainEqual({
+      type: 'tool_result',
+      id: 'agy-step-2',
+      isError: true,
+      output: 'EACCES: permission denied opening demo.txt',
+    });
+  });
+
   it('选中技能通过原生斜杠调用发送，准备阶段取消不会迟到启动对话', async () => {
     const child = Object.assign(new EventEmitter(), {
       stdin: new PassThrough(),

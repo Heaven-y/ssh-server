@@ -1,4 +1,4 @@
-import type { ComponentProps } from 'react';
+import { useMemo, type ComponentProps } from 'react';
 import type { SessionSummary } from '@agentdeck/shared/conversation';
 import { ProjectSessionRow } from './ProjectSessionRow';
 import { sessionOrderKey, useSessionOrder } from './session-order';
@@ -12,7 +12,7 @@ export function SortableSessionRow({
   const move = useSessionOrder((state) => state.move);
   const project = props.workspaceId ?? '';
   const id = sessionOrderKey(props.session);
-  const visible = sessions.map(sessionOrderKey);
+  const visible = useMemo(() => sessions.map(sessionOrderKey), [sessions]);
   return (
     <ProjectSessionRow
       {...props}

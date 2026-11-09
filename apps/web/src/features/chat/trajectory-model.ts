@@ -1,5 +1,5 @@
 import type { ChatItem } from './chat-reducer';
-import { shortToolName, toolPrimaryArgument } from './tool-presentation';
+import { shortToolName, toolDisplayName, toolPrimaryArgument } from './tool-presentation';
 import { activityStatus } from './activity-presentation';
 import { tokenFields, formatTokens } from './chat-metrics';
 
@@ -70,13 +70,51 @@ export function filterTrajectory(rows: TrajectoryRow[], filter: TrajectoryFilter
 }
 
 const toolCategories = [
-  { names: ['bash', 'shell', 'run_command', 'commandexecution', 'exec_command', 'execute_command'], label: '命令' },
   {
-    names: ['edit', 'write', 'write_file', 'edit_file', 'apply_patch', 'filechange', 'replace', 'multi_edit'],
+    names: [
+      'bash',
+      'shell',
+      'run_command',
+      'runcommand',
+      'commandexecution',
+      'exec_command',
+      'execute_command',
+      'command_status',
+      'send_command_input',
+    ],
+    label: '命令',
+  },
+  {
+    names: [
+      'edit',
+      'write',
+      'write_file',
+      'edit_file',
+      'apply_patch',
+      'filechange',
+      'replace',
+      'multi_edit',
+      'write_to_file',
+      'replace_file_content',
+      'multi_replace_file_content',
+    ],
     label: '文件',
   },
-  { names: ['read', 'read_file', 'view_file', 'list_files', 'list_directory', 'glob'], label: '读取' },
-  { names: ['grep', 'search', 'search_files', 'websearch', 'web_search', 'webfetch', 'web_fetch'], label: '搜索' },
+  { names: ['read', 'read_file', 'view_file', 'list_files', 'list_directory', 'list_dir', 'glob'], label: '读取' },
+  {
+    names: [
+      'grep',
+      'grep_search',
+      'find_by_name',
+      'search',
+      'search_files',
+      'websearch',
+      'web_search',
+      'webfetch',
+      'web_fetch',
+    ],
+    label: '搜索',
+  },
   { names: ['agent', 'task', 'collabagenttoolcall', 'subagentactivity', 'spawn_agent'], label: '子代理' },
   { names: ['plan', 'update_plan', 'todowrite'], label: '计划' },
 ];
@@ -103,7 +141,7 @@ export function trajectoryCategory(item: TrajectoryItem): string {
 export function trajectorySummary(item: TrajectoryItem): string {
   switch (item.kind) {
     case 'tool':
-      return toolPrimaryArgument(item.input) || shortToolName(item.name);
+      return toolPrimaryArgument(item.input) || toolDisplayName(item.name);
     case 'activity':
       return item.name;
     case 'permission':

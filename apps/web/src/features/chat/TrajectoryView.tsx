@@ -212,7 +212,7 @@ export function TrajectoryContent({
       {!bottom && rows.length > 0 && (
         <button
           type="button"
-          className={`${buttonClass('outline')} absolute bottom-4 left-1/2 -translate-x-1/2 bg-card shadow-sm`}
+          className={`${buttonClass('ghost')} conversation-scroll-bottom absolute bottom-4 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap border border-border-strong text-foreground shadow-md`}
           onClick={() => list.current?.scrollToIndex({ index: 'LAST', align: 'end' })}
         >
           <ArrowDown aria-hidden className="size-4" />

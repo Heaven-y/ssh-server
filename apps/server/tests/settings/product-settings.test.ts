@@ -73,6 +73,16 @@ it('坏文件、非法字段和超界拒绝，不重建或覆盖原文', async (
   expect(await readdir(f.configDir)).toEqual([]);
 });
 
+it('模型显示范围按 CLI 持久保存，空列表与未配置分别保留', async () => {
+  const f = await fixture();
+  const initial = await f.store.read();
+  const settings = { ...initial.settings, modelVisibility: { claude: ['sonnet'], codex: [] } };
+  await f.store.save({ settings, revision: initial.revision });
+  const restarted = await createProductSettings({ configDir: f.configDir }).read();
+  expect(restarted.settings).toEqual(settings);
+  expect(restarted.settings.modelVisibility?.antigravity).toBeUndefined();
+});
+
 it('生产HTTP严格校验、摘要冲突与no-store贯通真实存储', async () => {
   const f = await fixture();
   const app = Fastify();

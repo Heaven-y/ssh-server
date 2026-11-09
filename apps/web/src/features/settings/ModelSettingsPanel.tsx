@@ -7,6 +7,7 @@ import { nativeAgentNames } from './native-resource-labels';
 import { ModelSettingsField } from './ModelSettingsField';
 import { modelSettingValue, modelSettingsFields, useModelSettings, type SettingsLeave } from './use-model-settings';
 import { modelEfforts } from '../../cli/model-capabilities';
+import { ModelVisibilityPanel } from './ModelVisibilityPanel';
 
 type State = ReturnType<typeof useModelSettings>;
 function visibleFields(fields: ModelSettingField[], state: State) {
@@ -239,6 +240,7 @@ export function ModelSettingsPanel({
         {state.document && (
           <>
             <ModelSettingsForm state={state} fields={fields} />
+            <ModelVisibilityPanel key={agent} agent={agent} models={state.modelCatalog?.models ?? []} />
             <AdvancedSettings
               state={state}
               fields={fields}

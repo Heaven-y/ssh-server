@@ -3,6 +3,22 @@ import { AgentKindSchema } from '../conversation/agents';
 
 export const ProductSettingsSchema = z.strictObject({
   defaultAgent: AgentKindSchema.default('claude'),
+  /** 未配置时展示目录，显式空数组只保留当前会话的型号。 */
+  modelVisibility: z
+    .partialRecord(
+      AgentKindSchema,
+      z
+        .array(
+          z
+            .string()
+            .trim()
+            .min(1)
+            .max(500)
+            .regex(/^[^\r\n\0]+$/),
+        )
+        .max(10000),
+    )
+    .optional(),
   resources: z
     .strictObject({
       intervalSeconds: z.number().int().min(2).max(60).default(5),

@@ -54,12 +54,20 @@ function ContextMeter({ percentage }: { percentage: number }) {
   const display = Math.round(percentage * 10) / 10;
   return (
     <span className="inline-flex items-center gap-1.5" aria-label={`上下文占用 ${display}%`}>
-      <span aria-hidden className="h-1 w-10 overflow-hidden rounded-full bg-border">
-        <span
-          className={`block h-full rounded-full ${percentage >= 90 ? 'bg-warning' : 'bg-muted-foreground'}`}
-          style={{ width: `${Math.min(percentage, 100)}%` }}
+      <svg aria-hidden viewBox="0 0 20 20" className="size-4 shrink-0 -rotate-90" fill="none" strokeWidth="2.5">
+        <circle cx="10" cy="10" r="7" stroke="currentColor" className="text-border" />
+        <circle
+          cx="10"
+          cy="10"
+          r="7"
+          pathLength="100"
+          stroke="currentColor"
+          strokeDasharray={`${Math.min(percentage, 100)} 100`}
+          strokeLinecap="round"
+          opacity={percentage > 0 ? 1 : 0}
+          className={percentage >= 90 ? 'text-warning' : 'text-muted-foreground'}
         />
-      </span>
+      </svg>
       <span className="text-xs tabular-nums">{display}%</span>
     </span>
   );

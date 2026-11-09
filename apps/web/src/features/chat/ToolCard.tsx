@@ -3,7 +3,7 @@ import type { ChatItem } from './chat-reducer';
 import type { ExpandedProps } from './timeline-model';
 import { finiteCount, formatDuration } from './chat-metrics';
 import { StatisticsLine } from './StatisticsLine';
-import { shortToolName, toolPrimaryArgument } from './tool-presentation';
+import { toolDisplayName, toolDescription, toolPrimaryArgument } from './tool-presentation';
 
 type ToolItem = Extract<ChatItem, { kind: 'tool' }>;
 
@@ -39,8 +39,13 @@ function StatusLabel({ item }: { item: ToolItem }) {
 }
 
 /** 工具调用卡片：默认折叠，展开显示参数与结果 */
+function ToolDescription({ item }: { item: ToolItem }) {
+  const description = item.progress || toolDescription(item.input);
+  return description ? <p className="text-xs leading-5 break-words text-muted-foreground">{description}</p> : null;
+}
+
 export function ToolCard({ item, expanded, onExpandedChange }: { item: ToolItem } & ExpandedProps) {
-  const name = shortToolName(item.name);
+  const name = toolDisplayName(item.name);
   const arg = toolPrimaryArgument(item.input);
 
   return (
@@ -53,20 +58,20 @@ export function ToolCard({ item, expanded, onExpandedChange }: { item: ToolItem 
     >
       <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-1 marker:hidden hover:bg-muted/50">
         <Wrench aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="min-w-0 max-w-full break-words">{name}</span>
-            {arg && (
-              <code title={arg} className="min-w-0 max-w-full truncate font-mono text-xs text-muted-foreground">
-                {arg}
-              </code>
-            )}
+        <span className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden whitespace-nowrap">
+          <span title={item.name} className="max-w-32 shrink-0 truncate">
+            {name}
           </span>
-          {item.status === 'incomplete' && (
-            <span className="mt-0.5 block text-xs text-warning">需核对实际执行状态</span>
+          {arg && (
+            <code title={arg} className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+              {arg}
+            </code>
           )}
         </span>
-        <span className="shrink-0 text-xs">
+        <span
+          title={item.status === 'incomplete' ? '需核对实际执行状态' : undefined}
+          className="shrink-0 whitespace-nowrap text-xs"
+        >
           <StatusLabel item={item} />
         </span>
         {finiteCount(item.durationMs) && (
@@ -83,7 +88,8 @@ export function ToolCard({ item, expanded, onExpandedChange }: { item: ToolItem 
         />
       </summary>
       <div className="mt-1 mr-2 mb-2 ml-3.5 flex min-w-0 flex-col gap-3 border-l border-border py-1 pl-4">
-        {item.progress && <p className="text-xs text-muted-foreground">{item.progress}</p>}
+        <ToolDescription item={item} />
+        {item.status === 'incomplete' && <p className="text-xs text-warning">需核对实际执行状态</p>}
         {item.usage && <StatisticsLine statistics={{ ...item, scope: 'step' }} />}
         <div className="min-w-0">
           <p className="mb-1 text-xs text-muted-foreground">输入</p>

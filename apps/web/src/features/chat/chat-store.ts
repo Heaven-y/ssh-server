@@ -223,7 +223,7 @@ export const useChat = create<ChatState>()((set, get) => {
     },
     setDefaults(settings) {
       const current = get();
-      const defaults = { defaultAgent: settings.defaultAgent };
+      const defaults = { defaultAgent: settings.defaultAgent, modelVisibility: settings.modelVisibility };
       set({ defaults });
       if (
         current.initialDefaultsEligible &&
@@ -362,6 +362,7 @@ export const useChat = create<ChatState>()((set, get) => {
         // 旧轮次未确认的压缩留在历史中，新轮次不能把它重新显示为进行中。
         compaction: state.compaction?.status === 'running' ? undefined : state.compaction,
         running: true,
+        lastSentAt: Date.now(),
         pendingClientTurnId: clientTurnId,
         interruptRequested: false,
         banner: undefined,

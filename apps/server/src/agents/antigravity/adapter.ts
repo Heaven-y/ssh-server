@@ -1,11 +1,14 @@
 import { antigravityPermissionArgs } from './permissions';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { stripVTControlCharacters } from 'node:util';
 import type { AgentTurnInput, TurnHandle, TurnRunner } from '../contracts';
 import { resolveLocalCommand } from '../../platform/process/executable';
 import { AntigravityMapper } from './mapper';
 import { AntigravityLines } from './lines';
 import { antigravityDefaultModel } from './model-catalog';
 import { AntigravityInvocationError, antigravityInvocationText } from './commands';
+import { antigravityDiagnostic } from './diagnostics';
+import type { AgentEvent } from '@agentdeck/shared/conversation';
 
 export type AntigravityProcess = Pick<
   ChildProcessWithoutNullStreams,
@@ -49,8 +52,9 @@ class AntigravityTurn {
   private timer?: NodeJS.Timeout;
   private ended = false;
   private failed = false;
-  private permissionNotice = false;
-  private diagnosticNotice = false;
+  private readonly notices = new Set<string>();
+  private reportedError = false;
+  private nativeFailure = false;
   /** 原生结果已经确认时，进程清理与模型回合成功是两个独立状态。 */
   private closingAfterResult = false;
   private cleanupSignalSent = false;
@@ -126,7 +130,10 @@ class AntigravityTurn {
     const value: unknown = JSON.parse(line);
     const events = this.mapper.map(value);
     if (events.some((event) => event.type === 'session') || this.mapper.result) clearTimeout(this.timer);
-    for (const event of events) this.input.emit(event);
+    for (const event of events) {
+      if (event.type === 'error') this.notice(event);
+      else this.input.emit(event);
+    }
     if (this.mapper.result)
       this.timer = setTimeout(() => {
         this.closingAfterResult = true;
@@ -135,27 +142,24 @@ class AntigravityTurn {
   }
 
   private diagnostic(line: string): void {
-    const permission = /soft.den|permission|approval|权限|拒绝/i.test(line);
-    if (permission && !this.permissionNotice) {
-      this.permissionNotice = true;
-      this.input.emit({
-        type: 'error',
-        message:
-          'Antigravity 报告了权限限制：需要确认的工具可能被软拒绝。请检查原生 permissions 规则，本应用不会自动放行。',
-      });
-    } else if (!permission && !this.diagnosticNotice) {
-      this.diagnosticNotice = true;
-      this.input.emit({
-        type: 'error',
-        message: 'Antigravity 返回了运行诊断；若未完成操作，请检查原生登录、模型与配置。诊断原文不回传以避免暴露凭据。',
-      });
-    }
+    const event = antigravityDiagnostic(line);
+    this.nativeFailure ||=
+      event?.type === 'error' || /^(?:error\s*:|AGY_ERROR\s*:)/i.test(stripVTControlCharacters(line).trim());
+    if (event) this.notice(event);
+  }
+
+  private notice(event: Extract<AgentEvent, { type: 'error' | 'activity' }>): void {
+    const key = event.type === 'error' ? event.message : event.id;
+    if (this.notices.has(key)) return;
+    this.notices.add(key);
+    if (event.type === 'error') this.reportedError = true;
+    this.input.emit(event);
   }
 
   private fail(message: string): void {
     if (this.ended || this.failed) return;
     this.failed = true;
-    this.input.emit({ type: 'error', message });
+    this.notice({ type: 'error', message });
     this.stop();
   }
 
@@ -177,27 +181,43 @@ class AntigravityTurn {
     return code !== 0 && !this.cleanupSignalSent;
   }
 
+  private flushOutput(): void {
+    if (this.failed) return;
+    try {
+      this.stdout.end();
+      this.stderr.end();
+    } catch {
+      this.failed = true;
+      this.notice({ type: 'error', message: 'Antigravity 结束时返回了不完整的协议数据。' });
+    }
+  }
+
   private finish(code: number | null): void {
     if (this.ended) return;
-    if (!this.failed) {
-      try {
-        this.stdout.end();
-        this.stderr.end();
-      } catch {
-        this.failed = true;
-        this.input.emit({ type: 'error', message: 'Antigravity 结束时返回了不完整的协议数据。' });
-      }
-    }
+    this.flushOutput();
     this.ended = true;
     clearTimeout(this.timer);
+    this.completeResult(code);
     const result = this.mapper.result;
-    if (!result && !this.failed)
-      this.input.emit({ type: 'error', message: 'Antigravity 在返回完整结果前退出，请重新读取原生会话后核对。' });
+    const isError = this.failed || !result || result.isError || this.abnormalExit(code);
+    // stdout 与 stderr 顺序不固定；排空后才兜底，避免覆盖稍后到达的具体原因。
+    if (!this.failed && !this.reportedError && isError)
+      this.notice({
+        type: 'error',
+        message: result
+          ? 'Antigravity 未成功完成本轮，请检查原生 CLI 的运行状态与配置。'
+          : 'Antigravity 在返回完整结果前退出，请重新读取原生会话后核对。',
+      });
     this.input.emit({
       ...(result ?? { type: 'turn_end' as const }),
-      isError: this.failed || !result || result.isError || this.abnormalExit(code),
+      isError,
     });
     this.settle();
+  }
+
+  private completeResult(code: number | null): void {
+    const naturalSuccess = code === 0 && !this.failed && !this.cleanupSignalSent && !this.nativeFailure;
+    for (const event of this.mapper.complete(naturalSuccess)) this.notice(event);
   }
 }
 

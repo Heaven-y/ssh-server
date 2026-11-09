@@ -2,6 +2,8 @@
 
 以各 CLI 的原生文件与加载规则为准。常用模型设置通过表单直接修改用户原生文件，完整文件仍可从高级入口编辑；是否信任项目、是否启动 MCP、如何合并规则和权限仍由 CLI 决定。
 
+Codex 自定义服务的“凭据获取方式”分别对应直接令牌、环境变量名和原生认证。直接填写会写入原生配置中的明文令牌；环境变量只配置变量名，值由 CLI 启动环境提供；原生认证沿用 Codex 的 ChatGPT 或 API Key 登录。`requires_openai_auth = true` 时原生忽略 `env_key`，表单也按这一优先级显示，普通模型修改不清除两者原文。凭据命令、网关 OAuth、AWS 或 Authorization 请求头继续走高级配置保护。依据：[认证说明](https://learn.chatgpt.com/docs/auth#alternative-model-providers)、[配置参考](https://learn.chatgpt.com/docs/config-file/config-reference)。
+
 ## 配置入口
 
 | CLI | 设置 | 规则与技能 | MCP 和原生插件 |

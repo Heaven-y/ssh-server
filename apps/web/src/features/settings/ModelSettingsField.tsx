@@ -115,11 +115,12 @@ function FieldControl({
 export function ModelSettingsField({ field, value, cleared, disabled, change, suggestions, action }: Props) {
   const id = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const inlineHint = ['authMode', 'envKey'].includes(field.key);
   return (
     <div className="min-w-0 space-y-1.5">
       <label htmlFor={id} className="flex items-center gap-1.5 text-[13px] font-medium">
         {field.label}
-        {field.hint && (
+        {field.hint && !inlineHint && (
           <span title={field.hint} aria-hidden className="text-muted-foreground">
             <CircleHelp className="size-3.5" />
           </span>
@@ -130,6 +131,7 @@ export function ModelSettingsField({ field, value, cleared, disabled, change, su
         {action}
         <SecretActions field={field} cleared={cleared} disabled={disabled} change={change} inputRef={inputRef} />
       </div>
+      {field.hint && inlineHint && <p className="text-xs leading-5 text-muted-foreground">{field.hint}</p>}
     </div>
   );
 }

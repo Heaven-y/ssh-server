@@ -7,6 +7,7 @@ import { ChatTimeline } from './ChatTimeline';
 import { TrajectoryView } from './TrajectoryView';
 import { SegmentedControl } from '../../ui/SegmentedControl';
 import { SubagentHistoryButton } from '../sessions/SubagentHistoryDialog';
+import { RunStatus } from './RunStatus';
 
 function Banner() {
   const banner = useChat((s) => s.banner);
@@ -122,6 +123,7 @@ export function ChatView({ workspace }: { workspace: Workspace }) {
       <div key={view} className="conversation-view-content flex min-h-0 flex-1 flex-col">
         <Messages view={view} />
       </div>
+      <RunStatus />
       <Composer key={version} />
     </section>
   );

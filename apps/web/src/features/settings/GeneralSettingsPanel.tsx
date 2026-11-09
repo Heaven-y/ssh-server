@@ -63,7 +63,7 @@ function useGeneralSettings() {
     setMessage('');
     try {
       const result = await settingsApi.saveProductSettings(
-        { settings: parsed.data, revision: document.revision },
+        { settings: { ...document.settings, ...parsed.data }, revision: document.revision },
         controller.signal,
       );
       await queryClient.cancelQueries({ queryKey: settingsKeys.productSettings });

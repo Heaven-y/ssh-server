@@ -10,10 +10,11 @@ const Saved = z.object({
   orders: z.record(z.string(), z.array(z.string().max(512)).max(2000)),
 });
 const defaults: z.infer<typeof Saved> = { mode: 'recent', orders: {} };
-export const sessionOrderKey = (session: SessionSummary) => JSON.stringify([session.agent, session.sessionId]);
+export const sessionOrderKey = (session: Pick<SessionSummary, 'agent' | 'sessionId'>) =>
+  JSON.stringify([session.agent, session.sessionId]);
 const recentFirst = (a: SessionSummary, b: SessionSummary) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
 
-export function sortSessions(sessions: SessionSummary[], mode: SessionSortMode, order: string[] = []) {
+export function sortSessions<T extends SessionSummary>(sessions: T[], mode: SessionSortMode, order: string[] = []) {
   const positions = new Map(order.map((id, index) => [id, index]));
   return sessions.toSorted((a, b) => {
     if (mode === 'name') return a.title.localeCompare(b.title, 'zh-CN', { numeric: true }) || recentFirst(a, b);

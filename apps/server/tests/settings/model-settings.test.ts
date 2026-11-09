@@ -146,6 +146,28 @@ it('Codex 保留注释和其他服务商，API Key 写入所选原生 provider�
   });
 });
 
+it('Codex 原生认证优先环境变量，普通模型保存保留原始认证字段', async () => {
+  const { service, write } = await fixture();
+  const original = [
+    'model = "old"',
+    'model_provider = "external"',
+    '[model_providers.external]',
+    'name = "my-server"',
+    'env_key = "OPENAI_API_KEY"',
+    '# 原生认证优先，保留外部写入的环境变量名',
+    'requires_openai_auth = true',
+    '',
+  ].join('\n');
+  const file = await write('.codex/config.toml', original);
+  const initial = await service.read('codex');
+  expect(
+    initial.providers?.find((entry) => entry.id === 'external')?.fields.find((field) => field.key === 'authMode')
+      ?.value,
+  ).toBe('native');
+  await service.save('codex', { revision: initial.revision, changes: { model: 'new' } });
+  expect(await fs.readFile(file, 'utf8')).toBe(original.replace('model = "old"', 'model = "new"'));
+});
+
 it('已有高级认证拒绝被简单 Key 表单覆盖，模型与地址仍可独立编辑', async () => {
   const { service, write } = await fixture();
   const original =

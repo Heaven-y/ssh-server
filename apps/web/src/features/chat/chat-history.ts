@@ -52,6 +52,7 @@ export function createChatHistory(get: () => ChatState, set: SetState) {
       items: historyRetryItems(current, session, options),
       draft: same ? current.draft : '',
       view: same ? current.view : 'chat',
+      lastSentAt: same ? current.lastSentAt : undefined,
       selectedCapability: same ? current.selectedCapability : undefined,
       conversationId,
       tabIds: openedTab(current.tabIds, conversationId),
