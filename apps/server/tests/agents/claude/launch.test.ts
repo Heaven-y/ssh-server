@@ -72,22 +72,20 @@ it('本机入口缺失或覆盖无效时拒绝启动，不回退到包内或其�
   expect(query).not.toHaveBeenCalled();
 });
 
-it.skipIf(process.platform !== 'win32')('Windows npm 包装脚本解析到真实入口，并保留同目录 Node', async () => {
+it('npm 包装脚本解析到真实入口，并保留同目录 Node', async () => {
   const dir = await directory();
   const bin = path.join(dir, 'node_modules', 'fixture-cli');
   await mkdir(bin, { recursive: true });
   const file = path.join(bin, 'entry.js');
-  const node = path.join(dir, 'node.exe');
+  const node = path.join(dir, process.platform === 'win32' ? 'node.exe' : 'node');
+  const shim = path.join(dir, 'claude.cmd');
   await writeFile(file, '', 'utf8');
   await writeFile(node, '', 'utf8');
-  await writeFile(
-    path.join(dir, 'claude.cmd'),
-    '@ECHO off\r\n"%~dp0node.exe" "%~dp0node_modules/fixture-cli/entry.js" %*\r\n',
-    'utf8',
-  );
+  await writeFile(shim, '@ECHO off\r\n"%~dp0node.exe" "%~dp0node_modules/fixture-cli/entry.js" %*\r\n', 'utf8');
   nativeClaudeQuery({
     prompt: createClaudeStream().prompt,
-    options: { env: { PATH: dir, CLAUDE_CODE_EXECUTABLE: '' } },
+    // Windows 同时验证 PATH 查找；其他平台显式指定包装脚本，只解析文件，不执行 cmd。
+    options: { env: { PATH: dir, CLAUDE_CODE_EXECUTABLE: process.platform === 'win32' ? '' : shim } },
   });
   expect(query).toHaveBeenCalledWith(
     expect.objectContaining({
