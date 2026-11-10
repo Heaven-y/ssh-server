@@ -12,6 +12,7 @@ import { useProductSettings } from '../../../src/features/settings/use-product-s
 import ProductSettingsDialog from '../../../src/features/settings/ProductSettingsDialog';
 import { parseSettingsDraft } from '../../../src/features/settings/product-settings-draft';
 import { ProductSettingsForm } from '../../../src/features/settings/ProductSettingsForm';
+import { useSpotlightPreview } from '../../../src/ui/spotlight-preview';
 
 const document: ProductSettingsDocument = { settings: ProductSettingsSchema.parse({}), revision: 'missing' };
 const saved: ProductSettingsDocument = {
@@ -21,6 +22,30 @@ const saved: ProductSettingsDocument = {
 const wrapper = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 );
+
+it('光影仅保留开关并持久保存，离开设置释放未保存的预览', async () => {
+  vi.spyOn(settingsApi, 'readProductSettings').mockResolvedValue(document);
+  const save = vi
+    .spyOn(settingsApi, 'saveProductSettings')
+    .mockImplementation(async ({ settings }) => ({ settings, revision: 'c'.repeat(64) }));
+  const mounted = render(<ProductSettingsDialog initialPage="general" onClose={vi.fn()} onNative={vi.fn()} />, {
+    wrapper,
+  });
+  fireEvent.click(await screen.findByRole('switch', { name: '鼠标光影' }));
+  expect(screen.queryByLabelText('颜色')).toBeNull();
+  expect(screen.queryByRole('slider')).toBeNull();
+  expect(useSpotlightPreview.getState().value).toEqual({ enabled: false });
+  fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
+  await screen.findByText('产品设置已保存到本机。');
+  expect(save.mock.calls[0]?.[0].settings.spotlight).toEqual({ enabled: false });
+  fireEvent.click(screen.getByRole('switch', { name: '鼠标光影' }));
+  expect(useSpotlightPreview.getState().value?.enabled).toBe(true);
+  mounted.unmount();
+  expect(useSpotlightPreview.getState().value).toBeUndefined();
+  expect(
+    queryClient.getQueryData<ProductSettingsDocument>(settingsKeys.productSettings)?.settings.spotlight.enabled,
+  ).toBe(false);
+});
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {

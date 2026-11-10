@@ -8,6 +8,8 @@ import { AntigravityLines } from './lines';
 import { antigravityDefaultModel } from './model-catalog';
 import { AntigravityInvocationError, antigravityInvocationText } from './commands';
 import { antigravityDiagnostic } from './diagnostics';
+import { antigravityBackgroundEnvironment } from './process-environment';
+import { verifyAntigravityCompletion, type TrajectoryReader } from './completion';
 import type { AgentEvent } from '@agentdeck/shared/conversation';
 
 export type AntigravityProcess = Pick<
@@ -20,6 +22,11 @@ type Options = {
   env?: NodeJS.ProcessEnv;
   defaultModel?: () => Promise<string | undefined>;
   invocationText?: (input: AgentTurnInput, signal: AbortSignal) => Promise<string>;
+  readTrajectory?: TrajectoryReader;
+};
+type TurnServices = {
+  invocationText: NonNullable<Options['invocationText']>;
+  readTrajectory?: TrajectoryReader;
 };
 
 function launch(input: LaunchInput): AntigravityProcess {
@@ -51,6 +58,7 @@ class AntigravityTurn {
   private child?: AntigravityProcess;
   private timer?: NodeJS.Timeout;
   private ended = false;
+  private finishing = false;
   private failed = false;
   private readonly notices = new Set<string>();
   private reportedError = false;
@@ -64,7 +72,7 @@ class AntigravityTurn {
     private readonly input: AgentTurnInput,
     start: (input: LaunchInput) => AntigravityProcess,
     defaultModel: () => Promise<string | undefined>,
-    invocationText: (input: AgentTurnInput, signal: AbortSignal) => Promise<string>,
+    private readonly services: TurnServices,
   ) {
     this.done = new Promise((resolve) => {
       this.settle = resolve;
@@ -72,7 +80,7 @@ class AntigravityTurn {
     this.mapper = new AntigravityMapper(input.workspace.dir, input.sessionId);
     this.stdout = new AntigravityLines((line) => this.message(line));
     this.stderr = new AntigravityLines((line) => this.diagnostic(line), 65_536);
-    void this.start(start, defaultModel, invocationText);
+    void this.start(start, defaultModel, services.invocationText);
   }
 
   private async start(
@@ -94,7 +102,7 @@ class AntigravityTurn {
           ? error.message
           : '无法启动 Antigravity，请检查本机 agy 安装与启动环境。',
       );
-      if (!this.child) this.finish(null);
+      if (!this.child) void this.finish(null);
     }
   }
 
@@ -102,8 +110,8 @@ class AntigravityTurn {
     if (!this.ended) {
       this.failed = true;
       this.preparation.abort();
-      if (this.child) this.stop();
-      else this.finish(null);
+      if (this.child && !this.finishing) this.stop();
+      else if (!this.finishing) void this.finish(null);
     }
     return this.done;
   }
@@ -113,11 +121,11 @@ class AntigravityTurn {
     child.stderr.on('data', (chunk: Buffer) => this.consume(this.stderr, chunk));
     child.stdin.on('error', () => this.fail('Antigravity 未接收本轮输入。'));
     child.once('error', () => this.fail('Antigravity 进程启动失败，请检查安装与执行路径。'));
-    child.once('close', (code: number | null) => this.finish(code));
+    child.once('close', (code: number | null) => void this.finish(code));
   }
 
   private consume(lines: AntigravityLines, chunk: Buffer): void {
-    if (this.ended || this.failed) return;
+    if (this.ended || this.finishing || this.failed) return;
     try {
       lines.push(chunk);
     } catch {
@@ -192,12 +200,21 @@ class AntigravityTurn {
     }
   }
 
-  private finish(code: number | null): void {
-    if (this.ended) return;
-    this.flushOutput();
-    this.ended = true;
-    clearTimeout(this.timer);
-    this.completeResult(code);
+  private async finish(code: number | null): Promise<void> {
+    if (this.ended || this.finishing) return;
+    this.finishing = true;
+    try {
+      this.flushOutput();
+      clearTimeout(this.timer);
+      await this.completeResult(code);
+      this.finishTurn(code);
+    } finally {
+      this.ended = true;
+      this.settle();
+    }
+  }
+
+  private finishTurn(code: number | null): void {
     const result = this.mapper.result;
     const isError = this.failed || !result || result.isError || this.abnormalExit(code);
     // stdout 与 stderr 顺序不固定；排空后才兜底，避免覆盖稍后到达的具体原因。
@@ -212,12 +229,25 @@ class AntigravityTurn {
       ...(result ?? { type: 'turn_end' as const }),
       isError,
     });
-    this.settle();
   }
 
-  private completeResult(code: number | null): void {
+  private async completeResult(code: number | null): Promise<void> {
     const naturalSuccess = code === 0 && !this.failed && !this.cleanupSignalSent && !this.nativeFailure;
-    for (const event of this.mapper.complete(naturalSuccess)) this.notice(event);
+    // 先走直播证据；不足时才只读复核，不能提前发出随后无法撤回的旧错误。
+    this.mapper.complete(naturalSuccess);
+    const verified = naturalSuccess ? await this.reviewCompletion() : false;
+    for (const event of this.mapper.complete(naturalSuccess && !this.failed, verified)) this.notice(event);
+  }
+
+  private reviewCompletion(): Promise<boolean> {
+    const boundary = this.mapper.completionBoundary();
+    if (this.reportedError || !boundary || !this.services.readTrajectory || !this.input.sessionId)
+      return Promise.resolve(false);
+    return verifyAntigravityCompletion(
+      this.services.readTrajectory,
+      { sessionId: this.input.sessionId, cwd: this.input.workspace.dir, boundary },
+      this.preparation.signal,
+    );
   }
 }
 
@@ -226,9 +256,14 @@ export function createAntigravityRunner(options: Options = {}): TurnRunner {
   const runner: TurnRunner = (input): TurnHandle => {
     const turn = new AntigravityTurn(
       input,
-      (request) => (options.launch ?? launch)({ ...request, ...(options.env ? { env: options.env } : {}) }),
+      (request) =>
+        (options.launch ?? launch)({ ...request, env: antigravityBackgroundEnvironment(options.env ?? process.env) }),
       options.defaultModel ?? (() => antigravityDefaultModel(options.env ?? process.env)),
-      options.invocationText ?? ((input, signal) => antigravityInvocationText(input, { env: options.env, signal })),
+      {
+        invocationText:
+          options.invocationText ?? ((input, signal) => antigravityInvocationText(input, { env: options.env, signal })),
+        readTrajectory: options.readTrajectory,
+      },
     );
     active.add(turn);
     return { interrupt: () => turn.interrupt(), done: turn.done.finally(() => active.delete(turn)) };

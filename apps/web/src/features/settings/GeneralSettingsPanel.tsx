@@ -10,6 +10,9 @@ import { parseSettingsDraft, settingsDraft, type ProductSettingsDraft } from './
 import { nativeSettingsError } from './native-resource-labels';
 import type { SettingsLeave } from './use-model-settings';
 import { AppearanceSettings } from './AppearanceSettings';
+import { SpotlightSettings } from './SpotlightSettings';
+import { DEFAULT_SPOTLIGHT } from '@agentdeck/shared/settings';
+import { useSpotlightPreview } from '../../ui/spotlight-preview';
 
 function useGeneralSettings() {
   const [document, setDocument] = useState<ProductSettingsDocument>();
@@ -107,6 +110,10 @@ function GeneralFeedback({ state }: { state: ReturnType<typeof useGeneralSetting
 export function GeneralSettingsPanel({ guardRef }: { guardRef: MutableRefObject<SettingsLeave> }) {
   const state = useGeneralSettings();
   useLayoutEffect(() => {
+    useSpotlightPreview.getState().set(state.draft?.spotlight);
+  }, [state.draft?.spotlight]);
+  useEffect(() => () => useSpotlightPreview.getState().set(undefined), []);
+  useLayoutEffect(() => {
     guardRef.current = state.leave;
     return () => {
       guardRef.current = (action) => action();
@@ -119,6 +126,13 @@ export function GeneralSettingsPanel({ guardRef }: { guardRef: MutableRefObject<
         <p className="mt-2 text-[13px] leading-6 text-muted-foreground">工作台的使用偏好保存在本机。</p>
       </header>
       <AppearanceSettings />
+      {state.draft && (
+        <SpotlightSettings
+          value={state.draft.spotlight ?? DEFAULT_SPOTLIGHT}
+          disabled={state.saving}
+          change={(spotlight) => state.setDraft((draft) => draft && { ...draft, spotlight })}
+        />
+      )}
       <GeneralFeedback state={state} />
       {state.draft && (
         <ProductSettingsForm

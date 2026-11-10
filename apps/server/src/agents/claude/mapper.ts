@@ -75,8 +75,8 @@ function toolResultText(content: unknown): string {
     .join('\n');
 }
 
-function truncate(s: string): string {
-  if (s.length <= TOOL_OUTPUT_MAX_CHARS) return s;
+function truncate(s: string, preserveToolContent = false): string {
+  if (preserveToolContent || s.length <= TOOL_OUTPUT_MAX_CHARS) return s;
   return `${s.slice(0, TOOL_OUTPUT_MAX_CHARS)}\n[已截断，共 ${s.length} 字符]`;
 }
 
@@ -152,7 +152,10 @@ export class ClaudeEventMapper {
   private lastAssistant?: MessageIdentity;
   private readonly tools = new ClaudeToolMetrics();
 
-  constructor(private readonly historySessionId?: string) {}
+  constructor(
+    private readonly historySessionId?: string,
+    private readonly options: { preserveToolContent?: boolean } = {},
+  ) {}
 
   beginTurn(): void {
     this.tools.reset();
@@ -256,7 +259,7 @@ export class ClaudeEventMapper {
             {
               type: 'tool_result',
               id: str(b.tool_use_id) ?? '',
-              output: truncate(toolResultText(b.content)),
+              output: truncate(toolResultText(b.content), this.options.preserveToolContent),
               isError: b.is_error === true,
             },
           ]

@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import { claudeContextModels } from '../../src/cli/claude/context-models';
 import { findModel, modelDisplay } from '../../src/cli/shared/model-identity';
 import { configuredModelEffort, modelDefaultEffort, modelEfforts } from '../../src/cli/model-capabilities';
+import { antigravityModelSuggestions } from '../../src/cli/antigravity/model-suggestions';
 
 it('Claude 的别名和 [1m] 匹配同一型号能力，但显示和发送身份保持原样', () => {
   const model = { id: 'sonnet', label: '工作模型', modelId: 'claude-sonnet-4-6', reasoningEfforts: ['low', 'high'] };
@@ -77,4 +78,16 @@ it('AGY 只使用目录中的同族变体，自定义键不借用底层 API 的�
   const custom = { id: 'my-model', label: '我的模型', modelId: 'gemini-3.1-flash' };
   expect(modelDisplay(custom.id, custom)).toBe('gemini-3.1-flash');
   expect(modelEfforts('antigravity', custom.id, [...models, custom])).toEqual([]);
+});
+
+it('AGY 同名建议仅合并明确指向原生条目的别名，保留当前身份及其他同名型号', () => {
+  const native = { id: 'example-high', label: 'Example (High)' };
+  const alias = { id: 'configured', label: native.label, modelId: native.id };
+  expect(antigravityModelSuggestions([native, alias], alias.id)).toEqual([{ value: alias.id, label: native.label }]);
+  expect(antigravityModelSuggestions([native, alias], '')).toEqual([{ value: native.id, label: native.label }]);
+  const other = { ...alias, modelId: 'unrelated-model' };
+  expect(antigravityModelSuggestions([native, other], '')).toEqual([
+    { value: native.id, label: 'Example (High)（example-high）' },
+    { value: other.id, label: 'Example (High)（configured）' },
+  ]);
 });

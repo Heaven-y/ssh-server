@@ -46,6 +46,19 @@ const end = (status = 'completed') =>
       error: status === 'failed' ? { message: 'fixture-sensitive-diagnostic' } : null,
     },
   });
+const historyToolItems =
+  mode === 'long-tool-history'
+    ? [
+        {
+          id: 'long-tool',
+          type: 'commandExecution',
+          status: 'completed',
+          command: 'fixture',
+          aggregatedOutput: '原生工具结果'.repeat(5000) + '读取末尾',
+          exitCode: 0,
+        },
+      ]
+    : [];
 const readThread = (message: Message) => {
   const id = String(message.params?.threadId);
   const result = thread(
@@ -60,6 +73,7 @@ const readThread = (message: Message) => {
       items: [
         { id: 'user', type: 'userMessage', content: [{ type: 'text', text: '历史问题' }] },
         { id: 'assistant', type: 'agentMessage', text: '历史回复' },
+        ...historyToolItems,
       ],
     },
   ];

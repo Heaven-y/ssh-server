@@ -9,11 +9,19 @@ import type { ExpandedProps } from './timeline-model';
 import { SessionForkPoint } from './SessionForkPoint';
 import { StatisticsLine } from './StatisticsLine';
 import { ActivityCard } from './ActivityCard';
+import { SessionReferenceText, sessionMarkdownComponents, sessionMarkdownUrl } from './SessionReferenceText';
+import { sessionRemarkPlugins } from './session-reference-markdown';
 
 function AssistantMessage({ item }: { item: Extract<ChatItem, { kind: 'assistant' }> }) {
   return (
     <div className="conversation-assistant">
-      <Streamdown mode={item.streaming ? 'streaming' : 'static'} isAnimating={item.streaming}>
+      <Streamdown
+        mode={item.streaming ? 'streaming' : 'static'}
+        isAnimating={item.streaming}
+        urlTransform={sessionMarkdownUrl}
+        components={sessionMarkdownComponents}
+        remarkPlugins={sessionRemarkPlugins}
+      >
         {item.text}
       </Streamdown>
     </div>
@@ -34,7 +42,11 @@ export const MessageItem = memo(function MessageItem({
 }: { item: ChatItem } & ExpandedProps) {
   switch (item.kind) {
     case 'user':
-      return <div className="conversation-user">{item.text}</div>;
+      return (
+        <div className="conversation-user">
+          <SessionReferenceText text={item.text} />
+        </div>
+      );
     case 'assistant':
       return <AssistantMessage item={item} />;
     case 'reasoning':

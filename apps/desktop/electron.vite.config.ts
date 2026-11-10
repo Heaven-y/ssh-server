@@ -23,6 +23,7 @@ const MAIN_EXTERNALS = [
   '@fastify/static',
   '@fastify/websocket',
   '@anthropic-ai/claude-agent-sdk',
+  /^@modelcontextprotocol\/sdk(?:\/|$)/,
 ];
 
 /** 后端在模块加载时读取 remote-helper.py，打包后要放到与主进程入口同级的目录。 */
@@ -49,8 +50,12 @@ export default defineConfig(({ command }) => ({
   main: {
     build: {
       rollupOptions: {
-        input: path.join(projectRoot, 'src/main.ts'),
+        input: {
+          main: path.join(projectRoot, 'src/main.ts'),
+          'session-tools': path.resolve(projectRoot, '../server/src/session-tools/main.ts'),
+        },
         external: MAIN_EXTERNALS,
+        output: { entryFileNames: ({ name }) => (name === 'session-tools' ? 'session-tools.mjs' : '[name].js') },
       },
     },
     plugins: [copyRemoteHelper()],

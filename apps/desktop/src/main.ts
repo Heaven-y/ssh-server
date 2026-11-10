@@ -7,10 +7,16 @@ import { loadConfig } from '../../server/src/config';
 import { startServer, type StartedServer } from '../../server/src/server';
 import { acquireSingleInstance, createShutdown, resolveWindowUrl } from './lifecycle';
 import { desktopPaths, externalWebLink, navigationAllowed, rendererAddress } from './paths';
-import { APP_MENU_CHANNEL, SELECT_DIRECTORY_CHANNEL, TITLE_BAR_THEME_CHANNEL } from './bridge';
+import {
+  APP_MENU_CHANNEL,
+  INITIAL_SESSION_LINK_CHANNEL,
+  SELECT_DIRECTORY_CHANNEL,
+  TITLE_BAR_THEME_CHANNEL,
+} from './bridge';
 import { createDirectoryPicker } from './directory-picker';
 import { applicationMenuTemplate, createWindowChrome, desktopChromeOptions } from './window-chrome';
 import { createDesktopLogger } from './logging';
+import { createDesktopSessionLinks } from './session-links';
 
 /** 安装版页面跟随 resources 分发，开发版沿用工作区构建目录。 */
 const paths = desktopPaths({
@@ -24,6 +30,7 @@ const logger = createDesktopLogger();
 
 let mainWindow: BrowserWindow | undefined;
 let server: StartedServer | undefined;
+let sessionLinks: ReturnType<typeof createDesktopSessionLinks>;
 
 function focusMainWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -63,28 +70,33 @@ function createMainWindow(url: string): BrowserWindow {
   ipcMain.handle(TITLE_BAR_THEME_CHANNEL, chrome.setTheme);
   const directoryPicker = createDirectoryPicker(window, url, (options) => dialog.showOpenDialog(window, options));
   ipcMain.handle(SELECT_DIRECTORY_CHANNEL, directoryPicker.select);
+  const links = sessionLinks.attach(window, url);
+  ipcMain.handle(INITIAL_SESSION_LINK_CHANNEL, links.initial);
   window.once('ready-to-show', () => window.show());
   window.on('closed', () => {
     directoryPicker.invalidate();
+    links.detach();
     ipcMain.removeHandler(SELECT_DIRECTORY_CHANNEL);
     ipcMain.removeHandler(APP_MENU_CHANNEL);
     ipcMain.removeHandler(TITLE_BAR_THEME_CHANNEL);
+    ipcMain.removeHandler(INITIAL_SESSION_LINK_CHANNEL);
     mainWindow = undefined;
   });
-  window.webContents.on('did-start-navigation', (_event, _target, _inPlace, isMainFrame) => {
+  window.webContents.on('did-start-navigation', (_event, _target, inPlace, isMainFrame) => {
     if (isMainFrame) directoryPicker.invalidate();
+    if (isMainFrame && !inPlace) links.invalidate();
   });
   // 外链交给系统浏览器；窗口自身只加载本机服务。
-  window.webContents.setWindowOpenHandler(({ url: target }) => {
-    if (externalWebLink(target)) void shell.openExternal(target);
+  window.webContents.setWindowOpenHandler(({ url: target, referrer }) => {
+    if (!links.open(target, referrer.url) && externalWebLink(target)) void shell.openExternal(target);
     return { action: 'deny' };
   });
   window.webContents.on('will-navigate', (event, target) => {
     if (navigationAllowed(url, target)) return;
     event.preventDefault();
-    if (externalWebLink(target)) void shell.openExternal(target);
+    if (!links.open(target) && externalWebLink(target)) void shell.openExternal(target);
   });
-  void window.loadURL(url);
+  void window.loadURL(links.url);
   return window;
 }
 
@@ -154,7 +166,7 @@ const singleInstance = acquireSingleInstance({
 });
 
 if (singleInstance) {
-  app.on('second-instance', focusMainWindow);
+  sessionLinks = createDesktopSessionLinks(app, process.argv, focusMainWindow);
   app.whenReady().then(
     () => startDesktop().catch(failStartup),
     (error: unknown) => failStartup(error),

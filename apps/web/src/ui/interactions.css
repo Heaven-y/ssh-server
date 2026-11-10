@@ -368,9 +368,16 @@ dialog::backdrop {
 .composer-submit:active:not(:disabled) {
   transform: scale(0.94);
 }
+/* 局部装饰放在输入内容下方，继承输入框圆角，不延伸到应用其他区域。 */
 .ui-spotlight {
   position: relative;
   isolation: isolate;
+  --composer-glow: #50698f;
+  --composer-glow-opacity: 0.08;
+}
+:root[data-theme='dark'] .ui-spotlight {
+  --composer-glow: #a8bee7;
+  --composer-glow-opacity: 0.1;
 }
 .ui-spotlight::after {
   content: '';
@@ -382,14 +389,45 @@ dialog::backdrop {
   opacity: 0;
   background: radial-gradient(
     260px circle at var(--spotlight-x, 50%) var(--spotlight-y, 0%),
-    color-mix(in srgb, var(--color-interactive) 8%, transparent),
+    var(--composer-glow),
     transparent 75%
   );
-  transition: opacity 180ms;
+  transition: opacity 130ms;
 }
-@media (hover: hover) {
-  .ui-spotlight:hover::after {
-    opacity: 1;
+.ui-spotlight[data-illuminated]::after {
+  opacity: var(--composer-glow-opacity);
+}
+.spotlight-switch {
+  width: 36px;
+  height: 22px;
+  padding: 3px;
+  border-radius: 20px;
+  background: var(--color-border-strong);
+  flex-shrink: 0;
+}
+.spotlight-switch span {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 130ms;
+}
+.spotlight-switch[aria-checked='true'] {
+  background: var(--color-interactive);
+}
+.spotlight-switch[aria-checked='true'] span {
+  transform: translateX(14px);
+}
+@media (forced-colors: active) {
+  .ui-spotlight::after {
+    display: none;
+  }
+  .spotlight-switch {
+    border: 1px solid ButtonText;
+  }
+  .spotlight-switch span {
+    background: ButtonText;
   }
 }
 

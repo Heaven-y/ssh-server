@@ -6,6 +6,8 @@ import type { AgentKind, SessionHistory } from '@agentdeck/shared/conversation';
 import type { Workspace } from '@agentdeck/shared/projects';
 import { useProjectNavigation } from '../../src/app/use-project-navigation';
 import { useChat } from '../../src/features/chat/chat-store';
+import { navigateToSessionReference } from '../../src/features/sessions/session-links';
+import { StrictMode } from 'react';
 
 const projects: Workspace[] = ['one', 'two'].map((id) => ({
   id,
@@ -32,6 +34,49 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  Object.defineProperty(window, 'agentDeck', { configurable: true, value: undefined });
+});
+
+it('StrictMode 重挂载不会丢失已消费的桌面初始引用', async () => {
+  const initial = vi.fn().mockResolvedValue('agentdeck://session?workspace=two&agent=claude&id=initial-session');
+  Object.defineProperty(window, 'agentDeck', {
+    configurable: true,
+    value: { sessionLinks: { initial, onOpen: () => () => {} } },
+  });
+  renderHook(() => useProjectNavigation(projects), { wrapper: StrictMode });
+  await waitFor(() => expect(useChat.getState().sessionId).toBe('initial-session'));
+  expect(initial).toHaveBeenCalledOnce();
+});
+
+it('重复点击相同引用会重新定位，桌面收到新引用可以跨 CLI 打开', async () => {
+  let onOpen!: (reference: string) => void;
+  let resolveInitial!: (reference?: string) => void;
+  const unsubscribe = vi.fn();
+  const bridge = {
+    sessionLinks: {
+      onOpen: (listener: (reference: string) => void) => {
+        onOpen = listener;
+        return unsubscribe;
+      },
+      initial: () =>
+        new Promise<string | undefined>((resolve) => {
+          resolveInitial = resolve;
+        }),
+    },
+  };
+  Object.defineProperty(window, 'agentDeck', { configurable: true, value: bridge });
+  const mounted = renderHook(() => useProjectNavigation(projects));
+  const reference = 'agentdeck://session?workspace=two&agent=antigravity&id=agy-session';
+  act(() => onOpen(reference));
+  await waitFor(() => expect(useChat.getState().sessionId).toBe('agy-session'));
+  await act(async () => resolveInitial('agentdeck://session?workspace=one&agent=codex&id=stale'));
+  expect(useChat.getState().sessionId).toBe('agy-session');
+  act(() => useChat.getState().newSession('claude'));
+  act(() => navigateToSessionReference(reference));
+  await waitFor(() => expect(useChat.getState()).toMatchObject({ agent: 'antigravity', sessionId: 'agy-session' }));
+  mounted.unmount();
+  expect(unsubscribe).toHaveBeenCalledOnce();
+  Object.defineProperty(window, 'agentDeck', { configurable: true, value: undefined });
 });
 
 it('初始链接等待项目列表后优先定位原生会话，后续hash变化继续导航', async () => {

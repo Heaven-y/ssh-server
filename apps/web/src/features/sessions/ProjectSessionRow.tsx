@@ -3,7 +3,8 @@ import type { HTMLAttributes, ReactNode } from 'react';
 import type { SessionSummary } from '@agentdeck/shared/conversation';
 import { AGENT_LABELS } from '../../cli/shared/labels';
 import { relativeTime } from '../../ui/relative-time';
-import { SessionMenu, type SessionDialogAction } from './SessionMenu';
+import { SessionMenu, type SessionDialogAction, type SessionMenuAction } from './SessionMenu';
+import { SessionLinkNotice, useSessionLinkCopy } from './use-session-link-copy';
 import { useSessionBusy } from './use-session-busy';
 import { AgentIcon } from '../../ui/BrandIcons';
 
@@ -36,7 +37,7 @@ function Management({
   session: SessionSummary;
   archived: boolean;
   disabled: boolean;
-  choose(action: SessionDialogAction): void;
+  choose(action: SessionMenuAction): void;
 }) {
   return (
     <SessionMenu
@@ -45,9 +46,7 @@ function Management({
       pinned={false}
       localActions={false}
       disabled={disabled}
-      choose={(action) => {
-        if (action !== 'pin' && action !== 'copy') choose(action);
-      }}
+      choose={choose}
     />
   );
 }
@@ -85,7 +84,7 @@ function RowFrame({ active, rowProps, children }: Pick<RowProps, 'active' | 'row
     <li
       {...rowProps}
       data-active={active || undefined}
-      className="project-session-row flex min-w-0 items-center gap-0.5 rounded-lg"
+      className="project-session-row flex min-w-0 flex-wrap items-center gap-0.5 rounded-lg"
     >
       {rowProps?.draggable && (
         <GripVertical aria-hidden className="ml-1 size-3 shrink-0 cursor-grab text-muted-foreground" />
@@ -140,6 +139,12 @@ export function ProjectSessionRow({
   rowProps,
 }: RowProps) {
   const { pending, running } = useSessionBusy(workspaceId ?? '', session);
+  const copy = useSessionLinkCopy(workspaceId ?? '');
+  const choose = (action: SessionMenuAction) => {
+    copy.clear();
+    if (action === 'copy' || action === 'copy-id') void copy.copy(session, action === 'copy-id' ? 'id' : 'link');
+    else if (action !== 'pin') manage?.(action);
+  };
   return (
     <RowFrame active={active} rowProps={rowProps}>
       <RowEntry
@@ -152,8 +157,9 @@ export function ProjectSessionRow({
         pending={pending}
       />
       {workspaceId && manage && (
-        <Management session={session} archived={archived} disabled={pending || running} choose={manage} />
+        <Management session={session} archived={archived} disabled={pending || running} choose={choose} />
       )}
+      {copy.notice && <SessionLinkNotice notice={copy.notice} link={copy.link} />}
     </RowFrame>
   );
 }

@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { AgentModel } from '@agentdeck/shared/conversation';
+import { DEFAULT_SPOTLIGHT } from '@agentdeck/shared/settings';
 import { ModelOptionsMenu } from '../../../src/features/chat/ModelOptionsMenu';
 import { useChat } from '../../../src/features/chat/chat-store';
 import { chatApi, chatKeys } from '../../../src/features/chat/api';
@@ -94,6 +95,7 @@ it('全部候选可继续展开，手填型号仍在菜单中保留，关闭搜�
 
 it('对话菜单应用显示范围且保留当前隐藏模型，不因筛选改变发送参数', async () => {
   useChat.getState().setDefaults({
+    spotlight: DEFAULT_SPOTLIGHT,
     defaultAgent: 'claude',
     resources: { intervalSeconds: 5, timeoutSeconds: 8 },
     modelVisibility: { claude: ['model-1'] },

@@ -1,8 +1,17 @@
 import { z } from 'zod';
 import { AgentKindSchema } from '../conversation/agents';
 
+export const SpotlightSettingsSchema = z.strictObject({
+  enabled: z.boolean(),
+});
+export type SpotlightSettings = z.infer<typeof SpotlightSettingsSchema>;
+export const DEFAULT_SPOTLIGHT: SpotlightSettings = {
+  enabled: true,
+};
+
 export const ProductSettingsSchema = z.strictObject({
   defaultAgent: AgentKindSchema.default('claude'),
+  spotlight: SpotlightSettingsSchema.default(DEFAULT_SPOTLIGHT),
   /** 未配置时展示目录，显式空数组只保留当前会话的型号。 */
   modelVisibility: z
     .partialRecord(

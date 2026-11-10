@@ -6,7 +6,8 @@ import { ComposerInput } from './ComposerInput';
 import type { AgentCapability } from '@agentdeck/shared/conversation';
 import { AgentControls } from './AgentControls';
 import { ComposerStatus } from './ComposerStatus';
-import { SpotlightSurface } from '../../ui/SpotlightSurface';
+import { SessionReferencePreview } from './SessionReferencePreview';
+import { ComposerSurface } from './ComposerSurface';
 
 function ComposerActions({ disabled }: { disabled: boolean }) {
   const running = useChat((s) => s.running);
@@ -81,7 +82,7 @@ export function Composer() {
 
   return (
     <form onSubmit={submit} className="composer">
-      <SpotlightSurface className="composer-card">
+      <ComposerSurface>
         <label htmlFor={id} className="sr-only">
           输入消息
         </label>
@@ -94,12 +95,13 @@ export function Composer() {
           placeholder={placeholder(connected, selection?.argumentHint)}
         />
         {restriction && <p className="px-4 text-xs leading-5 text-warning">{restriction}</p>}
+        <SessionReferencePreview text={text} />
         <div role="group" aria-label="消息选项" className="composer-toolbar">
           <AgentControls disabled={busy}>
             <ComposerActions disabled={blocked} />
           </AgentControls>
         </div>
-      </SpotlightSurface>
+      </ComposerSurface>
       <ComposerStatus />
     </form>
   );

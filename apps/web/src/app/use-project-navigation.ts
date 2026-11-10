@@ -1,13 +1,17 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { Workspace } from '@agentdeck/shared/projects';
 import { lastWorkspaceId, sessionActionKey, useChat } from '../features/chat/chat-store';
-import { parseSessionLink } from '../features/sessions/session-links';
+import { navigateToSessionReference, parseSessionLink, SESSION_OPEN_EVENT } from '../features/sessions/session-links';
+import { parseSessionReference, sessionReferenceHash } from '@agentdeck/shared/conversation';
 
 function subscribe(listener: () => void) {
   window.addEventListener('hashchange', listener);
   return () => window.removeEventListener('hashchange', listener);
 }
 const currentHash = () => window.location.hash;
+type SessionLinkBridge = NonNullable<NonNullable<Window['agentDeck']>['sessionLinks']>;
+// StrictMode 会重新挂载 effect；初始引用只能在仍挂载的订阅者接收后消费。
+const initialReferences = new WeakMap<SessionLinkBridge, { request: Promise<string | undefined>; handled: boolean }>();
 function restoreProject(projects: Workspace[]): void {
   const current = useChat.getState();
   if (projects.some((project) => project.id === current.workspaceId)) return;
@@ -39,6 +43,45 @@ export function useProjectNavigation(projects?: Workspace[]): void {
   const hash = useSyncExternalStore(subscribe, currentHash, () => '');
   const handled = useRef<string | undefined>(undefined);
   const initialVersion = useRef(useChat.getState().conversationVersion);
+  useEffect(() => {
+    const open = (event: Event) => {
+      if (projects && event instanceof CustomEvent && typeof event.detail === 'string')
+        followLink(event.detail, projects);
+    };
+    window.addEventListener(SESSION_OPEN_EVENT, open);
+    return () => window.removeEventListener(SESSION_OPEN_EVENT, open);
+  }, [projects]);
+  useEffect(() => {
+    const bridge = window.agentDeck?.sessionLinks;
+    if (!bridge) return;
+    let active = true;
+    let received = false;
+    const unsubscribe = bridge.onOpen((reference) => {
+      received = true;
+      navigateToSessionReference(reference);
+    });
+    let initial = initialReferences.get(bridge);
+    if (!initial) {
+      initial = { request: bridge.initial(), handled: false };
+      initialReferences.set(bridge, initial);
+    }
+    const pending = initial;
+    void pending.request
+      .then((reference) => {
+        if (!active || pending.handled) return;
+        pending.handled = true;
+        if (received || !reference) return;
+        const target = sessionReferenceHash(parseSessionReference(reference));
+        if (window.location.hash !== target) navigateToSessionReference(reference);
+      })
+      .catch(() => {
+        if (active) useChat.setState({ banner: '无法打开桌面会话链接，请重新点击链接' });
+      });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
   useEffect(() => {
     if (!projects) return;
     const first = handled.current === undefined;

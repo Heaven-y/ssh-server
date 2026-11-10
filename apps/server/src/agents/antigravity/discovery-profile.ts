@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { AntigravityModelSettings } from './model-catalog';
+import { antigravityBackgroundEnvironment } from './process-environment';
 
 export type DiscoveryProfile = { root: string; gemini: string; env: NodeJS.ProcessEnv };
 const overridden = new Set([
@@ -43,7 +44,7 @@ export async function withAntigravityDiscoveryProfile<T>(
       XDG_CACHE_HOME: path.join(root, 'cache'),
       ANTIGRAVITY_GEMINI_DIR: gemini,
     };
-    return await run({ root, gemini, env: isolated });
+    return await run({ root, gemini, env: antigravityBackgroundEnvironment(isolated) });
   } finally {
     await rm(root, { recursive: true, maxRetries: 3, retryDelay: 100 });
   }

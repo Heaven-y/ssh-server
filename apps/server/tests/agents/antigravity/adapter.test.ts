@@ -20,7 +20,9 @@ async function setup(
     stderr: new PassThrough(),
     kill: vi.fn(() => true),
   });
-  const launch = vi.fn((_input: { cwd: string; args: string[] }) => child as unknown as AntigravityProcess);
+  const launch = vi.fn(
+    (_input: { cwd: string; args: string[]; env?: NodeJS.ProcessEnv }) => child as unknown as AntigravityProcess,
+  );
   const events: AgentEvent[] = [];
   const runner = createAntigravityRunner({ launch, defaultModel });
   const handle = runner({
@@ -43,6 +45,14 @@ async function setup(
 }
 
 describe('Antigravity 原生对话运行器', () => {
+  it.runIf(process.platform === 'win32')('后台启动关闭原生自动更新且不改调用者的环境快照', async () => {
+    const f = await setup();
+    f.init();
+    f.finish();
+    await f.handle.done;
+    expect(f.launch.mock.calls[0]?.[0].env?.AGY_CLI_DISABLE_AUTO_UPDATE).toBe('true');
+    expect(f.launch.mock.calls[0]?.[0].env).not.toBe(process.env);
+  });
   it('普通 stderr 进度和包含 permission 的日志不会把成功回合标成诊断错误', async () => {
     const f = await setup();
     f.init();
@@ -87,6 +97,8 @@ describe('Antigravity 原生对话运行器', () => {
   it.each([
     ['result-first', 'Error 401, Message: invalid API key, Status: UNAUTHENTICATED', '认证'],
     ['stderr-first', 'Error 503, Message: model unavailable, Status: UNAVAILABLE', '503'],
+    ['result-first', 'Error 500, Message: Upstream gateway error, Status: INTERNAL', 'HTTP 500'],
+    ['stderr-first', 'Error 500, Message: Upstream gateway error, Status: INTERNAL', 'HTTP 500'],
   ])('%s 的具体失败只报告一次且不会被泛化诊断覆盖', async (order, nativeError, expected) => {
     const f = await setup();
     f.init();

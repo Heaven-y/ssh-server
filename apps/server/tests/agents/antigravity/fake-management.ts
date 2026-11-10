@@ -27,7 +27,10 @@ const server = http.createServer((request, response) => {
 });
 server.listen(0, '127.0.0.1', () => {
   const port = (server.address() as AddressInfo).port;
-  fs.writeFileSync(evidence, JSON.stringify({ pid: process.pid, port }));
+  fs.writeFileSync(
+    evidence,
+    JSON.stringify({ pid: process.pid, port, updateDisabled: process.env.AGY_CLI_DISABLE_AUTO_UPDATE }),
+  );
   fs.writeFileSync(
     log,
     `Starting language server process with pid ${mode === 'foreign-pid' ? process.pid + 1 : process.pid}\n` +

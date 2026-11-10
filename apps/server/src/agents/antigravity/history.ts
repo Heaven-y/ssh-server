@@ -12,16 +12,17 @@ const TOOL_TYPES = new Set([
   'CORTEX_STEP_TYPE_MCP_TOOL',
   'CORTEX_STEP_TYPE_GENERIC',
 ]);
-const clip = (value: string) => (value.length > 20_000 ? `${value.slice(0, 20_000)}\n[输出已截断]` : value);
+const clip = (value: string, preserve = false) =>
+  !preserve && value.length > 20_000 ? `${value.slice(0, 20_000)}\n[输出已截断]` : value;
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
-function argumentsOf(value: unknown): unknown {
+function argumentsOf(value: unknown, preserve: boolean): unknown {
   const json = text(object(value).argumentsJson);
   if (!json) return {};
   try {
     return JSON.parse(json);
   } catch {
-    return clip(json);
+    return clip(json, preserve);
   }
 }
 
@@ -45,7 +46,7 @@ function command(step: ManagementRecord) {
   };
 }
 
-function file(step: ManagementRecord) {
+function file(step: ManagementRecord, preserve: boolean) {
   const read = object(step.viewFile);
   if (step.type === 'CORTEX_STEP_TYPE_VIEW_FILE')
     return {
@@ -58,14 +59,14 @@ function file(step: ManagementRecord) {
   return {
     name: 'fileChange',
     input: {
-      ...object(argumentsOf(object(step.metadata).toolCall)),
+      ...object(argumentsOf(object(step.metadata).toolCall, preserve)),
       path: change.absolutePathUri ?? write.targetFileUri,
     },
     output: text(write.codeContent) || text(change.instruction),
   };
 }
 
-function tool(step: ManagementRecord) {
+function tool(step: ManagementRecord, preserve: boolean) {
   const call = object(object(step.metadata).toolCall);
   if (step.type === 'CORTEX_STEP_TYPE_RUN_COMMAND') return command(step);
   if (
@@ -73,12 +74,12 @@ function tool(step: ManagementRecord) {
       text(step.type),
     )
   )
-    return file(step);
+    return file(step, preserve);
   if (step.type === 'CORTEX_STEP_TYPE_MCP_TOOL') {
     const mcp = object(step.mcpTool);
     return {
       name: `mcp__${text(mcp.serverName)}__${text(object(mcp.toolCall).name)}`,
-      input: argumentsOf(mcp.toolCall),
+      input: argumentsOf(mcp.toolCall, preserve),
       output: text(mcp.resultString),
       failed: mcp.userRejected === true,
     };
@@ -87,27 +88,27 @@ function tool(step: ManagementRecord) {
     const generic = object(step.generic);
     return {
       name: text(call.name) || '原生工具',
-      input: generic.args ?? argumentsOf(call),
+      input: generic.args ?? argumentsOf(call, preserve),
       output: text(object(generic.result).result),
     };
   }
   // 未适配的步骤只展示原生类型、工具参数与状态，绝不展开内部 Any、签名和调试正文。
   return {
     name: text(call.name) || text(step.type).replace('CORTEX_STEP_TYPE_', ''),
-    input: { arguments: argumentsOf(call), status: step.status },
+    input: { arguments: argumentsOf(call, preserve), status: step.status },
     output: '',
   };
 }
 
-function toolEvents(step: ManagementRecord, index: number): AgentEvent[] {
-  const value = tool(step);
+function toolEvents(step: ManagementRecord, index: number, preserve: boolean): AgentEvent[] {
+  const value = tool(step, preserve);
   const id = `agy-step-${index}`;
   const events: AgentEvent[] = [{ type: 'tool_call', id, name: value.name, input: value.input }];
   if (step.status !== DONE && !FAILED.has(text(step.status))) return events;
   events.push({
     type: 'tool_result',
     id,
-    output: clip(value.output || text(object(step.error).userErrorMessage)),
+    output: clip(value.output || text(object(step.error).userErrorMessage), preserve),
     isError: FAILED.has(text(step.status)) || ('failed' in value && value.failed === true),
     ...historyTiming(step.metadata),
   });
@@ -163,9 +164,9 @@ function response(step: ManagementRecord, index: number): AgentEvent[] {
   return events;
 }
 
-function toolOrActivity(step: ManagementRecord, index: number): AgentEvent[] {
+function toolOrActivity(step: ManagementRecord, index: number, preserve: boolean): AgentEvent[] {
   return TOOL_TYPES.has(text(step.type)) || text(object(object(step.metadata).toolCall).name)
-    ? toolEvents(step, index)
+    ? toolEvents(step, index, preserve)
     : activity(step, index);
 }
 
@@ -174,7 +175,7 @@ function errorMessage(step: ManagementRecord): string {
   return error.shouldShowUser === true ? text(object(error.error).userErrorMessage) : '';
 }
 
-function stepEvents(step: ManagementRecord, index: number): AgentEvent[] {
+function stepEvents(step: ManagementRecord, index: number, preserve: boolean): AgentEvent[] {
   switch (step.type) {
     case 'CORTEX_STEP_TYPE_USER_INPUT': {
       const user = object(step.userInput);
@@ -195,12 +196,15 @@ function stepEvents(step: ManagementRecord, index: number): AgentEvent[] {
       return message ? [{ type: 'error', message: clip(message) }] : [];
     }
     default:
-      return toolOrActivity(step, index);
+      return toolOrActivity(step, index, preserve);
   }
 }
 
 /** 轮次边界来自原生用户输入；工具调用后的助手片段不能冒充整轮结束。 */
-export function antigravityHistory(trajectory: ManagementRecord): AgentEvent[] {
+export function antigravityHistory(
+  trajectory: ManagementRecord,
+  options: { preserveToolContent?: boolean } = {},
+): AgentEvent[] {
   const events: AgentEvent[] = [];
   let forkPoint: string | undefined;
   let failed = false;
@@ -216,7 +220,7 @@ export function antigravityHistory(trajectory: ManagementRecord): AgentEvent[] {
     if (step.status === DONE && step.type !== 'CORTEX_STEP_TYPE_USER_INPUT') forkPoint = String(index);
     else forkPoint = undefined;
     failed ||= FAILED.has(text(step.status)) || !!errorMessage(step);
-    events.push(...stepEvents(step, index));
+    events.push(...stepEvents(step, index, options.preserveToolContent ?? false));
   });
   if (started) events.push({ type: 'turn_end', isError: failed, ...(forkPoint ? { forkPoint } : {}) });
   const last = object(list(trajectory.generatorMetadata).at(-1));

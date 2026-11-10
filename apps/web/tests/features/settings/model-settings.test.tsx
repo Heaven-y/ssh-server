@@ -85,6 +85,37 @@ it('常用模型表单只发送修改字段，空密码保留且显式清除使�
   );
 });
 
+it('AGY 设置列表合并已确认的同名原生别名，选择当前 High 不改写已有值', async () => {
+  const label = 'Gemini Example (High)';
+  vi.mocked(modelSettingsApi.read).mockResolvedValue({
+    ...document,
+    agent: 'antigravity',
+    fields: [{ key: 'model', label: '默认模型', value: label, group: 'model' }],
+  });
+  vi.mocked(modelSettingsApi.catalog).mockResolvedValue({
+    agent: 'antigravity',
+    models: [
+      { id: 'gemini-example-high', label },
+      { id: 'custom', label, modelId: label },
+      { id: 'gemini-example-low', label: 'Gemini Example (Low)' },
+    ],
+    defaultModel: 'custom',
+    entries: [],
+    warnings: [],
+    discovered: true,
+  });
+  render(<ProductSettingsDialog initialPage="antigravity" onClose={vi.fn()} onNative={vi.fn()} />);
+  const input = await screen.findByLabelText<HTMLInputElement>('默认模型');
+  fireEvent.click(await screen.findByRole('button', { name: '展开默认模型选项' }));
+  const list = await screen.findByRole('listbox', { name: '默认模型选项' });
+  expect(within(list).getAllByRole('option', { name: label })).toHaveLength(1);
+  expect(within(list).getByRole('option', { name: 'Gemini Example (Low)' })).toBeTruthy();
+  fireEvent.click(within(list).getByRole('option', { name: label }));
+  expect(input.value).toBe(label);
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: '保存配置' }).disabled).toBe(true);
+  expect(modelSettingsApi.save).not.toHaveBeenCalled();
+});
+
 it('Codex 登录或环境认证均可直接填写 Key，切换服务商丢弃旧草稿', async () => {
   const providerFields = (value: string, mode: string) => [
     { key: 'baseUrl', label: '服务地址', value, group: 'connection' as const },

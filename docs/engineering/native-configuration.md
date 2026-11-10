@@ -6,6 +6,12 @@ Codex 自定义服务的“凭据获取方式”分别对应直接令牌、环�
 
 ## 配置入口
 
+“会话读取”开关显式登记或移除固定 `agentdeck_sessions` MCP。Claude 使用原生 `mcp add-json/remove --scope user`；Codex 精确修改用户 `config.toml` 的同名 `mcp_servers` 项；Antigravity 修改 `~/.gemini/config/mcp_config.json`，将 `read_session` 标为 eager。其他 MCP、权限与批准项保留，同名非自有配置或版本冲突时拒绝覆盖。
+
+`GET/PUT /api/session-tools/:agent` 读状态及按 revision 更新。保存与运行器重新加载均在该 CLI 空闲锁内完成，运行中返回忙；下轮对话使用新配置，独立运行的原生客户端仍按自己的加载机制生效。入口固定工作台配置目录及三种 CLI 的原生历史根目录，避免跨 CLI 调用时继承了调用方临时 profile；不把认证变量写入 MCP 项。开发模式用 Node/tsx 的绝对入口，桌面分发使用独立 `session-tools.mjs` 与 Electron Node 模式，均不依赖用户工作目录。
+
+便携版退出时会删除解包目录，不能把其中的可执行文件和脚本登记为长期 MCP 入口。因此便携版提供明确的安装版引导并禁止启停写入，也不注册默认系统协议；工作台内部的复制和链接跳转仍可使用。安装版和开发源码目录支持登记，目录移动后需要在原生 CLI 中处理失效的旧入口。
+
 | CLI | 设置 | 规则与技能 | MCP 和原生插件 |
 |---|---|---|---|
 | Claude Code | 用户 settings.json；项目 .claude/settings.json 与 settings.local.json | CLAUDE.md、CLAUDE.local.md、条件回退 AGENTS.md；原生 rules/skills 目录 | 项目 .mcp.json；用户及个人项目 MCP 使用原生命令，避免编辑混合状态文件；插件管理使用原生入口 |

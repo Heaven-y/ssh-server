@@ -4,15 +4,18 @@ export type ProductSettingsDraft = {
   defaultAgent: ProductSettings['defaultAgent'];
   resourceInterval: string;
   resourceTimeout: string;
+  spotlight?: ProductSettings['spotlight'];
 };
 export const settingsDraft = (settings: ProductSettings): ProductSettingsDraft => ({
   defaultAgent: settings.defaultAgent,
   resourceInterval: String(settings.resources.intervalSeconds),
   resourceTimeout: String(settings.resources.timeoutSeconds),
+  spotlight: settings.spotlight,
 });
 export function parseSettingsDraft(draft: ProductSettingsDraft) {
   return ProductSettingsSchema.safeParse({
     defaultAgent: draft.defaultAgent,
+    spotlight: draft.spotlight,
     resources: { intervalSeconds: Number(draft.resourceInterval), timeoutSeconds: Number(draft.resourceTimeout) },
   });
 }

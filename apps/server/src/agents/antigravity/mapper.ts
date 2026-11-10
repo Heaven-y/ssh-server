@@ -2,6 +2,7 @@ import path from 'node:path';
 import { NativeSessionIdSchema, type AgentEvent } from '@agentdeck/shared/conversation';
 import { stepDuration, stepUsage } from './metrics';
 import { ANTIGRAVITY_PERMISSION_NOTICE, antigravityDiagnostic } from './diagnostics';
+import type { CompletionBoundary } from './completion';
 
 type RecordValue = Record<string, unknown>;
 type DiagnosticEvent = Extract<AgentEvent, { type: 'error' | 'activity' }>;
@@ -10,7 +11,7 @@ const record = (value: unknown): RecordValue =>
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 const clip = (value: string) => (value.length > 20_000 ? `${value.slice(0, 20_000)}\n[输出已截断]` : value);
 const toolOutput = (info: RecordValue) => {
-  const error = antigravityDiagnostic(text(record(info.error).message));
+  const error = antigravityDiagnostic(text(record(info.error).message), 'tool');
   if (error?.type === 'error') return error.message;
   return clip(text(info.output)) || clip(text(record(info.error).message)) || (info.error ? '工具执行失败' : '');
 };
@@ -23,7 +24,7 @@ function currentStepFailed(step: RecordValue): boolean {
     step.step_type === 'tool' &&
     toolFinished(step.state) &&
     error.type === 'TOOL_ERROR' &&
-    !antigravityDiagnostic(text(error.message))
+    !antigravityDiagnostic(text(error.message), 'tool')
   )
     return false;
   return (
@@ -57,7 +58,10 @@ export class AntigravityMapper {
   private inputIndex?: number;
   private latestStep?: { index: number; type: string; state: string; hasText: boolean };
   private currentFailure = false;
+  private uncertainBoundary = false;
+  private terminalFailure = false;
   private historicalErrorPossible = false;
+  private resultReviewable = false;
   private resultDiagnostic?: DiagnosticEvent;
   result?: Extract<AgentEvent, { type: 'turn_end' }>;
 
@@ -119,6 +123,7 @@ export class AntigravityMapper {
   private observeCompletion(step: RecordValue): void {
     if (!Number.isSafeInteger(step.step_index) || Number(step.step_index) < 0) {
       this.currentFailure = true;
+      this.uncertainBoundary = true;
       return;
     }
     const index = Number(step.step_index);
@@ -128,10 +133,12 @@ export class AntigravityMapper {
     // 输入边界前已出现步骤时，无法确定当前轮范围，后续不再纠正累计失败。
     if (this.inputIndex === undefined) {
       this.currentFailure = true;
+      this.uncertainBoundary = true;
       return;
     }
     if (index <= this.inputIndex) return;
     this.currentFailure ||= currentStepFailed(step);
+    this.terminalFailure ||= type === 'error_message' || state === 'CANCELLED';
     this.observeLatest(index, type, state, step.text_delta);
   }
 
@@ -139,7 +146,10 @@ export class AntigravityMapper {
     if (type === 'user_input' && state === 'DONE') {
       if (this.inputIndex === undefined) this.inputIndex = index;
       // 同一输入的重复事件不重置状态；多个不同输入边界不足以确认本轮。
-      else if (this.inputIndex !== index) this.currentFailure = true;
+      else if (this.inputIndex !== index) {
+        this.currentFailure = true;
+        this.uncertainBoundary = true;
+      }
     }
   }
 
@@ -167,10 +177,17 @@ export class AntigravityMapper {
   }
 
   /** 原生累计 result 会保留历史 ERROR；只以本轮完整答复和自然退出的共同证据纠正。 */
-  complete(naturalSuccess: boolean): DiagnosticEvent[] {
-    if (this.result && naturalSuccess && this.completedResponse() && this.historicalErrorPossible)
+  complete(naturalSuccess: boolean, verified = false): DiagnosticEvent[] {
+    if (this.result && naturalSuccess && (verified || (this.completedResponse() && this.historicalErrorPossible)))
       this.result = { ...this.result, isError: false };
     return this.result?.isError && this.resultDiagnostic ? [this.resultDiagnostic] : [];
+  }
+
+  completionBoundary(): CompletionBoundary | undefined {
+    if (!this.resultReviewable || !this.result?.isError || this.uncertainBoundary || this.terminalFailure)
+      return undefined;
+    if (!this.inputIndex || !this.latestStep) return undefined;
+    return { inputIndex: this.inputIndex, latestIndex: this.latestStep.index };
   }
 
   private stepStatistics(step: RecordValue): AgentEvent[] {
@@ -244,7 +261,7 @@ export class AntigravityMapper {
         ...(usage ? { usage } : {}),
       },
     ];
-    const diagnostic = antigravityDiagnostic(text(record(info.error).message));
+    const diagnostic = antigravityDiagnostic(text(record(info.error).message), 'tool');
     if (diagnostic?.type === 'error') events.push(diagnostic);
     return events;
   }
@@ -270,6 +287,12 @@ export class AntigravityMapper {
     const hasDeniedActions = Array.isArray(result.denied_actions) && result.denied_actions.length > 0;
     this.historicalErrorPossible =
       !hasDeniedActions && result.conversation_id === this.expectedId && mayContainHistoricalError(result);
+    this.resultReviewable =
+      !hasDeniedActions &&
+      !!this.expectedId &&
+      result.conversation_id === this.expectedId &&
+      result.status === 'ERROR' &&
+      !!text(result.error).trim();
     return hasDeniedActions ? [{ type: 'error', message: ANTIGRAVITY_PERMISSION_NOTICE }] : [];
   }
 }

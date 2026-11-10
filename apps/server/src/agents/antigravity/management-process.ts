@@ -5,6 +5,7 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { resolveLocalCommand, type ResolvedCommand } from '../../platform/process/executable';
 import { AntigravityLines } from './lines';
+import { antigravityBackgroundEnvironment } from './process-environment';
 import {
   managementFailure,
   managementObject,
@@ -46,7 +47,13 @@ class ManagementProcess {
         '--log-file',
         log,
       ],
-      { cwd: options.cwd, env: options.env, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'] },
+      {
+        cwd: options.cwd,
+        env: antigravityBackgroundEnvironment(options.env),
+        windowsHide: true,
+        shell: false,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
     );
     const lines = new AntigravityLines((line) => this.receive(line), 2 * 1024 * 1024);
     this.child.stdout.on('data', (chunk: Buffer) => {

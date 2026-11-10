@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { parseSessionLink, sessionLink } from '../../../src/features/sessions/session-links';
+import { findSessionReferences, parseSessionLink, sessionLink } from '../../../src/features/sessions/session-links';
 
 const location = { workspaceId: 'workspace-2', agent: 'codex' as const, sessionId: 'native-id' };
 describe('网页会话深度链接', () => {
@@ -29,4 +29,15 @@ describe('网页会话深度链接', () => {
     ])
       expect(() => parseSessionLink(hash), hash).toThrow('会话链接格式无效');
   });
+});
+
+it('中文和 Markdown 消息中的完整引用可提取，普通 URL 和裸 ID 保持原文', () => {
+  const link = 'agentdeck://session?workspace=workspace-2&agent=codex&id=native-id';
+  const text = `请读[旧会话](${link})，继续做。另一个 ${link}。https://example.test native-id`;
+  const refs = findSessionReferences(text);
+  expect(refs).toHaveLength(2);
+  for (const ref of refs) {
+    expect(ref.location).toEqual(location);
+    expect(text.slice(ref.start, ref.end)).toBe(link);
+  }
 });

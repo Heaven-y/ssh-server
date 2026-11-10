@@ -29,12 +29,14 @@ import { registerModelCatalogRoutes } from '../http/model-catalog.routes';
 import { registerModelSettingsRoutes } from '../http/model-settings.routes';
 import { registerNativeResourceRoutes } from '../http/native-resources.routes';
 import { registerSessionRoutes } from '../http/sessions.routes';
+import { registerSessionToolsRoutes } from '../http/session-tools.routes';
 import { createSessionPreferences } from '../sessions/preferences';
 import { createSessionsService } from '../sessions/service';
 import { createLaunchEnvironment } from '../settings/launch-environment';
 import { createModelSettingsService } from '../settings/model-settings';
 import { createNativeConfigService } from '../settings/native-config';
 import { createNativeResourcesService } from '../settings/native-resources';
+import { createSessionToolsService } from '../settings/session-tools';
 
 import type { WorkspaceActivity } from '../workspaces/activity';
 import type { WorkspaceStore } from '../workspaces/store';
@@ -104,7 +106,11 @@ export function createCliServices({
     }),
     antigravity: createConfiguredRunner({
       environment: () => launchEnvironment.resolve('antigravity'),
-      create: (env) => createAntigravityRunner({ env }),
+      create: (env) =>
+        createAntigravityRunner({
+          env,
+          readTrajectory: antigravityManagement.readTrajectory?.bind(antigravityManagement),
+        }),
     }),
   };
   const turns: TurnManager = new TurnManager({
@@ -133,6 +139,15 @@ export function createCliServices({
       registerLaunchEnvironmentRoutes(a, {
         service: launchEnvironment,
         restart: (agent) => turns.withIdleAgent(agent, () => runners[agent].restart()),
+      });
+      registerSessionToolsRoutes(a, {
+        service: createSessionToolsService({
+          configDir,
+          environment: (agent) => launchEnvironment.resolve(agent),
+          withIdleAgent: (agent, operation) => turns.withIdleAgent(agent, operation),
+          restart: (agent) => runners[agent].restart(),
+          onSaved: (agent) => capabilities.invalidate(agent),
+        }),
       });
     },
   };

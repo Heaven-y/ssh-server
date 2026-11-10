@@ -7,7 +7,9 @@ import { nativeAgentNames } from './native-resource-labels';
 import { ModelSettingsField } from './ModelSettingsField';
 import { modelSettingValue, modelSettingsFields, useModelSettings, type SettingsLeave } from './use-model-settings';
 import { modelEfforts } from '../../cli/model-capabilities';
+import { antigravityModelSuggestions } from '../../cli/antigravity/model-suggestions';
 import { ModelVisibilityPanel } from './ModelVisibilityPanel';
+import { SessionToolsPanel } from './SessionToolsPanel';
 
 type State = ReturnType<typeof useModelSettings>;
 function visibleFields(fields: ModelSettingField[], state: State) {
@@ -20,9 +22,15 @@ function visibleFields(fields: ModelSettingField[], state: State) {
     return true;
   });
 }
+function modelSuggestions(field: ModelSettingField, state: State) {
+  const models = state.modelCatalog?.models ?? [];
+  return state.document?.agent === 'antigravity'
+    ? antigravityModelSuggestions(models, modelSettingValue(field, state.draft))
+    : models.map((model) => ({ value: model.id, label: model.label }));
+}
 function suggestionsFor(field: ModelSettingField, state: State) {
   const models = state.modelCatalog?.models ?? [];
-  if (field.key === 'model') return models.map((model) => ({ value: model.id, label: model.label }));
+  if (field.key === 'model') return modelSuggestions(field, state);
   if (field.key !== 'reasoningEffort' || field.options) return undefined;
   const selected = state.document?.fields.find((entry) => entry.key === 'model');
   const modelId = selected && modelSettingValue(selected, state.draft);
@@ -237,6 +245,7 @@ export function ModelSettingsPanel({
     >
       <div className="settings-form-scroll min-h-0 flex-1 space-y-5 overflow-y-auto px-1 pb-1 pr-4 [scrollbar-gutter:stable]">
         <SettingsFeedback state={state} />
+        <SessionToolsPanel key={agent} agent={agent} />
         {state.document && (
           <>
             <ModelSettingsForm state={state} fields={fields} />

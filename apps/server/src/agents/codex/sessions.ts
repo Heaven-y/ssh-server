@@ -83,12 +83,12 @@ export async function assertCodexSession(id: string, dir: string, options: Codex
 export async function readCodexSession(
   id: string,
   dir: string,
-  options: CodexRuntimeOptions = {},
+  options: CodexRuntimeOptions & { preserveToolContent?: boolean } = {},
 ): Promise<NativeSessionRead> {
   return withClient(dir, options, async (client) => {
     await checkedThread(client, id, dir);
     const thread = await checkedThread(client, id, dir, true);
-    const mapper = new CodexEventMapper();
+    const mapper = new CodexEventMapper({ preserveToolContent: options.preserveToolContent });
     return {
       session: summary(thread),
       cwd: text(thread.cwd),

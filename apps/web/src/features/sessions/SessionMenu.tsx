@@ -1,5 +1,5 @@
 import { Menu, MenuButton, MenuItem, useMenuStore } from '@ariakit/react';
-import { Archive, ArchiveRestore, GitFork, Link, MoreHorizontal, Pencil, Pin, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Copy, GitFork, Link, MoreHorizontal, Pencil, Pin, Trash2 } from 'lucide-react';
 import { useRef } from 'react';
 import {
   legacySessionCapabilities,
@@ -11,11 +11,12 @@ import { buttonClass } from '../../ui/styles';
 import { AGENT_LABELS } from '../../cli/shared/labels';
 
 export type SessionDialogAction = SessionActionInput['action'] | 'fork';
-export type SessionMenuAction = SessionDialogAction | 'pin' | 'copy';
+export type SessionMenuAction = SessionDialogAction | 'pin' | 'copy' | 'copy-id';
 const actions = {
   rename: { label: '重命名', icon: Pencil },
   pin: { label: '置顶', icon: Pin },
   copy: { label: '复制会话链接', icon: Link },
+  'copy-id': { label: '复制会话 ID', icon: Copy },
   fork: { label: '创建分支', icon: GitFork },
   delete: { label: '删除', icon: Trash2 },
   archive: { label: '归档', icon: Archive },
@@ -30,9 +31,10 @@ function visibleActions(
   const visible: SessionMenuAction[] = [];
   if (!archived) {
     if (capabilities.rename) visible.push('rename');
-    if (localActions) visible.push('pin', 'copy');
+    if (localActions) visible.push('pin');
     if (capabilities.fork) visible.push('fork');
   }
+  visible.push('copy', 'copy-id');
   if (capabilities.archive) visible.push(archived ? 'unarchive' : 'archive');
   if (capabilities.delete) visible.push('delete');
   return visible;
@@ -52,7 +54,7 @@ export function SessionMenu({
   pinned: boolean;
   disabled: boolean;
   choose(action: SessionMenuAction): void;
-  /** 旧会话页可保留本地操作；项目侧栏只提供原生动作。 */
+  /** 项目侧栏已有排序，不重复提供旧的置顶动作；复制始终可用。 */
   localActions?: boolean;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
@@ -68,8 +70,7 @@ export function SessionMenu({
         render={<button type="button" />}
         className={`${buttonClass('ghost')} shrink-0 px-1.5`}
         aria-label={`${AGENT_LABELS[session.agent]} 会话“${session.title || '无标题会话'}”的更多操作`}
-        title={disabled ? '会话运行或操作中，结束后可管理' : '更多会话操作'}
-        disabled={disabled}
+        title={disabled ? '会话运行或操作中，可复制会话引用' : '更多会话操作'}
       >
         <MoreHorizontal aria-hidden className="size-4" />
       </MenuButton>
@@ -86,7 +87,7 @@ export function SessionMenu({
           return (
             <MenuItem
               key={action}
-              disabled={disabled}
+              disabled={disabled && action !== 'copy' && action !== 'copy-id'}
               className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none data-active-item:bg-muted data-active-item:ring-1 data-active-item:ring-accent ${action === 'delete' ? 'text-destructive-foreground' : ''}`}
               onClick={() => {
                 menu.hide();

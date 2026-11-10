@@ -40,7 +40,7 @@ export class CodexEventMapper {
   private model?: string;
   private readonly usage = new CodexTurnUsage();
 
-  constructor(options: { manualCompaction?: boolean } = {}) {
+  constructor(private readonly options: { manualCompaction?: boolean; preserveToolContent?: boolean } = {}) {
     this.compaction = new CodexCompaction(options.manualCompaction === true);
   }
 
@@ -191,7 +191,7 @@ export class CodexEventMapper {
       events.push({
         type: 'tool_result',
         id,
-        output: codexToolOutput(item),
+        output: codexToolOutput(item, this.options.preserveToolContent),
         isError: codexToolFailed(item),
         ...codexItemDuration(item),
       });

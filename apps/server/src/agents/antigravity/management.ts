@@ -24,7 +24,7 @@ type Options = {
   env?: NodeJS.ProcessEnv;
   geminiDir?: string;
   /** 合成运行时与摘要检查注入，不向 HTTP 暴露地址或原生存储路径。 */
-  backend?: (dir: string) => Promise<ManagementBackend>;
+  backend?: (dir: string, signal?: AbortSignal) => Promise<ManagementBackend>;
   summaryReady?: (id: string) => boolean;
   summaryMatches?: (id: string, dir: string) => Promise<boolean>;
 };
@@ -136,11 +136,11 @@ export function createAntigravitySessionManagement(
   const ready = options.summaryReady ?? ((id: string) => summaryExists(summaryFile, id));
   const start =
     options.backend ??
-    (async (dir: string) =>
+    (async (dir: string, signal?: AbortSignal) =>
       startManagementBackend({
         cwd: dir,
         geminiDir,
-        signal: controller.signal,
+        signal,
         env: (await options.environment?.()) ?? options.env ?? process.env,
       }));
   async function checkOrRecover(backend: ManagementBackend, id: string, dir: string, runOptions: RunOptions) {
@@ -162,7 +162,9 @@ export function createAntigravitySessionManagement(
     runOptions.signal?.throwIfAborted();
     if (controller.signal.aborted) throw managementFailure();
     if (!path.isAbsolute(dir)) throw missing();
-    const pending = start(dir);
+    // 本次读取预算必须覆盖后端初始化，不能等启动完成后才传入取消信号。
+    const signal = runOptions.signal ? AbortSignal.any([controller.signal, runOptions.signal]) : controller.signal;
+    const pending = start(dir, signal);
     starting.add(pending);
     let backend: ManagementBackend;
     try {

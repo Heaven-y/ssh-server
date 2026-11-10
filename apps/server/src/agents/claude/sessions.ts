@@ -81,6 +81,7 @@ async function summaries(records: SDKSessionInfo[], signal?: AbortSignal) {
 export function createClaudeSessions(
   api: ClaudeSessionsApi = nativeApi,
   subagentApi?: ClaudeSubagentApi,
+  options: { preserveToolContent?: boolean } = {},
 ): SessionProvider {
   const readSubagents = createClaudeSubagents(subagentApi);
   async function info(id: string, dir: string): Promise<SDKSessionInfo> {
@@ -132,7 +133,7 @@ export function createClaudeSessions(
       signal?.throwIfAborted();
       const record = await info(id, dir);
       const messages = await api.messages(id, dir);
-      const mapper = new ClaudeEventMapper(id);
+      const mapper = new ClaudeEventMapper(id, options);
       return {
         session: await summary(record, signal),
         cwd: record.cwd ?? dir,

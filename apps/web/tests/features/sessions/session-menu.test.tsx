@@ -49,3 +49,14 @@ it('服务端接入原生动作后直接显示创建分支和删除，不出现�
   expect(screen.getByRole('menuitem', { name: '重命名' })).toBeTruthy();
   expect(screen.queryByRole('menuitem', { name: /CLI/ })).toBeNull();
 });
+
+it('会话运行中仍能复制原生 ID，修改操作保持禁用', async () => {
+  const choose = vi.fn();
+  render(
+    <SessionMenu session={session} archived={false} pinned={false} disabled localActions={false} choose={choose} />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: /更多操作/ }));
+  expect((await screen.findByRole('menuitem', { name: '归档' })).getAttribute('aria-disabled')).toBe('true');
+  fireEvent.click(screen.getByRole('menuitem', { name: '复制会话 ID' }));
+  expect(choose).toHaveBeenCalledExactlyOnceWith('copy-id');
+});

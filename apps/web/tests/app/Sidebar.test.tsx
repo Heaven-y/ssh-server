@@ -375,13 +375,13 @@ async function actionFor(title: string, action: string) {
   fireEvent.click(await screen.findByRole('menuitem', { name: action }));
 }
 
-it('侧栏只展示CLI原生管理动作，Antigravity没有无效管理入口', async () => {
+it('侧栏保留各CLI复制入口，管理动作按原生能力显示', async () => {
   managedSidebar([
     claudeSession,
     codexSession,
     { ...claudeSession, agent: 'antigravity', sessionId: 'agy', title: '引力会话' },
   ]);
-  expect(screen.queryByRole('button', { name: /Antigravity.*更多操作/ })).toBeNull();
+  expect(screen.getByRole('button', { name: /Antigravity.*更多操作/ })).toBeTruthy();
   const menuButton = screen.getByRole('button', { name: /Claude.*更多操作/ });
   menuButton.focus();
   expect(document.activeElement).toBe(menuButton);
@@ -389,7 +389,8 @@ it('侧栏只展示CLI原生管理动作，Antigravity没有无效管理入口',
   expect(await screen.findByRole('menuitem', { name: '创建分支' })).toBeTruthy();
   expect(screen.getByRole('menuitem', { name: '删除' })).toBeTruthy();
   expect(screen.queryByRole('menuitem', { name: '归档' })).toBeNull();
-  expect(screen.queryByRole('menuitem', { name: /置顶|复制/ })).toBeNull();
+  expect(screen.queryByRole('menuitem', { name: '置顶' })).toBeNull();
+  expect(screen.getByRole('menuitem', { name: '复制会话链接' })).toBeTruthy();
 });
 
 it('非当前项目删除只发送源行身份，必须确认且失败留在原处', async () => {
@@ -455,16 +456,19 @@ it('当前项目分叉经确认后读取并选中新原生身份', async () => {
   expect(read).toHaveBeenCalledWith(project.id, 'forked', 'claude', expect.any(AbortSignal));
 });
 
-it('原生摘要或当前回合运行时禁用菜单，操作处理中不重复发送', async () => {
+it('运行时仍可复制但不能管理，操作处理中不重复发送', async () => {
   const mutate = vi.spyOn(sessionsApi, 'sessionAction').mockImplementation(() => new Promise(() => undefined));
   managedSidebar([{ ...claudeSession, running: true }, codexSession]);
-  expect(screen.getByRole<HTMLButtonElement>('button', { name: /Claude.*更多操作/ }).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: /Claude.*更多操作/ }));
+  expect((await screen.findByRole('menuitem', { name: '删除' })).getAttribute('aria-disabled')).toBe('true');
+  expect(screen.getByRole('menuitem', { name: '复制会话链接' }).getAttribute('aria-disabled')).not.toBe('true');
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
   await actionFor(codexSession.title, '归档');
   const confirm = screen.getByRole('button', { name: '归档会话' });
   fireEvent.click(confirm);
   fireEvent.click(confirm);
   expect(mutate).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole<HTMLButtonElement>('button', { name: /Codex.*更多操作/ }).disabled).toBe(true);
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: /Codex.*更多操作/ }).disabled).toBe(false);
   act(() =>
     useChat.setState({ workspaceId: project.id, agent: 'codex', sessionId: codexSession.sessionId, running: true }),
   );

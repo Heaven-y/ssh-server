@@ -1,12 +1,17 @@
 import { expect, it } from 'vitest';
-import { ProductSettingsInputSchema, ProductSettingsSchema } from '../../src/settings/product-settings';
+import {
+  DEFAULT_SPOTLIGHT,
+  ProductSettingsInputSchema,
+  ProductSettingsSchema,
+} from '../../src/settings/product-settings';
 
-it('产品设置仅保存默认Agent与服务器资源采样偏好', () => {
+it('产品设置保存默认Agent、外观与服务器资源采样偏好', () => {
   const settings = ProductSettingsSchema.parse({
     defaultAgent: 'codex',
     resources: { intervalSeconds: 7, timeoutSeconds: 9 },
   });
   expect(settings).toEqual({
+    spotlight: DEFAULT_SPOTLIGHT,
     defaultAgent: 'codex',
     resources: { intervalSeconds: 7, timeoutSeconds: 9 },
   });

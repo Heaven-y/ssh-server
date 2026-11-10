@@ -141,13 +141,14 @@ it('归档菜单仅提供恢复和删除，选择恢复不同时呈现删除控�
   expect(within(dialog).queryByRole('button', { name: '确认删除会话' })).toBeNull();
 });
 
-it('运行中会话的更多菜单禁用，不发起管理请求', () => {
+it('运行中会话允许复制但禁用管理请求', async () => {
   mount();
   act(() => useChat.setState({ sessionId: session.sessionId, running: true }));
   const more = screen.getByRole<HTMLButtonElement>('button', { name: /更多操作/ });
-  expect(more.disabled).toBe(true);
+  expect(more.disabled).toBe(false);
   fireEvent.click(more);
-  expect(screen.queryByRole('menu')).toBeNull();
+  expect((await screen.findByRole('menuitem', { name: '删除' })).getAttribute('aria-disabled')).toBe('true');
+  expect(screen.getByRole('menuitem', { name: '复制会话 ID' }).getAttribute('aria-disabled')).not.toBe('true');
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 
@@ -184,16 +185,16 @@ it('置顶只改变当前来源的排序，取消置顶恢复按更新时间排�
   expect(within(group).getAllByRole('listitem')[0]?.textContent).toContain('较新会话');
 });
 
-it('复制可打开的网页深度链接，末尾分叉先呈现原生操作说明', async () => {
+it('复制稳定会话链接，末尾分叉先呈现原生操作说明', async () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
   vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
   mount();
   await openAction('复制会话链接');
   await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
   const copied = new URL(writeText.mock.calls[0]![0] as string);
-  expect(copied.origin).toBe(window.location.origin);
-  expect(copied.hash).toBe('#session?workspace=workspace&agent=claude&id=native-id');
-  expect(await screen.findByText('会话链接已复制')).toBeTruthy();
+  expect(copied.protocol).toBe('agentdeck:');
+  expect(copied.href).toBe('agentdeck://session?workspace=workspace&agent=claude&id=native-id');
+  expect(await screen.findByText(/会话链接已复制/)).toBeTruthy();
   await openAction('创建分支');
   const dialog = screen.getByRole('dialog', { name: '创建分支' });
   expect(dialog.textContent).toContain('源会话保持不变');

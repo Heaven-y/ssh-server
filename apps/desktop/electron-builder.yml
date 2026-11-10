@@ -6,6 +6,9 @@ asar: true
 npmRebuild: false
 forceCodeSigning: false
 publish: null
+protocols:
+  - name: AgentDeck 会话引用
+    schemes: [agentdeck]
 directories:
   output: ../../release
   buildResources: assets

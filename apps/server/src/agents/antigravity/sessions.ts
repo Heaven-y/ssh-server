@@ -16,6 +16,8 @@ export type AntigravitySessionsApi = {
   dbPath: string;
   readSummaries(dbPath: string, page?: NativeSessionPageInput): SummaryRow[];
   management?: AntigravitySessionManagement;
+  /** 供有界分页的只读 MCP 保留全文；界面默认沿用原有展示限制。 */
+  preserveToolContent?: boolean;
 };
 
 function epochMs(value: string): number {
@@ -103,7 +105,11 @@ export function createAntigravitySessions(api: Partial<AntigravitySessionsApi> =
       signal?.throwIfAborted();
       if (trajectory.cascadeId !== id)
         throw new SessionError(404, 'session_missing', 'Antigravity 返回的会话身份不匹配');
-      return { session: nativeSummary(found), cwd, events: antigravityHistory(trajectory) };
+      return {
+        session: nativeSummary(found),
+        cwd,
+        events: antigravityHistory(trajectory, { preserveToolContent: api.preserveToolContent }),
+      };
     },
     assertBelongs(id, dir, signal) {
       signal?.throwIfAborted();

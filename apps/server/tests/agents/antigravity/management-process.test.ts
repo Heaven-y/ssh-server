@@ -4,6 +4,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { afterEach, expect, it, vi } from 'vitest';
 import { startManagementBackend } from '../../../src/agents/antigravity/management-process';
+import { createAntigravitySessionManagement } from '../../../src/agents/antigravity/management';
 import { NativeTrajectoryMissing } from '../../../src/agents/antigravity/management-rpc';
 
 const directories: string[] = [];
@@ -36,6 +37,7 @@ async function stopped(file: string) {
 it('只取自有PID的HTTP端口，认证缺失不阻止本机管理，关闭确认后端也退出', async () => {
   const f = await options();
   const backend = await startManagementBackend(f.settings);
+  if (process.platform === 'win32') expect(JSON.parse(await readFile(f.evidence, 'utf8')).updateDisabled).toBe('true');
   expect(await backend.request('GetCascadeTrajectory', { cascadeId: 'fixture' })).toEqual({ fixture: true });
   await backend.close();
   await stopped(f.evidence);
@@ -56,6 +58,40 @@ it.each(['wait', 'foreign-pid'])('启动等待可取消，不连接其他PID的�
   controller.abort();
   await rejection;
   await stopped(f.evidence);
+});
+
+it('历史读取在后端初始化期间取消会结束进程，不等待初始化超时或读取轨迹', async () => {
+  const f = await options('wait');
+  const controller = new AbortController();
+  const cleanup = new AbortController();
+  const requested = vi.fn();
+  const service = createAntigravitySessionManagement({
+    backend: async (_dir: string, signal?: AbortSignal) => {
+      const backend = await startManagementBackend({ ...f.settings, signal: signal ?? cleanup.signal });
+      return {
+        ...backend,
+        request: (...args: Parameters<typeof backend.request>) => {
+          requested();
+          return backend.request(...args);
+        },
+      };
+    },
+  });
+  let settled = false;
+  const pending = service.readTrajectory!('fixture', f.settings.cwd, controller.signal).catch(() => {
+    settled = true;
+  });
+  try {
+    await vi.waitFor(async () => expect(await readFile(f.evidence, 'utf8')).toContain('pid'));
+    controller.abort();
+    await vi.waitFor(() => expect(settled).toBe(true));
+    expect(requested).not.toHaveBeenCalled();
+    await stopped(f.evidence);
+  } finally {
+    cleanup.abort();
+    await service.dispose();
+    await pending;
+  }
 });
 
 it('关闭会中断等待中的HTTP请求，不泄漏后台服务', async () => {

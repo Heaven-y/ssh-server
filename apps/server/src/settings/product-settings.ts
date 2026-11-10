@@ -17,6 +17,16 @@ export class ProductSettingsError extends Error {
     super(message);
   }
 }
+
+function retireSettings(input: unknown): unknown {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
+  const settings = input as Record<string, unknown>;
+  for (const key of ['defaultModels', 'syncDefaults', 'syncIntervalSeconds']) delete settings[key];
+  const spotlight = settings.spotlight;
+  if (spotlight && typeof spotlight === 'object' && !Array.isArray(spotlight))
+    for (const key of ['color', 'intensity', 'size', 'softness']) delete (spotlight as Record<string, unknown>)[key];
+  return settings;
+}
 /** 产品偏好与原生Agent配置分文件保存，缺失时只返回默认值。 */
 export function createProductSettings({ configDir }: { configDir: string }) {
   const directory = path.resolve(configDir);
@@ -35,11 +45,8 @@ export function createProductSettings({ configDir }: { configDir: string }) {
     let settings;
     try {
       const input: unknown = snapshot.revision === 'missing' ? {} : JSON.parse(snapshot.content);
-      // 仅磁盘读取退休字段（已删除的模型覆盖与同步偏好）；公开输入仍严格校验。
-      if (input && typeof input === 'object' && !Array.isArray(input))
-        for (const retired of ['defaultModels', 'syncDefaults', 'syncIntervalSeconds'])
-          delete (input as Record<string, unknown>)[retired];
-      settings = ProductSettingsSchema.parse(input);
+      // 仅磁盘读取迁移已退休字段；公开输入仍严格校验，原文件在显式保存前保持不变。
+      settings = ProductSettingsSchema.parse(retireSettings(input));
     } catch {
       throw new ProductSettingsError('settings_invalid', 503, '产品设置文件无效，原文件已保留；请核对后重新读取');
     }

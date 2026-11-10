@@ -135,6 +135,21 @@ it('服务器资源采样缺省5秒，显式间隔不被迁移，修改15秒只�
   expect(updated.revision).not.toBe(previous.revision);
 });
 
+it('光影开关写入磁盘，旧效果参数退休且保留关闭状态', async () => {
+  const f = await fixture();
+  const old = { spotlight: { enabled: false, color: '#7755aa', intensity: 20, size: 440, softness: 90 } };
+  await writeFile(f.file, JSON.stringify(old));
+  const before = await f.store.read();
+  expect(before.settings.spotlight).toEqual({ enabled: false });
+  expect(JSON.parse(await readFile(f.file, 'utf8'))).toEqual(old);
+  const spotlight = { enabled: false };
+  await f.store.save({ revision: before.revision, settings: { ...before.settings, spotlight } });
+  const reopened = await createProductSettings({ configDir: f.configDir }).read();
+  expect(reopened.settings.spotlight).toEqual(spotlight);
+  expect(JSON.parse(await readFile(f.file, 'utf8')).spotlight).toEqual(spotlight);
+  expect(reopened.settings.resources).toEqual(before.settings.resources);
+});
+
 it('磁盘只退休已删除的字段，保留有效偏好和原文摘要，显式保存才更新文件', async () => {
   const f = await fixture();
   const preferences = {
@@ -149,16 +164,16 @@ it('磁盘只退休已删除的字段，保留有效偏好和原文摘要，显�
   });
   await writeFile(f.file, original, 'utf8');
   const loaded = await f.store.read();
-  expect(loaded.settings).toEqual(preferences);
+  expect(loaded.settings).toEqual(ProductSettingsSchema.parse(preferences));
   expect(loaded.revision).toMatch(/^[a-f0-9]{64}$/);
   expect(await readFile(f.file, 'utf8')).toBe(original);
   const saved = await f.store.save({
     revision: loaded.revision,
     settings: { ...loaded.settings, resources: { intervalSeconds: 20, timeoutSeconds: 9 } },
   });
-  expect(saved.settings).toEqual({ ...preferences, resources: { intervalSeconds: 20, timeoutSeconds: 9 } });
+  expect(saved.settings).toEqual({ ...loaded.settings, resources: { intervalSeconds: 20, timeoutSeconds: 9 } });
   expect(JSON.parse(await readFile(f.file, 'utf8'))).toEqual({
-    ...preferences,
+    ...loaded.settings,
     resources: { intervalSeconds: 20, timeoutSeconds: 9 },
   });
   await expect(f.store.save(loaded)).rejects.toMatchObject({ status: 409, code: 'revision_conflict' });

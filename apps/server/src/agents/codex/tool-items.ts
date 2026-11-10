@@ -73,9 +73,11 @@ const TOOL_OUTPUTS: Record<string, (item: RecordValue) => string> = {
   imageView: (item) => text(item.path),
 };
 
-export function codexToolOutput(item: RecordValue): string {
+export function codexToolOutput(item: RecordValue, preserveToolContent = false): string {
   const output = TOOL_OUTPUTS[text(item.type)]!(item);
-  return output.length <= 20_000 ? output : `${output.slice(0, 20_000)}\n[已截断，共 ${output.length} 字符]`;
+  return preserveToolContent || output.length <= 20_000
+    ? output
+    : `${output.slice(0, 20_000)}\n[已截断，共 ${output.length} 字符]`;
 }
 
 export function codexToolFailed(item: RecordValue): boolean {
