@@ -82,7 +82,21 @@ describe('Codex 启动发现', () => {
   });
 
   it.runIf(process.platform === 'win32')('隔离 PATH 没有官方运行时，返回可操作错误且不回退到宿主安装', async () => {
-    const { env } = await installation();
-    await expect(resolveCodexCommand({ env })).rejects.toThrow('找不到 Codex');
+    const { dir, env } = await installation();
+    await expect(resolveCodexCommand({ env: { ...env, LOCALAPPDATA: dir, APPDATA: dir } })).rejects.toThrow(
+      '找不到 Codex',
+    );
+  });
+
+  it.runIf(process.platform === 'win32')('首次安装的官方目录未进入旧 PATH 时，对话启动仍使用已检测入口', async () => {
+    const { dir, env, addFile } = await installation();
+    const native = await addFile('Programs', 'OpenAI', 'Codex', 'bin', 'codex.exe');
+    const isolated = { ...env, LOCALAPPDATA: dir, APPDATA: path.join(dir, 'roaming') };
+    expect(await resolveCodexCommand({ env: isolated })).toEqual({ command: native, args: [] });
+    await rm(native);
+    const js = await addFile('roaming', 'npm', 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
+    const shim = await addFile('roaming', 'npm', 'codex.cmd');
+    await writeFile(shim, '@ECHO off\r\n"%~dp0node_modules/@openai/codex/bin/codex.js" %*\r\n');
+    expect(await resolveCodexCommand({ env: isolated })).toEqual({ command: process.execPath, args: [js] });
   });
 });

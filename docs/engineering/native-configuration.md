@@ -100,3 +100,13 @@ Antigravity 的 Gemini 密钥还需要原生 `modelProvider: "gemini"`；ADC 使
 - CC Switch：[Direct 原生写入](https://github.com/farion1231/cc-switch/blob/main/src-tauri/src/live/project/codex.rs)、[agy 启动配置](https://github.com/farion1231/cc-switch/blob/main/src-tauri/src/agy_config.rs)。Direct 与代理模式不同；agy 也使用子进程环境提供 Key，不能概括为所有配置都修改真实原生文件。
 
 使用临时目录和合成 CLI 验证读写与启动接线；真实账号、模型端点和 MCP 服务的结果仍须单独记录。当前完成程度见[路线图](../roadmap.md)。
+
+## CLI 程序版本管理
+
+程序安装独立于原生模型配置。工作台识别实际可执行入口及官方 npm 包身份，npm 更新只作用于对应的全局安装位置；Claude 原生更新沿用自身通道和禁止更新设置，Antigravity 使用原生更新命令。未知来源不自动改装；缺失安装按本机可用安装工具与官方安装器处理，系统权限不足时报告失败，不自动提升权限。
+
+`GET /api/settings/cli-installation/:agent` 读取本机状态与已缓存版本，`POST .../:agent/check` 查询固定官方来源，`POST .../:agent/operations` 接收动作及状态 revision。客户端不能传入命令、URL、路径或安装版本；执行前复核安装身份。任务由后端持有，同时只允许一项安装，更新先回收对应 CLI 的空闲运行实例，阻止新回合与原生读取进入。退出应用时取消并清理本次安装进程。
+
+完成后重新读取实际入口与版本，并检查工作台所需的原生接口。未达到目标版本、入口仍指向旧安装或接口不兼容时明确失败；可能发生部分更新的失败也会清除旧能力缓存。前端任务观察独立于设置页面，完成或失败后刷新环境与能力；网络中断或超时停止观察，重新打开可恢复状态。版本检查失败不丢掉已有本机状态，原始安装输出不进入页面。
+
+官方依据：[Claude 安装与更新](https://code.claude.com/docs/en/setup)、[Codex CLI](https://learn.chatgpt.com/docs/codex/cli)、[Antigravity CLI 入门](https://antigravity.google/docs/getting-started?tab=cli)。版本元数据与安装方式随各来源核对；已知版本不代表用户模型服务可用。

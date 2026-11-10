@@ -1,26 +1,15 @@
 import { settingsApi, settingsKeys } from './api';
 import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
-import type { EnvironmentTool } from '@agentdeck/shared/settings';
+import type { AgentKind } from '@agentdeck/shared/conversation';
 
 import { buttonClass } from '../../ui/styles';
 import { useCancelableRequest } from '../../lib/use-cancelable-request';
-import { useEnvironment } from './use-environment';
+import { agentTool, useEnvironment } from './use-environment';
+import { CliInstallationPanel } from './CliInstallationPanel';
+import { cliInstallationKey } from './cli-installation-api';
 
-const GUIDES: Record<EnvironmentTool['name'], { url: string; hint: string }> = {
-  'Claude Code': {
-    url: 'https://code.claude.com/docs/en/setup',
-    hint: '按官方说明安装并配置 Claude Code；原生配置位于 ~/.claude/。',
-  },
-  Codex: {
-    url: 'https://developers.openai.com/codex/cli/',
-    hint: '按官方说明安装 Codex CLI；原生配置位于 ~/.codex/config.toml。',
-  },
-  Antigravity: {
-    url: 'https://antigravity.google/',
-    hint: '按官方说明安装 Antigravity CLI；可执行文件为 agy，通常位于 %LOCALAPPDATA%/agy/bin/agy.exe。',
-  },
-};
+const agents: AgentKind[] = ['claude', 'codex', 'antigravity'];
 export function EnvironmentSummary({ onOpenSettings }: { onOpenSettings(): void }) {
   const query = useEnvironment();
   const missing = query.data?.tools.filter((tool) => !tool.available) ?? [];
@@ -55,7 +44,10 @@ export function EnvironmentReport({ disabled }: { disabled: boolean }) {
       await qc.cancelQueries({ queryKey: settingsKeys.environment });
       return settingsApi.detectEnvironment(signal);
     });
-    if (report) qc.setQueryData(settingsKeys.environment, report);
+    if (report) {
+      qc.setQueryData(settingsKeys.environment, report);
+      await Promise.all(agents.map((agent) => qc.invalidateQueries({ queryKey: cliInstallationKey(agent) })));
+    }
   };
   return (
     <section className="space-y-3">
@@ -72,7 +64,7 @@ export function EnvironmentReport({ disabled }: { disabled: boolean }) {
         </button>
       </div>
       <p className="text-xs leading-5 text-muted-foreground">
-        检查本机工具的可用状态。安装或配置后可重新检测；修改 PATH 后可能需要重启本机服务。
+        “重新检测”检查本机 CLI 是否可用；各卡片的“检查更新”联网查询官方最新版本。
       </p>
       {query.isPending && <p role="status">正在读取环境…</p>}
       {(request.error || query.error) && (
@@ -81,33 +73,20 @@ export function EnvironmentReport({ disabled }: { disabled: boolean }) {
         </p>
       )}
       {query.data && (
-        <>
-          <p className="text-xs text-muted-foreground">
-            检测时间：{new Date(query.data.checkedAt).toLocaleString('zh-CN')}
-          </p>
-          <ul className="space-y-2 text-sm">
-            {query.data.tools.map((tool) => (
-              <li key={tool.name} className="rounded border border-border p-3">
-                <div className="flex flex-wrap justify-between gap-2">
-                  <span>{tool.name}</span>
-                  <span className={tool.available ? 'text-success' : 'text-warning'}>
-                    {tool.available ? `可用 · ${tool.version ?? '版本未知'}` : '不可用'}
-                  </span>
-                </div>
-                {tool.message && <p className="mt-1 text-xs leading-5 text-muted-foreground">{tool.message}</p>}
-                {!tool.available && (
-                  <div className="mt-2 space-y-1 text-xs leading-5">
-                    <p>{GUIDES[tool.name].hint}</p>
-                    <a className="text-accent underline" href={GUIDES[tool.name].url} target="_blank" rel="noreferrer">
-                      {tool.name} 官方安装与配置
-                    </a>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        </>
+        <p className="text-xs text-muted-foreground">
+          检测时间：{new Date(query.data.checkedAt).toLocaleString('zh-CN')}
+        </p>
       )}
+      <div className="space-y-2">
+        {agents.map((agent) => (
+          <CliInstallationPanel
+            key={agent}
+            agent={agent}
+            health={agentTool(query.data, agent)}
+            disabled={disabled || request.busy}
+          />
+        ))}
+      </div>
     </section>
   );
 }

@@ -2,7 +2,7 @@ import { access } from 'node:fs/promises';
 import path from 'node:path';
 import type { CodexRuntimeOptions } from './types';
 import { CodexError } from './types';
-import { resolveNodeExecutable } from '../../platform/process/executable';
+import { resolveLocalCommand, resolveNodeExecutable } from '../../platform/process/executable';
 
 type LaunchCommand = { command: string; args: string[] };
 async function exists(file: string): Promise<boolean> {
@@ -58,5 +58,9 @@ async function windowsCommand(env: NodeJS.ProcessEnv): Promise<LaunchCommand> {
     const native = await officialNpmCommand(dir, env);
     if (native) return native;
   }
-  throw new CodexError('找不到 Codex，请安装官方 CLI，或设置 AGENTDECK_CODEX。');
+  try {
+    return resolveLocalCommand('codex', env);
+  } catch {
+    throw new CodexError('找不到 Codex，请安装官方 CLI，或设置 AGENTDECK_CODEX。');
+  }
 }

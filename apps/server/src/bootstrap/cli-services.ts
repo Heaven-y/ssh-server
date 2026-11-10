@@ -1,6 +1,13 @@
 // 可编程启动：读取配置、组装依赖、只在本机地址上启动，并返回关闭函数。
 // CLI（main.ts）与 Electron 桌面壳共用这里，业务路由与清理路径保持原样。
 import type { FastifyInstance } from 'fastify';
+import { createCliActivity, guardSessionProvider } from './cli-activity';
+import { createAgentProbes, createLocalRunner } from '../agents/common/probe';
+import { createCliInstallationBackend } from '../cli-installation';
+import type { CliInstallationBackend } from '../cli-installation/types';
+import { createCliInstallationService } from '../cli-installation/service';
+import { registerCliInstallationRoutes } from '../http/cli-installation.routes';
+import type { ProcessRunner } from '../platform/process/run';
 import { createAntigravityRunner } from '../agents/antigravity/adapter';
 import { discoverAntigravityCapabilities } from '../agents/antigravity/capabilities';
 import { createAntigravitySessionManagement } from '../agents/antigravity/management';
@@ -45,26 +52,37 @@ export function createCliServices({
   configDir,
   store,
   activity,
+  installationBackend,
+  probeRunner,
 }: {
   configDir: string;
   store: WorkspaceStore;
   activity: WorkspaceActivity;
+  installationBackend?: CliInstallationBackend;
+  probeRunner?: ProcessRunner;
 }) {
   const acquireWorkspace = (id: string) => activity.acquire(id);
+  const nativeActivity = createCliActivity();
   const launchEnvironment = createLaunchEnvironment({
     configDir: configDir,
     onSaved: (agent) => capabilities.invalidate(agent),
   });
   const capabilities = createCapabilitiesService(
     {
-      claude: withCapabilityDirectory(async (dir, signal) =>
-        discoverClaudeCapabilities(dir, { signal, env: await launchEnvironment.resolve('claude') }),
+      claude: withCapabilityDirectory((dir, signal) =>
+        nativeActivity.run('claude', async () =>
+          discoverClaudeCapabilities(dir, { signal, env: await launchEnvironment.resolve('claude') }),
+        ),
       ),
-      codex: withCapabilityDirectory(async (dir, signal) =>
-        discoverCodexCapabilities(dir, { signal, env: await launchEnvironment.resolve('codex') }),
+      codex: withCapabilityDirectory((dir, signal) =>
+        nativeActivity.run('codex', async () =>
+          discoverCodexCapabilities(dir, { signal, env: await launchEnvironment.resolve('codex') }),
+        ),
       ),
-      antigravity: withCapabilityDirectory(async (dir, signal) =>
-        discoverAntigravityCapabilities(dir, { signal, env: await launchEnvironment.resolve('antigravity') }),
+      antigravity: withCapabilityDirectory((dir, signal) =>
+        nativeActivity.run('antigravity', async () =>
+          discoverAntigravityCapabilities(dir, { signal, env: await launchEnvironment.resolve('antigravity') }),
+        ),
       ),
     },
     { configDir: configDir },
@@ -76,16 +94,24 @@ export function createCliServices({
   // 会话服务与轮次管理器互相引用：会话服务里的回调只在调用时读 turns，声明顺序保持原样。
   const sessions = createSessionsService(
     {
-      claude: createClaudeSessions(),
-      antigravity: createAntigravitySessions({ management: antigravityManagement }),
-      codex: {
-        list: (dir, signal, archived) => listCodexSessions(dir, { signal, archived }),
-        page: (dir, input, signal, archived) => pageCodexSessions(dir, input, { signal, archived }),
-        read: (id, dir, signal) => readCodexSession(id, dir, { signal }),
-        assertBelongs: (id, dir, signal) => assertCodexSession(id, dir, { signal }),
-        mutate: (id, dir, input) => mutateCodexSession(id, dir, input),
-        fork: (id, dir, input) => forkCodexSession(id, dir, input),
-      },
+      claude: guardSessionProvider('claude', createClaudeSessions(), nativeActivity),
+      antigravity: guardSessionProvider(
+        'antigravity',
+        createAntigravitySessions({ management: antigravityManagement }),
+        nativeActivity,
+      ),
+      codex: guardSessionProvider(
+        'codex',
+        {
+          list: (dir, signal, archived) => listCodexSessions(dir, { signal, archived }),
+          page: (dir, input, signal, archived) => pageCodexSessions(dir, input, { signal, archived }),
+          read: (id, dir, signal) => readCodexSession(id, dir, { signal }),
+          assertBelongs: (id, dir, signal) => assertCodexSession(id, dir, { signal }),
+          mutate: (id, dir, input) => mutateCodexSession(id, dir, input),
+          fork: (id, dir, input) => forkCodexSession(id, dir, input),
+        },
+        nativeActivity,
+      ),
     },
     {
       withIdleSession: (session, operation) => turns.withIdleSession(session, operation),
@@ -120,11 +146,29 @@ export function createCliServices({
     runners,
     acquireWorkspace,
   });
+  const installations = createCliInstallationService({
+    backend:
+      installationBackend ?? createCliInstallationBackend({ environment: (agent) => launchEnvironment.resolve(agent) }),
+    withIdleAgent: (agent, operation) => turns.withIdleAgent(agent, () => nativeActivity.exclusive(agent, operation)),
+    restart: (agent) => runners[agent].restart(),
+    onChanged: async (agent) => {
+      await capabilities.invalidate(agent);
+      sessions.invalidate(agent);
+    },
+    verify: async (agent) => {
+      const env = await launchEnvironment.resolve(agent);
+      const probes = createAgentProbes({ run: probeRunner ?? createLocalRunner(() => env) });
+      return (await probes.probe(agent)).status === 'available';
+    },
+  });
 
   return {
     turns,
+    nativeActivity,
+    disposeInstallations: () => installations.dispose(),
     disposeSessionManagement: () => antigravityManagement.dispose(),
     registerRoutes(a: FastifyInstance) {
+      registerCliInstallationRoutes(a, { service: installations });
       registerSessionRoutes(a, { store, sessions, activity });
       registerCapabilityRoutes(a, { store, capabilities, sessions });
       registerModelCatalogRoutes(a, { store, capabilities });
