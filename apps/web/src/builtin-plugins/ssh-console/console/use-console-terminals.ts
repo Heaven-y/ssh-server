@@ -60,13 +60,13 @@ export function useConsoleTerminals(serverId: string, directory: string, visible
       cancelled = true;
     };
   }, [serverId, directory, visible, ready]);
-  const run = async (operation: () => Promise<void>) => {
+  const run = async <T>(operation: () => Promise<T>): Promise<T | undefined> => {
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
     setError('');
     try {
-      await operation();
+      return await operation();
     } catch (reason) {
       if (mounted.current) setError(consoleError(reason));
     } finally {
@@ -80,6 +80,7 @@ export function useConsoleTerminals(serverId: string, directory: string, visible
       if (mounted.current) {
         setTerminals((items) => [...items, terminal]);
         setSelected(terminal.id);
+        return terminal;
       }
     });
   const close = (id: string) =>

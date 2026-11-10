@@ -5,6 +5,7 @@ import '@xterm/xterm/css/xterm.css';
 import { useUiPreferences } from '../../../ui/ui-preferences';
 import { prepareTerminalPaste } from '../legacy/terminal/paste';
 import { createConsoleTerminalConnection } from './terminal-connection';
+import { countTerminalMatches, terminalSearchDecorations, type TerminalSearchResults } from './terminal-search';
 
 const themes: Record<'light' | 'dark', ITheme> = {
   dark: { background: '#101114', foreground: '#eeeff3', cursor: '#9cb5ff', selectionBackground: '#303d65' },
@@ -24,6 +25,7 @@ export function createConsoleTerminalRuntime(options: {
   terminalId: string;
   status(message: string): void;
   paste(text: string): void;
+  searchResults?(results: TerminalSearchResults | null): void;
 }) {
   const terminal = new Terminal({
     scrollback: 5000,
@@ -32,13 +34,21 @@ export function createConsoleTerminalRuntime(options: {
     screenReaderMode: true,
     cursorBlink: true,
     disableStdin: true,
+    allowProposedApi: true,
     theme: themes[useUiPreferences.getState().theme],
   });
   const fit = new FitAddon();
   const search = new SearchAddon();
+  let searchQuery = '';
   terminal.loadAddon(fit);
   terminal.loadAddon(search);
   terminal.open(options.host);
+  const searchEvents = search.onDidChangeResults(() => {
+    if (searchQuery)
+      options.searchResults?.(
+        countTerminalMatches(terminal.buffer.active, searchQuery, terminal.getSelectionPosition()),
+      );
+  });
   let visible = false;
   let disposed = false;
   let frame = 0;
@@ -66,7 +76,15 @@ export function createConsoleTerminalRuntime(options: {
     },
   });
   const theme = useUiPreferences.subscribe((state, previous) => {
-    if (state.theme !== previous.theme) terminal.options.theme = themes[state.theme];
+    if (state.theme === previous.theme) return;
+    terminal.options.theme = themes[state.theme];
+    if (searchQuery) {
+      search.clearDecorations();
+      search.findNext(searchQuery, {
+        incremental: true,
+        decorations: terminalSearchDecorations(state.theme === 'dark'),
+      });
+    }
   });
   function measure() {
     frame = 0;
@@ -113,13 +131,19 @@ export function createConsoleTerminalRuntime(options: {
       if (value) schedule();
     },
     focus: () => terminal.focus(),
-    search(text: string, backwards = false) {
+    search(text: string, backwards = false, incremental = false) {
+      searchQuery = text;
       if (!text) {
         search.clearDecorations();
         terminal.clearSelection();
+        options.searchResults?.(null);
         return false;
       }
-      return backwards ? search.findPrevious(text) : search.findNext(text);
+      const searchOptions = {
+        incremental,
+        decorations: terminalSearchDecorations(useUiPreferences.getState().theme === 'dark'),
+      };
+      return backwards ? search.findPrevious(text, searchOptions) : search.findNext(text, searchOptions);
     },
     async copy() {
       try {
@@ -158,6 +182,7 @@ export function createConsoleTerminalRuntime(options: {
       data.dispose();
       binary.dispose();
       osc.dispose();
+      searchEvents.dispose();
       terminal.dispose();
     },
   };

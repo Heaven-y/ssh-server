@@ -73,7 +73,7 @@ function ResourceSummary({
     </dl>
   );
 }
-function GpuList({ gpus }: { gpus: ResourceHost['gpus'] }) {
+export function GpuList({ gpus }: { gpus: ResourceHost['gpus'] }) {
   if (gpus?.length === 0)
     return (
       <section>

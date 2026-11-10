@@ -1,7 +1,6 @@
-import { RESOURCE_LIMITS, SSH_CONSOLE_LIMITS, SshConsolePathSchema, type ResourceDisk } from '@agentdeck/shared/ssh';
+import { RESOURCE_LIMITS, SSH_CONSOLE_LIMITS, SshConsolePathSchema, type SshConsoleDisk } from '@agentdeck/shared/ssh';
 import { ResourceCache } from '../legacy/resources/cache';
-import { HOST_RESOURCE_COMMAND, diskResourceCommand } from '../legacy/resources/commands';
-import { parseDiskResources, parseHostResources } from '../legacy/resources/parse';
+import { CONSOLE_HOST_COMMAND, CONSOLE_DISK_COMMAND, parseConsoleHost, parseConsoleDisks } from './overview';
 import { runExec } from '../ssh/exec';
 import type { SshPool } from '../ssh/pool';
 import type { ConsoleAccess, ConsoleLease } from './access';
@@ -13,7 +12,7 @@ const timing = {
   intervalMs: SSH_CONSOLE_LIMITS.refreshMs,
   timeoutMs: SSH_CONSOLE_LIMITS.metricsTimeoutMs,
 };
-type Host = ReturnType<typeof parseHostResources>;
+type Host = ReturnType<typeof parseConsoleHost>;
 const keyOf = (lease: ConsoleLease) =>
   JSON.stringify([lease.target.alias, lease.guard.generation, lease.guard.cacheKey]);
 async function sample(pool: SshPool, lease: ConsoleLease, command: string, signal: AbortSignal) {
@@ -49,7 +48,7 @@ async function sample(pool: SshPool, lease: ConsoleLease, command: string, signa
 
 export function createConsoleMetrics(pool: SshPool, access: ConsoleAccess) {
   let hosts = new ResourceCache<Host>(64);
-  let disks = new ResourceCache<ResourceDisk>(128);
+  let disks = new ResourceCache<SshConsoleDisk[]>(64);
   let processes = new ResourceCache<ConsoleProcessData>(64);
   return {
     async overview(serverId: string, remoteDir = '~', signal?: AbortSignal) {
@@ -61,13 +60,12 @@ export function createConsoleMetrics(pool: SshPool, access: ConsoleAccess) {
           hosts.get(
             key,
             async (previous, abort) =>
-              parseHostResources(await sample(pool, lease, HOST_RESOURCE_COMMAND, abort), previous?.cpu),
+              parseConsoleHost(await sample(pool, lease, CONSOLE_HOST_COMMAND, abort), previous?.cpu),
             timing,
           ),
           disks.get(
-            JSON.stringify([key, remoteDir]),
-            async (_previous, abort) =>
-              parseDiskResources(await sample(pool, lease, diskResourceCommand(remoteDir), abort)),
+            key,
+            async (_previous, abort) => parseConsoleDisks(await sample(pool, lease, CONSOLE_DISK_COMMAND, abort)),
             timing,
           ),
         ]);
@@ -102,7 +100,7 @@ export function createConsoleMetrics(pool: SshPool, access: ConsoleAccess) {
       disks.dispose();
       processes.dispose();
       hosts = new ResourceCache<Host>(64);
-      disks = new ResourceCache<ResourceDisk>(128);
+      disks = new ResourceCache<SshConsoleDisk[]>(64);
       processes = new ResourceCache<ConsoleProcessData>(64);
     },
   };

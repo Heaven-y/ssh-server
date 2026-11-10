@@ -23,6 +23,9 @@ const overview: SshConsoleOverview = {
   remoteDir: '~',
   host: reading({
     hostname: 'node',
+    cpuCores: 8,
+    system: 'Linux demo',
+    uptimeSeconds: 3600,
     cpuPercent: 25,
     load: [1, 2, 3],
     memoryUsed: 100,
@@ -31,7 +34,10 @@ const overview: SshConsoleOverview = {
     processes: [],
     gpuProcessesAvailable: true,
   }),
-  disk: reading({ availableBytes: 500, totalBytes: 1000 }),
+  disk: reading([
+    { filesystem: '/dev/data', mount: '/data', availableBytes: 500, totalBytes: 1000, usedBytes: 500, usedPercent: 50 },
+    { filesystem: '/dev/root', mount: '/', availableBytes: 800, totalBytes: 1000, usedBytes: 200, usedPercent: 20 },
+  ]),
 };
 const processes: SshConsoleProcesses = {
   serverId: 'my-server',
@@ -186,4 +192,21 @@ it('文件页只读，显示截断预览；切服务器后不把旧文件结果�
   await tick();
   expect(within(screen.getByRole('tabpanel')).queryByText('只读预览正文')).toBeNull();
   expect(calls.some(({ url }) => url.startsWith('/api/ssh-console/other-server/overview'))).toBe(true);
+});
+
+it('概览逐个挂载显示剩余空间与每核负载，进程分组可独立折叠且显示显存合计', async () => {
+  render(page());
+  await tick();
+  expect(screen.getByText('/data')).toBeTruthy();
+  expect(screen.getByText('剩余 500 B')).toBeTruthy();
+  expect(screen.getByText(/0.13\/核/)).toBeTruthy();
+  expect(screen.getByText(/1 \/ 5 \/ 15 分钟/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('tab', { name: '进程' }));
+  await tick();
+  const group = screen.getByRole('button', { name: /GPU 1.*1.0 KiB/ });
+  fireEvent.click(group);
+  expect(group.getAttribute('aria-expanded')).toBe('false');
+  expect(screen.getAllByRole('table')).toHaveLength(1);
+  fireEvent.click(group);
+  expect(screen.getAllByRole('table')).toHaveLength(2);
 });

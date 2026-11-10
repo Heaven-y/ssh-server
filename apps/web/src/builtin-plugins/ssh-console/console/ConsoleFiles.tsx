@@ -1,85 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
-import { FileText, Folder, ArrowUp, Home, RefreshCw, X } from 'lucide-react';
-import type { SshConsoleDirectory, SshConsolePreview } from '@agentdeck/shared/ssh';
-import { sshConsoleApi } from './api';
-import { buttonClass, inputClass } from '../../../ui/styles';
-import { consoleError, formatBytes } from './console-state';
-
-function useConsoleFiles(serverId: string, initialDirectory: string, active: boolean) {
-  const [path, setPath] = useState(initialDirectory);
-  const [directory, setDirectory] = useState<SshConsoleDirectory>();
-  const [preview, setPreview] = useState<SshConsolePreview>();
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [reload, setReload] = useState(0);
-  const pending = useRef<AbortController | undefined>(undefined);
-  useEffect(() => {
-    if (!active) return;
-    const controller = new AbortController();
-    void sshConsoleApi
-      .directory(serverId, path, controller.signal)
-      .then((value) => {
-        if (!controller.signal.aborted) {
-          setDirectory(value);
-          setLoading(false);
-        }
-      })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) {
-          setError(consoleError(reason));
-          setLoading(false);
-        }
-      });
-    return () => controller.abort();
-  }, [serverId, path, reload, active]);
-  useEffect(() => () => pending.current?.abort(), []);
-  useEffect(() => {
-    if (!active) pending.current?.abort();
-  }, [active]);
-  const navigate = (next: string) => {
-    pending.current?.abort();
-    setPath(next);
-    setDirectory(undefined);
-    setPreview(undefined);
-    setError('');
-    setLoading(true);
-    setPreviewLoading(false);
-    setReload((value) => value + 1);
-  };
-  const open = async (file: string) => {
-    pending.current?.abort();
-    const controller = new AbortController();
-    pending.current = controller;
-    setPreview(undefined);
-    setPreviewLoading(true);
-    setError('');
-    try {
-      const value = await sshConsoleApi.preview(serverId, file, controller.signal);
-      if (!controller.signal.aborted) setPreview(value);
-    } catch (reason) {
-      if (!controller.signal.aborted) setError(consoleError(reason));
-    } finally {
-      if (pending.current === controller) setPreviewLoading(false);
-    }
-  };
-  return {
-    directory,
-    preview,
-    error,
-    loading,
-    previewLoading,
-    navigate,
-    open,
-    path,
-    closePreview: () => {
-      pending.current?.abort();
-      setPreview(undefined);
-      setPreviewLoading(false);
-    },
-  };
-}
-type Browser = ReturnType<typeof useConsoleFiles>;
+import { FileText, Folder, X } from 'lucide-react';
+import type { SshConsolePreview } from '@agentdeck/shared/ssh';
+import { buttonClass } from '../../../ui/styles';
+import { formatBytes } from './console-state';
+import { useConsoleFiles, type ConsoleFileBrowser } from './use-console-files';
+import { ConsoleFileNavigation } from './ConsoleFileNavigation';
 
 export function ConsoleFiles({
   serverId,
@@ -93,7 +17,7 @@ export function ConsoleFiles({
   const browser = useConsoleFiles(serverId, initialDirectory, active);
   return (
     <section aria-label="只读服务器文件" className="flex min-h-0 flex-1 flex-col">
-      <FileNavigation browser={browser} disabled={!active} />
+      <ConsoleFileNavigation browser={browser} disabled={!active} />
       <p className="shrink-0 px-5 py-2 text-xs text-muted-foreground">只读浏览 · 文本预览最多 256 KiB</p>
       {browser.error && (
         <p role="alert" className="px-5 py-2 text-sm text-destructive-foreground">
@@ -117,63 +41,17 @@ export function ConsoleFiles({
     </section>
   );
 }
-function FileNavigation({ browser, disabled }: { browser: Browser; disabled: boolean }) {
-  const [input, setInput] = useState(browser.path);
-  const path = browser.directory?.path ?? browser.path;
-  const [previous, setPrevious] = useState(path);
-  if (path !== previous) {
-    setPrevious(path);
-    setInput(path);
-  }
+function FileModified({ timestamp }: { timestamp: number | null }) {
+  if (timestamp === null) return null;
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return null;
   return (
-    <form
-      className="flex shrink-0 gap-1 border-b border-border p-3"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (input.trim()) browser.navigate(input.trim());
-      }}
-    >
-      <button
-        type="button"
-        className={buttonClass('ghost')}
-        aria-label="上级目录"
-        disabled={disabled || !browser.directory}
-        onClick={() => browser.navigate(browser.directory!.parentPath)}
-      >
-        <ArrowUp aria-hidden className="size-4" />
-      </button>
-      <button
-        type="button"
-        className={buttonClass('ghost')}
-        aria-label="服务器主目录"
-        disabled={disabled}
-        onClick={() => browser.navigate('~')}
-      >
-        <Home aria-hidden className="size-4" />
-      </button>
-      <input
-        aria-label="服务器浏览路径"
-        className={`${inputClass} min-w-0 flex-1 font-mono`}
-        disabled={disabled}
-        value={input}
-        onChange={(event) => setInput(event.target.value)}
-      />
-      <button type="submit" className={buttonClass('outline')} disabled={disabled}>
-        前往
-      </button>
-      <button
-        type="button"
-        className={buttonClass('ghost')}
-        aria-label="刷新只读目录"
-        disabled={disabled}
-        onClick={() => browser.navigate(path)}
-      >
-        <RefreshCw aria-hidden className="size-4" />
-      </button>
-    </form>
+    <time dateTime={date.toISOString()} className="hidden shrink-0 text-xs text-muted-foreground sm:block">
+      {date.toLocaleString()}
+    </time>
   );
 }
-function FileList({ browser, disabled }: { browser: Browser; disabled: boolean }) {
+function FileList({ browser, disabled }: { browser: ConsoleFileBrowser; disabled: boolean }) {
   if (!browser.directory) return null;
   return (
     <>
@@ -200,6 +78,7 @@ function FileList({ browser, disabled }: { browser: Browser; disabled: boolean }
             >
               {entry.name}
             </button>
+            <FileModified timestamp={entry.modifiedAt} />
             <span className="shrink-0 text-xs text-muted-foreground">
               {entry.type === 'file'
                 ? formatBytes(entry.size)

@@ -4,6 +4,7 @@ import { TerminalPasteDialog } from '../legacy/terminal/TerminalDialogs';
 import { prepareTerminalPaste } from '../legacy/terminal/paste';
 import { createConsoleTerminalRuntime } from './terminal-runtime';
 import { ConsoleTerminalSearch } from './ConsoleTerminalSearch';
+import type { TerminalSearchResults } from './terminal-search';
 
 export function ConsoleTerminalPane({
   serverId,
@@ -17,10 +18,12 @@ export function ConsoleTerminalPane({
   focused: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
+  const pane = useRef<HTMLElement>(null);
   const runtime = useRef<ReturnType<typeof createConsoleTerminalRuntime> | undefined>(undefined);
   const [status, setStatus] = useState('正在恢复终端…');
   const [paste, setPaste] = useState<string>();
   const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<TerminalSearchResults | null>(null);
   const closeSearch = () => {
     runtime.current?.search('');
     setSearching(false);
@@ -32,6 +35,7 @@ export function ConsoleTerminalPane({
       serverId,
       terminalId,
       status: setStatus,
+      searchResults: setSearchResults,
       paste: (text) => {
         try {
           prepareTerminalPaste(text);
@@ -50,10 +54,11 @@ export function ConsoleTerminalPane({
   }, [serverId, terminalId]);
   useEffect(() => {
     runtime.current?.setVisible(visible);
-    if (visible && focused) runtime.current?.focus();
+    if (visible && focused && !pane.current?.contains(document.activeElement)) runtime.current?.focus();
   }, [visible, focused]);
   return (
     <section
+      ref={pane}
       hidden={!visible}
       aria-label={`终端 ${terminalId}`}
       className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded border border-border bg-background"
@@ -85,7 +90,8 @@ export function ConsoleTerminalPane({
       </header>
       {searching && (
         <ConsoleTerminalSearch
-          find={(text, backwards) => runtime.current?.search(text, backwards) ?? false}
+          find={(text, backwards, incremental) => runtime.current?.search(text, backwards, incremental) ?? false}
+          results={searchResults}
           close={closeSearch}
         />
       )}

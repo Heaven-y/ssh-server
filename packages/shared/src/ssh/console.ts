@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ResourceDisk, ResourceHost, ResourceReading } from './resources';
+import type { ResourceHost, ResourceReading } from './resources';
 import { TerminalSizeSchema } from './terminal';
 
 /** 独立 SSH 控制台只用服务器档案 alias 定位，不附带项目身份。 */
@@ -31,11 +31,24 @@ export const SshConsoleTerminalCreateSchema = TerminalSizeSchema.extend({
 });
 export type SshConsoleTerminalCreate = z.infer<typeof SshConsoleTerminalCreateSchema>;
 
+export type SshConsoleHost = ResourceHost & {
+  cpuCores: number | null;
+  system: string | null;
+  uptimeSeconds: number | null;
+};
+export type SshConsoleDisk = {
+  filesystem: string;
+  mount: string;
+  totalBytes: number;
+  usedBytes: number;
+  availableBytes: number;
+  usedPercent: number;
+};
 export type SshConsoleOverview = {
   serverId: string;
   remoteDir: string;
-  host: ResourceReading<ResourceHost>;
-  disk: ResourceReading<ResourceDisk>;
+  host: ResourceReading<SshConsoleHost>;
+  disk: ResourceReading<SshConsoleDisk[]>;
 };
 export type SshConsoleProcess = {
   pid: number;

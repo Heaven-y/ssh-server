@@ -1,14 +1,18 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { buttonClass, inputClass } from '../../../ui/styles';
+import type { TerminalSearchResults } from './terminal-search';
 
 export function ConsoleTerminalSearch({
   find,
   close,
+  results,
 }: {
-  find(text: string, backwards: boolean): boolean;
+  find(text: string, backwards: boolean, incremental?: boolean): boolean;
   close(): void;
+  results: TerminalSearchResults | null;
 }) {
   const [text, setText] = useState('');
+  const composing = useRef(false);
   const [missing, setMissing] = useState(false);
   const search = (backwards: boolean) => setMissing(!find(text, backwards));
   return (
@@ -28,6 +32,14 @@ export function ConsoleTerminalSearch({
         onChange={(event) => {
           setText(event.target.value);
           setMissing(false);
+          if (!composing.current) find(event.target.value, false, true);
+        }}
+        onCompositionStart={() => {
+          composing.current = true;
+        }}
+        onCompositionEnd={(event) => {
+          composing.current = false;
+          find(event.currentTarget.value, false, true);
         }}
         onKeyDown={(event) => {
           if (event.nativeEvent.isComposing || event.keyCode === 229) {
@@ -44,6 +56,11 @@ export function ConsoleTerminalSearch({
           }
         }}
       />
+      {results && results.total > 0 && (
+        <span role="status" className="text-xs text-muted-foreground">
+          {results.index ? `${results.index} / ${results.total}` : `${results.total} 处匹配`}
+        </span>
+      )}
       <button type="button" className={buttonClass('ghost')} disabled={!text} onClick={() => search(true)}>
         上一处
       </button>
@@ -53,7 +70,7 @@ export function ConsoleTerminalSearch({
       <button type="button" className={buttonClass('ghost')} onClick={close}>
         关闭查找
       </button>
-      {missing && (
+      {(missing || results?.total === 0) && (
         <p role="status" className="w-full text-xs text-muted-foreground">
           当前终端回滚中没有匹配文本。
         </p>

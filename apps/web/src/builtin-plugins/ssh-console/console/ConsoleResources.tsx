@@ -4,7 +4,7 @@ import { RefreshCw } from 'lucide-react';
 import { SSH_CONSOLE_LIMITS } from '@agentdeck/shared/ssh';
 import { sshConsoleApi } from './api';
 import { buttonClass } from '../../../ui/styles';
-import { ResourceMetrics } from '../legacy/resources/ResourceMetrics';
+import { ConsoleOverview } from './ConsoleOverview';
 import { useServerObservationVersion } from '../legacy/resources/use-server-observation';
 import '../legacy/resources/resources.css';
 import { ConsoleProcessTables } from './ConsoleProcessTables';
@@ -95,24 +95,4 @@ function ResourceBody({
 }) {
   if (view === 'overview') return <ConsoleOverview snapshot={overview} />;
   return processes && <ConsoleProcessTables data={processes} />;
-}
-
-function ConsoleOverview({ snapshot }: { snapshot?: Awaited<ReturnType<typeof sshConsoleApi.overview>> }) {
-  if (!snapshot) return null;
-  const message = snapshot.host.message ?? snapshot.disk.message;
-  return (
-    <>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span>采集主机：{snapshot.host.data?.hostname ?? '不可用'}</span>
-        <span className="break-all">磁盘目录：{snapshot.remoteDir}</span>
-        <span>{snapshot.host.stale || snapshot.disk.stale ? '部分数据已过期' : '数据已更新'}</span>
-      </div>
-      {message && (
-        <p role="status" className="text-sm text-muted-foreground">
-          {message}
-        </p>
-      )}
-      <ResourceMetrics host={snapshot.host.data} disk={snapshot.disk.data} diskLabel="目录磁盘（可用 / 总量）" />
-    </>
-  );
 }

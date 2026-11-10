@@ -1,7 +1,33 @@
 import type { SshConsoleGpuProcess, SshConsoleProcesses } from '@agentdeck/shared/ssh';
+import { useState, type ReactNode } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { formatBytes, formatPercent } from './console-state';
 
 const cell = 'border-b border-border px-3 py-2 text-left align-top';
+function ProcessSection({ title, summary, children }: { title: string; summary?: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <section className="space-y-3">
+      <button
+        type="button"
+        className="flex min-h-9 w-full flex-wrap items-center gap-2 rounded text-left text-sm focus-visible:outline-2 focus-visible:outline-accent"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <ChevronRight aria-hidden className={`size-4 shrink-0 ${open ? 'rotate-90' : ''}`} />
+        <span className="font-semibold">{title}</span>
+        {summary && <span className="text-xs text-muted-foreground">{summary}</span>}
+      </button>
+      <div hidden={!open}>{children}</div>
+    </section>
+  );
+}
+function gpuSummary(rows: SshConsoleGpuProcess[]) {
+  const known = rows.filter((row) => row.memoryBytes !== null);
+  if (!known.length) return `${rows.length} 个进程 · 显存不可用`;
+  const memory = known.reduce((sum, row) => sum + row.memoryBytes!, 0);
+  return `${rows.length} 个进程 · ${formatBytes(memory)}${known.length === rows.length ? '' : '（部分显存未知）'}`;
+}
 function GpuProcesses({ data }: { data: SshConsoleProcesses }) {
   if (!data.gpuProcessesAvailable) return <p className="text-sm text-muted-foreground">GPU 进程信息不可用。</p>;
   if (!data.gpuProcesses.length) return <p className="text-sm text-muted-foreground">当前没有 GPU 进程。</p>;
@@ -11,10 +37,7 @@ function GpuProcesses({ data }: { data: SshConsoleProcesses }) {
   return (
     <div className="space-y-3">
       {[...groups.entries()].map(([uuid, rows]) => (
-        <section key={uuid} className="space-y-2">
-          <h4 className="text-sm font-medium">
-            GPU {rows[0]!.gpuIndex ?? uuid} · {rows.length} 个进程
-          </h4>
+        <ProcessSection key={uuid} title={`GPU ${rows[0]!.gpuIndex ?? uuid}`} summary={gpuSummary(rows)}>
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full table-fixed text-xs">
               <caption className="sr-only">GPU {rows[0]!.gpuIndex ?? uuid} 进程</caption>
@@ -38,7 +61,7 @@ function GpuProcesses({ data }: { data: SshConsoleProcesses }) {
               </tbody>
             </table>
           </div>
-        </section>
+        </ProcessSection>
       ))}
     </div>
   );
@@ -54,12 +77,10 @@ export function ConsoleProcessTables({ data }: { data: SshConsoleProcesses }) {
       )}
       {data.stale && <p className="text-sm text-warning">显示最近一次可用数据，当前采样已过期。</p>}
       {data.truncated && <p className="text-sm text-muted-foreground">进程较多，已达到本次显示上限。</p>}
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold">GPU 进程</h3>
+      <ProcessSection title="GPU 进程" summary={`${data.gpuProcesses.length} 个进程`}>
         <GpuProcesses data={data} />
-      </section>
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold">Top 进程</h3>
+      </ProcessSection>
+      <ProcessSection title="Top 进程" summary={`${data.processes.length} 个进程`}>
         {!data.processes.length ? (
           <p className="text-sm text-muted-foreground">当前没有可显示的进程。</p>
         ) : (
@@ -97,7 +118,7 @@ export function ConsoleProcessTables({ data }: { data: SshConsoleProcesses }) {
             </table>
           </div>
         )}
-      </section>
+      </ProcessSection>
     </div>
   );
 }
