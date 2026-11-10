@@ -1,6 +1,6 @@
 # CLI 用量与执行轨迹
 
-核对日期：2026-11-10。本文只定义当前指标口径与接入限制；逐阶段实验完整保存在 `165caa4:docs/engineering/cli-observability.md`，初始评估在 `3c8d0ac`。
+核对日期：2026-11-10。本文只定义当前指标口径与接入限制；逐阶段实验完整保存在 `b053fe1:docs/engineering/cli-observability.md`，初始评估在 `6856c1d`。
 
 ## 对齐的 DSH 体验
 

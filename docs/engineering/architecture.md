@@ -1,6 +1,6 @@
 # 架构
 
-核对日期：2026-11-10，依据代码 `165caa4`。本文记录原生 CLI 工作台、配置、插件和桌面交付的实现边界。会话协议见[接入说明](native-dialogue.md)，验收范围见[路线图](../roadmap.md)。重整前的实现说明保存在 `c686ef2:docs/engineering/architecture.md`。
+核对日期：2026-11-10，依据代码 `b053fe1`。本文记录原生 CLI 工作台、配置、插件和桌面交付的实现边界。会话协议见[接入说明](native-dialogue.md)，验收范围见[路线图](../roadmap.md)。重整前的实现说明保存在 `c686ef2:docs/engineering/architecture.md`。
 
 ## 1. 分层与职责
 

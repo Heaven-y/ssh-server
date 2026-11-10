@@ -1,6 +1,6 @@
 # 现行设计决策
 
-核对日期：2026-11-10。按产品、原生能力、交互和工程主题组织；不再使用阶段性 D 编号。整理前的全文在 `165caa4:docs/engineering/decisions.md`，更早材料见[历史追溯](#历史追溯)。
+核对日期：2026-11-10。按产品、原生能力、交互和工程主题组织；不再使用阶段性 D 编号。整理前的全文在 `b053fe1:docs/engineering/decisions.md`，更早材料见[历史追溯](#历史追溯)。
 
 产品行为以[需求](../product/requirements.md)为准，实现约束在[架构](architecture.md)，完成状态在[路线图](../roadmap.md)。本文保留仍有效的理由、取舍和边界，已经撤销的方案仅通过 Git 查询。
 
@@ -56,7 +56,7 @@
 
 **替代：** 不自行总结并截断历史，不用复制记录实现分叉；删除必须明确确认，未接入动作不能返回伪造成功。
 
-执行轨迹提供工具、文件、命令与耗时的统一视图，保留原生差异。token 统计必须有明确范围，平均输出速度不能冒充精确解码速度；上下文占比只采用当前报告与有效窗口。未知步骤作为活动呈现，历史没有统计就省略，不为了补齐 DSH 外观另存 transcript。首次评估及当时缺口通过 `3c8d0ac` 追溯。
+执行轨迹提供工具、文件、命令与耗时的统一视图，保留原生差异。token 统计必须有明确范围，平均输出速度不能冒充精确解码速度；上下文占比只采用当前报告与有效窗口。未知步骤作为活动呈现，历史没有统计就省略，不为了补齐 DSH 外观另存 transcript。首次评估及当时缺口通过 `6856c1d` 追溯。
 
 ### 运行状态与回合生命周期
 
@@ -106,7 +106,7 @@
 
 `agy` 的流式入口、`--conversation` 与 stderr 软拒已按帮助和协议核对；这不等于真实账号回合已通过，也不能把退出码 0 当工具全部执行成功。配置页按已核实的全局 CLI 设置、项目 `.agents` 定制和目录规则接入，保持没有项目 settings 层的差异；具体入口及依据见[配置说明](native-configuration.md)。
 
-**替代：** 历史固定不可回放的旧边界保存在 `3c8d0ac:docs/engineering/native-dialogue.md`。当前不伪造审批、不默认跳过权限；实时上下文与历史精确速度只有证据完整时才能接入，合成文本回放不证明所有生成元数据都可用。
+**替代：** 历史固定不可回放的旧边界保存在 `6856c1d:docs/engineering/native-dialogue.md`。当前不伪造审批、不默认跳过权限；实时上下文与历史精确速度只有证据完整时才能接入，合成文本回放不证明所有生成元数据都可用。
 
 ## 3. 界面、SSH 与扩展
 
@@ -174,7 +174,7 @@
 
 保留四个顶层包，不为每个 CLI 复制应用，也不增加空的 application 层。CLI 差异放在各自适配目录，公共设置通过窄接口和静态注册编排；运行器仍保持各自原生协议。这样新增字段不会继续扩张公共配置分支，也保留原生作用域、未知字段和认证方式。
 
-工作台插件宿主与 SSH 业务分离；注册项持有内置页面和生命周期，旧工具集中 legacy 并保留 URL/磁盘数据。平台文件、进程和密钥保护独立于业务，shared 按域提供子路径而不拆更多 npm 包。导入方向由 ESLint 检查，测试和构建资产随实现迁移。结构审查实施前版本可从 `cdcef47:docs/engineering/structure-review.md` 追溯，已执行计划的锚点为 `d6028db:docs/superpowers/plans/2026-11-06-workbench-structure.md`。
+工作台插件宿主与 SSH 业务分离；注册项持有内置页面和生命周期，旧工具集中 legacy 并保留 URL/磁盘数据。平台文件、进程和密钥保护独立于业务，shared 按域提供子路径而不拆更多 npm 包。导入方向由 ESLint 检查，测试和构建资产随实现迁移。结构审查实施前版本可从 `e4fb266:docs/engineering/structure-review.md` 追溯，完成范围与验收记录见 `7ad6cd9:docs/roadmap.md` 的“内部结构迁移”。
 
 ## UI 组件与交互层
 
@@ -193,16 +193,16 @@
 | 原生配置、工作台插件与本地分发的整体实施记录 | `33ffd9d:docs/superpowers/plans/2026-11-04-workbench-completion.md` |
 | DSH 界面对齐与整体审查的实施记录 | `08ed6df:docs/superpowers/plans/2026-11-05-dsh-ui-alignment.md` |
 | 早期逐阶段验收细节 | `c92cd12:docs/roadmap.md` |
-| 执行轨迹实施前的能力评估与历史读取边界 | `3c8d0ac:docs/engineering/cli-observability.md` 与该提交的 `docs/engineering/native-dialogue.md` |
+| 执行轨迹实施前的能力评估与历史读取边界 | `6856c1d:docs/engineering/cli-observability.md` 与该提交的 `docs/engineering/native-dialogue.md` |
 | 原生对话核心接线计划 | `6e33803:docs/superpowers/plans/2026-11-04-native-dialogue.md` |
-| 结构迁移前审查及完成计划 | `cdcef47:docs/engineering/structure-review.md`、`d6028db:docs/superpowers/plans/2026-11-06-workbench-structure.md` |
-| 原生权限与质量门禁计划 | `ebfbf21:docs/superpowers/plans/2026-11-06-native-permissions.md` |
-| 后台会话与自由导航计划 | `45edc9c:docs/superpowers/plans/2026-11-06-background-conversations.md` |
-| 会话分页与缓存优化计划 | `6d5bafa:docs/superpowers/plans/2026-11-06-session-cache-optimization.md` |
-| 光影、会话引用及 AGY 修复阶段 | `431809b:docs/roadmap.md` |
-| 会话恢复、SSH 更新和最新服务验收完整过程 | `165caa4:docs/roadmap.md` |
-| 已完成的后续功能计划 | `aaa5845:docs/superpowers/plans/2026-11-10-workbench-completion.md` |
-| 统计接入的早期请求、失败及后续补验 | `165caa4:docs/engineering/cli-observability.md` |
+| 结构迁移前审查及阶段验收 | `e4fb266:docs/engineering/structure-review.md`、`7ad6cd9:docs/roadmap.md` |
+| 原生权限与质量门禁的完成记录 | `ed04f34:docs/roadmap.md` |
+| 后台会话与自由导航的交付范围 | `eff1203:docs/roadmap.md` |
+| 会话分页与缓存优化的验收记录 | `71d8479:docs/roadmap.md` |
+| 光影、会话引用及 AGY 修复阶段 | `72fc601:docs/roadmap.md` |
+| 会话恢复、SSH 更新和最新服务验收完整过程 | `b053fe1:docs/roadmap.md` |
+| 已完成的后续功能计划 | `b053fe1:docs/superpowers/plans/2026-11-10-workbench-completion.md` |
+| 统计接入的早期请求、失败及后续补验 | `b053fe1:docs/engineering/cli-observability.md` |
 
 ```powershell
 git show c686ef2:docs/engineering/decisions.md
