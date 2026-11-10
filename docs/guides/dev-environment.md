@@ -1,6 +1,6 @@
 # 开发指南
 
-更新于 2026-11-06。按当前工程组织环境、质量、Git 和验证规则。产品优先级见[路线图](../roadmap.md)，协议边界见[原生对话接入](../engineering/native-dialogue.md)，本地成包见[安装指南](local-installation.md)；旧验收数据及已退役问题通过 `c686ef2` 查询。
+核对日期：2026-11-10。按当前工程组织环境、质量、Git 和验证规则。产品优先级见[路线图](../roadmap.md)，协议边界见[原生对话接入](../engineering/native-dialogue.md)，本地成包见[安装指南](local-installation.md)；旧验收数据及已退役问题通过 `c686ef2` 查询。
 
 ## 1. 本机环境
 
@@ -21,7 +21,7 @@ Windows 10/11、Node.js 22+ 与 Git 是开发基础。按需安装 `claude`、`c
 
 | 功能 | 当前选择 | 主要理由 |
 |---|---|---|
-| 后端与协议 | Fastify、WebSocket、zod、TypeScript | 协调 CLI 与 SSH，复用前后端类型，见[技术选择](../engineering/decisions.md#d2-electron-加壳沿用-node-与-react) |
+| 后端与协议 | Fastify、WebSocket、zod、TypeScript | 协调 CLI 与 SSH，复用前后端类型，见[技术选择](../engineering/decisions.md#electron-加壳沿用-node-与-react) |
 | 桌面 | Electron、electron-vite、electron-builder | 业务服务保持一份实现；本地构建 NSIS/portable，不执行发布 |
 | CLI | Claude Agent SDK、Codex app-server、Antigravity 本机接口 | 保留原生会话与行为，不重建模型引擎 |
 | SSH | ssh2、ssh-config | 连接/PTY/SFTP 与 OpenSSH Host 解析；known_hosts 小型校验保留本地实现，覆盖哈希和吊销条目 |
