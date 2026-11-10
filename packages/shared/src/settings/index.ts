@@ -4,3 +4,4 @@ export * from './launch-environment';
 export * from './model-settings';
 export * from './product-settings';
 export * from './session-tools';
+export * from './cli-installation';

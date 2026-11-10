@@ -13,6 +13,7 @@ import { registerProductSettingsRoutes } from './http/product-settings.routes';
 import { registerProjectRoutes } from './http/projects.routes';
 import { registerWsRoutes } from './http/ws.routes';
 import type { ProcessRunner } from './platform/process/run';
+import type { CliInstallationBackend } from './cli-installation/types';
 import { createProductSettings } from './settings/product-settings';
 import { createWorkspaceActivity } from './workspaces/activity';
 import { importLegacyWorkspaces, type ImportReport } from './workspaces/import';
@@ -29,6 +30,8 @@ export type StartServerOptions = {
   legacyDir?: string;
   /** Agent 探测执行器；测试注入假执行器，避免启动本机真实 CLI */
   probeRunner?: ProcessRunner;
+  /** 安装适配器的受控验证入口；默认使用本机原生安装来源。 */
+  cliInstallationBackend?: CliInstallationBackend;
   /** 启动日志；默认写控制台 */
   log?: (message: string) => void;
   logError?: (message: string) => void;
@@ -101,9 +104,16 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
   await mkdir(config.configDir, { recursive: true });
   logMigration(migration, log, logError);
   const productSettings = createProductSettings({ configDir: config.configDir });
-  const probes = createAgentProbes({ run: options.probeRunner ?? createLocalRunner() });
-  // 探测只用于启动日志，不阻塞窗口出现；接口被调用时会另行探测。
-  const startupProbes = probes.probeAll();
+  const localRunner = options.probeRunner ?? createLocalRunner();
+  const probes = createAgentProbes({
+    run: (command, args, settings) => {
+      if (command === 'claude' || command === 'codex' || command === 'agy')
+        return cli.nativeActivity.run(command === 'agy' ? 'antigravity' : command, () =>
+          localRunner(command, args, settings),
+        );
+      return localRunner(command, args, settings);
+    },
+  });
 
   const store = createWorkspaceStore({
     configDir: config.configDir,
@@ -121,13 +131,22 @@ export async function startServer(config: ServerConfig, options: StartServerOpti
   // 旧版 workspaces.json 的字段级转换：在本进程读写项目配置之前跑一次。
   // 没有文件或已经是新结构时为空报告；转换成功后原文件保留为 workspaces.json.bak。
   logLegacyImport(await importLegacyWorkspaces({ configDir: config.configDir, store }), log);
-  const cli = createCliServices({ configDir: config.configDir, store, activity });
+  const cli = createCliServices({
+    configDir: config.configDir,
+    store,
+    activity,
+    installationBackend: options.cliInstallationBackend,
+    probeRunner: options.probeRunner,
+  });
   const { turns } = cli;
+  // 探测只用于启动日志，不阻塞窗口出现；安装需等待探测子进程完成。
+  const startupProbes = probes.probeAll();
 
   let app: FastifyInstance | undefined;
   let closing: Promise<void> | undefined;
   const close = (): Promise<void> => {
     closing ??= (async () => {
+      await cli.disposeInstallations();
       // 每个资源独立释放；一个关闭失败不能阻止其余通道清理。
       await Promise.allSettled([cli.disposeSessionManagement(), builtin.dispose()]);
       // 启动探测最多跑 5 秒；关闭保持原有有界等待。

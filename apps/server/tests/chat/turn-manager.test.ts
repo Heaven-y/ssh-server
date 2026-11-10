@@ -96,6 +96,29 @@ it('CLI重启排斥准备期回合，重启期间不允许新回合插入', asyn
   await restarting;
 });
 
+it('CLI 维护与同来源的会话写操作互斥，其他来源仍可操作', async () => {
+  const { turns } = setup();
+  let release!: () => void;
+  const pending = () =>
+    new Promise<void>((resolve) => {
+      release = resolve;
+    });
+  const session = { agent: 'claude' as const, sessionId: 'fixture' };
+  const mutate = turns.withIdleSession(session, pending);
+  await expect(turns.withIdleAgent('claude', async () => undefined)).rejects.toMatchObject({ code: 'agent_busy' });
+  await expect(turns.withIdleAgent('codex', async () => 'available')).resolves.toBe('available');
+  release();
+  await mutate;
+  const maintenance = turns.withIdleAgent('claude', pending);
+  await expect(turns.withIdleSession(session, async () => undefined)).rejects.toMatchObject({ code: 'agent_busy' });
+  await expect(turns.withIdleSession({ ...session, agent: 'codex' }, async () => 'available')).resolves.toBe(
+    'available',
+  );
+  release();
+  await maintenance;
+  await expect(turns.withIdleSession(session, async () => 'available')).resolves.toBe('available');
+});
+
 it('连接关闭时中断所属全部回合，取消准备中的启动且不影响另一连接', async () => {
   const { turns, fake, sessions } = setup();
   const first = fakeSocket();

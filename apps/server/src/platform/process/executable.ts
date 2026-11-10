@@ -109,6 +109,29 @@ function explicitOverride(
   return undefined;
 }
 
+/** 官方用户安装目录：新安装后无需修改当前进程 PATH，也不覆盖既有 PATH 选择。 */
+function knownDirectories(executable: LocalExecutable, env: NodeJS.ProcessEnv): string[] {
+  const home = envValue(env, 'USERPROFILE') ?? envValue(env, 'HOME');
+  const local = envValue(env, 'LOCALAPPDATA');
+  const roaming = envValue(env, 'APPDATA');
+  const directories: string[] = [];
+  if (executable === 'claude' && home) directories.push(path.join(home, '.local', 'bin'));
+  if (executable === 'codex' && local) directories.push(path.join(local, 'Programs', 'OpenAI', 'Codex', 'bin'));
+  if (roaming) directories.push(path.join(roaming, 'npm'));
+  return directories;
+}
+
+function knownInstallation(executable: LocalExecutable, env: NodeJS.ProcessEnv): string | undefined {
+  const candidate = findOnPath(executable, { PATH: knownDirectories(executable, env).join(path.delimiter) });
+  if (candidate) return candidate;
+  const local = envValue(env, 'LOCALAPPDATA');
+  if (executable === 'agy' && local) {
+    const agy = path.join(local, 'agy', 'bin', 'agy.exe');
+    if (isFile(agy)) return agy;
+  }
+  return undefined;
+}
+
 export function resolveLocalCommand(
   executable: LocalExecutable,
   env: NodeJS.ProcessEnv = process.env,
@@ -117,11 +140,7 @@ export function resolveLocalCommand(
   if (override) return resolveFile(override.value, env, override.name);
   const found = findOnPath(executable, env);
   if (found) return resolveFile(found, env);
-  // Antigravity 的安装器默认只把 agy 目录加进 PATH；从开始菜单启动时可能还没继承到。
-  const localAppData = envValue(env, 'LOCALAPPDATA');
-  if (executable === 'agy' && localAppData) {
-    const known = path.join(localAppData, 'agy', 'bin', 'agy.exe');
-    if (isFile(known)) return resolveFile(known, env);
-  }
+  const known = knownInstallation(executable, env);
+  if (known) return resolveFile(known, env);
   throw new ProcessError('executable_missing', `未找到可执行文件 ${executable}`);
 }

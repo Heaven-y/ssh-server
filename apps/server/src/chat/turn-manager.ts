@@ -79,7 +79,12 @@ export class TurnManager {
 
   /** 重启边界覆盖环境解析之前的项目/归属/能力准备，并排斥同时进入的新回合。 */
   async withIdleAgent<T>(agent: AgentKind, operation: () => Promise<T>): Promise<T> {
-    if (this.stopping || this.restarting.has(agent) || [...this.turns.values()].some((turn) => turn.agent === agent))
+    if (
+      this.stopping ||
+      this.restarting.has(agent) ||
+      [...this.turns.values()].some((turn) => turn.agent === agent) ||
+      [...this.sessions.keys()].some((key) => key.startsWith(`${agent}:`))
+    )
       throw new SessionError(409, 'agent_busy', 'CLI 正在运行或准备，请结束后再重新启动');
     this.restarting.add(agent);
     try {
@@ -92,6 +97,7 @@ export class TurnManager {
   /** 原生管理从范围校验到写入结果全程占锁，避免与准备、运行及同步收尾交错。 */
   async withIdleSession<T>(session: SessionRef, operation: () => Promise<T>): Promise<T> {
     if (this.stopping) throw new SessionError(503, 'server_stopping', '后端正在关闭，请稍后重试');
+    if (this.restarting.has(session.agent)) throw new SessionError(409, 'agent_busy', 'CLI 正在重启或更新，请稍后重试');
     const key = sessionKey(session.agent, session.sessionId);
     if (this.sessions.has(key)) throw new SessionError(409, 'session_busy', '会话正在运行或处理其他操作，请稍后重试');
     const owner = randomUUID();
@@ -249,7 +255,7 @@ export class TurnManager {
       this.send(socket, {
         type: 'error',
         clientTurnId: msg.clientTurnId,
-        message: this.stopping ? '后端正在关闭，请稍后重试' : 'CLI 正在重启，请稍后重试',
+        message: this.stopping ? '后端正在关闭，请稍后重试' : 'CLI 正在重启或更新，请稍后重试',
       });
       return;
     }

@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { settingsApi } from '../../../src/features/settings/api';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { EnvironmentReport, EnvironmentSummary } from '../../../src/features/settings/EnvironmentReport';
+import { cliInstallationApi } from '../../../src/features/settings/cli-installation-api';
 
 afterEach(() => {
   cleanup();
@@ -20,6 +21,23 @@ it('启动摘要与设置共享GET报告，缺失有官方指引，未知版本�
     ],
   };
   vi.spyOn(settingsApi, 'readEnvironment').mockResolvedValue(report);
+  let installed = false;
+  vi.spyOn(cliInstallationApi, 'read').mockImplementation(async (agent) => ({
+    agent,
+    installed: agent !== 'antigravity' || installed,
+    currentVersion: null,
+    latestVersion: null,
+    source: 'unknown',
+    updateAvailable: false,
+    canInstall: false,
+    canUpdate: false,
+    checkedAt: null,
+    revision: 'a'.repeat(64),
+    phase: 'idle',
+    operationId: null,
+    message: null,
+    guideUrl: agent === 'antigravity' ? 'https://antigravity.google/' : 'https://example.com/',
+  }));
   vi.spyOn(settingsApi, 'detectEnvironment').mockResolvedValue({
     ...report,
     tools: report.tools.map((tool) => ({ ...tool, available: true })),
@@ -33,16 +51,19 @@ it('启动摘要与设置共享GET报告，缺失有官方指引，未知版本�
     </QueryClientProvider>,
   );
   await screen.findByText(/缺少或不可用：Antigravity/);
-  expect(screen.getAllByText(/可用 · 版本未知/).length).toBe(2);
-  expect(screen.getByRole('link', { name: /Antigravity 官方/ }).getAttribute('href')).toContain('antigravity');
+  expect(screen.getAllByText('版本未知').length).toBe(2);
+  const antigravity = within(screen.getByRole('region', { name: 'Antigravity 安装与更新' }));
+  expect(antigravity.getByRole('link', { name: '官方安装指南' }).getAttribute('href')).toContain('antigravity');
   expect(settingsApi.readEnvironment).toHaveBeenCalledTimes(1);
   expect(settingsApi.detectEnvironment).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '查看设置' }));
   expect(settings).toHaveBeenCalled();
+  installed = true;
   fireEvent.click(screen.getByRole('button', { name: '重新检测' }));
   await waitFor(() => expect(settingsApi.detectEnvironment).toHaveBeenCalledTimes(1));
   await waitFor(() => expect(screen.queryByRole('region', { name: '启动环境摘要' })).toBeNull());
-  expect(screen.getAllByText(/可用 · 版本未知/).length).toBe(3);
+  await waitFor(() => expect(screen.getAllByText('版本未知').length).toBe(3));
+  expect(cliInstallationApi.read).toHaveBeenCalledTimes(6);
   expect(screen.getByText(/检测时间/)).toBeTruthy();
   client.clear();
 });
@@ -94,5 +115,43 @@ it('读取失败保留设置入口，不自动重新检测', async () => {
   fireEvent.click(screen.getByRole('button', { name: '查看设置' }));
   expect(settings).toHaveBeenCalledOnce();
   expect(detect).not.toHaveBeenCalled();
+  client.clear();
+});
+
+it('版本已最新但运行探测失败时，同一卡片保留不可用原因', async () => {
+  vi.spyOn(settingsApi, 'readEnvironment').mockResolvedValue({
+    checkedAt: 1,
+    tools: [
+      { name: 'Codex', available: false, version: '1.0.0', message: 'Codex 未提供工作台所需的 app-server 能力。' },
+    ],
+  });
+  vi.spyOn(cliInstallationApi, 'read').mockImplementation(async (agent) => ({
+    agent,
+    installed: true,
+    currentVersion: '1.0.0',
+    latestVersion: '1.0.0',
+    source: 'npm',
+    updateAvailable: false,
+    canInstall: false,
+    canUpdate: false,
+    checkedAt: 1,
+    revision: 'a'.repeat(64),
+    phase: 'idle',
+    operationId: null,
+    message: null,
+    guideUrl: 'https://example.com/',
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <EnvironmentReport disabled={false} />
+    </QueryClientProvider>,
+  );
+  const codex = within(await screen.findByRole('region', { name: 'Codex 安装与更新' }));
+  await codex.findByText('Codex 未提供工作台所需的 app-server 能力。');
+  expect(codex.getByText('不可用')).toBeTruthy();
+  expect(codex.queryByText('已是最新版本')).toBeNull();
+  expect(codex.getByRole('link', { name: '官方安装指南' })).toBeTruthy();
+  expect(screen.getAllByRole('region', { name: /安装与更新/ })).toHaveLength(3);
   client.clear();
 });
