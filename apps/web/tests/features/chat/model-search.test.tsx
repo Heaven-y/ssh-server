@@ -134,3 +134,32 @@ it('成功目录被回收后允许重新发现，读取与手动刷新仍由各�
   await waitFor(() => expect(second.result.current.data?.models).toHaveLength(65));
   expect(refresh).toHaveBeenCalledTimes(2);
 });
+
+it('AGY 菜单与搜索都只显示一次同一模型，打开、检索和选择不改用另一配置入口', async () => {
+  const native = { id: 'gemini-example-high', label: 'Gemini Example (High)' };
+  const alias = { id: 'configured', label: native.label, modelId: native.label };
+  useChat.getState().setAgent('antigravity');
+  useChat.getState().setModel(alias.id);
+  client.setQueryData(chatKeys.agentCapabilities('project', 'antigravity'), {
+    agent: 'antigravity',
+    discovered: true,
+    models: [native, alias, ...models],
+    entries: [],
+    warnings: [],
+  });
+  mount();
+  const group = await screen.findByRole('group', { name: '可选模型' });
+  expect(within(group).getByRole('menuitemradio', { name: native.label }).getAttribute('aria-checked')).toBe('true');
+  expect(within(group).queryByRole('menuitemradio', { name: native.id })).toBeNull();
+  expect(useChat.getState().modelOverrides.antigravity).toBe(alias.id);
+  fireEvent.click(screen.getByRole('menuitem', { name: '搜索可见模型' }));
+  const dialog = screen.getByRole('dialog', { name: '选择模型' });
+  const search = within(dialog).getByRole('combobox', { name: '搜索模型' });
+  fireEvent.change(search, { target: { value: native.id } });
+  const option = await within(dialog).findByRole('option', { name: native.label });
+  expect(within(dialog).getAllByRole('option')).toHaveLength(1);
+  expect(option.getAttribute('aria-selected')).toBe('true');
+  fireEvent.click(option);
+  expect(useChat.getState().modelOverrides.antigravity).toBe(alias.id);
+  await act(async () => undefined);
+});

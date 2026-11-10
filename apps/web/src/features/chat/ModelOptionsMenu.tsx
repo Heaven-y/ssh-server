@@ -184,7 +184,7 @@ function ModelChoices({
   const setEffort = useChat((state) => state.setReasoningEffort);
   const models = catalog.data?.models ?? [];
   const visible = useChat((state) => state.defaults.modelVisibility?.[state.agent]);
-  const candidates = modelCandidates(models, currentModel, visible);
+  const candidates = modelCandidates(models, currentModel, visible, agent);
   const selected = findModel(candidates, currentModel)?.id;
   return (
     <>
@@ -385,7 +385,7 @@ export function ModelOptionsMenu({ disabled }: { disabled: boolean }) {
       )}
       {searchOpen && (
         <ModelSearchDialog
-          models={modelCandidates(models, presentation.id, visible)}
+          models={modelCandidates(models, presentation.id, visible, agent)}
           current={presentation.id}
           disabled={disabled}
           choose={(id) => {

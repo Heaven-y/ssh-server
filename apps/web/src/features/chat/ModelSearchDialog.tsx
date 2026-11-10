@@ -1,14 +1,13 @@
 import { Combobox, ComboboxItem, ComboboxList, useComboboxStore, type ComboboxStore } from '@ariakit/react/combobox';
 import { Check, Search } from 'lucide-react';
 import { useState } from 'react';
-import type { AgentModel } from '@agentdeck/shared/conversation';
 import { DetailDialog } from '../../ui/DetailDialog';
 import { buttonClass, inputClass } from '../../ui/styles';
 import { findModel } from '../../cli/shared/model-identity';
 import { ModelCandidateLabel } from './ModelCandidateLabel';
-import { matchingModels } from './model-candidates';
+import { matchingModels, type ModelCandidate } from './model-candidates';
 
-type Props = { models: AgentModel[]; current: string; disabled: boolean; choose(id: string): void; close(): void };
+type Props = { models: ModelCandidate[]; current: string; disabled: boolean; choose(id: string): void; close(): void };
 const PAGE_SIZE = 50;
 
 function Results({ store, models, current, disabled, choose }: Omit<Props, 'close'> & { store: ComboboxStore }) {

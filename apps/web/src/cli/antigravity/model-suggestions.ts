@@ -9,19 +9,27 @@ function combinedValue(models: AgentModel[], current: string): string | undefine
   return [native.id, native.label, alias.id].includes(current) ? current : native.id;
 }
 
-export function antigravityModelSuggestions(models: AgentModel[], current: string) {
+export function antigravityModelGroups(models: AgentModel[]): AgentModel[][] {
   const groups = new Map<string, AgentModel[]>();
   for (const model of models) {
     const entries = groups.get(model.label) ?? [];
     entries.push(model);
     groups.set(model.label, entries);
   }
-  return [...groups].flatMap(([label, entries]) => {
-    const value = combinedValue(entries, current);
-    if (value) return [{ value, label }];
-    return entries.map((model) => ({
-      value: model.id,
-      label: entries.length > 1 ? `${label}（${model.id}）` : label,
-    }));
+  return [...groups.values()].flatMap((entries) =>
+    combinedValue(entries, '') ? [entries] : entries.map((model) => [model]),
+  );
+}
+
+export function antigravityModelSuggestions(models: AgentModel[], current: string) {
+  const counts = new Map<string, number>();
+  for (const model of models) counts.set(model.label, (counts.get(model.label) ?? 0) + 1);
+  return antigravityModelGroups(models).map((entries) => {
+    const model = entries[0]!;
+    const combined = combinedValue(entries, current);
+    return {
+      value: combined ?? model.id,
+      label: combined || counts.get(model.label) === 1 ? model.label : `${model.label}（${model.id}）`,
+    };
   });
 }
