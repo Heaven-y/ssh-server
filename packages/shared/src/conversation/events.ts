@@ -2,6 +2,9 @@
 import type { AgentKind } from './agents';
 import type { CompactionState, ContextUsage, TokenUsage } from './capabilities';
 
+/** 同一次成功模型生成的原生计时；首段可能包含推理，流式时长不含工具执行。 */
+export type GenerationTiming = { durationMs: number; firstTokenMs?: number };
+
 export type AgentEvent =
   | { type: 'context'; usage: ContextUsage | null }
   | { type: 'compaction'; state: CompactionState }
@@ -25,7 +28,7 @@ export type AgentEvent =
     }
   | { type: 'tool_progress'; id: string; durationMs?: number; message?: string }
   /** 单个模型步骤的原生统计，不并入未知累计范围的 result。 */
-  | { type: 'step_usage'; id: string; usage: TokenUsage; durationMs?: number }
+  | { type: 'step_usage'; id: string; usage: TokenUsage; durationMs?: number; generation?: GenerationTiming }
   /** 原生活动没有工具契约时只保留公开状态，不伪装成工具调用。 */
   | {
       type: 'activity';

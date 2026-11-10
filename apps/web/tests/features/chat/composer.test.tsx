@@ -398,6 +398,32 @@ it('历史读取失败保留可编辑草稿，重读成功才恢复发送', asyn
   expect(screen.getByRole<HTMLButtonElement>('button', { name: '发送' }).disabled).toBe(false);
 });
 
+it('恢复回合明确提示较早历史未读取，运行结束后可重新读取完整原生记录', async () => {
+  const read = vi.spyOn(sessionsApi, 'sessionEvents').mockResolvedValue({
+    session: { agent: 'codex', sessionId: 'recovered', summary: '恢复会话', lastModified: 1 },
+    events: [{ type: 'user_message', text: '较早的原生消息' }],
+  });
+  useChat.setState({
+    agent: 'codex',
+    sessionId: 'recovered',
+    running: true,
+    turnId: 'restored',
+    items: [{ kind: 'user', id: 'cached', text: '缓存中的本轮消息' }],
+    historyNotice: '已恢复缓存中的回合；更早的原生历史尚未读取，可在本轮结束后重新读取。',
+    historyReloadNeeded: true,
+  });
+  showChat();
+  expect(screen.getByText(/更早的原生历史尚未读取/)).toBeTruthy();
+  const button = screen.getByRole<HTMLButtonElement>('button', { name: '重新读取完整历史' });
+  expect(button.disabled).toBe(true);
+  act(() => useChat.setState({ running: false, turnId: undefined }));
+  expect(button.disabled).toBe(false);
+  fireEvent.click(button);
+  await waitFor(() => expect(read).toHaveBeenCalled());
+  await waitFor(() => expect(useChat.getState().historyReloadNeeded).toBe(false));
+  expect(useChat.getState().items).toMatchObject([{ text: '较早的原生消息' }]);
+});
+
 it('更换模型清除旧模型的强度覆盖，避免发送不支持的参数', async () => {
   showChat();
   await menuChoose('模型选项', /native-model/);

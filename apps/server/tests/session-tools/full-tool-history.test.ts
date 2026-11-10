@@ -22,7 +22,7 @@ function verifyPages(events: AgentEvent[], agent: AgentKind, dir: string) {
   let count = 0;
   do {
     const page = pagination.read({ reference, workspaceDir: dir, history: readableHistory(events), cursor });
-    expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThanOrEqual(32_768);
+    expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThanOrEqual(8192);
     fragments.push(...page.items.filter((item) => item.type === 'tool_result'));
     cursor = page.nextCursor;
     expect(++count).toBeLessThan(30);

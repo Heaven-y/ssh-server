@@ -3,12 +3,12 @@ import type { ChatState, ConversationView } from './chat-state';
 import type { ChatSocket, ConnectionStatus } from '../../lib/ws';
 import { reduceChat } from './chat-reducer';
 import { nativeStatus, sameSession, sessionActionKey } from './chat-state-helpers';
-import { conversationBusy, conversationById, conversationViews, updateConversation } from './conversations';
+import { conversationById, conversationViews, updateConversation } from './conversations';
 import { refreshSessionLists } from '../sessions/session-queries';
+import { createChatRecovery, endedConversation as ended } from './chat-recovery';
 
 type SetState = (patch: Partial<ChatState>) => void;
 type Msg<T extends ServerMessage['type']> = Extract<ServerMessage, { type: T }>;
-const ended = { running: false, turnId: undefined, pendingClientTurnId: undefined, interruptRequested: false };
 
 export function createChatEvents(
   get: () => ChatState,
@@ -16,6 +16,8 @@ export function createChatEvents(
   send: ChatSocket['send'],
   interrupts: Set<string>,
 ) {
+  const recovery = createChatRecovery(get, set, interrupts);
+  const delayedInterrupts = new Map<string, string>();
   function change(view: ConversationView, patch: Partial<ConversationView>) {
     const state = get();
     set(
@@ -26,7 +28,11 @@ export function createChatEvents(
     );
   }
   function started(msg: Msg<'turn.started'>) {
-    if (interrupts.delete(msg.clientTurnId)) send({ type: 'chat.interrupt', turnId: msg.turnId });
+    recovery.restore(msg.clientTurnId);
+    if (interrupts.has(msg.clientTurnId)) {
+      if (send({ type: 'chat.interrupt', turnId: msg.turnId })) interrupts.delete(msg.clientTurnId);
+      else delayedInterrupts.set(msg.clientTurnId, msg.turnId);
+    }
     const view = conversationViews(get()).find((entry) => entry.pendingClientTurnId === msg.clientTurnId);
     if (!view || view.workspaceId !== msg.workspaceId || view.agent !== msg.agent) return;
     change(view, { turnId: msg.turnId, pendingClientTurnId: undefined });
@@ -85,6 +91,7 @@ export function createChatEvents(
     change(view, { ...ended, items: reduceChat(view.items, { type: 'turn_end', isError: false }) });
   }
   function error(msg: Msg<'error'>) {
+    if (msg.clientTurnId) recovery.restore(msg.clientTurnId);
     if (msg.clientTurnId) interrupts.delete(msg.clientTurnId);
     const views = conversationViews(get());
     const running = msg.turnId && views.find((entry) => entry.turnId === msg.turnId);
@@ -92,6 +99,7 @@ export function createChatEvents(
     if (view) change(view, { banner: msg.message, ...(!running ? ended : {}) });
   }
   return {
+    onRecovery: recovery.onRecovery,
     onMessage(msg: ServerMessage) {
       switch (msg.type) {
         case 'turn.started':
@@ -105,16 +113,15 @@ export function createChatEvents(
       }
     },
     onStatus(status: ConnectionStatus) {
-      if (status !== 'open') {
-        interrupts.clear();
-        for (const view of conversationViews(get()).filter(conversationBusy)) {
-          change(view, {
-            ...ended,
-            items: reduceChat(view.items, { type: 'turn_end', isError: true }),
-            banner: '连接已断开，本轮输出可能不完整。重新连接后可从会话列表重新打开查看。',
-            historyError: '连接已断开，已请求中断本轮。请恢复连接后重新读取原生历史，再继续发送。',
-          });
+      if (status === 'open') {
+        for (const [clientTurnId, turnId] of delayedInterrupts) {
+          if (interrupts.has(clientTurnId) && send({ type: 'chat.interrupt', turnId })) {
+            const view = conversationViews(get()).find((entry) => entry.turnId === turnId);
+            if (view) change(view, { interruptRequested: true });
+          }
+          interrupts.delete(clientTurnId);
         }
+        delayedInterrupts.clear();
       }
       set({ connection: status });
     },

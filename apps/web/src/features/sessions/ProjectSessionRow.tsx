@@ -142,7 +142,7 @@ export function ProjectSessionRow({
   const copy = useSessionLinkCopy(workspaceId ?? '');
   const choose = (action: SessionMenuAction) => {
     copy.clear();
-    if (action === 'copy' || action === 'copy-id') void copy.copy(session, action === 'copy-id' ? 'id' : 'link');
+    if (action === 'copy') void copy.copy(session);
     else if (action !== 'pin') manage?.(action);
   };
   return (

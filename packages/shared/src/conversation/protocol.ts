@@ -24,6 +24,8 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
       permission: PermissionSelectionSchema.optional(),
       /** 前端生成，用于把 turn.started 与本次发送对应起来 */
       clientTurnId: z.string().min(1),
+      /** 仅用于刷新后重建本网页的会话分组，后端不据此授权操作。 */
+      conversationId: z.string().min(1).max(200).optional(),
     })
     .refine((message) => message.text.trim().length > 0 || !!message.selection, {
       message: '请输入消息或选择技能与命令',

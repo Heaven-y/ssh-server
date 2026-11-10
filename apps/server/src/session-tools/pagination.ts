@@ -72,8 +72,9 @@ function nextFragment(item: HistoryItem, position: Position): SessionReadItem {
 function fragments(items: HistoryItem[], start: Position, reference: string) {
   const position = { ...start };
   const result: SessionReadItem[] = [];
+  // AGY 会截断较长的 MCP 结果；页面留在 8 KiB 内，为原生包装保留余量。
   // 游标最大约 400 字节，预留 1024 字节；预算按 JSON 转义后的 UTF-8 字节计算。
-  let remaining = 32_768 - bytes({ reference, items: [], nextCursor: 'x'.repeat(1024) });
+  let remaining = 8192 - bytes({ reference, items: [], nextCursor: 'x'.repeat(1024) });
   while (position.i < items.length && result.length < 32) {
     const fragment = nextFragment(items[position.i]!, position);
     const size = bytes(fragment) + 1;

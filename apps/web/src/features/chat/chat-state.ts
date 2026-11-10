@@ -71,6 +71,8 @@ export type ChatState = {
   newSession(agent?: AgentKind): void;
   setAgent(agent: AgentKind): void;
   openSession(session: SessionRef & { title?: string }, options?: { preserveDraft?: boolean }): Promise<void>;
+  /** 恢复实时回合前取消旧正文请求，避免迟到历史覆盖审批与增量。 */
+  cancelHistoryRead(): void;
   setModel(model: string): void;
   setDefaults(settings: ProductSettings): void;
   touchDraft(): void;

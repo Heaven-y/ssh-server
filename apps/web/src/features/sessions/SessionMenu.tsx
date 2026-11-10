@@ -1,5 +1,5 @@
 import { Menu, MenuButton, MenuItem, useMenuStore } from '@ariakit/react';
-import { Archive, ArchiveRestore, Copy, GitFork, Link, MoreHorizontal, Pencil, Pin, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, GitFork, Link, MoreHorizontal, Pencil, Pin, Trash2 } from 'lucide-react';
 import { useRef } from 'react';
 import {
   legacySessionCapabilities,
@@ -11,12 +11,11 @@ import { buttonClass } from '../../ui/styles';
 import { AGENT_LABELS } from '../../cli/shared/labels';
 
 export type SessionDialogAction = SessionActionInput['action'] | 'fork';
-export type SessionMenuAction = SessionDialogAction | 'pin' | 'copy' | 'copy-id';
+export type SessionMenuAction = SessionDialogAction | 'pin' | 'copy';
 const actions = {
   rename: { label: '重命名', icon: Pencil },
   pin: { label: '置顶', icon: Pin },
   copy: { label: '复制会话链接', icon: Link },
-  'copy-id': { label: '复制会话 ID', icon: Copy },
   fork: { label: '创建分支', icon: GitFork },
   delete: { label: '删除', icon: Trash2 },
   archive: { label: '归档', icon: Archive },
@@ -34,7 +33,7 @@ function visibleActions(
     if (localActions) visible.push('pin');
     if (capabilities.fork) visible.push('fork');
   }
-  visible.push('copy', 'copy-id');
+  visible.push('copy');
   if (capabilities.archive) visible.push(archived ? 'unarchive' : 'archive');
   if (capabilities.delete) visible.push('delete');
   return visible;
@@ -87,7 +86,7 @@ export function SessionMenu({
           return (
             <MenuItem
               key={action}
-              disabled={disabled && action !== 'copy' && action !== 'copy-id'}
+              disabled={disabled && action !== 'copy'}
               className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none data-active-item:bg-muted data-active-item:ring-1 data-active-item:ring-accent ${action === 'delete' ? 'text-destructive-foreground' : ''}`}
               onClick={() => {
                 menu.hide();

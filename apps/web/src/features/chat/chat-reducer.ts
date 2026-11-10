@@ -158,6 +158,11 @@ function updateStepStatistics(items: ChatItem[], event: Extract<AgentEvent, { ty
   const id = index < 0 ? nextId(items, 'step-statistics') : items[index]!.id;
   const statistics: ChatItem = { kind: 'statistics', id, nativeId: event.id, scope: 'step', usage: event.usage };
   if (finiteCount(event.durationMs)) statistics.durationMs = event.durationMs;
+  if (event.generation && finiteCount(event.generation.durationMs) && event.generation.durationMs > 0)
+    statistics.generation = {
+      durationMs: event.generation.durationMs,
+      ...(finiteCount(event.generation.firstTokenMs) ? { firstTokenMs: event.generation.firstTokenMs } : {}),
+    };
   return index < 0 ? [...items, statistics] : items.map((item, position) => (position === index ? statistics : item));
 }
 

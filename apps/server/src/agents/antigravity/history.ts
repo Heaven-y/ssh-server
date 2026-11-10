@@ -1,6 +1,7 @@
 import type { AgentEvent } from '@agentdeck/shared/conversation';
 import { managementObject as object, managementText as text, type ManagementRecord } from './management-rpc';
 import { contextEvent, historyTiming, stepUsage } from './metrics';
+import { historyGeneration } from './generation-timing';
 
 const DONE = 'CORTEX_STEP_STATUS_DONE';
 const FAILED = new Set(['CORTEX_STEP_STATUS_ERROR', 'CORTEX_STEP_STATUS_INVALID']);
@@ -153,14 +154,15 @@ function activity(step: ManagementRecord, index: number): AgentEvent[] {
   ];
 }
 
-function response(step: ManagementRecord, index: number): AgentEvent[] {
+function response(step: ManagementRecord, index: number, trajectory: ManagementRecord): AgentEvent[] {
   const planner = object(step.plannerResponse);
   const content = text(planner.modifiedResponse) || text(planner.response);
   const events: AgentEvent[] = content ? [{ type: 'text', delta: content }] : [];
   const usage = stepUsage(object(step.metadata).modelUsage);
-  if (step.status === DONE && usage)
-    // 模型用量不与执行起止时间混算速度；生成计时的范围须由原生字段进一步证明。
-    events.push({ type: 'step_usage', id: `agy-step-${index}`, usage });
+  if (step.status === DONE && usage) {
+    const generation = historyGeneration(trajectory, step, index, usage);
+    events.push({ type: 'step_usage', id: `agy-step-${index}`, usage, ...(generation ? { generation } : {}) });
+  }
   return events;
 }
 
@@ -175,7 +177,12 @@ function errorMessage(step: ManagementRecord): string {
   return error.shouldShowUser === true ? text(object(error.error).userErrorMessage) : '';
 }
 
-function stepEvents(step: ManagementRecord, index: number, preserve: boolean): AgentEvent[] {
+function stepEvents(
+  step: ManagementRecord,
+  index: number,
+  preserve: boolean,
+  trajectory: ManagementRecord,
+): AgentEvent[] {
   switch (step.type) {
     case 'CORTEX_STEP_TYPE_USER_INPUT': {
       const user = object(step.userInput);
@@ -188,7 +195,7 @@ function stepEvents(step: ManagementRecord, index: number, preserve: boolean): A
       return content ? [{ type: 'user_message', text: content }] : [];
     }
     case 'CORTEX_STEP_TYPE_PLANNER_RESPONSE':
-      return response(step, index);
+      return response(step, index, trajectory);
     case 'CORTEX_STEP_TYPE_CHECKPOINT':
       return checkpoint(step);
     case 'CORTEX_STEP_TYPE_ERROR_MESSAGE': {
@@ -220,7 +227,7 @@ export function antigravityHistory(
     if (step.status === DONE && step.type !== 'CORTEX_STEP_TYPE_USER_INPUT') forkPoint = String(index);
     else forkPoint = undefined;
     failed ||= FAILED.has(text(step.status)) || !!errorMessage(step);
-    events.push(...stepEvents(step, index, options.preserveToolContent ?? false));
+    events.push(...stepEvents(step, index, options.preserveToolContent ?? false, trajectory));
   });
   if (started) events.push({ type: 'turn_end', isError: failed, ...(forkPoint ? { forkPoint } : {}) });
   const last = object(list(trajectory.generatorMetadata).at(-1));

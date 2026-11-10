@@ -1,10 +1,11 @@
-import type { TokenUsage } from '@agentdeck/shared/conversation';
+import type { GenerationTiming, TokenUsage } from '@agentdeck/shared/conversation';
 
 export type ChatStatistics = {
   scope: 'turn' | 'step';
   durationMs?: number;
   timingSource?: 'native' | 'observed';
   usage?: TokenUsage;
+  generation?: GenerationTiming;
   isError?: boolean;
 };
 
@@ -26,6 +27,11 @@ export function averageTokenRate(statistics: ChatStatistics): number | undefined
   if (!finiteCount(usage.outputTokens)) return;
   const rate = (usage.outputTokens * 1000) / durationMs;
   return Number.isFinite(rate) ? rate : undefined;
+}
+
+export function generationTokenRate(statistics: ChatStatistics): number | undefined {
+  if (statistics.scope !== 'step' || !statistics.generation) return;
+  return averageTokenRate({ ...statistics, durationMs: statistics.generation.durationMs });
 }
 
 export function tokenFields(usage?: TokenUsage): Array<{ label: string; value: number }> {

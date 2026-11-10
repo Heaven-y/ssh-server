@@ -1,8 +1,9 @@
 // 对话 WebSocket：/ws（访问控制在 security.ts 的 onRequest 钩子里完成）
 import type { FastifyInstance } from 'fastify';
-import { ClientMessageSchema } from '@agentdeck/shared/conversation';
+import { ClientMessageSchema, ResumeRequestSchema } from '@agentdeck/shared/conversation';
 import { z } from 'zod';
 import type { Socket, TurnManager } from '../chat/turn-manager';
+import { ResumeHub } from '../chat/resume-hub';
 
 const WS_OPEN = 1;
 const SendingIdentity = z.object({ type: z.literal('chat.send'), clientTurnId: z.string().min(1).max(200) });
@@ -19,11 +20,32 @@ function rawText(data: Buffer | ArrayBuffer | Buffer[]): string {
 }
 
 export function registerWsRoutes(app: FastifyInstance, deps: { turns: TurnManager }): void {
+  const recovery = new ResumeHub(deps.turns);
+  app.addHook('onClose', (_server, done) => {
+    recovery.dispose();
+    done();
+  });
   app.get('/ws', { websocket: true }, (ws) => {
-    const socket: Socket = {
+    const peer = {
+      send: (data: string) => ws.send(data),
+      isOpen: () => ws.readyState === WS_OPEN,
+      close: () => ws.terminate(),
+    };
+    let alive = true;
+    ws.on('pong', () => {
+      alive = true;
+    });
+    const heartbeat = setInterval(() => {
+      if (!alive) return ws.terminate();
+      alive = false;
+      if (peer.isOpen()) ws.ping();
+    }, 15_000);
+    heartbeat.unref();
+    let socket: Socket = {
       send: (msg) => ws.send(JSON.stringify(msg)),
       isOpen: () => ws.readyState === WS_OPEN,
     };
+    let mode: 'initial' | 'legacy' | 'recovery' | 'rejected' = 'initial';
 
     ws.on('message', (data) => {
       let parsed: unknown;
@@ -33,12 +55,23 @@ export function registerWsRoutes(app: FastifyInstance, deps: { turns: TurnManage
         socket.send({ type: 'error', message: '消息不是合法的 JSON' });
         return;
       }
+      if (mode === 'rejected') return;
+      const resume = ResumeRequestSchema.safeParse(parsed);
+      if (mode === 'initial' && resume.success) {
+        const attached = recovery.attach(peer, resume.data);
+        mode = attached ? 'recovery' : 'rejected';
+        if (attached) socket = attached;
+        return;
+      }
+      if (mode === 'initial') mode = 'legacy';
       const msg = ClientMessageSchema.safeParse(parsed);
       if (!msg.success) {
         socket.send({ type: 'error', ...sendingIdentity(parsed), message: '消息格式不正确' });
         return;
       }
-      deps.turns.handle(socket, msg.data).catch(() => {
+      const handled =
+        mode === 'recovery' ? recovery.handle(peer, socket, msg.data) : deps.turns.handle(socket, msg.data);
+      handled.catch(() => {
         if (socket.isOpen())
           socket.send({
             type: 'error',
@@ -48,6 +81,10 @@ export function registerWsRoutes(app: FastifyInstance, deps: { turns: TurnManage
       });
     });
 
-    ws.on('close', () => deps.turns.socketClosed(socket));
+    ws.on('close', () => {
+      clearInterval(heartbeat);
+      if (mode === 'recovery') recovery.detach(peer, socket);
+      else deps.turns.socketClosed(socket);
+    });
   });
 }

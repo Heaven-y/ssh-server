@@ -78,7 +78,7 @@ export function ConversationSidebar({
               <Field label="工作区" value={workspace.name} />
               <Field label="本地目录" value={workspace.dir} mono />
               <Field label="CLI" value={AGENT_LABELS[agent]} />
-              <Field label="原生会话" value={sessionId || '发送第一条消息后创建'} mono={!!sessionId} />
+              <Field label="原生会话 ID" value={sessionId || '发送第一条消息后创建'} mono={!!sessionId} />
               <Field label="模型设置" value={model || '使用 CLI 原生默认'} />
               <Field label="推理强度" value={effort || '使用 CLI 原生默认'} />
               <Field label="状态" value={running ? '正在运行' : '空闲'} />
@@ -99,7 +99,9 @@ function Field({ label, value, mono = false }: { label: string; value: string; m
   return (
     <div>
       <dt className="mb-1.5 text-xs text-muted-foreground">{label}</dt>
-      <dd className={`break-words leading-6 ${mono ? 'font-mono text-xs [overflow-wrap:anywhere]' : ''}`}>{value}</dd>
+      <dd className={`break-words leading-6 ${mono ? 'select-text font-mono text-xs [overflow-wrap:anywhere]' : ''}`}>
+        {value}
+      </dd>
     </div>
   );
 }

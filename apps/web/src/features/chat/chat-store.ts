@@ -89,6 +89,9 @@ function persistWorkspace(id?: string): void {
 export const useChat = create<ChatState>()((set, get) => {
   const history = createChatHistory(get, set);
   return {
+    cancelHistoryRead: () => {
+      history.changeSelection();
+    },
     connection: 'connecting',
     conversationId: crypto.randomUUID(),
     background: {},
@@ -357,6 +360,7 @@ export const useChat = create<ChatState>()((set, get) => {
         reasoningEffort: current.reasoningEfforts[current.agent].trim() || undefined,
         ...(current.permission ? { permission: current.permission } : {}),
         clientTurnId,
+        conversationId: current.conversationId,
       });
       if (!sent) {
         set({ banner: '连接已断开，消息未发送。请等待重新连接后再试。' });

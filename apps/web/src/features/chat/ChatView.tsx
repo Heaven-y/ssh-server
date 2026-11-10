@@ -57,6 +57,31 @@ function HistoryFailure() {
   );
 }
 
+function RecoveredHistory() {
+  const notice = useChat((state) => state.historyNotice);
+  const reload = useChat((state) => state.historyReloadNeeded);
+  const busy = useChat((state) => state.running || !!state.pendingClientTurnId || state.loadingHistory);
+  const sessionId = useChat((state) => state.sessionId);
+  const agent = useChat((state) => state.agent);
+  const openSession = useChat((state) => state.openSession);
+  if (!reload || !notice) return null;
+  return (
+    <div className="conversation-notice space-y-2 rounded-xl border border-border p-3 text-sm text-muted-foreground">
+      <p role="status">{notice}</p>
+      {sessionId && (
+        <button
+          type="button"
+          className={buttonClass('outline')}
+          disabled={busy}
+          onClick={() => void openSession({ agent, sessionId }, { preserveDraft: true })}
+        >
+          重新读取完整历史
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Messages({ view }: { view: 'chat' | 'trajectory' }) {
   const items = useChat((s) => s.items);
   const running = useChat((s) => s.running);
@@ -90,6 +115,7 @@ export function ChatView({ workspace }: { workspace: Workspace }) {
     <section className="conversation" aria-label={`${workspace.name}会话`}>
       <Banner />
       <HistoryFailure />
+      <RecoveredHistory />
       <div key={view} className="conversation-view-content flex min-h-0 flex-1 flex-col">
         <Messages view={view} />
       </div>

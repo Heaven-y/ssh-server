@@ -17,17 +17,13 @@ export function useSessionLinkCopy(workspaceId: string) {
     setNotice('');
     setLink('');
   };
-  const copy = async (session: SessionRef, kind: 'link' | 'id' = 'link') => {
+  const copy = async (session: SessionRef) => {
     clear();
     const token = generation.current;
-    const value =
-      kind === 'id'
-        ? session.sessionId
-        : formatSessionReference({ workspaceId, agent: session.agent, sessionId: session.sessionId });
+    const value = formatSessionReference({ workspaceId, agent: session.agent, sessionId: session.sessionId });
     try {
       await navigator.clipboard.writeText(value);
-      if (token === generation.current)
-        setNotice(kind === 'id' ? '会话 ID 已复制' : '会话链接已复制，可粘贴给 Agent 阅读');
+      if (token === generation.current) setNotice('会话链接已复制，可粘贴给 Agent 阅读');
     } catch {
       if (token !== generation.current) return;
       setLink(value);

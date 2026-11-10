@@ -11,6 +11,7 @@ import type {
   ServerMessage,
   SessionActionInput,
   SessionHistory,
+  RecoveryNotice,
 } from '@agentdeck/shared/conversation';
 import type { ConnectionStatus } from '../../../src/lib/ws';
 
@@ -56,11 +57,13 @@ const sent: ClientMessage[] = [];
 let open = true;
 let emit: (m: ServerMessage) => void = () => undefined;
 let status: (s: ConnectionStatus) => void = () => undefined;
+let recovery: (m: RecoveryNotice) => void = () => undefined;
 
 beforeAll(() => {
   startChatConnection((h) => {
     emit = h.onMessage;
     status = h.onStatus;
+    recovery = h.onRecovery ?? (() => undefined);
     return {
       send: (m) => (open ? (sent.push(m), true) : false),
       reconnect: () => undefined,
@@ -401,7 +404,7 @@ it('准备期间离开后可找回和停止，迟到开始与结束不抢占新�
   });
 });
 
-it('后台草稿与参数独立保存，断线收尾全部回合且不自动重发', () => {
+it('后台草稿与参数独立保存，断线保留全部回合且不自动重发', () => {
   startTurn('任务A');
   const a = useChat.getState().conversationId;
   useChat.getState().setDraft('A后续草稿');
@@ -410,11 +413,11 @@ it('后台草稿与参数独立保存，断线收尾全部回合且不自动重�
   const b = useChat.getState().conversationId;
   useChat.getState().send('任务B');
   status('closed');
-  expect(useChat.getState()).toMatchObject({ running: false, historyError: expect.any(String) });
+  expect(useChat.getState()).toMatchObject({ running: true, historyError: undefined });
   expect(useChat.getState().background[a]).toMatchObject({
-    running: false,
+    running: true,
     draft: 'A后续草稿',
-    historyError: expect.any(String),
+    historyError: undefined,
   });
   const count = sent.length;
   status('open');
@@ -799,7 +802,7 @@ describe('原生能力状态', () => {
     queryClient.removeQueries({ queryKey: chatKeys.agentCapabilities('w1', 'codex') });
   });
 
-  it('断线后保留未确认边界，重新读取前不能继续发送', () => {
+  it('断线后保留正在压缩状态，本轮结束前不能继续发送', () => {
     const turnId = startTurn('压缩当前会话');
     emit({
       type: 'agent.event',
@@ -808,7 +811,8 @@ describe('原生能力状态', () => {
     });
     status('connecting');
     const boundary = useChat.getState().items.find((item) => item.kind === 'compaction');
-    expect(boundary).toMatchObject({ state: { status: 'running' }, incomplete: true });
+    expect(boundary).toMatchObject({ state: { status: 'running' } });
+    expect(boundary).not.toHaveProperty('incomplete', true);
     status('open');
     expect(useChat.getState().send('继续普通对话')).toBe(false);
     expect(useChat.getState().items.find((item) => item.kind === 'compaction')).toEqual(boundary);
@@ -963,7 +967,7 @@ describe('chat-store', () => {
     expect(useChat.getState()).toMatchObject({ banner: '出错', running: true });
   });
 
-  it('运行中断线：结束运行并提示输出可能不完整', () => {
+  it('运行中断线保留审批，恢复后可继续答复', () => {
     const turnId = startTurn();
     emit({
       type: 'agent.event',
@@ -971,12 +975,13 @@ describe('chat-store', () => {
       event: { type: 'permission_request', requestId: 'old-approval', toolName: 'command', input: {} },
     });
     status('connecting');
-    expect(useChat.getState()).toMatchObject({ running: false, connection: 'connecting' });
-    expect(useChat.getState().banner).toContain('不完整');
-    expect(useChat.getState().items.at(-1)).toMatchObject({ resolved: 'cancelled' });
-    status('open');
+    expect(useChat.getState()).toMatchObject({ running: true, connection: 'connecting' });
+    expect(useChat.getState().items.at(-1)).not.toHaveProperty('resolved');
     useChat.getState().respondPermission('old-approval', true);
     expect(sent).toHaveLength(1);
+    status('open');
+    useChat.getState().respondPermission('old-approval', true);
+    expect(sent.at(-1)).toEqual({ type: 'permission.respond', turnId, requestId: 'old-approval', allow: true });
   });
 
   it('中断与权限答复发送对应消息', () => {
@@ -1140,6 +1145,165 @@ function finishTurn() {
     });
   emit({ type: 'turn.finished', turnId, workspaceId: current.workspaceId!, agent: current.agent });
 }
+
+it('刷新重建本轮及全部后台回合，同一会话多轮按事件次序恢复，且不重新发送', () => {
+  recovery({
+    type: 'connection.snapshot',
+    turns: [
+      {
+        message: {
+          type: 'chat.send',
+          workspaceId: 'w1',
+          agent: 'claude',
+          text: '第一轮',
+          clientTurnId: 'recovered-a',
+          conversationId: 'view-a',
+        },
+        sentAt: 1,
+      },
+      {
+        message: {
+          type: 'chat.send',
+          workspaceId: 'w1',
+          agent: 'claude',
+          text: '第二轮',
+          clientTurnId: 'recovered-b',
+          conversationId: 'view-a',
+          sessionId: 'native-a',
+        },
+        sentAt: 2,
+      },
+      {
+        message: {
+          type: 'chat.send',
+          workspaceId: 'w2',
+          agent: 'codex',
+          text: '后台任务',
+          clientTurnId: 'recovered-c',
+          conversationId: 'view-b',
+        },
+        sentAt: 3,
+      },
+    ],
+  });
+  emit({ type: 'turn.started', turnId: 'turn-a', clientTurnId: 'recovered-a', workspaceId: 'w1', agent: 'claude' });
+  emit({ type: 'agent.event', turnId: 'turn-a', event: { type: 'text', delta: '第一轮回复' } });
+  emit({ type: 'turn.finished', turnId: 'turn-a', workspaceId: 'w1', agent: 'claude' });
+  emit({ type: 'turn.started', turnId: 'turn-b', clientTurnId: 'recovered-b', workspaceId: 'w1', agent: 'claude' });
+  emit({ type: 'turn.started', turnId: 'turn-c', clientTurnId: 'recovered-c', workspaceId: 'w2', agent: 'codex' });
+  emit({
+    type: 'agent.event',
+    turnId: 'turn-c',
+    event: { type: 'permission_request', requestId: 'recover-approval', toolName: 'command', input: {} },
+  });
+  expect(useChat.getState()).toMatchObject({
+    conversationId: 'view-a',
+    running: true,
+    turnId: 'turn-b',
+    sessionId: 'native-a',
+    historyReloadNeeded: true,
+  });
+  expect(useChat.getState().items).toMatchObject([
+    { kind: 'user', text: '第一轮' },
+    { kind: 'assistant', text: '第一轮回复' },
+    { kind: 'user', text: '第二轮' },
+  ]);
+  expect(useChat.getState().background['view-b']).toMatchObject({
+    running: true,
+    turnId: 'turn-c',
+    workspaceId: 'w2',
+    items: [{ kind: 'user' }, { kind: 'permission', id: 'recover-approval' }],
+  });
+  expect(useChat.getState().tabIds).toContain('view-b');
+  expect(sent).toHaveLength(0);
+  recovery({ type: 'connection.rejected', code: 'owner_missing', message: '恢复失败，请重新读取历史' });
+  expect(useChat.getState()).toMatchObject({ running: false, historyError: '恢复失败，请重新读取历史' });
+  expect(useChat.getState().background['view-b']).toMatchObject({
+    running: false,
+    items: [{ kind: 'user' }, { kind: 'permission', resolved: 'cancelled' }],
+  });
+});
+
+it('恢复握手确认未收到的发送时结束等待，不自动补发，也不伪造已执行', () => {
+  useChat.getState().send('结果未知');
+  status('connecting');
+  recovery({ type: 'connection.ready', sequence: 0, acceptedClientTurnIds: [] });
+  expect(useChat.getState()).toMatchObject({
+    running: false,
+    pendingClientTurnId: undefined,
+    historyError: expect.any(String),
+  });
+  expect(sent).toHaveLength(1);
+});
+
+it('刷新恢复接管同身份视图后，旧历史迟到不能覆盖回复和审批', async () => {
+  let resolveHistory!: (value: SessionHistory) => void;
+  vi.spyOn(sessionsApi, 'sessionEvents').mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        resolveHistory = resolve;
+      }),
+  );
+  const reading = useChat.getState().openSession({ agent: 'claude', sessionId: 'recover-native' });
+  recovery({
+    type: 'connection.snapshot',
+    turns: [
+      {
+        sentAt: 1,
+        message: {
+          type: 'chat.send',
+          workspaceId: 'w1',
+          agent: 'claude',
+          text: '正在恢复',
+          sessionId: 'recover-native',
+          clientTurnId: 'recover-race',
+          conversationId: 'restored-view',
+        },
+      },
+    ],
+  });
+  emit({ type: 'turn.started', turnId: 'race-turn', clientTurnId: 'recover-race', workspaceId: 'w1', agent: 'claude' });
+  emit({ type: 'agent.event', turnId: 'race-turn', event: { type: 'text', delta: '实时回复' } });
+  emit({
+    type: 'agent.event',
+    turnId: 'race-turn',
+    event: { type: 'permission_request', requestId: 'race-permission', toolName: 'command', input: {} },
+  });
+  resolveHistory({
+    session: { agent: 'claude', sessionId: 'recover-native', summary: '旧历史', lastModified: 1 },
+    events: [{ type: 'user_message', text: '旧内容' }],
+  });
+  await reading;
+  expect(useChat.getState().items).toMatchObject([
+    { kind: 'user', text: '正在恢复' },
+    { kind: 'assistant', text: '实时回复' },
+    { kind: 'permission', id: 'race-permission' },
+  ]);
+  expect(useChat.getState()).toMatchObject({ running: true, loadingHistory: false, permissionLoading: false });
+});
+
+it('停止答复未确认时恢复后允许用户再次停止，审批答复同样允许显式重试', () => {
+  const turnId = startTurn();
+  emit({
+    type: 'agent.event',
+    turnId,
+    event: { type: 'permission_request', requestId: 'uncertain', toolName: 'command', input: {} },
+  });
+  useChat.getState().respondPermission('uncertain', true);
+  useChat.getState().interrupt();
+  status('connecting');
+  recovery({ type: 'connection.ready', sequence: 3, acceptedClientTurnIds: [] });
+  status('open');
+  expect(useChat.getState().interruptRequested).toBe(false);
+  expect(useChat.getState().items.at(-1)).toMatchObject({ kind: 'permission', responding: false });
+  expect(sent).toHaveLength(3);
+  useChat.getState().respondPermission('uncertain', false);
+  useChat.getState().interrupt();
+  expect(sent.slice(-2)).toEqual([
+    { type: 'permission.respond', turnId, requestId: 'uncertain', allow: false },
+    { type: 'chat.interrupt', turnId },
+  ]);
+});
 
 it('权限只作用于当前会话，运行中锁定，新建和跨CLI选择不继承', () => {
   useChat.getState().setPermission({ agent: 'claude', mode: 'auto' });

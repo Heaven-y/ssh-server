@@ -148,7 +148,7 @@ it('运行中会话允许复制但禁用管理请求', async () => {
   expect(more.disabled).toBe(false);
   fireEvent.click(more);
   expect((await screen.findByRole('menuitem', { name: '删除' })).getAttribute('aria-disabled')).toBe('true');
-  expect(screen.getByRole('menuitem', { name: '复制会话 ID' }).getAttribute('aria-disabled')).not.toBe('true');
+  expect(screen.getByRole('menuitem', { name: '复制会话链接' }).getAttribute('aria-disabled')).not.toBe('true');
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 

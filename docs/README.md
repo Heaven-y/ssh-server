@@ -23,6 +23,10 @@
 | [工作台插件接口](engineering/workbench-plugins.md) | 自有 v1 插件格式、宿主接口、SSH Console 与兼容边界 |
 | [本地安装与打包](guides/local-installation.md) | 安装版、便携版、数据保存、构建和隔离验收 |
 
+## 当前实施
+
+[后续功能计划](superpowers/plans/2026-11-10-workbench-completion.md)记录本轮复制入口、连接恢复、SSH 更新与原生验收的任务范围；最终证据见路线图末节。
+
 ## 维护规则
 
 - 功能做什么写进需求；界面怎么呈现写进交互；技术怎么运行写进架构；为什么这样取舍写进决策。具体数值只在负责该参数的文件定义，其他文件引用。

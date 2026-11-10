@@ -96,7 +96,7 @@ function WorkspaceSessions({ workspaceId }: { workspaceId: string }) {
   const manage = (session: SessionSummary, action: SessionMenuAction) => {
     link.clear();
     if (action === 'pin') togglePin(workspaceId, session);
-    else if (action === 'copy' || action === 'copy-id') void link.copy(session, action === 'copy-id' ? 'id' : 'link');
+    else if (action === 'copy') void link.copy(session);
     else setSelected({ session, archived, action });
   };
   return (

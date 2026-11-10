@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import type { ChatItem } from '../../../src/features/chat/chat-reducer';
+import { reduceChat, type ChatItem } from '../../../src/features/chat/chat-reducer';
 import { useChat } from '../../../src/features/chat/chat-store';
 import { averageTokenRate } from '../../../src/features/chat/chat-metrics';
 import { filterTrajectory, projectTrajectory } from '../../../src/features/chat/trajectory-model';
@@ -85,6 +85,23 @@ it('速度只配对同范围数据，未知耗时、失败、非有限 token 均
   expect(averageTokenRate({ ...statistics, usage: { ...usage, outputTokens: NaN } })).toBeUndefined();
   render(<StatisticsLine statistics={statistics} />);
   expect(screen.getByText('回合平均 60.0 tok/s')).toBeTruthy();
+});
+
+it('生成统计独立显示首段等待与流式速度，不把步骤总耗时当生成时间', () => {
+  const items = reduceChat([], {
+    type: 'step_usage',
+    id: 'step',
+    durationMs: 10000,
+    usage: { source: 'antigravity', scope: 'step', outputTokens: 25, reasoningOutputTokens: 5 },
+    generation: { firstTokenMs: 150, durationMs: 200 },
+  });
+  const statistics = items.find((item) => item.kind === 'statistics');
+  if (!statistics || statistics.kind !== 'statistics') throw new Error('缺少步骤统计');
+  render(<StatisticsLine statistics={statistics} />);
+  expect(screen.getByText('首段 150 ms')).toBeTruthy();
+  expect(screen.getByText('生成 200 ms')).toBeTruthy();
+  expect(screen.getByText('生成平均 125.0 tok/s')).toBeTruthy();
+  expect(screen.queryByText('步骤平均 2.5 tok/s')).toBeNull();
 });
 
 it('角色筛选保留原始顺序和轮次，用户可查看全文，上下文只采用原生报告', async () => {

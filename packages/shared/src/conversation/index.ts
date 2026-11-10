@@ -8,3 +8,4 @@ export * from './capabilities';
 export * from './legacy-session-capabilities';
 export * from './protocol-version';
 export * from './permissions';
+export * from './recovery';

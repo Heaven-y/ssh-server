@@ -90,7 +90,7 @@ describe('跨 CLI 只读会话工具', () => {
     expect(JSON.stringify(result)).not.toMatch(/raw-secret|不可公开|internal/);
   });
 
-  it('长工具输出、转义和多字节文本可逐页无损重建且每页有界', async () => {
+  it('长工具输出、转义和多字节文本逐页重建，页面保留原生 MCP 截断余量', async () => {
     const output = '中文😀\n"\\'.repeat(15_000);
     const { reader } = fixture([
       { type: 'user_message', text: '' },
@@ -102,7 +102,7 @@ describe('跨 CLI 只读会话工具', () => {
     let pages = 0;
     do {
       const page = await reader.read({ reference: reference(), ...(cursor ? { cursor } : {}) });
-      expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThanOrEqual(32_768);
+      expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThanOrEqual(8192);
       expect(page.items.length).toBeLessThanOrEqual(32);
       expect(page.items.length).toBeGreaterThan(0);
       items.push(...page.items);
@@ -144,7 +144,7 @@ describe('跨 CLI 只读会话工具', () => {
     const first = await reader.read({ reference: reference() });
     const second = await reader.read({ reference: reference(), cursor: first.nextCursor });
     expect(second.items[0]).toMatchObject({ index: 32, content: '', complete: true });
-    expect(Buffer.byteLength(JSON.stringify(second))).toBeLessThanOrEqual(32_768);
+    expect(Buffer.byteLength(JSON.stringify(second))).toBeLessThanOrEqual(8192);
   });
 
   it('拒绝路径引用、伪造或跨引用游标；快照变化后要求从头读取', async () => {
